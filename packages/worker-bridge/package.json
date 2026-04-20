@@ -1,0 +1,20 @@
+{
+  "name": "@vulnhunt/worker-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/bundle.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node --watch dist/bundle.js",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@vulnhunt/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.24.2",
+    "typescript": "^5.7.2"
+  }
+}
