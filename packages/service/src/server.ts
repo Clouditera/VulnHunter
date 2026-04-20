@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authRouter } from "./features/auth/index.js";
 import { systemRouter } from "./features/license/index.js";
+import { tasksRouter } from "./features/tasks/index.js";
+import { filesRouter } from "./features/files/index.js";
 import { injectUser } from "./middleware/index.js";
 import { traceId } from "./middleware/trace-id.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -24,7 +26,8 @@ export function createApp(): Hono {
   app.get("/health", (c) => c.json({ ok: true }));
 
   // Protected routes (license + auth)
-  // TODO: add business feature routes here as they're implemented
+  app.route("/api/tasks", tasksRouter);
+  app.route("/api", filesRouter); // includes POST /api/tasks (upload)
 
   app.onError(errorHandler);
 

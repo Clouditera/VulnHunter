@@ -1,2 +1,1 @@
-// TODO: implement
-export {};
+export { filesRouter } from "./routes.js";
