@@ -7,6 +7,7 @@ import { initDb, runMigrations } from "./infra/db/index.js";
 import { initMinio } from "./infra/minio/index.js";
 import { logger } from "./infra/logger.js";
 import { init as initLicense, tick as tickLicense } from "./features/license/index.js";
+import { initVault } from "./features/settings/index.js";
 import { initDocker, TaskScheduler, reconcileWorkers } from "./features/workers/index.js";
 import { startServer } from "./server.js";
 
@@ -26,6 +27,9 @@ async function main(): Promise<void> {
 
   // Initialize License
   initLicense(config.dataDir);
+
+  // Initialize crypto vault
+  initVault(config.dataDir);
 
   // Initialize Docker
   initDocker(config.docker.socketPath);
