@@ -20,6 +20,33 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface Task {
+  id: string;
+  project_name: string;
+  state: string;
+  risk_score: number | null;
+  failure_reason: string | null;
+  source_type: string;
+  duration_ms: number | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface FindingMeta {
+  id: string;
+  task_id: string;
+  finding_key: string;
+  severity: string;
+  severity_numeric: number;
+  vuln_type: string | null;
+  vuln_type_full: string | null;
+  primary_file: string | null;
+  primary_line: number | null;
+  function_name: string | null;
+  user_verdict: string;
+}
+
 export const api = {
   system: {
     status: () => request<SystemStatus>("/api/system/status"),
@@ -32,6 +59,21 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ email, password }),
       }),
+  },
+  tasks: {
+    list: (state?: string) =>
+      request<{ tasks: Task[] }>(`/api/tasks${state ? `?state=${state}` : ""}`),
+    get: (id: string) => request<{ task: Task }>(`/api/tasks/${id}`),
+    create: (body: FormData | { git_url: string; project_name?: string }) =>
+      body instanceof FormData
+        ? fetch("/api/tasks", { method: "POST", credentials: "include", body }).then((r) => r.json() as Promise<{ task: Task }>)
+        : request<{ task: Task }>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
+    cancel: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/cancel`, { method: "POST" }),
+    restart: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/restart`, { method: "POST" }),
+  },
+  findings: {
+    list: (taskId: string, severity?: string) =>
+      request<{ findings: FindingMeta[] }>(`/api/tasks/${taskId}/findings${severity ? `?severity=${severity}` : ""}`),
   },
   auth: {
     login: (email: string, password: string) =>

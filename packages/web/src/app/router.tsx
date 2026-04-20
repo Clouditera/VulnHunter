@@ -3,58 +3,40 @@ import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
 import { ActivatePage } from "../features/auth/pages/ActivatePage.js";
 import { BootstrapPage } from "../features/auth/pages/BootstrapPage.js";
 import { LoginPage } from "../features/auth/pages/LoginPage.js";
-import { DashboardPage } from "../features/dashboard/pages/DashboardPage.js";
 import { ExpiredPage } from "../features/auth/pages/ExpiredPage.js";
+import { AppLayout } from "./layout.js";
+import { DashboardPage } from "../features/dashboard/pages/DashboardPage.js";
+import { TasksListPage } from "../features/tasks/pages/TasksListPage.js";
+import { TaskDetailPage } from "../features/tasks/pages/TaskDetailPage.js";
+import { OverviewTab } from "../features/tasks/pages/tabs/OverviewTab.js";
+import { FindingsTab } from "../features/tasks/pages/tabs/FindingsTab.js";
+import { ReportsTab, PocTab, WorkspaceTab } from "../features/tasks/pages/tabs/PlaceholderTabs.js";
+import { ChatPage } from "../features/chat/pages/ChatPage.js";
+import { SettingsPage } from "../features/settings/pages/SettingsPage.js";
 
-/** Root guard: reads /api/system/status and routes accordingly */
 function RootGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
 
   if (isLoading) {
     return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100vh",
-          background: "var(--bg-page)",
-          color: "var(--text-secondary)",
-          fontSize: "14px",
-        }}
-      >
-        Loading...
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--bg-page)", color: "var(--text-secondary)", fontSize: "14px" }}>
+        Loading…
       </div>
     );
   }
 
-  if (error || !status) {
-    return <Navigate to="/activate" replace />;
-  }
-
-  if (status.license.status !== "active") {
-    return <Navigate to="/activate" replace />;
-  }
-
-  if (!status.has_admin) {
-    return <Navigate to="/bootstrap" replace />;
-  }
-
-  if (!status.is_authenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
+  if (error || !status) return <Navigate to="/activate" replace />;
+  if (status.license.status !== "active") return <Navigate to="/activate" replace />;
+  if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
+  if (!status.is_authenticated) return <Navigate to="/login" replace />;
   return <Navigate to="/dashboard" replace />;
 }
 
-/** Require authenticated + active license */
 function AuthGuard() {
   const { data: status, isLoading } = useSystemStatus();
-
   if (isLoading) return null;
   if (!status?.is_authenticated) return <Navigate to="/login" replace />;
   if (status.license.status !== "active") return <Navigate to="/activate" replace />;
-
   return <Outlet />;
 }
 
@@ -67,8 +49,26 @@ export const router = createBrowserRouter([
   {
     element: <AuthGuard />,
     children: [
-      { path: "/dashboard", element: <DashboardPage /> },
-      // TODO: /tasks, /chat, /settings
+      {
+        element: <AppLayout />,
+        children: [
+          { path: "/dashboard", element: <DashboardPage /> },
+          { path: "/tasks", element: <TasksListPage /> },
+          {
+            path: "/tasks/:taskId",
+            element: <TaskDetailPage />,
+            children: [
+              { index: true, element: <OverviewTab /> },
+              { path: "findings", element: <FindingsTab /> },
+              { path: "reports", element: <ReportsTab /> },
+              { path: "poc", element: <PocTab /> },
+              { path: "workspace", element: <WorkspaceTab /> },
+            ],
+          },
+          { path: "/chat", element: <ChatPage /> },
+          { path: "/settings", element: <SettingsPage /> },
+        ],
+      },
     ],
   },
 ]);
