@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./dist/main.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r src/infra/db/migrations dist/infra/db/",
     "dev": "node --watch --experimental-specifier-resolution=node dist/main.js",
     "start": "node dist/main.js",
     "test": "vitest run",
