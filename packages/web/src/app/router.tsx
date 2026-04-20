@@ -4,6 +4,7 @@ import { ActivatePage } from "../features/auth/pages/ActivatePage.js";
 import { BootstrapPage } from "../features/auth/pages/BootstrapPage.js";
 import { LoginPage } from "../features/auth/pages/LoginPage.js";
 import { DashboardPage } from "../features/dashboard/pages/DashboardPage.js";
+import { ExpiredPage } from "../features/auth/pages/ExpiredPage.js";
 
 /** Root guard: reads /api/system/status and routes accordingly */
 function RootGuard() {
@@ -60,6 +61,7 @@ function AuthGuard() {
 export const router = createBrowserRouter([
   { path: "/", element: <RootGuard /> },
   { path: "/activate", element: <ActivatePage /> },
+  { path: "/expired", element: <ExpiredPage /> },
   { path: "/bootstrap", element: <BootstrapPage /> },
   { path: "/login", element: <LoginPage /> },
   {

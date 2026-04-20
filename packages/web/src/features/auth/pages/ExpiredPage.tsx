@@ -3,25 +3,25 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../shared/api/client.js";
 
-export function ActivatePage() {
-  const [cert, setCert] = useState("");
+export function ExpiredPage() {
+  const [key, setKey] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  async function handleActivate(e: React.FormEvent) {
+  async function handleRenew(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      await api.system.activate(cert.trim());
+      await api.system.activate(key.trim());
       setSuccess(true);
       qc.invalidateQueries({ queryKey: ["system-status"] });
       setTimeout(() => navigate("/login"), 1500);
-    } catch (err) {
-      setError(String(err));
+    } catch {
+      setError("Invalid renewal key. Please contact your vendor.");
     } finally {
       setLoading(false);
     }
@@ -29,7 +29,7 @@ export function ActivatePage() {
 
   return (
     <div
-      data-testid="activate-page"
+      data-testid="expired-page"
       style={{
         minHeight: "100vh",
         display: "flex",
@@ -53,7 +53,7 @@ export function ActivatePage() {
               width: "56px",
               height: "56px",
               borderRadius: "50%",
-              background: "#fef2f2",
+              background: "#fff7ed",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -61,13 +61,13 @@ export function ActivatePage() {
               fontSize: "24px",
             }}
           >
-            🔐
+            ⏰
           </div>
           <h1 style={{ fontSize: "22px", fontWeight: 700, margin: "0 0 8px" }}>
-            Activate VulnHunt
+            License Expired
           </h1>
-          <p style={{ fontSize: "14px", color: "var(--text-secondary)", margin: 0 }}>
-            Enter your license key to activate the platform
+          <p style={{ fontSize: "14px", color: "var(--text-secondary)", margin: 0, lineHeight: 1.6 }}>
+            Your license has expired. Please contact your vendor to obtain a renewal key.
           </p>
         </div>
 
@@ -82,10 +82,10 @@ export function ActivatePage() {
               fontSize: "14px",
             }}
           >
-            ✅ Activated successfully — redirecting…
+            ✅ Renewed successfully — redirecting…
           </div>
         ) : (
-          <form onSubmit={handleActivate}>
+          <form onSubmit={handleRenew}>
             <label
               style={{
                 display: "block",
@@ -97,13 +97,13 @@ export function ActivatePage() {
                 marginBottom: "6px",
               }}
             >
-              License Key
+              Renewal Key
             </label>
             <textarea
-              data-testid="license-key-input"
-              value={cert}
-              onChange={(e) => setCert(e.target.value)}
-              placeholder="Paste your license certificate JSON here"
+              data-testid="renewal-key-input"
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder="Paste your renewal license certificate JSON here"
               rows={5}
               style={{
                 width: "100%",
@@ -125,23 +125,23 @@ export function ActivatePage() {
               </p>
             )}
             <button
-              data-testid="activate-submit"
+              data-testid="renew-submit"
               type="submit"
-              disabled={loading || !cert.trim()}
+              disabled={loading || !key.trim()}
               style={{
                 marginTop: "16px",
                 width: "100%",
                 padding: "12px",
-                background: loading || !cert.trim() ? "#e5e5e5" : "var(--brand)",
-                color: loading || !cert.trim() ? "var(--text-secondary)" : "#fff",
+                background: loading || !key.trim() ? "#e5e5e5" : "var(--brand)",
+                color: loading || !key.trim() ? "var(--text-secondary)" : "#fff",
                 border: "none",
                 borderRadius: "6px",
                 fontSize: "14px",
                 fontWeight: 600,
-                cursor: loading || !cert.trim() ? "not-allowed" : "pointer",
+                cursor: loading || !key.trim() ? "not-allowed" : "pointer",
               }}
             >
-              {loading ? "Activating…" : "Activate"}
+              {loading ? "Renewing…" : "Renew License"}
             </button>
           </form>
         )}
