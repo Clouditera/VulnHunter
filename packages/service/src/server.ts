@@ -6,6 +6,8 @@ import { systemRouter } from "./features/license/index.js";
 import { tasksRouter } from "./features/tasks/index.js";
 import { filesRouter } from "./features/files/index.js";
 import { findingsRouter } from "./features/findings/index.js";
+import { dashboardRouter } from "./features/dashboard/index.js";
+import { workspaceRouter } from "./features/workspace/index.js";
 import { injectUser } from "./middleware/index.js";
 import { traceId } from "./middleware/trace-id.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -29,6 +31,8 @@ export function createApp(): Hono {
   // Protected routes (license + auth)
   app.route("/api/tasks", tasksRouter);
   app.route("/api/tasks", findingsRouter); // /:taskId/findings
+  app.route("/api/tasks", workspaceRouter); // /:taskId/workspace/*
+  app.route("/api/dashboard", dashboardRouter);
   app.route("/api", filesRouter); // includes POST /api/tasks (upload)
 
   app.onError(errorHandler);
