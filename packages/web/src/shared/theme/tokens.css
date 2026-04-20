@@ -1,0 +1,42 @@
+/* VulnHunt Design Tokens — migrated from prototype */
+:root {
+  --brand: #dc2626;
+  --nav-bg: #111111;
+  --bg-page: #fafafa;
+  --bg-card: #ffffff;
+  --text-primary: #171717;
+  --text-secondary: #737373;
+  --border: #e5e5e5;
+  --divider: #f5f5f5;
+
+  --sev-high: #ea580c;
+  --sev-medium: #ca8a04;
+  --sev-low: #2563eb;
+  --sev-info: #9ca3af;
+
+  --code-bg: #1e1e1e;
+  --terminal-bg: #0a0a0a;
+  --code-text: #d4d4d4;
+}
+
+:root[data-theme="dark"] {
+  --bg-page: #1a1a1a;
+  --bg-card: #242424;
+  --text-primary: #e5e5e5;
+  --text-secondary: #a3a3a3;
+  --border: #3a3a3a;
+  --divider: #2d2d2d;
+  /* code-bg and terminal-bg stay the same in dark mode — always darker than card */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
