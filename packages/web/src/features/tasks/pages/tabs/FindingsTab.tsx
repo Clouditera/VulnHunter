@@ -28,7 +28,7 @@ export function FindingsTab() {
     setDragging(true);
 
     function onMouseMove(mv: MouseEvent) {
-      const container = document.querySelector("[data-testid='findings-split-container']") as HTMLElement;
+      const container = document.querySelector("[data-testid='findings-container']") as HTMLElement;
       if (!container) return;
       const rect = container.getBoundingClientRect();
       const pct = ((mv.clientX - rect.left) / rect.width) * 100;
@@ -47,7 +47,7 @@ export function FindingsTab() {
   }
 
   return (
-    <div data-testid="findings-tab" style={{ position: "relative" }}>
+    <div data-testid="task-detail-panel-findings" style={{ position: "relative" }}>
       {/* Filter bar */}
       <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
         {["all", "high", "medium", "low", "info"].map((s) => (
@@ -77,11 +77,12 @@ export function FindingsTab() {
 
       {/* Split container */}
       <div
-        data-testid="findings-split-container"
+        data-testid="findings-container"
         style={{ display: "flex", gap: "0", height: "calc(100vh - 360px)", minHeight: "400px" }}
       >
         {/* Left: findings list */}
         <div
+          data-testid="findings-left-panel"
           style={{
             width: `${leftWidth}%`,
             flexShrink: 0,

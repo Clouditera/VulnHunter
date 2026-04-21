@@ -24,7 +24,7 @@ export function AppLayout() {
     <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg-page)" }}>
       {/* Left nav */}
       <nav
-        data-testid="sidebar-nav"
+        data-testid="nav-sidebar"
         style={{
           width: "68px",
           background: "var(--nav-bg)",
@@ -84,26 +84,52 @@ export function AppLayout() {
           ))}
         </div>
 
-        {/* Bottom: user */}
-        <button
-          data-testid="nav-logout"
-          onClick={handleLogout}
+        {/* Bottom: lang/theme toggles + user */}
+        <div
+          data-testid="nav-bottom"
           style={{
-            width: "32px",
-            height: "32px",
-            borderRadius: "50%",
-            background: "#dc2626",
-            color: "#fff",
-            border: "none",
-            cursor: "pointer",
-            fontSize: "12px",
-            fontWeight: 700,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "8px",
             marginBottom: "16px",
           }}
-          title="Sign out"
         >
-          A
-        </button>
+          <button
+            data-testid="nav-lang-toggle"
+            style={{
+              width: "32px", height: "32px", borderRadius: "6px",
+              background: "transparent", border: "1px solid #333",
+              color: "#737373", cursor: "pointer", fontSize: "10px", fontWeight: 600,
+            }}
+            title="Language"
+          >
+            EN
+          </button>
+          <button
+            data-testid="nav-theme-toggle"
+            style={{
+              width: "32px", height: "32px", borderRadius: "6px",
+              background: "transparent", border: "1px solid #333",
+              color: "#737373", cursor: "pointer", fontSize: "14px",
+            }}
+            title="Toggle theme"
+          >
+            ☀️
+          </button>
+          <button
+            data-testid="nav-logout"
+            onClick={handleLogout}
+            style={{
+              width: "32px", height: "32px", borderRadius: "50%",
+              background: "#dc2626", color: "#fff", border: "none",
+              cursor: "pointer", fontSize: "12px", fontWeight: 700,
+            }}
+            title="Sign out"
+          >
+            A
+          </button>
+        </div>
       </nav>
 
       {/* Main content */}

@@ -47,7 +47,7 @@ export function OverviewTab() {
   const medCount = findings.filter((f) => f.severity === "medium").length;
 
   return (
-    <div data-testid="overview-tab" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+    <div data-testid="task-detail-panel-overview" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
       {/* Project Profile */}
       <Card title="Project Profile">
         <KV label="Project" value={task.project_name} />

@@ -94,6 +94,7 @@ export function LiveLog({ taskId, taskState }: Props) {
     <div data-testid="live-log-bar" style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid var(--divider)" }}>
       {/* Collapsed row */}
       <div
+        data-testid="live-log-expand-btn"
         style={{
           height: "36px",
           display: "flex",
@@ -105,7 +106,7 @@ export function LiveLog({ taskId, taskState }: Props) {
       >
         {/* Status badge */}
         <span
-          data-testid="live-log-status"
+          data-testid="live-log-status-badge"
           data-status={taskState}
           style={{
             color: statusColor,
@@ -145,7 +146,10 @@ export function LiveLog({ taskId, taskState }: Props) {
         </span>
 
         {/* Count + expand icon */}
-        <span style={{ fontSize: "11px", color: "var(--text-secondary)", flexShrink: 0 }}>
+        <span
+          data-testid="live-log-event-count"
+          style={{ fontSize: "11px", color: "var(--text-secondary)", flexShrink: 0 }}
+        >
           {events.length} events
         </span>
         <span style={{ fontSize: "12px", color: "var(--text-secondary)", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
