@@ -9,6 +9,9 @@
       (function () {
         var t = localStorage.getItem("vh-theme");
         if (t === "dark") document.documentElement.setAttribute("data-theme", "dark");
+        var l = localStorage.getItem("vh-lang") ||
+                (navigator.language.startsWith("zh") ? "zh" : "en");
+        document.documentElement.setAttribute("lang", l);
       })();
     </script>
   </head>

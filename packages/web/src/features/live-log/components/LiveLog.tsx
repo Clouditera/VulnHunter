@@ -41,8 +41,8 @@ export function LiveLog({ taskId, taskState }: Props) {
   const isRunning = taskState === "running";
 
   useEffect(() => {
-    const host = window.location.hostname;
-    const wsUrl = `ws://${host}:${parseInt(window.location.port || "3000") > 3000 ? window.location.port : "8080"}/ws/live-log`;
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${proto}//${window.location.host}/ws/live-log`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

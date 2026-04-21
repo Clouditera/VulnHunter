@@ -1,18 +1,35 @@
+import { useState, useEffect } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { api } from "../shared/api/client.js";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { i18n } from "../shared/i18n/index.js";
+import { theme } from "../shared/theme/index.js";
 
 const NAV_ITEMS = [
-  { to: "/dashboard", icon: "📊", label: "Dashboard", testid: "nav-dashboard" },
-  { to: "/tasks", icon: "📋", label: "Tasks", testid: "nav-tasks" },
-  { to: "/chat", icon: "💬", label: "Chat", testid: "nav-chat" },
-  { to: "/settings", icon: "⚙️", label: "Settings", testid: "nav-settings" },
+  { to: "/dashboard", icon: "📊", labelKey: "nav.dashboard", testid: "nav-dashboard" },
+  { to: "/tasks", icon: "📋", labelKey: "nav.tasks", testid: "nav-tasks" },
+  { to: "/chat", icon: "💬", labelKey: "nav.chat", testid: "nav-chat" },
+  { to: "/settings", icon: "⚙️", labelKey: "nav.settings", testid: "nav-settings" },
 ];
 
 export function AppLayout() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [, forceUpdate] = useState(0);
+
+  // Subscribe to i18n + theme changes for re-render
+  useEffect(() => {
+    const unsub1 = i18n.onChange(() => forceUpdate((n) => n + 1));
+    const unsub2 = theme.onChange(() => forceUpdate((n) => n + 1));
+    return () => {
+      unsub1();
+      unsub2();
+    };
+  }, []);
+
+  const currentTheme = theme.current();
+  const currentLang = i18n.locale();
 
   async function handleLogout() {
     await api.auth.logout();
@@ -21,7 +38,11 @@ export function AppLayout() {
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg-page)" }}>
+    <div
+      data-testid="app-layout"
+      data-theme={currentTheme}
+      style={{ display: "flex", minHeight: "100vh", background: "var(--bg-page)" }}
+    >
       {/* Left nav */}
       <nav
         data-testid="nav-sidebar"
@@ -79,7 +100,7 @@ export function AppLayout() {
               })}
             >
               <span style={{ fontSize: "18px" }}>{item.icon}</span>
-              {item.label}
+              {i18n.t(item.labelKey)}
             </NavLink>
           ))}
         </div>
@@ -95,37 +116,63 @@ export function AppLayout() {
             marginBottom: "16px",
           }}
         >
+          {/* Language toggle */}
           <button
             data-testid="nav-lang-toggle"
+            data-lang={currentLang}
+            onClick={() => i18n.toggle()}
             style={{
-              width: "32px", height: "32px", borderRadius: "6px",
-              background: "transparent", border: "1px solid #333",
-              color: "#737373", cursor: "pointer", fontSize: "10px", fontWeight: 600,
+              width: "32px",
+              height: "32px",
+              borderRadius: "6px",
+              background: "transparent",
+              border: "1px solid #444",
+              color: "#a3a3a3",
+              cursor: "pointer",
+              fontSize: "10px",
+              fontWeight: 600,
             }}
-            title="Language"
+            title={currentLang === "zh" ? "切换到英文" : "Switch to 中文"}
           >
-            EN
+            {currentLang === "zh" ? "中" : "EN"}
           </button>
+
+          {/* Theme toggle */}
           <button
             data-testid="nav-theme-toggle"
+            data-theme={currentTheme}
+            onClick={() => theme.toggle()}
             style={{
-              width: "32px", height: "32px", borderRadius: "6px",
-              background: "transparent", border: "1px solid #333",
-              color: "#737373", cursor: "pointer", fontSize: "14px",
+              width: "32px",
+              height: "32px",
+              borderRadius: "6px",
+              background: "transparent",
+              border: "1px solid #444",
+              color: "#a3a3a3",
+              cursor: "pointer",
+              fontSize: "14px",
             }}
-            title="Toggle theme"
+            title={currentTheme === "dark" ? "浅色模式 / Light mode" : "深色模式 / Dark mode"}
           >
-            ☀️
+            {currentTheme === "dark" ? "🌙" : "☀️"}
           </button>
+
+          {/* User avatar + logout */}
           <button
             data-testid="nav-logout"
             onClick={handleLogout}
             style={{
-              width: "32px", height: "32px", borderRadius: "50%",
-              background: "#dc2626", color: "#fff", border: "none",
-              cursor: "pointer", fontSize: "12px", fontWeight: 700,
+              width: "32px",
+              height: "32px",
+              borderRadius: "50%",
+              background: "#dc2626",
+              color: "#fff",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "12px",
+              fontWeight: 700,
             }}
-            title="Sign out"
+            title={i18n.t("nav.logout")}
           >
             A
           </button>

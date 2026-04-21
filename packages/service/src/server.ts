@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import type { Server } from "node:http";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authRouter } from "./features/auth/index.js";
@@ -9,6 +10,7 @@ import { findingsRouter } from "./features/findings/index.js";
 import { dashboardRouter } from "./features/dashboard/index.js";
 import { workspaceRouter } from "./features/workspace/index.js";
 import { settingsRouter } from "./features/settings/index.js";
+import { createLiveLogWss } from "./features/events/index.js";
 import { injectUser } from "./middleware/index.js";
 import { traceId } from "./middleware/trace-id.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -45,7 +47,11 @@ export function createApp(): Hono {
 export function startServer(port: number): void {
   const app = createApp();
 
-  serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
+  const httpServer = serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
     logger.info({ port: info.port }, `VulnHunt Service listening`);
-  });
+  }) as unknown as Server;
+
+  // Attach Live Log WebSocket server to the same HTTP server
+  createLiveLogWss(httpServer);
+  logger.info("Live Log WebSocket server attached at /ws/live-log");
 }
