@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type Task, type FindingMeta } from "../../../../shared/api/client.js";
 
 const SEV_COLORS: Record<string, string> = {
-  high: "#ea580c", medium: "#ca8a04", low: "#2563eb", info: "#9ca3af",
+  high: "var(--sev-high)", medium: "var(--sev-medium)", low: "var(--sev-low)", info: "var(--sev-info)",
 };
 
 export function FindingsTab() {
@@ -61,7 +61,7 @@ export function FindingsTab() {
               padding: "4px 10px",
               border: `1px solid ${severityFilter === s && s !== "all" ? SEV_COLORS[s] : severityFilter === s ? "var(--brand)" : "var(--border)"}`,
               borderRadius: "6px",
-              background: severityFilter === s ? "#fef2f220" : "transparent",
+              background: severityFilter === s ? "var(--bg-active-filter)" : "transparent",
               color: s === "all" ? (severityFilter === "all" ? "var(--brand)" : "var(--text-secondary)") : severityFilter === s ? SEV_COLORS[s] : "var(--text-secondary)",
               fontSize: "12px",
               fontWeight: 500,
@@ -195,11 +195,11 @@ export function FindingsTab() {
               <div
                 style={{
                   fontSize: "12px",
-                  color: "#737373",
+                  color: "var(--code-comment)",
                   fontFamily: "monospace",
                   marginBottom: "12px",
                   padding: "6px 10px",
-                  background: "#1a1a1a",
+                  background: "var(--terminal-bg)",
                   borderRadius: "4px",
                 }}
               >
@@ -210,19 +210,19 @@ export function FindingsTab() {
                 style={{
                   fontFamily: "monospace",
                   fontSize: "12px",
-                  color: "#d4d4d4",
+                  color: "var(--code-text)",
                   lineHeight: 1.6,
                 }}
               >
                 {/* Placeholder code view — real implementation uses workspace API */}
-                <div style={{ color: "#555", marginBottom: "8px" }}>
+                <div style={{ color: "var(--code-comment)", marginBottom: "8px" }}>
                   {/* Line context would be loaded from /api/tasks/:id/workspace/file */}
                   Line {selectedFinding.primary_line} of {selectedFinding.primary_file}
                 </div>
                 <div
                   style={{
                     background: "rgba(220,38,38,0.12)",
-                    borderLeft: "3px solid #dc2626",
+                    borderLeft: "3px solid var(--brand)",
                     padding: "4px 12px",
                     borderRadius: "2px",
                   }}
@@ -238,7 +238,7 @@ export function FindingsTab() {
                 alignItems: "center",
                 justifyContent: "center",
                 height: "100%",
-                color: "#555",
+                color: "var(--code-comment)",
                 fontSize: "13px",
                 fontFamily: "monospace",
               }}

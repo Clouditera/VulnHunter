@@ -19,14 +19,14 @@ interface Props {
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  scan: "#2563eb",
+  scan: "var(--status-running)",
   report: "#7c3aed",
 };
 
 function sourceColor(src: string): string {
   if (src === "scan") return SOURCE_COLORS.scan;
   if (src.startsWith("report")) return SOURCE_COLORS.report;
-  return "#737373";
+  return "var(--log-text-dim)";
 }
 
 export function LiveLog({ taskId, taskState }: Props) {
@@ -87,7 +87,7 @@ export function LiveLog({ taskId, taskState }: Props) {
       ? events
       : events.filter((e) => e.source === activeSource);
 
-  const statusColor = isRunning ? "#16a34a" : taskState === "failed" ? "#dc2626" : "#737373";
+  const statusColor = isRunning ? "var(--status-completed)" : taskState === "failed" ? "var(--status-failed)" : "var(--status-cancelled)";
   const statusDot = isRunning ? "●" : taskState === "failed" ? "✕" : "✓";
 
   return (
@@ -169,7 +169,7 @@ export function LiveLog({ taskId, taskState }: Props) {
           }}
         >
           {/* Source tabs */}
-          <div style={{ display: "flex", gap: "0", borderBottom: "1px solid #333", padding: "0 8px" }}>
+          <div style={{ display: "flex", gap: "0", borderBottom: "1px solid var(--log-tab-border)", padding: "0 8px" }}>
             {["all", ...sources].map((src) => (
               <button
                 key={src}
@@ -179,8 +179,8 @@ export function LiveLog({ taskId, taskState }: Props) {
                   padding: "6px 12px",
                   border: "none",
                   background: "transparent",
-                  color: activeSource === src ? "#fff" : "#737373",
-                  borderBottom: activeSource === src ? "2px solid #fff" : "2px solid transparent",
+                  color: activeSource === src ? "var(--log-tab-active)" : "var(--log-tab-inactive)",
+                  borderBottom: activeSource === src ? "2px solid var(--log-tab-active)" : "2px solid transparent",
                   fontSize: "11px",
                   fontWeight: 600,
                   cursor: "pointer",
@@ -207,36 +207,36 @@ export function LiveLog({ taskId, taskState }: Props) {
             }}
           >
             {filteredEvents.length === 0 ? (
-              <div style={{ color: "#737373", padding: "16px" }}>No events yet…</div>
+              <div style={{ color: "var(--log-text-dim)", padding: "16px" }}>No events yet…</div>
             ) : (
               filteredEvents.map((ev, i) => (
                 <div key={`${ev.seq}-${i}`} data-testid="live-log-entry" style={{ display: "flex", gap: "8px", marginBottom: "3px" }}>
-                  <span data-testid="log-entry-timestamp" style={{ color: "#555", flexShrink: 0 }}>
+                  <span data-testid="log-entry-timestamp" style={{ color: "var(--log-text-timestamp)", flexShrink: 0 }}>
                     {new Date(ev.ts).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                   </span>
                   <span style={{ color: sourceColor(ev.source), flexShrink: 0 }}>[{ev.source}]</span>
                   {ev.type === "tool_call" && (
                     <>
-                      <span data-testid="log-entry-tool" style={{ color: "#e5e5e5" }}>{ev.tool}</span>
-                      {ev.args_summary && <span style={{ color: "#737373" }}>{ev.args_summary}</span>}
+                      <span data-testid="log-entry-tool" style={{ color: "var(--log-text-tool)" }}>{ev.tool}</span>
+                      {ev.args_summary && <span style={{ color: "var(--log-text-dim)" }}>{ev.args_summary}</span>}
                       {ev.duration_ms && (
-                        <span data-testid="log-entry-status" style={{ color: ev.status === "success" ? "#16a34a" : "#dc2626" }}>
+                        <span data-testid="log-entry-status" style={{ color: ev.status === "success" ? "var(--log-stage-end)" : "var(--status-failed)" }}>
                           {ev.duration_ms}ms
                         </span>
                       )}
                     </>
                   )}
                   {ev.type === "stage_start" && (
-                    <span style={{ color: "#ca8a04" }}>[{ev.stage}] starting</span>
+                    <span style={{ color: "var(--log-stage-start)" }}>[{ev.stage}] starting</span>
                   )}
                   {ev.type === "stage_end" && (
-                    <span style={{ color: "#16a34a" }}>[{ev.stage}] done</span>
+                    <span style={{ color: "var(--log-stage-end)" }}>[{ev.stage}] done</span>
                   )}
                   {ev.type === "task_status" && (
-                    <span style={{ color: "#e5e5e5", fontWeight: 600 }}>Task {ev.state}</span>
+                    <span style={{ color: "var(--log-text-tool)", fontWeight: 600 }}>Task {ev.state}</span>
                   )}
                   {ev.type === "error" && (
-                    <span style={{ color: "#dc2626" }}>ERROR: {(ev as LiveLogEvent & { summary?: string }).summary ?? "unknown"}</span>
+                    <span style={{ color: "var(--status-failed)" }}>ERROR: {(ev as LiveLogEvent & { summary?: string }).summary ?? "unknown"}</span>
                   )}
                 </div>
               ))
@@ -250,8 +250,8 @@ export function LiveLog({ taskId, taskState }: Props) {
                 position: "sticky",
                 bottom: 0,
                 padding: "6px 12px",
-                background: "#333",
-                color: "#e5e5e5",
+                background: "var(--log-pill-bg)",
+                color: "var(--log-pill-text)",
                 fontSize: "11px",
                 cursor: "pointer",
                 textAlign: "center",

@@ -30,7 +30,7 @@ function KV({ label, value }: { label: string; value: string | number | null }) 
 }
 
 const SEV_COLORS: Record<string, string> = {
-  high: "#ea580c", medium: "#ca8a04", low: "#2563eb", info: "#9ca3af",
+  high: "var(--sev-high)", medium: "var(--sev-medium)", low: "var(--sev-low)", info: "var(--sev-info)",
 };
 
 export function OverviewTab() {
@@ -64,7 +64,7 @@ export function OverviewTab() {
               style={{
                 fontSize: "48px",
                 fontWeight: 800,
-                color: task.risk_score >= 7 ? "#ea580c" : task.risk_score >= 4 ? "#ca8a04" : "#16a34a",
+                color: task.risk_score >= 7 ? "var(--sev-high)" : task.risk_score >= 4 ? "var(--sev-medium)" : "var(--status-completed)",
                 lineHeight: 1,
               }}
             >

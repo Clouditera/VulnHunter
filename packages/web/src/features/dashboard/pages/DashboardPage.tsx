@@ -3,18 +3,18 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../../../shared/api/client.js";
 
 const SEV_COLORS = {
-  high: "#ea580c",
-  medium: "#ca8a04",
-  low: "#2563eb",
-  info: "#9ca3af",
+  high: "var(--sev-high)",
+  medium: "var(--sev-medium)",
+  low: "var(--sev-low)",
+  info: "var(--sev-info)",
 };
 
 const STATE_COLORS: Record<string, string> = {
-  running: "#2563eb",
-  completed: "#16a34a",
-  failed: "#dc2626",
-  cancelled: "#737373",
-  queued: "#ca8a04",
+  running: "var(--status-running)",
+  completed: "var(--status-completed)",
+  failed: "var(--status-failed)",
+  cancelled: "var(--status-cancelled)",
+  queued: "var(--status-queued)",
 };
 
 function StatCard({
@@ -119,7 +119,7 @@ export function DashboardPage() {
           label="Total Scans"
           value={stats.total_scans?.value ?? 0}
           sub={`${stats.total_scans?.delta ?? ""}`}
-          iconBg="#eff6ff"
+          iconBg="var(--bg-info)"
           icon="📋"
         />
         <StatCard
@@ -127,7 +127,7 @@ export function DashboardPage() {
           label="Vulnerabilities"
           value={totalVulns}
           sub={`${(sevDist.high as number) ?? 0}H · ${(sevDist.medium as number) ?? 0}M · ${(sevDist.low as number) ?? 0}L`}
-          iconBg="#fef2f2"
+          iconBg="var(--bg-error)"
           icon="🔴"
         />
         <StatCard
@@ -135,7 +135,7 @@ export function DashboardPage() {
           label="Avg. Duration"
           value={`${stats.avg_duration_min?.value ?? 0} min`}
           sub="per scan"
-          iconBg="#f0fdf4"
+          iconBg="var(--bg-success)"
           icon="⏱"
         />
         <StatCard
@@ -143,7 +143,7 @@ export function DashboardPage() {
           label="Token Usage"
           value="—"
           sub="cumulative"
-          iconBg="#faf5ff"
+          iconBg="var(--bg-purple)"
           icon="🔮"
         />
       </div>
@@ -208,7 +208,7 @@ export function DashboardPage() {
                     <span style={{ color: "var(--text-secondary)" }}>{item.count}</span>
                   </div>
                   <div style={{ height: "8px", background: "var(--border)", borderRadius: "4px", overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${pct}%`, background: "#6366f1", borderRadius: "4px" }} />
+                    <div style={{ height: "100%", width: `${pct}%`, background: "var(--chart-bar)", borderRadius: "4px" }} />
                   </div>
                 </div>
               );
@@ -263,7 +263,7 @@ export function DashboardPage() {
                     <td style={{ padding: "12px 16px" }}>
                       <span
                         style={{
-                          color: STATE_COLORS[scan.state] ?? "#737373",
+                          color: STATE_COLORS[scan.state] ?? "var(--status-cancelled)",
                           fontSize: "12px",
                           fontWeight: 600,
                           textTransform: "capitalize",

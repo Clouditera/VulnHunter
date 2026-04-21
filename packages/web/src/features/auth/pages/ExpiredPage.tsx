@@ -53,7 +53,7 @@ export function ExpiredPage() {
               width: "56px",
               height: "56px",
               borderRadius: "50%",
-              background: "#fff7ed",
+              background: "var(--bg-warning)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -75,10 +75,10 @@ export function ExpiredPage() {
           <div
             style={{
               padding: "12px 16px",
-              background: "#f0fdf4",
-              border: "1px solid #bbf7d0",
+              background: "var(--bg-success)",
+              border: "1px solid var(--bg-success-border)",
               borderRadius: "6px",
-              color: "#166534",
+              color: "var(--bg-success-text)",
               fontSize: "14px",
             }}
           >
@@ -132,8 +132,8 @@ export function ExpiredPage() {
                 marginTop: "16px",
                 width: "100%",
                 padding: "12px",
-                background: loading || !key.trim() ? "#e5e5e5" : "var(--brand)",
-                color: loading || !key.trim() ? "var(--text-secondary)" : "#fff",
+                background: loading || !key.trim() ? "var(--bg-disabled)" : "var(--brand)",
+                color: loading || !key.trim() ? "var(--text-secondary)" : "var(--btn-primary-text)",
                 border: "none",
                 borderRadius: "6px",
                 fontSize: "14px",

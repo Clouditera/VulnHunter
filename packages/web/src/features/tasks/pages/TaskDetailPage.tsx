@@ -29,12 +29,12 @@ function formatDuration(ms: number | null): string {
 }
 
 const STATE_COLORS: Record<string, string> = {
-  running: "#2563eb",
-  completed: "#16a34a",
-  failed: "#dc2626",
-  cancelled: "#737373",
-  queued: "#ca8a04",
-  paused: "#ea580c",
+  running: "var(--status-running)",
+  completed: "var(--status-completed)",
+  failed: "var(--status-failed)",
+  cancelled: "var(--status-cancelled)",
+  queued: "var(--status-queued)",
+  paused: "var(--status-paused)",
 };
 
 export function TaskDetailPage() {
@@ -61,7 +61,7 @@ export function TaskDetailPage() {
     return <div style={{ padding: "40px", color: "var(--brand)" }}>Task not found.</div>;
   }
 
-  const stateColor = STATE_COLORS[task.state] ?? "#737373";
+  const stateColor = STATE_COLORS[task.state] ?? "var(--status-cancelled)";
 
   return (
     <div data-testid="task-detail-page" style={{ minHeight: "100vh", background: "var(--bg-page)" }}>

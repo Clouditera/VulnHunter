@@ -109,8 +109,8 @@ export function BootstrapPage() {
             style={{
               width: "100%",
               padding: "12px",
-              background: loading ? "#e5e5e5" : "var(--brand)",
-              color: loading ? "var(--text-secondary)" : "#fff",
+              background: loading ? "var(--bg-disabled)" : "var(--brand)",
+              color: loading ? "var(--text-secondary)" : "var(--btn-primary-text)",
               border: "none",
               borderRadius: "6px",
               fontSize: "14px",

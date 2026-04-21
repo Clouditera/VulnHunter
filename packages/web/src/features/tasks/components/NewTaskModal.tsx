@@ -124,7 +124,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                   padding: "32px",
                   textAlign: "center",
                   cursor: "pointer",
-                  background: file ? "#fef2f2" : "var(--bg-page)",
+                  background: file ? "var(--bg-error)" : "var(--bg-page)",
                   transition: "all 0.15s",
                 }}
                 onDragOver={(e) => e.preventDefault()}
@@ -221,8 +221,8 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
             style={{
               width: "100%",
               padding: "12px",
-              background: !canSubmit || loading ? "#e5e5e5" : "var(--brand)",
-              color: !canSubmit || loading ? "var(--text-secondary)" : "#fff",
+              background: !canSubmit || loading ? "var(--bg-disabled)" : "var(--brand)",
+              color: !canSubmit || loading ? "var(--text-secondary)" : "var(--btn-primary-text)",
               border: "none",
               borderRadius: "6px",
               fontSize: "14px",

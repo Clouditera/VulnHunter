@@ -83,4 +83,73 @@ export const api = {
       }),
     logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   },
+  settings: {
+    getCredential: () => request<{ credential: LlmCredential | null }>("/api/settings/credential"),
+    saveCredential: (cred: SaveCredentialPayload) =>
+      request<{ id: string }>("/api/settings/credential", {
+        method: "PUT",
+        body: JSON.stringify(cred),
+      }),
+    getSystemConfig: () => request<{ config: SystemConfig }>("/api/settings/system"),
+    updateSystemConfig: (patch: Partial<SystemConfig>) =>
+      request<{ ok: boolean }>("/api/settings/system", {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+  },
+  dashboard: {
+    get: (range?: string) =>
+      request<DashboardData>(`/api/dashboard${range ? `?range=${range}` : ""}`),
+  },
 };
+
+export interface LlmCredential {
+  id: string;
+  provider: string;
+  proto_type: string;
+  base_url: string | null;
+  model_id: string;
+  thinking_effort: string;
+  label: string;
+  is_default: boolean;
+}
+
+export interface SaveCredentialPayload {
+  provider: string;
+  proto_type: string;
+  base_url?: string;
+  model_id: string;
+  thinking_effort?: string;
+  label?: string;
+  api_key: string;
+}
+
+export interface SystemConfig {
+  max_parallel_scan: number;
+  max_parallel_chat: number;
+  max_parallel_report: number;
+  scan_cpu_limit: number;
+  scan_memory_gb: number;
+  chat_cpu_limit: number;
+  chat_memory_gb: number;
+  report_cpu_limit: number;
+  report_memory_gb: number;
+  upload_zip_max_mb: number;
+  git_repo_max_mb: number;
+  live_log_buffer_cap: number;
+  chat_idle_timeout_min: number;
+  worker_spawn_timeout_sec: number;
+}
+
+export interface DashboardData {
+  range: string;
+  stats: {
+    total_scans: { value: number; delta: string };
+    vulnerabilities: { value: number; delta: string };
+    avg_duration_min: { value: number; delta: string };
+    total_tokens_m?: { value: number; delta: string };
+  };
+  severity_dist: Record<string, number>;
+  cwe_top5: Array<{ cwe: string; count: number }>;
+  recent_scans: Task[];
+}

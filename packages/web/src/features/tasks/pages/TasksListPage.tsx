@@ -5,12 +5,12 @@ import { api, type Task } from "../../../shared/api/client.js";
 import { NewTaskModal } from "../components/NewTaskModal.js";
 
 const STATE_COLORS: Record<string, string> = {
-  running: "#2563eb",
-  completed: "#16a34a",
-  failed: "#dc2626",
-  cancelled: "#737373",
-  queued: "#ca8a04",
-  paused: "#ea580c",
+  running: "var(--status-running)",
+  completed: "var(--status-completed)",
+  failed: "var(--status-failed)",
+  cancelled: "var(--status-cancelled)",
+  queued: "var(--status-queued)",
+  paused: "var(--status-paused)",
 };
 
 function StateBadge({ state }: { state: string }) {
@@ -92,7 +92,7 @@ export function TasksListPage() {
           style={{
             padding: "8px 16px",
             background: "var(--brand)",
-            color: "#fff",
+            color: "var(--btn-primary-text)",
             border: "none",
             borderRadius: "6px",
             fontSize: "13px",
@@ -115,7 +115,7 @@ export function TasksListPage() {
               padding: "5px 12px",
               border: `1px solid ${stateFilter === s ? "var(--brand)" : "var(--border)"}`,
               borderRadius: "6px",
-              background: stateFilter === s ? "#fef2f2" : "transparent",
+              background: stateFilter === s ? "var(--bg-active-filter)" : "transparent",
               color: stateFilter === s ? "var(--brand)" : "var(--text-secondary)",
               fontSize: "12px",
               fontWeight: 500,
@@ -193,7 +193,7 @@ export function TasksListPage() {
                       <span
                         style={{
                           fontWeight: 700,
-                          color: task.risk_score >= 7 ? "#ea580c" : task.risk_score >= 4 ? "#ca8a04" : "#16a34a",
+                          color: task.risk_score >= 7 ? "var(--sev-high)" : task.risk_score >= 4 ? "var(--sev-medium)" : "var(--status-completed)",
                         }}
                       >
                         {task.risk_score.toFixed(1)}

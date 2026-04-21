@@ -17,6 +17,45 @@
   --code-bg: #1e1e1e;
   --terminal-bg: #0a0a0a;
   --code-text: #d4d4d4;
+  --code-comment: #555555;
+
+  /* Semantic status */
+  --status-running: #2563eb;
+  --status-completed: #16a34a;
+  --status-failed: #dc2626;
+  --status-cancelled: #737373;
+  --status-queued: #ca8a04;
+  --status-paused: #ea580c;
+
+  /* Backgrounds */
+  --bg-success: #f0fdf4;
+  --bg-success-border: #bbf7d0;
+  --bg-success-text: #166534;
+  --bg-warning: #fff7ed;
+  --bg-error: #fef2f2;
+  --bg-info: #eff6ff;
+  --bg-purple: #faf5ff;
+  --bg-disabled: #e5e5e5;
+  --bg-hover: rgba(0,0,0,0.04);
+  --bg-active-filter: #fef2f220;
+
+  /* Button */
+  --btn-primary-text: #ffffff;
+
+  /* Live log (terminal context — mostly static) */
+  --log-tab-border: #333333;
+  --log-tab-active: #ffffff;
+  --log-tab-inactive: #737373;
+  --log-text-tool: #e5e5e5;
+  --log-text-dim: #737373;
+  --log-text-timestamp: #555555;
+  --log-stage-start: #ca8a04;
+  --log-stage-end: #16a34a;
+  --log-pill-bg: #333333;
+  --log-pill-text: #e5e5e5;
+
+  /* Charts */
+  --chart-bar: #6366f1;
 }
 
 :root[data-theme="dark"] {
@@ -26,6 +65,19 @@
   --text-secondary: #a3a3a3;
   --border: #3a3a3a;
   --divider: #2d2d2d;
+
+  --bg-success: #052e16;
+  --bg-success-border: #166534;
+  --bg-success-text: #86efac;
+  --bg-warning: #431407;
+  --bg-error: #450a0a;
+  --bg-info: #172554;
+  --bg-purple: #2e1065;
+  --bg-disabled: #404040;
+  --bg-hover: rgba(255,255,255,0.06);
+  --bg-active-filter: rgba(220,38,38,0.15);
+
+  --btn-primary-text: #ffffff;
   /* code-bg and terminal-bg stay the same in dark mode — always darker than card */
 }
 
