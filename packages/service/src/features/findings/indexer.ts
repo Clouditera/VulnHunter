@@ -29,7 +29,8 @@ const SEVERITY_NUMERIC: Record<Severity, number> = {
 };
 
 export interface FindingYaml {
-  metadata: {
+  // judged/tp/ schema (7-segment canonical)
+  metadata?: {
     vuln_type?: string;
     vuln_type_full_name?: string;
     severity?: string;
@@ -43,6 +44,17 @@ export interface FindingYaml {
     permission_requirement?: string;
     cwe?: string;
   };
+  // raw_findings/ schema (vulnerability + metadata split)
+  vulnerability?: {
+    vuln_type?: string;
+    severity?: string;
+    file_path?: string;
+    line?: string | number;
+    function?: string;
+    language?: string;
+    source?: string;
+    sink?: string;
+  };
   description?: unknown;
   code?: unknown;
   data_flow?: unknown;
@@ -50,6 +62,33 @@ export interface FindingYaml {
   remediation?: unknown;
   references?: unknown;
   related?: unknown;
+}
+
+/** Normalize finding YAML into a flat metadata object regardless of schema version */
+function extractMeta(finding: FindingYaml): FindingYaml["metadata"] & Record<string, unknown> {
+  const v = finding.vulnerability;
+  const m = finding.metadata;
+
+  // If has vulnerability block (raw_findings schema), merge it with metadata
+  if (v) {
+    return {
+      vuln_type: v.vuln_type ?? m?.vuln_type,
+      vuln_type_full_name: m?.vuln_type_full_name,
+      severity: v.severity ?? m?.severity,
+      file_path: (v.file_path ?? m?.file_path ?? "").replace(/^\/workspace\/src\//, ""),
+      line_number: v.line != null ? Number(v.line) : m?.line_number,
+      function: v.function ?? m?.function,
+      language: v.language ?? m?.language,
+      group_id: m?.group_id,
+      attack_surface: m?.attack_surface ?? v.source,
+      cwe: m?.cwe,
+    };
+  }
+
+  // judged/tp/ canonical schema — metadata block has everything
+  if (m) return m;
+
+  return {};
 }
 
 async function readYamlFromMinio(bucket: string, key: string): Promise<string> {
@@ -77,18 +116,33 @@ async function listMinioObjects(bucket: string, prefix: string): Promise<string[
 
 export async function indexFindings(taskId: string, bucket: string): Promise<number> {
   const db = getDb();
-  const prefix = `scan-outputs/${taskId}/judged/tp/`;
 
-  let keys: string[];
-  try {
-    keys = await listMinioObjects(bucket, prefix);
-  } catch (err) {
-    logger.warn({ err, taskId }, "Failed to list findings from MinIO");
-    return 0;
+  // Try paths in priority order: judged/tp (final) > findings (post-aggregator) > raw_findings (raw)
+  const prefixes = [
+    `scan-outputs/${taskId}/judged/tp/`,
+    `scan-outputs/${taskId}/findings/`,
+    `scan-outputs/${taskId}/raw_findings/`,
+  ];
+
+  let yamlKeys: string[] = [];
+  for (const prefix of prefixes) {
+    try {
+      const keys = await listMinioObjects(bucket, prefix);
+      const filtered = keys.filter((k) => k.endsWith(".yaml") || k.endsWith(".yml"));
+      if (filtered.length > 0) {
+        yamlKeys = filtered;
+        logger.info({ taskId, prefix, count: filtered.length }, "Found findings at prefix");
+        break;
+      }
+    } catch (err) {
+      logger.debug({ err, taskId, prefix }, "Failed to list findings at prefix");
+    }
   }
 
-  const yamlKeys = keys.filter((k) => k.endsWith(".yaml") || k.endsWith(".yml"));
-  if (yamlKeys.length === 0) return 0;
+  if (yamlKeys.length === 0) {
+    logger.info({ taskId }, "No findings YAML files found in any prefix");
+    return 0;
+  }
 
   let indexed = 0;
 
@@ -98,9 +152,9 @@ export async function indexFindings(taskId: string, bucket: string): Promise<num
     try {
       const raw = await readYamlFromMinio(bucket, key);
       const finding = yamlLoad(raw) as FindingYaml;
-      if (!finding?.metadata) continue;
+      if (!finding?.metadata && !finding?.vulnerability) continue;
 
-      const meta = finding.metadata;
+      const meta = extractMeta(finding);
       const severity = normalizeSeverity(meta.severity ?? "");
       const severityNumeric = SEVERITY_NUMERIC[severity];
 
