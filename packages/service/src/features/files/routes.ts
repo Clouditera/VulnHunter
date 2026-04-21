@@ -5,6 +5,7 @@ import { uploadFile } from "../../infra/minio/client.js";
 import { createTask } from "../tasks/storage.js";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "../../infra/config.js";
+import { cloneAndUpload } from "./git-clone.js";
 
 export const filesRouter = new Hono();
 
@@ -66,7 +67,14 @@ filesRouter.post("/tasks", async (c) => {
     autoSkillIds: body.auto_skill_ids,
   });
 
-  // TODO: trigger git clone + upload to MinIO in background
+  // Trigger async git clone (don't block response)
+  const cfg = loadConfig();
+  cloneAndUpload(
+    task.id,
+    body.git_url,
+    body.git_branch ?? "main",
+    cfg.minio.bucket,
+  ).catch((err) => console.error("Background git clone error:", err));
 
   return c.json({ task }, 201);
 });

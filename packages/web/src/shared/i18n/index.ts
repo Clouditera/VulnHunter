@@ -45,6 +45,8 @@ const ZH: Record<string, string> = {
   "taskDetail.loading": "加载中…",
   "taskDetail.notFound": "任务未找到",
   "taskDetail.back": "← 返回任务列表",
+  "taskDetail.cancel": "取消任务",
+  "taskDetail.restart": "重新扫描",
 
   // Overview
   "overview.projectProfile": "工程画像",
@@ -206,6 +208,8 @@ const EN: Record<string, string> = {
   "taskDetail.loading": "Loading…",
   "taskDetail.notFound": "Task not found",
   "taskDetail.back": "← Back to tasks",
+  "taskDetail.cancel": "Cancel Task",
+  "taskDetail.restart": "Restart Scan",
 
   // Overview
   "overview.projectProfile": "Project Profile",

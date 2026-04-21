@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import * as taskStorage from "./storage.js";
+import { stopScanWorker } from "../workers/scan-worker.js";
 
 export const tasksRouter = new Hono();
 
@@ -33,7 +34,12 @@ tasksRouter.post("/:id/cancel", async (c) => {
   if (!["running", "paused", "queued"].includes(task.state)) {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "Cannot cancel in current state" } }, 409);
   }
-  // WorkerManager will handle actual container cleanup
+  if (task.state === "running") {
+    await stopScanWorker(task.id).catch((err) => {
+      // Log but don't fail — container may already be gone
+      console.warn("Failed to stop container:", err);
+    });
+  }
   await taskStorage.updateTaskState(task.id, "cancelled");
   return c.json({ ok: true });
 });

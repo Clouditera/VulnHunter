@@ -1,12 +1,19 @@
+import { join } from "node:path";
 import type { ServiceConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
 import { updateTaskState } from "../tasks/storage.js";
 import {
   createWorkerContainer,
-  ensureVolume,
-  removeVolume,
+  ensureWorkDir,
+  removeWorkDir,
+  getDocker,
+  LABEL_TASK_ID,
 } from "./docker-client.js";
 import type { DbTask } from "../tasks/storage.js";
+
+export function getHostWorkDir(dataDir: string, taskId: string): string {
+  return join(dataDir, "workspaces", taskId);
+}
 
 export async function spawnScanWorker(
   task: DbTask,
@@ -14,10 +21,10 @@ export async function spawnScanWorker(
   llmEnv: Record<string, string>,
   resume = false,
 ): Promise<string> {
-  const volumeName = `vh-task-${task.id}`;
+  const hostWorkDir = getHostWorkDir(config.dataDir, task.id);
 
   if (!resume) {
-    await ensureVolume(volumeName);
+    ensureWorkDir(hostWorkDir);
   }
 
   const container = await createWorkerContainer({
@@ -25,8 +32,8 @@ export async function spawnScanWorker(
     taskType: "scan",
     image: config.docker.workerImage,
     network: config.docker.network,
-    volumeName,
-    cpuQuota: 200000, // 2 CPU
+    hostWorkDir,
+    cpuQuota: 200000,
     memoryBytes: 4 * 1024 * 1024 * 1024,
     env: {
       MODE: "scan",
@@ -44,16 +51,29 @@ export async function spawnScanWorker(
   await container.start();
   await updateTaskState(task.id, "running", { startedAt: new Date() });
 
-  logger.info({ taskId: task.id, resume }, "Scan worker started");
+  logger.info({ taskId: task.id, hostWorkDir, resume }, "Scan worker started");
   return container.id;
 }
 
 export async function stopScanWorker(taskId: string): Promise<void> {
-  // Container kill handled by TaskScheduler via docker events
-  // This is called for pause/cancel — signal the container
-  logger.info({ taskId }, "Stopping scan worker");
+  const docker = getDocker();
+  const containers = await docker.listContainers({
+    all: false,
+    filters: JSON.stringify({ label: [`${LABEL_TASK_ID}=${taskId}`] }),
+  });
+
+  for (const info of containers) {
+    try {
+      const container = docker.getContainer(info.Id);
+      await container.stop({ t: 30 });
+      await container.remove({ force: true });
+      logger.info({ taskId, containerId: info.Id }, "Scan worker stopped and removed");
+    } catch (err) {
+      logger.warn({ err, taskId }, "Failed to stop worker container");
+    }
+  }
 }
 
-export async function cleanupScanVolume(taskId: string): Promise<void> {
-  await removeVolume(`vh-task-${taskId}`);
+export function cleanupScanWorkDir(dataDir: string, taskId: string): void {
+  removeWorkDir(getHostWorkDir(dataDir, taskId));
 }

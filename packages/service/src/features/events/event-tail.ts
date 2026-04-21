@@ -6,10 +6,12 @@
  * bridge writes:    /workspace/.report/events.jsonl (chat/report workers)
  */
 
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, statSync, readdirSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { join } from "node:path";
 import { logger } from "../../infra/logger.js";
 import { appendEvent } from "./event-store.js";
+import { broadcastEvent } from "./ws-live-log.js";
 import type { LiveLogEvent } from "@vulnhunt/shared";
 
 const POLL_INTERVAL_MS = 500;
@@ -54,7 +56,8 @@ export class FileTail {
         // Inject source if not already set
         (event as LiveLogEvent & { source: string }).source =
           (event as LiveLogEvent & { source: string }).source ?? this.source;
-        appendEvent(this.taskId, event);
+        const entry = appendEvent(this.taskId, event);
+        broadcastEvent(this.taskId, entry.seq, entry.event);
       } catch {
         logger.debug({ line }, "Failed to parse service event line");
       }
@@ -66,24 +69,83 @@ export class FileTail {
   }
 }
 
-// Active tails per task: taskId → FileTail[]
-const activeTails = new Map<string, FileTail[]>();
+/**
+ * DirectoryTail: watches a directory for new *.service.jsonl files,
+ * auto-creates FileTail for each discovered file.
+ */
+export class DirectoryTail {
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private active = true;
+  private knownFiles = new Set<string>();
+  private fileTails: FileTail[] = [];
 
-export function startTailing(taskId: string, files: { path: string; source: string }[]): void {
-  const tails: FileTail[] = [];
+  constructor(
+    private readonly dirPath: string,
+    private readonly taskId: string,
+    private readonly source: string,
+  ) {}
+
+  start(): void {
+    this.timer = setInterval(() => this.scan(), POLL_INTERVAL_MS);
+  }
+
+  stop(): void {
+    this.active = false;
+    if (this.timer) clearInterval(this.timer);
+    for (const ft of this.fileTails) ft.stop();
+  }
+
+  private scan(): void {
+    if (!this.active) return;
+    if (!existsSync(this.dirPath)) return;
+
+    try {
+      const files = readdirSync(this.dirPath).filter(
+        (f) => f.endsWith(".service.jsonl"),
+      );
+      for (const file of files) {
+        if (this.knownFiles.has(file)) continue;
+        this.knownFiles.add(file);
+        const fullPath = join(this.dirPath, file);
+        const ft = new FileTail(fullPath, this.taskId, this.source);
+        ft.start();
+        this.fileTails.push(ft);
+        logger.debug({ taskId: this.taskId, file }, "Auto-tailing new service event file");
+      }
+    } catch {
+      // Directory may not exist yet
+    }
+  }
+}
+
+// Active tails per task
+const activeTails = new Map<string, { files: FileTail[]; dirs: DirectoryTail[] }>();
+
+export function startTailing(
+  taskId: string,
+  files: { path: string; source: string }[] = [],
+  dirs: { path: string; source: string }[] = [],
+): void {
+  const entry = { files: [] as FileTail[], dirs: [] as DirectoryTail[] };
   for (const f of files) {
     const tail = new FileTail(f.path, taskId, f.source);
     tail.start();
-    tails.push(tail);
+    entry.files.push(tail);
   }
-  activeTails.set(taskId, tails);
-  logger.info({ taskId, files: files.length }, "Started event tailing");
+  for (const d of dirs) {
+    const dt = new DirectoryTail(d.path, taskId, d.source);
+    dt.start();
+    entry.dirs.push(dt);
+  }
+  activeTails.set(taskId, entry);
+  logger.info({ taskId, files: files.length, dirs: dirs.length }, "Started event tailing");
 }
 
 export function stopTailing(taskId: string): void {
-  const tails = activeTails.get(taskId);
-  if (tails) {
-    for (const t of tails) t.stop();
+  const entry = activeTails.get(taskId);
+  if (entry) {
+    for (const t of entry.files) t.stop();
+    for (const d of entry.dirs) d.stop();
     activeTails.delete(taskId);
   }
 }

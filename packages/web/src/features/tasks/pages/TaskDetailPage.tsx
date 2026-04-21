@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, NavLink, Outlet } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Task } from "../../../shared/api/client.js";
 import { LiveLog } from "../../live-log/components/LiveLog.js";
 import { i18n } from "../../../shared/i18n/index.js";
@@ -42,6 +42,7 @@ const STATE_COLORS: Record<string, string> = {
 export function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [, forceUpdate] = useState(0);
   useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
 
@@ -124,6 +125,46 @@ export function TaskDetailPage() {
               <span>Duration: <strong>{formatDuration(task.duration_ms)}</strong></span>
               <span>Started: <strong>{formatDate(task.started_at)}</strong></span>
             </div>
+          </div>
+
+          {/* Action buttons */}
+          <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
+            {["running", "queued"].includes(task.state) && (
+              <button
+                data-testid="task-cancel-btn"
+                onClick={() => api.tasks.cancel(task.id).then(() => qc.invalidateQueries({ queryKey: ["task", taskId] }))}
+                style={{
+                  padding: "6px 14px",
+                  border: "1px solid var(--status-failed)",
+                  borderRadius: "6px",
+                  background: "transparent",
+                  color: "var(--status-failed)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {i18n.t("taskDetail.cancel")}
+              </button>
+            )}
+            {["failed", "cancelled", "completed"].includes(task.state) && (
+              <button
+                data-testid="task-restart-btn"
+                onClick={() => api.tasks.restart(task.id).then(() => qc.invalidateQueries({ queryKey: ["task", taskId] }))}
+                style={{
+                  padding: "6px 14px",
+                  border: "1px solid var(--brand)",
+                  borderRadius: "6px",
+                  background: "var(--brand)",
+                  color: "var(--btn-primary-text)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {i18n.t("taskDetail.restart")}
+              </button>
+            )}
           </div>
         </div>
 

@@ -28,6 +28,7 @@ export interface WorkerContainerSpec {
   cpuQuota?: number;  // default 200000 = 2 CPU
   memoryBytes?: number; // default 4GB
   volumeName?: string;
+  hostWorkDir?: string; // bind mount host path → /workspace
   network?: string;
 }
 
@@ -38,9 +39,15 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
   const env = Object.entries(spec.env).map(([k, v]) => `${k}=${v}`);
 
   const mounts: Dockerode.HostConfig["Mounts"] = [];
-  if (spec.volumeName) {
+  if (spec.hostWorkDir) {
     mounts.push({
-      Type: "volume",
+      Type: "bind" as const,
+      Source: spec.hostWorkDir,
+      Target: "/workspace",
+    });
+  } else if (spec.volumeName) {
+    mounts.push({
+      Type: "volume" as const,
       Source: spec.volumeName,
       Target: "/workspace",
     });
@@ -69,6 +76,23 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
   return container;
 }
 
+import { mkdirSync, rmSync } from "node:fs";
+
+export function ensureWorkDir(hostPath: string): void {
+  mkdirSync(hostPath, { recursive: true });
+  logger.debug({ hostPath }, "Work directory ensured");
+}
+
+export function removeWorkDir(hostPath: string): void {
+  try {
+    rmSync(hostPath, { recursive: true, force: true });
+    logger.info({ hostPath }, "Work directory removed");
+  } catch (err) {
+    logger.warn({ hostPath, err }, "Could not remove work directory");
+  }
+}
+
+/** @deprecated Use ensureWorkDir with bind mount instead */
 export async function ensureVolume(volumeName: string): Promise<void> {
   const docker = getDocker();
   try {
