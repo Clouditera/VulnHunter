@@ -1,34 +1,29 @@
 FROM node:20-slim AS base
 WORKDIR /opt/vulnhunt
 
-# Install system dependencies for report generation
+# System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git unzip curl ca-certificates jq \
-      wkhtmltopdf \
-      pandoc \
-      fonts-noto-cjk \
+      git unzip zip curl ca-certificates jq \
     && rm -rf /var/lib/apt/lists/*
 
-# MinIO client
-RUN curl -sL https://dl.min.io/client/mc/release/linux-amd64/mc \
-      -o /usr/local/bin/mc && chmod +x /usr/local/bin/mc
+# pi CLI (youngflow spawns it for each stage)
+RUN npm install -g @anthropic-ai/claude-code
 
-# pi CLI and MCP adapter
-RUN npm install -g @mariozechner/pi-coding-agent pi-mcp-adapter
+# youngflow — copy built dist + deps from submodule
+COPY submodules/youngflow/package.json /opt/youngflow/package.json
+COPY submodules/youngflow/dist /opt/youngflow/dist
+COPY submodules/youngflow/bin /opt/youngflow/bin
+COPY submodules/youngflow/node_modules /opt/youngflow/node_modules
+RUN chmod +x /opt/youngflow/bin/youngflow.js \
+    && ln -s /opt/youngflow/bin/youngflow.js /usr/local/bin/youngflow
 
-# youngflow binary (copied from local build in CI/release)
-COPY worker-assets/bin/youngflow /usr/local/bin/youngflow
-RUN chmod +x /usr/local/bin/youngflow
+# vulnhunt flow assets (separate from youngflow submodule)
+COPY flows/vulnhunt /opt/vulnhunt/flows/vulnhunt
 
-# vulnhunt flow assets (fixed in image)
-COPY submodules/vulnhunt-flow /opt/vulnhunt/flows/vulnhunt
-
-# worker-bridge bundle
-COPY packages/worker-bridge/dist/bundle.js /opt/bridge/bundle.js
-
-# entrypoint
+# Worker scripts
 COPY worker-assets/entrypoint.sh /opt/entrypoint.sh
-RUN chmod +x /opt/entrypoint.sh
+COPY worker-assets/scan-mode.sh /opt/scan-mode.sh
+RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh
 
 WORKDIR /workspace
 ENTRYPOINT ["/opt/entrypoint.sh"]

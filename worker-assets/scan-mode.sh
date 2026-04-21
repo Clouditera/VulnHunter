@@ -1,36 +1,27 @@
 #!/bin/bash
 set -e
-# Scan mode: download code zip → unzip → run youngflow → sync outputs to MinIO
 
 TASK_ID="${TASK_ID:?TASK_ID is required}"
-MINIO_BUCKET="${MINIO_BUCKET:-vulnhunt}"
 
-echo "[scan] Starting scan for task: $TASK_ID"
+echo "[scan] Starting scan for task: $TASK_ID" >&2
 
-if [ -z "$RESUME" ] || [ "$RESUME" = "0" ]; then
-  echo "[scan] Downloading code package from MinIO..."
-  mc cp "minio/${MINIO_BUCKET}/code-packages/${TASK_ID}.zip" /tmp/code.zip
-  mkdir -p /workspace/src
-  unzip -q /tmp/code.zip -d /workspace/src
-  rm /tmp/code.zip
-  echo "[scan] Code package extracted"
-else
-  echo "[scan] Resuming from existing workspace"
-fi
+# Code already extracted to /workspace/src/ by service (bind mount)
+# No mc download needed (Phase 4 bind mount architecture)
 
-mkdir -p /workspace/out
+mkdir -p /workspace/out/.youngflow/logs
 
-echo "[scan] Running youngflow..."
+echo "[scan] Running youngflow..." >&2
 youngflow /opt/vulnhunt/flows/vulnhunt \
   --work-dir /workspace/src \
   --output-dir /workspace/out \
-  --emit-service-events \
-  ${RESUME:+--resume}
+  --json-log \
+  ${RESUME:+--resume} \
+  2>/workspace/out/.youngflow/logs/service-events.jsonl
 
 EXIT=$?
 
-echo "[scan] Syncing outputs to MinIO..."
-mc cp --recursive /workspace/out/ "minio/${MINIO_BUCKET}/scan-outputs/${TASK_ID}/"
+# Product sync handled by service-side syncOutputsToMinio (Phase 4 architecture)
+# No mc cp needed
 
-echo "[scan] Done (exit=$EXIT)"
+echo "[scan] Done (exit=$EXIT)" >&2
 exit $EXIT

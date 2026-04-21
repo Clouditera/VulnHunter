@@ -44,6 +44,10 @@ export function OverviewTab() {
     queryKey: ["findings", task.id],
     queryFn: () => api.findings.list(task.id),
     enabled: task.state === "completed",
+    refetchInterval: (query) => {
+      // Refetch until findings arrive (race with indexer)
+      return query.state.data?.findings?.length ? false : 3000;
+    },
   });
 
   const findings = findingsData?.findings ?? [];

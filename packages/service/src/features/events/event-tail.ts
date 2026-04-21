@@ -16,6 +16,48 @@ import type { LiveLogEvent } from "@vulnhunt/shared";
 
 const POLL_INTERVAL_MS = 500;
 
+/**
+ * Translate youngflow NDJSON event (has 'event' field) → canonical LiveLogEvent (has 'type' field).
+ * Returns null for events that should not be forwarded (debug, checkpoint, etc.).
+ */
+function translateYoungflowEvent(raw: Record<string, unknown>, source: string): LiveLogEvent | null {
+  const event = raw.event as string;
+  const ts = (raw.ts as string) ?? new Date().toISOString();
+  const stage = (raw.stage as string) ?? "";
+  const base = { source, seq: 0, ts, stage };
+
+  switch (event) {
+    case "stage_start":
+      return { ...base, type: "stage_start" } as LiveLogEvent;
+    case "stage_done":
+      return { ...base, type: "stage_end", status: (raw.exit_code ?? 0) === 0 ? "success" : "error",
+        duration_ms: (raw.duration_ms as number) ?? 0 } as LiveLogEvent;
+    case "stage_skipped":
+      return { ...base, type: "stage_end", status: "success", duration_ms: 0 } as LiveLogEvent;
+    case "tool_call":
+      return { ...base, type: "tool_call",
+        tool: (raw.tool as string) ?? "",
+        args_summary: (raw.args_summary as string) ?? "",
+        duration_ms: ((raw.elapsed_s as number) ?? 0) * 1000,
+        status: raw.status === "ok" ? "success" : (raw.status as string) ?? "success",
+      } as LiveLogEvent;
+    case "flow_start":
+      return { ...base, type: "task_status", status: "running" } as unknown as LiveLogEvent;
+    case "flow_end":
+      return { ...base, type: "task_status",
+        status: (raw.stages_failed as number) > 0 ? "failed" : "completed" } as unknown as LiveLogEvent;
+    case "api_error": case "extension_error": case "process_error":
+    case "idle_timeout": case "timeout":
+      return { ...base, type: "error",
+        summary: (raw.error ?? raw.message ?? raw.reason ?? event) as string } as LiveLogEvent;
+    case "retry": case "auto_retry":
+      return { ...base, type: "error",
+        summary: `${(raw.reason as string) ?? ""} (attempt ${raw.attempt}/${raw.max_attempts})` } as LiveLogEvent;
+    default:
+      return null; // debug, checkpoint_*, dispatch, route, report_refresh
+  }
+}
+
 export class FileTail {
   private offset = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -52,10 +94,24 @@ export class FileTail {
     rl.on("line", (line) => {
       if (!line.trim()) return;
       try {
-        const event = JSON.parse(line) as LiveLogEvent;
-        // Inject source if not already set
+        const raw = JSON.parse(line) as Record<string, unknown>;
+
+        // Detect format: canonical (has 'type') vs youngflow (has 'event')
+        let event: LiveLogEvent | null;
+        if (raw.type) {
+          // Canonical format (mock worker or already translated)
+          event = raw as unknown as LiveLogEvent;
+        } else if (raw.event) {
+          // youngflow --json-log format, needs translation
+          event = translateYoungflowEvent(raw, this.source);
+        } else {
+          return; // unrecognized
+        }
+
+        if (!event) return; // filtered out
         (event as LiveLogEvent & { source: string }).source =
           (event as LiveLogEvent & { source: string }).source ?? this.source;
+
         const entry = appendEvent(this.taskId, event);
         broadcastEvent(this.taskId, entry.seq, entry.event);
       } catch {
