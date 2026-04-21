@@ -116,7 +116,7 @@ export function TaskDetailPage() {
                   textTransform: "capitalize",
                 }}
               >
-                ● {task.state}
+                ● {i18n.t(`tasks.status.${task.state}`)}
               </span>
               {task.risk_score != null && (
                 <span>Risk: <strong>{parseFloat(String(task.risk_score)).toFixed(1)}/10</strong></span>

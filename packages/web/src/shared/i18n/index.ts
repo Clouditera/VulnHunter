@@ -61,6 +61,10 @@ const ZH: Record<string, string> = {
 
   // Findings
   "findings.filterAll": "全部",
+  "findings.sevHigh": "高危",
+  "findings.sevMedium": "中危",
+  "findings.sevLow": "低危",
+  "findings.sevInfo": "信息",
   "findings.count": "个漏洞",
   "findings.empty": "暂无漏洞。",
   "findings.loading": "加载中…",
@@ -218,6 +222,10 @@ const EN: Record<string, string> = {
 
   // Findings
   "findings.filterAll": "all",
+  "findings.sevHigh": "High",
+  "findings.sevMedium": "Medium",
+  "findings.sevLow": "Low",
+  "findings.sevInfo": "Info",
   "findings.count": "findings",
   "findings.empty": "No findings.",
   "findings.loading": "Loading…",

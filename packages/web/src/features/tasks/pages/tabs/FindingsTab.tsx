@@ -72,7 +72,7 @@ export function FindingsTab() {
               textTransform: "capitalize",
             }}
           >
-            {s}
+            {s === "all" ? i18n.t("findings.filterAll") : i18n.t(`findings.sev${s.charAt(0).toUpperCase()}${s.slice(1)}`)}
           </button>
         ))}
         <span style={{ marginLeft: "auto", fontSize: "12px", color: "var(--text-secondary)", alignSelf: "center" }}>

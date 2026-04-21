@@ -57,7 +57,7 @@ function StateBadge({ state }: { state: string }) {
           }}
         />
       )}
-      {state}
+      {i18n.t(`tasks.status.${state}`)}
     </span>
   );
 }

@@ -273,7 +273,7 @@ export function DashboardPage() {
                           textTransform: "capitalize",
                         }}
                       >
-                        ● {scan.state}
+                        ● {i18n.t(`tasks.status.${scan.state}`)}
                       </span>
                     </td>
                     <td style={{ padding: "12px 16px", fontSize: "12px", color: "var(--text-secondary)" }}>
