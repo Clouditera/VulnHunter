@@ -4,6 +4,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Task } from "../../../shared/api/client.js";
 import { LiveLog } from "../../live-log/components/LiveLog.js";
 import { i18n } from "../../../shared/i18n/index.js";
+import { Icon } from "../../../shared/components/Icon.js";
+import { StatusPill } from "../../../shared/components/StatusPill.js";
+import {
+  formatDateTime,
+  parseRiskScore,
+  riskScoreColor,
+} from "../../../shared/utils/format.js";
 
 const TABS = [
   { labelKey: "taskDetail.tab.overview", path: "" },
@@ -13,31 +20,11 @@ const TABS = [
   { labelKey: "taskDetail.tab.workspace", path: "workspace" },
 ];
 
-function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function formatDuration(ms: number | null): string {
   if (!ms) return "—";
   const min = Math.round(ms / 60_000);
   return `${min} min`;
 }
-
-const STATE_COLORS: Record<string, string> = {
-  running: "var(--status-running)",
-  completed: "var(--status-completed)",
-  failed: "var(--status-failed)",
-  cancelled: "var(--status-cancelled)",
-  queued: "var(--status-queued)",
-  paused: "var(--status-paused)",
-};
 
 export function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -56,17 +43,48 @@ export function TaskDetailPage() {
     enabled: !!taskId,
   });
 
+  // Shared findings query — also used inside OverviewTab/FindingsTab via same cache key.
+  const { data: findingsData } = useQuery({
+    queryKey: ["findings", taskId],
+    queryFn: () => api.findings.list(taskId!),
+    enabled: !!taskId,
+    refetchInterval: 5000,
+  });
+  const findingsCount = findingsData?.findings?.length ?? 0;
+
+  const cancelMut = useMutation({
+    mutationFn: () => api.tasks.cancel(taskId!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["task", taskId] }),
+  });
+  const restartMut = useMutation({
+    mutationFn: () => api.tasks.restart(taskId!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["task", taskId] }),
+  });
+
   const task = data?.task as Task | undefined;
 
   if (isLoading) {
-    return <div style={{ padding: "40px", color: "var(--text-secondary)" }}>{i18n.t("taskDetail.loading")}</div>;
+    return (
+      <div style={{ padding: "40px", color: "var(--text-secondary)" }}>
+        {i18n.t("taskDetail.loading")}
+      </div>
+    );
   }
 
   if (!task) {
-    return <div style={{ padding: "40px", color: "var(--brand)" }}>{i18n.t("taskDetail.notFound")}</div>;
+    return (
+      <div style={{ padding: "40px", color: "var(--brand)" }}>
+        {i18n.t("taskDetail.notFound")}
+      </div>
+    );
   }
 
-  const stateColor = STATE_COLORS[task.state] ?? "var(--status-cancelled)";
+  const risk = parseRiskScore(task.risk_score);
+
+  const tabCounts: Record<string, number | undefined> = {
+    findings: findingsCount > 0 ? findingsCount : undefined,
+    // reports / poc counts not yet wired
+  };
 
   return (
     <div data-testid="task-detail-page" style={{ minHeight: "100vh", background: "var(--bg-page)" }}>
@@ -83,47 +101,83 @@ export function TaskDetailPage() {
         <button
           data-testid="back-to-tasks"
           onClick={() => navigate("/tasks")}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-secondary)")}
           style={{
             background: "none",
             border: "none",
             cursor: "pointer",
             color: "var(--text-secondary)",
             fontSize: "13px",
-            padding: "0 0 12px",
-            display: "flex",
+            fontWeight: 500,
+            padding: 0,
+            marginBottom: "12px",
+            display: "inline-flex",
             alignItems: "center",
-            gap: "4px",
+            gap: "6px",
+            transition: "color 0.15s",
           }}
         >
+          <Icon name="arrow-left" size={16} />
           {i18n.t("taskDetail.back")}
         </button>
 
-        {/* Title + meta */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <h1
-              data-testid="task-project-name"
-              style={{ fontSize: "22px", fontWeight: 700, margin: "0 0 8px" }}
+        {/* Title row: name + status pill inline */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                flexWrap: "wrap",
+              }}
             >
-              {task.project_name}
-            </h1>
-            <div style={{ display: "flex", gap: "16px", fontSize: "12px", color: "var(--text-secondary)", flexWrap: "wrap" }}>
-              <span
-                data-testid="task-status-badge"
-                data-status={task.state}
+              <h1
+                data-testid="task-project-name"
                 style={{
-                  color: stateColor,
-                  fontWeight: 600,
-                  textTransform: "capitalize",
+                  fontSize: "22px",
+                  fontWeight: 700,
+                  margin: 0,
+                  letterSpacing: "-0.01em",
                 }}
               >
-                ● {i18n.t(`tasks.status.${task.state}`)}
-              </span>
-              {task.risk_score != null && (
-                <span>Risk: <strong>{parseFloat(String(task.risk_score)).toFixed(1)}/10</strong></span>
+                {task.project_name}
+              </h1>
+              <StatusPill state={task.state} />
+            </div>
+
+            {/* Meta row: Risk · Duration · Started */}
+            <div
+              style={{
+                display: "flex",
+                gap: "20px",
+                marginTop: "10px",
+                fontSize: "13px",
+                color: "var(--text-secondary)",
+                flexWrap: "wrap",
+              }}
+            >
+              {risk != null && (
+                <MetaItem icon="shield">
+                  {i18n.t("taskDetail.meta.risk")}:{" "}
+                  <strong style={{ color: riskScoreColor(risk), marginLeft: "4px" }}>
+                    {risk.toFixed(1)}/10
+                  </strong>
+                </MetaItem>
               )}
-              <span>Duration: <strong>{formatDuration(task.duration_ms)}</strong></span>
-              <span>Started: <strong>{formatDate(task.started_at)}</strong></span>
+              <MetaItem icon="clock">
+                {i18n.t("taskDetail.meta.duration")}:{" "}
+                <strong style={{ color: "var(--text-primary)", marginLeft: "4px" }}>
+                  {formatDuration(task.duration_ms)}
+                </strong>
+              </MetaItem>
+              <MetaItem icon="calendar">
+                {i18n.t("taskDetail.meta.started")}:{" "}
+                <strong style={{ color: "var(--text-primary)", marginLeft: "4px" }}>
+                  {formatDateTime(task.started_at)}
+                </strong>
+              </MetaItem>
             </div>
           </div>
 
@@ -132,9 +186,11 @@ export function TaskDetailPage() {
             {["running", "queued"].includes(task.state) && (
               <button
                 data-testid="task-cancel-btn"
-                onClick={() => api.tasks.cancel(task.id).then(() => qc.invalidateQueries({ queryKey: ["task", taskId] }))}
+                onClick={() => cancelMut.mutate()}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-error)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 style={{
-                  padding: "6px 14px",
+                  padding: "7px 14px",
                   border: "1px solid var(--status-failed)",
                   borderRadius: "6px",
                   background: "transparent",
@@ -142,6 +198,7 @@ export function TaskDetailPage() {
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
+                  transition: "background 0.15s",
                 }}
               >
                 {i18n.t("taskDetail.cancel")}
@@ -150,9 +207,11 @@ export function TaskDetailPage() {
             {["failed", "cancelled", "completed"].includes(task.state) && (
               <button
                 data-testid="task-restart-btn"
-                onClick={() => api.tasks.restart(task.id).then(() => qc.invalidateQueries({ queryKey: ["task", taskId] }))}
+                onClick={() => restartMut.mutate()}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#b91c1c")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--brand)")}
                 style={{
-                  padding: "6px 14px",
+                  padding: "7px 14px",
                   border: "1px solid var(--brand)",
                   borderRadius: "6px",
                   background: "var(--brand)",
@@ -160,6 +219,7 @@ export function TaskDetailPage() {
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
+                  transition: "background 0.15s",
                 }}
               >
                 {i18n.t("taskDetail.restart")}
@@ -184,9 +244,8 @@ export function TaskDetailPage() {
         }}
       >
         {TABS.map((tab) => {
-          const to = tab.path
-            ? `/tasks/${task.id}/${tab.path}`
-            : `/tasks/${task.id}`;
+          const to = tab.path ? `/tasks/${task.id}/${tab.path}` : `/tasks/${task.id}`;
+          const count = tabCounts[tab.path];
           return (
             <NavLink
               key={tab.path}
@@ -194,25 +253,63 @@ export function TaskDetailPage() {
               end={tab.path === ""}
               data-testid={`task-detail-tab-${tab.path || "overview"}`}
               style={({ isActive }) => ({
-                padding: "10px 16px",
+                padding: "14px 20px",
+                marginBottom: "-1px",
                 textDecoration: "none",
                 fontSize: "13px",
-                fontWeight: isActive ? 600 : 400,
-                color: isActive ? "var(--brand)" : "var(--text-secondary)",
+                fontWeight: 500,
+                color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
                 borderBottom: isActive ? "2px solid var(--brand)" : "2px solid transparent",
                 whiteSpace: "nowrap",
+                transition: "color 0.1s",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
               })}
             >
-              {i18n.t(tab.labelKey)}
+              <span>{i18n.t(tab.labelKey)}</span>
+              {count != null && <TabCountBadge count={count} />}
             </NavLink>
           );
         })}
       </div>
 
       {/* Tab content */}
-      <div style={{ padding: "32px 40px" }}>
+      <div style={{ padding: "28px 40px 40px" }}>
         <Outlet context={{ task }} />
       </div>
     </div>
+  );
+}
+
+function MetaItem({ icon, children }: { icon: "shield" | "clock" | "calendar"; children: React.ReactNode }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+      <Icon name={icon} size={14} />
+      {children}
+    </span>
+  );
+}
+
+function TabCountBadge({ count }: { count: number }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minWidth: "20px",
+        height: "18px",
+        padding: "0 6px",
+        background: "var(--divider)",
+        borderRadius: "9px",
+        fontSize: "11px",
+        fontWeight: 600,
+        color: "var(--text-secondary)",
+        lineHeight: 1,
+      }}
+    >
+      {count}
+    </span>
   );
 }

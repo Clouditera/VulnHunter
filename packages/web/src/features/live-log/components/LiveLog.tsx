@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
+import { Icon } from "../../../shared/components/Icon.js";
+import { StatusPill } from "../../../shared/components/StatusPill.js";
 
 export interface LiveLogEvent {
   type: string;
@@ -68,7 +70,12 @@ export function LiveLog({ taskId, taskState }: Props) {
         }
 
         if (event.type === "tool_call" && event.tool) {
-          setLatestTool(`${event.tool} → ${event.args_summary ?? ""}`);
+          // args_summary sometimes arrives as "<tool>: <args>" (youngflow);
+          // strip the redundant tool prefix so the bar doesn't read "bash → bash: ls".
+          let args = event.args_summary ?? "";
+          const prefix = `${event.tool}: `;
+          if (args.startsWith(prefix)) args = args.slice(prefix.length);
+          setLatestTool(args ? `${event.tool} → ${args}` : event.tool);
         }
       } catch {}
     };
@@ -90,73 +97,96 @@ export function LiveLog({ taskId, taskState }: Props) {
       ? events
       : events.filter((e) => e.source === activeSource);
 
-  const statusColor = isRunning ? "var(--status-completed)" : taskState === "failed" ? "var(--status-failed)" : "var(--status-cancelled)";
-  const statusDot = isRunning ? "●" : taskState === "failed" ? "✕" : "✓";
+  // Parse "tool → param" into two parts for colored display.
+  const toolParts = (() => {
+    if (!latestTool) return null;
+    const m = latestTool.match(/^(\S+)\s*→\s*(.*)$/);
+    if (m) return { tool: m[1], param: m[2] };
+    return { tool: latestTool, param: "" };
+  })();
 
   return (
-    <div data-testid="live-log-bar" style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid var(--divider)" }}>
+    <div
+      data-testid="live-log-bar"
+      style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--divider)" }}
+    >
       {/* Collapsed row */}
       <div
         data-testid="live-log-expand-btn"
+        onClick={() => setExpanded((e) => !e)}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
         style={{
           height: "36px",
           display: "flex",
           alignItems: "center",
-          gap: "10px",
+          gap: "12px",
+          padding: "0 8px",
+          borderRadius: "6px",
           cursor: "pointer",
+          userSelect: "none",
+          transition: "background 0.15s",
         }}
-        onClick={() => setExpanded((e) => !e)}
       >
-        {/* Status badge */}
-        <span
-          data-testid="live-log-status-badge"
-          data-status={taskState}
-          style={{
-            color: statusColor,
-            fontSize: "12px",
-            fontWeight: 600,
-            display: "flex",
-            alignItems: "center",
-            gap: "4px",
-            flexShrink: 0,
-          }}
-        >
-          <span
-            style={{
-              animation: isRunning ? "pulse 1.5s infinite" : "none",
-              display: "inline-block",
-            }}
-          >
-            {statusDot}
-          </span>
-          {taskState.charAt(0).toUpperCase() + taskState.slice(1)}
+        <span data-testid="live-log-status-badge" data-status={taskState} style={{ flexShrink: 0 }}>
+          <StatusPill state={taskState} size="sm" />
         </span>
-
-        {/* Latest tool call */}
         <span
           data-testid="live-log-current-tool"
           style={{
             flex: 1,
-            fontSize: "12px",
-            color: "var(--text-secondary)",
+            minWidth: 0,
+            fontSize: "13px",
+            fontFamily: "SF Mono, JetBrains Mono, Menlo, monospace",
+            color: "var(--text-primary)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            fontFamily: "monospace",
+            height: "22px",
+            lineHeight: "22px",
           }}
         >
-          {latestTool || (isRunning ? i18n.t("liveLog.waiting") : i18n.t("liveLog.noEvents"))}
+          {toolParts ? (
+            <>
+              <span style={{ color: "var(--sev-low)", fontWeight: 600 }}>{toolParts.tool}</span>
+              {toolParts.param && (
+                <>
+                  <span style={{ color: "var(--text-secondary)", margin: "0 6px" }}>→</span>
+                  <span style={{ color: "var(--text-secondary)" }}>{toolParts.param}</span>
+                </>
+              )}
+            </>
+          ) : (
+            <span style={{ color: "var(--text-secondary)" }}>
+              {isRunning ? i18n.t("liveLog.waiting") : i18n.t("liveLog.noEvents")}
+            </span>
+          )}
         </span>
-
-        {/* Count + expand icon */}
         <span
           data-testid="live-log-event-count"
-          style={{ fontSize: "11px", color: "var(--text-secondary)", flexShrink: 0 }}
+          style={{
+            fontSize: "12px",
+            color: "var(--text-secondary)",
+            flexShrink: 0,
+            fontVariantNumeric: "tabular-nums",
+          }}
         >
           {events.length} {i18n.t("liveLog.events")}
         </span>
-        <span style={{ fontSize: "12px", color: "var(--text-secondary)", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
-          ▾
+        <span
+          style={{
+            width: "22px",
+            height: "22px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--text-secondary)",
+            flexShrink: 0,
+            transform: expanded ? "rotate(180deg)" : "none",
+            transition: "transform 0.2s",
+          }}
+        >
+          <Icon name="chevron-down" size={14} />
         </span>
       </div>
 
