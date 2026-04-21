@@ -16,7 +16,7 @@ const ZH: Record<string, string> = {
 
   // Tasks
   "tasks.title": "任务",
-  "tasks.newTask": "+ 新建任务",
+  "tasks.newTask": "新建任务",
   "tasks.status.running": "运行中",
   "tasks.status.completed": "已完成",
   "tasks.status.failed": "失败",
@@ -182,7 +182,7 @@ const EN: Record<string, string> = {
 
   // Tasks
   "tasks.title": "Tasks",
-  "tasks.newTask": "+ New Task",
+  "tasks.newTask": "New Task",
   "tasks.status.running": "running",
   "tasks.status.completed": "completed",
   "tasks.status.failed": "failed",
