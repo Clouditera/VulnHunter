@@ -40,9 +40,9 @@ export function AppLayout() {
     <div
       data-testid="app-layout"
       data-theme={currentTheme}
-      style={{ display: "flex", minHeight: "100vh", background: "var(--bg-page)" }}
+      style={{ display: "flex", height: "100vh", background: "var(--bg-page)", overflow: "hidden" }}
     >
-      {/* Left nav */}
+      {/* Left nav — fixed height, bottom section always visible */}
       <nav
         data-testid="nav-sidebar"
         style={{
@@ -53,6 +53,10 @@ export function AppLayout() {
           alignItems: "center",
           paddingTop: "16px",
           flexShrink: 0,
+          height: "100vh",
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
         }}
       >
         {/* Logo */}
@@ -189,8 +193,8 @@ export function AppLayout() {
         </div>
       </nav>
 
-      {/* Main content */}
-      <main style={{ flex: 1, overflow: "auto" }}>
+      {/* Main content — owns its own scroll so nav stays fixed */}
+      <main style={{ flex: 1, overflow: "auto", height: "100vh" }}>
         <Outlet />
       </main>
     </div>
