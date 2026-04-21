@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../shared/api/client.js";
+import { i18n } from "../../../shared/i18n/index.js";
 
 export function ActivatePage() {
   const [cert, setCert] = useState("");
@@ -10,6 +11,8 @@ export function ActivatePage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [, forceI18n] = useState(0);
+  useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
 
   async function handleActivate(e: React.FormEvent) {
     e.preventDefault();
@@ -64,10 +67,10 @@ export function ActivatePage() {
             🔐
           </div>
           <h1 style={{ fontSize: "22px", fontWeight: 700, margin: "0 0 8px" }}>
-            Activate VulnHunt
+            {i18n.t("activate.title")}
           </h1>
           <p style={{ fontSize: "14px", color: "var(--text-secondary)", margin: 0 }}>
-            Enter your license key to activate the platform
+            {i18n.t("activate.desc")}
           </p>
         </div>
 
@@ -82,7 +85,7 @@ export function ActivatePage() {
               fontSize: "14px",
             }}
           >
-            ✅ Activated successfully — redirecting…
+            {i18n.t("activate.success")}
           </div>
         ) : (
           <form onSubmit={handleActivate}>
@@ -97,13 +100,13 @@ export function ActivatePage() {
                 marginBottom: "6px",
               }}
             >
-              License Key
+              {i18n.t("activate.licenseKey")}
             </label>
             <textarea
               data-testid="license-key-input"
               value={cert}
               onChange={(e) => setCert(e.target.value)}
-              placeholder="Paste your license certificate JSON here"
+              placeholder={i18n.t("activate.placeholder")}
               rows={5}
               style={{
                 width: "100%",
@@ -141,7 +144,7 @@ export function ActivatePage() {
                 cursor: loading || !cert.trim() ? "not-allowed" : "pointer",
               }}
             >
-              {loading ? "Activating…" : "Activate"}
+              {loading ? i18n.t("activate.activating") : i18n.t("activate.submit")}
             </button>
           </form>
         )}

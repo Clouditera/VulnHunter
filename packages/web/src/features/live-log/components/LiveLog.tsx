@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { i18n } from "../../../shared/i18n/index.js";
 
 export interface LiveLogEvent {
   type: string;
@@ -39,6 +40,8 @@ export function LiveLog({ taskId, taskState }: Props) {
   const streamRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const isRunning = taskState === "running";
+  const [, forceI18n] = useState(0);
+  useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
 
   useEffect(() => {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -142,7 +145,7 @@ export function LiveLog({ taskId, taskState }: Props) {
             fontFamily: "monospace",
           }}
         >
-          {latestTool || (isRunning ? "Waiting for events…" : "No events")}
+          {latestTool || (isRunning ? i18n.t("liveLog.waiting") : i18n.t("liveLog.noEvents"))}
         </span>
 
         {/* Count + expand icon */}
@@ -150,7 +153,7 @@ export function LiveLog({ taskId, taskState }: Props) {
           data-testid="live-log-event-count"
           style={{ fontSize: "11px", color: "var(--text-secondary)", flexShrink: 0 }}
         >
-          {events.length} events
+          {events.length} {i18n.t("liveLog.events")}
         </span>
         <span style={{ fontSize: "12px", color: "var(--text-secondary)", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
           ▾
@@ -186,7 +189,7 @@ export function LiveLog({ taskId, taskState }: Props) {
                   cursor: "pointer",
                 }}
               >
-                {src === "all" ? "All" : (
+                {src === "all" ? i18n.t("liveLog.allSources") : (
                   <span>
                     <span style={{ color: sourceColor(src), marginRight: "4px" }}>●</span>
                     {src}
@@ -207,7 +210,7 @@ export function LiveLog({ taskId, taskState }: Props) {
             }}
           >
             {filteredEvents.length === 0 ? (
-              <div style={{ color: "var(--log-text-dim)", padding: "16px" }}>No events yet…</div>
+              <div style={{ color: "var(--log-text-dim)", padding: "16px" }}>{i18n.t("liveLog.noEvents")}</div>
             ) : (
               filteredEvents.map((ev, i) => (
                 <div key={`${ev.seq}-${i}`} data-testid="live-log-entry" style={{ display: "flex", gap: "8px", marginBottom: "3px" }}>

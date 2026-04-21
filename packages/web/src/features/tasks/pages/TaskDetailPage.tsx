@@ -1,14 +1,16 @@
+import { useState, useEffect } from "react";
 import { useParams, useNavigate, NavLink, Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Task } from "../../../shared/api/client.js";
 import { LiveLog } from "../../live-log/components/LiveLog.js";
+import { i18n } from "../../../shared/i18n/index.js";
 
 const TABS = [
-  { label: "Overview", path: "" },
-  { label: "Findings", path: "findings" },
-  { label: "Reports", path: "reports" },
-  { label: "POC/EXP", path: "poc" },
-  { label: "Workspace", path: "workspace" },
+  { labelKey: "taskDetail.tab.overview", path: "" },
+  { labelKey: "taskDetail.tab.findings", path: "findings" },
+  { labelKey: "taskDetail.tab.reports", path: "reports" },
+  { labelKey: "taskDetail.tab.poc", path: "poc" },
+  { labelKey: "taskDetail.tab.workspace", path: "workspace" },
 ];
 
 function formatDate(iso: string | null): string {
@@ -40,6 +42,8 @@ const STATE_COLORS: Record<string, string> = {
 export function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
+  const [, forceUpdate] = useState(0);
+  useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
 
   const { data, isLoading } = useQuery({
     queryKey: ["task", taskId],
@@ -54,11 +58,11 @@ export function TaskDetailPage() {
   const task = data?.task as Task | undefined;
 
   if (isLoading) {
-    return <div style={{ padding: "40px", color: "var(--text-secondary)" }}>Loading…</div>;
+    return <div style={{ padding: "40px", color: "var(--text-secondary)" }}>{i18n.t("taskDetail.loading")}</div>;
   }
 
   if (!task) {
-    return <div style={{ padding: "40px", color: "var(--brand)" }}>Task not found.</div>;
+    return <div style={{ padding: "40px", color: "var(--brand)" }}>{i18n.t("taskDetail.notFound")}</div>;
   }
 
   const stateColor = STATE_COLORS[task.state] ?? "var(--status-cancelled)";
@@ -90,7 +94,7 @@ export function TaskDetailPage() {
             gap: "4px",
           }}
         >
-          ← Back to Tasks
+          {i18n.t("taskDetail.back")}
         </button>
 
         {/* Title + meta */}
@@ -158,7 +162,7 @@ export function TaskDetailPage() {
                 whiteSpace: "nowrap",
               })}
             >
-              {tab.label}
+              {i18n.t(tab.labelKey)}
             </NavLink>
           );
         })}

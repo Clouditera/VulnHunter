@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../shared/api/client.js";
+import { i18n } from "../../../shared/i18n/index.js";
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
@@ -10,6 +11,8 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [, forceI18n] = useState(0);
+  useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -22,9 +25,9 @@ export function LoginPage() {
     } catch (err) {
       const code = (err as Error & { code?: string }).code;
       if (code === "ERR_AUTH_LOCKED") {
-        setError("Too many failed attempts. Try again in 15 minutes.");
+        setError(i18n.t("login.errorLocked"));
       } else {
-        setError("Invalid email or password.");
+        setError(i18n.t("login.errorInvalid"));
       }
     } finally {
       setLoading(false);
@@ -69,16 +72,16 @@ export function LoginPage() {
           >
             V
           </div>
-          <h1 style={{ fontSize: "22px", fontWeight: 700, margin: "0 0 4px" }}>VulnHunt</h1>
+          <h1 style={{ fontSize: "22px", fontWeight: 700, margin: "0 0 4px" }}>{i18n.t("login.title")}</h1>
           <p style={{ fontSize: "14px", color: "var(--text-secondary)", margin: 0 }}>
-            Sign in to continue
+            {i18n.t("login.subtitle")}
           </p>
         </div>
 
         <form onSubmit={handleLogin}>
           {[
-            { label: "Email", value: email, onChange: setEmail, type: "email", testid: "login-email" },
-            { label: "Password", value: password, onChange: setPassword, type: "password", testid: "login-password" },
+            { label: i18n.t("login.email"), value: email, onChange: setEmail, type: "email", testid: "login-email" },
+            { label: i18n.t("login.password"), value: password, onChange: setPassword, type: "password", testid: "login-password" },
           ].map((f) => (
             <div key={f.label} style={{ marginBottom: "16px" }}>
               <label
@@ -137,7 +140,7 @@ export function LoginPage() {
               cursor: loading ? "not-allowed" : "pointer",
             }}
           >
-            {loading ? "Signing in…" : "Sign In"}
+            {loading ? i18n.t("login.signing") : i18n.t("login.submit")}
           </button>
         </form>
       </div>

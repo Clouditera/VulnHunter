@@ -1,6 +1,8 @@
+import { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Task } from "../../../../shared/api/client.js";
+import { i18n } from "../../../../shared/i18n/index.js";
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -35,6 +37,8 @@ const SEV_COLORS: Record<string, string> = {
 
 export function OverviewTab() {
   const { task } = useOutletContext<{ task: Task }>();
+  const [, forceUpdate] = useState(0);
+  useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
 
   const { data: findingsData } = useQuery({
     queryKey: ["findings", task.id],
@@ -49,7 +53,7 @@ export function OverviewTab() {
   return (
     <div data-testid="task-detail-panel-overview" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
       {/* Project Profile */}
-      <Card title="Project Profile">
+      <Card title={i18n.t("overview.projectProfile")}>
         <KV label="Project" value={task.project_name} />
         <KV label="Source" value={task.source_type === "git" ? "Git Repository" : "Uploaded Archive"} />
         <KV label="Status" value={task.state} />
@@ -57,7 +61,7 @@ export function OverviewTab() {
       </Card>
 
       {/* Risk Assessment */}
-      <Card title="Risk Assessment">
+      <Card title={i18n.t("overview.riskAssessment")}>
         {task.risk_score != null ? (() => {
           const rs = parseFloat(String(task.risk_score));
           return (
@@ -140,7 +144,7 @@ export function OverviewTab() {
       </Card>
 
       {/* Execution Summary */}
-      <Card title="Execution Summary">
+      <Card title={i18n.t("overview.executionSummary")}>
         <KV label="Duration" value={task.duration_ms ? `${Math.round(task.duration_ms / 60_000)} min` : null} />
         <KV label="Findings" value={findings.length > 0 ? findings.length : null} />
         <KV label="High" value={highCount > 0 ? highCount : null} />

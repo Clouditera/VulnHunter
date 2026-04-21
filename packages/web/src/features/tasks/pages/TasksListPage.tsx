@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Task } from "../../../shared/api/client.js";
 import { NewTaskModal } from "../components/NewTaskModal.js";
+import { i18n } from "../../../shared/i18n/index.js";
 
 const STATE_COLORS: Record<string, string> = {
   running: "var(--status-running)",
@@ -81,6 +82,8 @@ export function TasksListPage() {
   const [showModal, setShowModal] = useState(false);
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [, forceUpdate] = useState(0);
+  useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
 
   const { data, isLoading } = useQuery({
     queryKey: ["tasks", stateFilter],
@@ -101,7 +104,7 @@ export function TasksListPage() {
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-        <h1 style={{ fontSize: "24px", fontWeight: 700, margin: 0 }}>Tasks</h1>
+        <h1 style={{ fontSize: "24px", fontWeight: 700, margin: 0 }}>{i18n.t("tasks.title")}</h1>
         <button
           data-testid="new-task-btn"
           onClick={() => setShowModal(true)}
@@ -116,7 +119,7 @@ export function TasksListPage() {
             cursor: "pointer",
           }}
         >
-          + New Task
+          {i18n.t("tasks.newTask")}
         </button>
       </div>
 
@@ -139,7 +142,7 @@ export function TasksListPage() {
               textTransform: "capitalize",
             }}
           >
-            {s}
+            {s === "all" ? i18n.t("tasks.filterAll") : i18n.t(`tasks.status.${s}`)}
           </button>
         ))}
       </div>
@@ -149,9 +152,9 @@ export function TasksListPage() {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-page)" }}>
-              {["Project", "Status", "Risk Score", "Duration", "Created", "Actions"].map((h) => (
+              {(["tasks.col.project", "tasks.col.status", "tasks.col.riskScore", "tasks.col.duration", "tasks.col.created", "tasks.col.actions"] as const).map((key) => (
                 <th
-                  key={h}
+                  key={key}
                   style={{
                     padding: "10px 16px",
                     textAlign: "left",
@@ -162,7 +165,7 @@ export function TasksListPage() {
                     letterSpacing: "0.04em",
                   }}
                 >
-                  {h}
+                  {i18n.t(key)}
                 </th>
               ))}
             </tr>
@@ -171,13 +174,13 @@ export function TasksListPage() {
             {isLoading ? (
               <tr>
                 <td colSpan={6} style={{ padding: "32px", textAlign: "center", color: "var(--text-secondary)" }}>
-                  Loading…
+                  {i18n.t("tasks.loading")}
                 </td>
               </tr>
             ) : tasks.length === 0 ? (
               <tr>
                 <td colSpan={6} style={{ padding: "48px", textAlign: "center", color: "var(--text-secondary)" }}>
-                  No tasks yet. Click "+ New Task" to get started.
+                  {i18n.t("tasks.empty")}
                 </td>
               </tr>
             ) : (
@@ -198,7 +201,7 @@ export function TasksListPage() {
                   <td style={{ padding: "12px 16px", fontWeight: 500 }}>
                     {task.project_name}
                     <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "2px" }}>
-                      {task.source_type === "git" ? "Git" : "Upload"}
+                      {task.source_type === "git" ? i18n.t("tasks.sourceGit") : i18n.t("tasks.sourceUpload")}
                     </div>
                   </td>
                   <td style={{ padding: "12px 16px" }}>
@@ -235,7 +238,7 @@ export function TasksListPage() {
                           color: "var(--text-secondary)",
                         }}
                       >
-                        Cancel
+                        {i18n.t("tasks.cancel")}
                       </button>
                     )}
                   </td>

@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../shared/api/client.js";
+import { i18n } from "../../../shared/i18n/index.js";
 
 export function ExpiredPage() {
   const [key, setKey] = useState("");
@@ -10,6 +11,8 @@ export function ExpiredPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [, forceI18n] = useState(0);
+  useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
 
   async function handleRenew(e: React.FormEvent) {
     e.preventDefault();
@@ -21,7 +24,7 @@ export function ExpiredPage() {
       qc.invalidateQueries({ queryKey: ["system-status"] });
       setTimeout(() => navigate("/login"), 1500);
     } catch {
-      setError("Invalid renewal key. Please contact your vendor.");
+      setError(i18n.t("expired.error"));
     } finally {
       setLoading(false);
     }
@@ -64,10 +67,10 @@ export function ExpiredPage() {
             ⏰
           </div>
           <h1 style={{ fontSize: "22px", fontWeight: 700, margin: "0 0 8px" }}>
-            License Expired
+            {i18n.t("expired.title")}
           </h1>
           <p style={{ fontSize: "14px", color: "var(--text-secondary)", margin: 0, lineHeight: 1.6 }}>
-            Your license has expired. Please contact your vendor to obtain a renewal key.
+            {i18n.t("expired.desc")}
           </p>
         </div>
 
@@ -82,7 +85,7 @@ export function ExpiredPage() {
               fontSize: "14px",
             }}
           >
-            ✅ Renewed successfully — redirecting…
+            {i18n.t("expired.success")}
           </div>
         ) : (
           <form onSubmit={handleRenew}>
@@ -97,13 +100,13 @@ export function ExpiredPage() {
                 marginBottom: "6px",
               }}
             >
-              Renewal Key
+              {i18n.t("expired.renewalKey")}
             </label>
             <textarea
               data-testid="renewal-key-input"
               value={key}
               onChange={(e) => setKey(e.target.value)}
-              placeholder="Paste your renewal license certificate JSON here"
+              placeholder={i18n.t("expired.placeholder")}
               rows={5}
               style={{
                 width: "100%",
@@ -141,7 +144,7 @@ export function ExpiredPage() {
                 cursor: loading || !key.trim() ? "not-allowed" : "pointer",
               }}
             >
-              {loading ? "Renewing…" : "Renew License"}
+              {loading ? i18n.t("expired.renewing") : i18n.t("expired.submit")}
             </button>
           </form>
         )}

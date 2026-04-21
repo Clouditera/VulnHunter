@@ -1,5 +1,6 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { api } from "../../../shared/api/client.js";
+import { i18n } from "../../../shared/i18n/index.js";
 
 interface Props {
   onClose: () => void;
@@ -14,6 +15,8 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const [, forceI18n] = useState(0);
+  useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
 
   async function handleCreate() {
     setError("");
@@ -71,7 +74,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
             alignItems: "center",
           }}
         >
-          <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>New Security Scan</h2>
+          <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>{i18n.t("newTask.title")}</h2>
           <button
             onClick={onClose}
             style={{
@@ -106,7 +109,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                 textTransform: "capitalize",
               }}
             >
-              {t === "upload" ? "Upload" : "Git URL"}
+              {t === "upload" ? i18n.t("newTask.tabUpload") : i18n.t("newTask.tabGit")}
             </button>
           ))}
         </div>
@@ -142,10 +145,10 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                 ) : (
                   <>
                     <p style={{ fontSize: "13px", fontWeight: 500, margin: "0 0 4px", color: "var(--text-primary)" }}>
-                      Drop project archive here
+                      {i18n.t("newTask.dropzone")}
                     </p>
                     <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>
-                      or click to browse · .zip .tar.gz .tar.bz2
+                      .zip .tar.gz .tar.bz2
                     </p>
                   </>
                 )}
@@ -162,14 +165,14 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
             <div>
               <div style={{ marginBottom: "16px" }}>
                 <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
-                  Repository URL
+                  {i18n.t("newTask.gitUrl")}
                 </label>
                 <input
                   data-testid="git-url-input"
                   type="url"
                   value={gitUrl}
                   onChange={(e) => setGitUrl(e.target.value)}
-                  placeholder="https://github.com/user/repo.git"
+                  placeholder={i18n.t("newTask.gitPlaceholder")}
                   style={{
                     width: "100%",
                     height: "40px",
@@ -185,7 +188,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
-                  Branch (optional)
+                  {i18n.t("newTask.branch")}
                 </label>
                 <input
                   data-testid="git-branch-input"
@@ -230,7 +233,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
               cursor: !canSubmit || loading ? "not-allowed" : "pointer",
             }}
           >
-            {loading ? "Starting…" : "Start Scan"}
+            {loading ? i18n.t("newTask.submitting") : i18n.t("newTask.submit")}
           </button>
         </div>
       </div>

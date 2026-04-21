@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Task, type FindingMeta } from "../../../../shared/api/client.js";
+import { i18n } from "../../../../shared/i18n/index.js";
 
 const SEV_COLORS: Record<string, string> = {
   high: "var(--sev-high)", medium: "var(--sev-medium)", low: "var(--sev-low)", info: "var(--sev-info)",
@@ -10,6 +11,8 @@ const SEV_COLORS: Record<string, string> = {
 export function FindingsTab() {
   const { task } = useOutletContext<{ task: Task }>();
   const [severityFilter, setSeverityFilter] = useState<string>("all");
+  const [, forceUpdate] = useState(0);
+  useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
   const [selected, setSelected] = useState<string | null>(null);
   const [leftWidth, setLeftWidth] = useState(40); // percent
   const [dragging, setDragging] = useState(false);
@@ -73,7 +76,7 @@ export function FindingsTab() {
           </button>
         ))}
         <span style={{ marginLeft: "auto", fontSize: "12px", color: "var(--text-secondary)", alignSelf: "center" }}>
-          {findings.length} findings
+          {findings.length} {i18n.t("findings.count")}
         </span>
       </div>
 
@@ -96,9 +99,9 @@ export function FindingsTab() {
           }}
         >
           {isLoading ? (
-            <div style={{ padding: "24px", color: "var(--text-secondary)", fontSize: "13px" }}>Loading…</div>
+            <div style={{ padding: "24px", color: "var(--text-secondary)", fontSize: "13px" }}>{i18n.t("findings.loading")}</div>
           ) : findings.length === 0 ? (
-            <div style={{ padding: "24px", color: "var(--text-secondary)", fontSize: "13px" }}>No findings.</div>
+            <div style={{ padding: "24px", color: "var(--text-secondary)", fontSize: "13px" }}>{i18n.t("findings.empty")}</div>
           ) : (
             findings.map((f: FindingMeta) => (
               <div
@@ -146,11 +149,11 @@ export function FindingsTab() {
                         data-testid="finding-detail-panel"
                         style={{ marginTop: "12px", padding: "12px", background: "var(--bg-page)", borderRadius: "6px", fontSize: "12px" }}
                       >
-                        <div style={{ color: "var(--text-secondary)", marginBottom: "8px", fontWeight: 600 }}>Description</div>
+                        <div style={{ color: "var(--text-secondary)", marginBottom: "8px", fontWeight: 600 }}>{i18n.t("findings.description")}</div>
                         <div style={{ color: "var(--text-secondary)" }}>
                           Load full finding detail from <code>/api/tasks/{task.id}/findings/{f.finding_key}</code>
                         </div>
-                        <div style={{ color: "var(--text-secondary)", marginTop: "12px", fontWeight: 600 }}>Remediation</div>
+                        <div style={{ color: "var(--text-secondary)", marginTop: "12px", fontWeight: 600 }}>{i18n.t("findings.remediation")}</div>
                         <div style={{ color: "var(--text-secondary)", marginTop: "4px" }}>
                           See finding YAML for fix_recommendation.
                         </div>
@@ -243,7 +246,7 @@ export function FindingsTab() {
                 fontFamily: "monospace",
               }}
             >
-              Select a finding to view source
+              {i18n.t("findings.selectToView")}
             </div>
           )}
         </div>

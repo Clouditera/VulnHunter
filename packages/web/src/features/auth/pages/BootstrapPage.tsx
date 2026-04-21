@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../shared/api/client.js";
+import { i18n } from "../../../shared/i18n/index.js";
 
 export function BootstrapPage() {
   const [email, setEmail] = useState("");
@@ -10,6 +11,8 @@ export function BootstrapPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [, forceI18n] = useState(0);
+  useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,17 +52,17 @@ export function BootstrapPage() {
         <div style={{ textAlign: "center", marginBottom: "32px" }}>
           <div style={{ fontSize: "32px", marginBottom: "12px" }}>🛡️</div>
           <h1 style={{ fontSize: "22px", fontWeight: 700, margin: "0 0 8px" }}>
-            Create Admin Account
+            {i18n.t("bootstrap.title")}
           </h1>
           <p style={{ fontSize: "14px", color: "var(--text-secondary)", margin: 0 }}>
-            Set up the initial administrator account
+            {i18n.t("bootstrap.desc")}
           </p>
         </div>
 
         <form onSubmit={handleSubmit}>
           {[
-            { label: "Email", value: email, onChange: setEmail, type: "email", testid: "bootstrap-email" },
-            { label: "Password (min 8 chars)", value: password, onChange: setPassword, type: "password", testid: "bootstrap-password" },
+            { label: i18n.t("bootstrap.email"), value: email, onChange: setEmail, type: "email", testid: "bootstrap-email" },
+            { label: i18n.t("bootstrap.password"), value: password, onChange: setPassword, type: "password", testid: "bootstrap-password" },
           ].map((f) => (
             <div key={f.label} style={{ marginBottom: "16px" }}>
               <label
@@ -118,7 +121,7 @@ export function BootstrapPage() {
               cursor: loading ? "not-allowed" : "pointer",
             }}
           >
-            {loading ? "Creating…" : "Create Admin Account"}
+            {loading ? i18n.t("bootstrap.creating") : i18n.t("bootstrap.submit")}
           </button>
         </form>
       </div>
