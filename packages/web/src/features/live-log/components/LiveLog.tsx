@@ -210,17 +210,17 @@ export function LiveLog({ taskId, taskState }: Props) {
               <div style={{ color: "#737373", padding: "16px" }}>No events yet…</div>
             ) : (
               filteredEvents.map((ev, i) => (
-                <div key={`${ev.seq}-${i}`} style={{ display: "flex", gap: "8px", marginBottom: "3px" }}>
-                  <span style={{ color: "#555", flexShrink: 0 }}>
+                <div key={`${ev.seq}-${i}`} data-testid="live-log-entry" style={{ display: "flex", gap: "8px", marginBottom: "3px" }}>
+                  <span data-testid="log-entry-timestamp" style={{ color: "#555", flexShrink: 0 }}>
                     {new Date(ev.ts).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                   </span>
                   <span style={{ color: sourceColor(ev.source), flexShrink: 0 }}>[{ev.source}]</span>
                   {ev.type === "tool_call" && (
                     <>
-                      <span style={{ color: "#e5e5e5" }}>{ev.tool}</span>
+                      <span data-testid="log-entry-tool" style={{ color: "#e5e5e5" }}>{ev.tool}</span>
                       {ev.args_summary && <span style={{ color: "#737373" }}>{ev.args_summary}</span>}
                       {ev.duration_ms && (
-                        <span style={{ color: ev.status === "success" ? "#16a34a" : "#dc2626" }}>
+                        <span data-testid="log-entry-status" style={{ color: ev.status === "success" ? "#16a34a" : "#dc2626" }}>
                           {ev.duration_ms}ms
                         </span>
                       )}

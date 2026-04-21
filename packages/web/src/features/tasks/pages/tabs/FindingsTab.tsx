@@ -32,7 +32,9 @@ export function FindingsTab() {
       if (!container) return;
       const rect = container.getBoundingClientRect();
       const pct = ((mv.clientX - rect.left) / rect.width) * 100;
-      const clamped = Math.max(25, Math.min(60, pct));
+      // Enforce absolute 320px minimum regardless of container width
+      const minPct = rect.width > 0 ? (320 / rect.width) * 100 : 25;
+      const clamped = Math.max(minPct, Math.min(60, pct));
       setLeftWidth(clamped);
     }
 
@@ -178,7 +180,7 @@ export function FindingsTab() {
 
         {/* Right: code viewer */}
         <div
-          data-testid="findings-code-viewer"
+          data-testid="findings-right-panel"
           style={{
             flex: 1,
             overflow: "auto",
