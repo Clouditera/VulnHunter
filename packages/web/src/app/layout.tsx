@@ -5,12 +5,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { i18n } from "../shared/i18n/index.js";
 import { theme } from "../shared/theme/index.js";
+import { Icon, type IconName } from "../shared/components/Icon.js";
 
-const NAV_ITEMS = [
-  { to: "/dashboard", icon: "📊", labelKey: "nav.dashboard", testid: "nav-dashboard" },
-  { to: "/tasks", icon: "📋", labelKey: "nav.tasks", testid: "nav-tasks" },
-  { to: "/chat", icon: "💬", labelKey: "nav.chat", testid: "nav-chat" },
-  { to: "/settings", icon: "⚙️", labelKey: "nav.settings", testid: "nav-settings" },
+const TOP_NAV_ITEMS: Array<{ to: string; icon: IconName; labelKey: string; testid: string }> = [
+  { to: "/dashboard", icon: "dashboard", labelKey: "nav.dashboard", testid: "nav-dashboard" },
+  { to: "/tasks", icon: "tasks", labelKey: "nav.tasks", testid: "nav-tasks" },
+  { to: "/chat", icon: "chat", labelKey: "nav.chat", testid: "nav-chat" },
 ];
 
 export function AppLayout() {
@@ -18,7 +18,6 @@ export function AppLayout() {
   const qc = useQueryClient();
   const [, forceUpdate] = useState(0);
 
-  // Subscribe to i18n + theme changes for re-render
   useEffect(() => {
     const unsub1 = i18n.onChange(() => forceUpdate((n) => n + 1));
     const unsub2 = theme.onChange(() => forceUpdate((n) => n + 1));
@@ -65,20 +64,21 @@ export function AppLayout() {
             background: "var(--brand)",
             color: "#fff",
             fontWeight: 800,
-            fontSize: "18px",
+            fontSize: "20px",
+            letterSpacing: "-1px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            marginBottom: "24px",
+            marginBottom: "28px",
             flexShrink: 0,
           }}
         >
           V
         </div>
 
-        {/* Nav items */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
-          {NAV_ITEMS.map((item) => (
+        {/* Top nav items (Dashboard / Tasks / Chat) */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", width: "100%", padding: "0 8px" }}>
+          {TOP_NAV_ITEMS.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -87,92 +87,102 @@ export function AppLayout() {
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: "4px",
-                padding: "8px 4px",
-                borderRadius: "8px",
+                gap: "3px",
+                padding: "10px 0",
+                borderRadius: "6px",
                 textDecoration: "none",
-                color: isActive ? "#fff" : "#a3a3a3",
+                color: isActive ? "#ffffff" : "#888",
                 background: isActive ? "rgba(255,255,255,0.1)" : "transparent",
-                width: "52px",
                 fontSize: "10px",
                 fontWeight: 500,
+                letterSpacing: "0.02em",
                 transition: "all 0.15s",
               })}
             >
-              <span style={{ fontSize: "18px" }}>{item.icon}</span>
-              {i18n.t(item.labelKey)}
+              <Icon name={item.icon} size={20} />
+              <span>{i18n.t(item.labelKey)}</span>
             </NavLink>
           ))}
         </div>
 
-        {/* Bottom: lang/theme toggles + user */}
+        {/* Bottom: settings / language / theme / avatar */}
         <div
           data-testid="nav-bottom"
           style={{
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: "8px",
-            marginBottom: "16px",
+            gap: "4px",
+            padding: "0 8px 16px",
+            width: "100%",
           }}
         >
-          {/* Language toggle */}
-          <button
-            data-testid="nav-lang-toggle"
-            data-lang={currentLang}
-            onClick={() => i18n.toggle()}
-            style={{
-              width: "32px",
-              height: "32px",
+          {/* Settings gear — moved from top nav to bottom (matches prototype) */}
+          <NavLink
+            to="/settings"
+            data-testid="nav-settings"
+            style={({ isActive }) => ({
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "3px",
+              padding: "10px 0",
               borderRadius: "6px",
-              background: "transparent",
-              border: "1px solid #444",
-              color: "#a3a3a3",
-              cursor: "pointer",
+              textDecoration: "none",
+              color: isActive ? "#ffffff" : "#888",
+              background: isActive ? "rgba(255,255,255,0.1)" : "transparent",
               fontSize: "10px",
-              fontWeight: 600,
-            }}
-            title={currentLang === "zh" ? "切换到英文" : "Switch to 中文"}
+              fontWeight: 500,
+              letterSpacing: "0.02em",
+              width: "100%",
+              transition: "all 0.15s",
+            })}
           >
-            {currentLang === "zh" ? "中" : "EN"}
-          </button>
+            <Icon name="settings" size={20} />
+            <span>{i18n.t("nav.settings")}</span>
+          </NavLink>
 
-          {/* Theme toggle */}
-          <button
-            data-testid="nav-theme-toggle"
-            data-theme={currentTheme}
+          {/* Language toggle — globe + locale badge */}
+          <IconToggle
+            testid="nav-lang-toggle"
+            dataAttr={{ "data-lang": currentLang }}
+            onClick={() => i18n.toggle()}
+            title={currentLang === "zh" ? "Switch to English" : "切换到中文"}
+            badge={currentLang === "zh" ? "中" : "EN"}
+          >
+            <Icon name="globe" size={18} />
+          </IconToggle>
+
+          {/* Theme toggle — sun/moon SVG */}
+          <IconToggle
+            testid="nav-theme-toggle"
+            dataAttr={{ "data-theme": currentTheme }}
             onClick={() => theme.toggle()}
-            style={{
-              width: "32px",
-              height: "32px",
-              borderRadius: "6px",
-              background: "transparent",
-              border: "1px solid #444",
-              color: "#a3a3a3",
-              cursor: "pointer",
-              fontSize: "14px",
-            }}
-            title={currentTheme === "dark" ? "浅色模式 / Light mode" : "深色模式 / Dark mode"}
+            title={currentTheme === "dark" ? "Switch to light" : "Switch to dark"}
           >
-            {currentTheme === "dark" ? "🌙" : "☀️"}
-          </button>
+            <Icon name={currentTheme === "dark" ? "moon" : "sun"} size={18} />
+          </IconToggle>
 
-          {/* User avatar + logout */}
+          {/* User avatar — click to logout */}
           <button
             data-testid="nav-logout"
             onClick={handleLogout}
+            title={i18n.t("nav.logout")}
             style={{
               width: "32px",
               height: "32px",
               borderRadius: "50%",
-              background: "#dc2626",
-              color: "#fff",
+              background: "#333",
+              color: "#ccc",
               border: "none",
               cursor: "pointer",
-              fontSize: "12px",
-              fontWeight: 700,
+              fontSize: "13px",
+              fontWeight: 600,
+              marginTop: "8px",
+              transition: "background 0.15s",
             }}
-            title={i18n.t("nav.logout")}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#444")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "#333")}
           >
             A
           </button>
@@ -184,5 +194,77 @@ export function AppLayout() {
         <Outlet />
       </main>
     </div>
+  );
+}
+
+/**
+ * Small icon toggle button for nav bottom (language, theme).
+ * 40×40 transparent, hover lightens, optional small corner badge.
+ */
+function IconToggle({
+  children,
+  onClick,
+  title,
+  testid,
+  dataAttr,
+  badge,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  title: string;
+  testid: string;
+  dataAttr?: Record<string, string>;
+  badge?: string;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      data-testid={testid}
+      {...dataAttr}
+      onClick={onClick}
+      title={title}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: "relative",
+        width: "40px",
+        height: "40px",
+        borderRadius: "8px",
+        background: hover ? "rgba(255,255,255,0.08)" : "transparent",
+        border: "none",
+        color: hover ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.6)",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transition: "all 0.15s",
+      }}
+    >
+      {children}
+      {badge && (
+        <span
+          style={{
+            position: "absolute",
+            right: 4,
+            bottom: 4,
+            minWidth: "14px",
+            height: "14px",
+            padding: "0 3px",
+            borderRadius: "7px",
+            background: "var(--brand)",
+            color: "#fff",
+            fontSize: "9px",
+            fontWeight: 700,
+            letterSpacing: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            lineHeight: 1,
+          }}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
   );
 }

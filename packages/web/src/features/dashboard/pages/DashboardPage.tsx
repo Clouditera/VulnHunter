@@ -1,8 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
+import { Icon, type IconName } from "../../../shared/components/Icon.js";
+import { StatusPill } from "../../../shared/components/StatusPill.js";
+import {
+  formatRelativeTime,
+  parseRiskScore,
+  riskScoreColor,
+} from "../../../shared/utils/format.js";
 
 const SEV_COLORS = {
   high: "var(--sev-high)",
@@ -11,27 +17,51 @@ const SEV_COLORS = {
   info: "var(--sev-info)",
 };
 
-const STATE_COLORS: Record<string, string> = {
-  running: "var(--status-running)",
-  completed: "var(--status-completed)",
-  failed: "var(--status-failed)",
-  cancelled: "var(--status-cancelled)",
-  queued: "var(--status-queued)",
+// Distinct palette for CWE bars — rotates through 5 hues (matches prototype).
+const CWE_BAR_COLORS = ["#2563eb", "#7c3aed", "#dc2626", "#ea580c", "#0891b2"];
+
+/** Minimal inline CWE name lookup — enough to humanize common IDs shown in charts. */
+const CWE_NAMES: Record<string, string> = {
+  "CWE-20": "Improper Input Validation",
+  "CWE-22": "Path Traversal",
+  "CWE-78": "OS Command Injection",
+  "CWE-79": "Cross-site Scripting",
+  "CWE-89": "SQL Injection",
+  "CWE-119": "Buffer Overflow",
+  "CWE-120": "Buffer Copy Overflow",
+  "CWE-121": "Stack Buffer Overflow",
+  "CWE-122": "Heap Buffer Overflow",
+  "CWE-125": "Out-of-bounds Read",
+  "CWE-126": "Buffer Over-read",
+  "CWE-190": "Integer Overflow",
+  "CWE-200": "Information Exposure",
+  "CWE-287": "Improper Authentication",
+  "CWE-352": "CSRF",
+  "CWE-362": "Race Condition",
+  "CWE-416": "Use After Free",
+  "CWE-476": "NULL Pointer Dereference",
+  "CWE-477": "Obsolete Function",
+  "CWE-502": "Deserialization of Untrusted Data",
+  "CWE-787": "Out-of-bounds Write",
+  "CWE-798": "Hard-coded Credentials",
+  "CWE-835": "Infinite Loop",
 };
 
 function StatCard({
   label,
   value,
   sub,
-  iconBg,
   icon,
+  iconColor,
+  iconBg,
   testid,
 }: {
   label: string;
   value: string | number;
   sub: string;
+  icon: IconName;
+  iconColor: string;
   iconBg: string;
-  icon: string;
   testid: string;
 }) {
   return (
@@ -40,36 +70,73 @@ function StatCard({
       style={{
         background: "var(--bg-card)",
         borderRadius: "10px",
-        padding: "20px 24px",
+        padding: "20px",
         border: "1px solid var(--border)",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
         display: "flex",
-        gap: "16px",
+        gap: "14px",
         alignItems: "flex-start",
       }}
     >
       <div
         style={{
-          width: "44px",
-          height: "44px",
+          width: "40px",
+          height: "40px",
           borderRadius: "10px",
           background: iconBg,
+          color: iconColor,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: "20px",
           flexShrink: 0,
         }}
       >
-        {icon}
+        <Icon name={icon} size={20} />
       </div>
-      <div>
-        <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "4px" }}>
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: "28px",
+            fontWeight: 700,
+            lineHeight: 1.15,
+            letterSpacing: "-0.01em",
+            color: "var(--text-primary)",
+          }}
+        >
+          {value}
+        </div>
+        <div
+          style={{
+            fontSize: "13px",
+            color: "var(--text-primary)",
+            fontWeight: 500,
+            marginTop: "2px",
+          }}
+        >
           {label}
         </div>
-        <div style={{ fontSize: "28px", fontWeight: 800, lineHeight: 1 }}>{value}</div>
-        <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "4px" }}>{sub}</div>
+        <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "4px" }}>
+          {sub}
+        </div>
       </div>
     </div>
+  );
+}
+
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <h3
+      style={{
+        fontSize: "13px",
+        fontWeight: 600,
+        color: "var(--text-secondary)",
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        margin: "0 0 16px",
+      }}
+    >
+      {title}
+    </h3>
   );
 }
 
@@ -107,54 +174,89 @@ export function DashboardPage() {
   );
   const sevMax = Math.max(...Object.values(sevDist as Record<string, number>), 1);
 
+  const sevLabelKey = {
+    high: "findings.sevHigh",
+    medium: "findings.sevMedium",
+    low: "findings.sevLow",
+    info: "findings.sevInfo",
+  } as const;
+
   return (
     <div
       data-testid="dashboard-page"
-      style={{ padding: "40px", minHeight: "100vh", background: "var(--bg-page)" }}
+      style={{ padding: "32px 40px 48px", minHeight: "100vh", background: "var(--bg-page)" }}
     >
-      <h1 style={{ fontSize: "24px", fontWeight: 700, margin: "0 0 28px" }}>{i18n.t("dashboard.title")}</h1>
+      <div style={{ marginBottom: "24px" }}>
+        <h1
+          style={{
+            fontSize: "24px",
+            fontWeight: 700,
+            margin: 0,
+            letterSpacing: "-0.01em",
+          }}
+        >
+          {i18n.t("dashboard.title")}
+        </h1>
+        <p style={{ fontSize: "14px", color: "var(--text-secondary)", margin: "4px 0 0" }}>
+          {i18n.locale() === "zh" ? "安全审计总览与统计" : "Security audit overview"}
+        </p>
+      </div>
 
       {/* Stat cards */}
       <div
-        style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "16px", marginBottom: "24px" }}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4,1fr)",
+          gap: "16px",
+          marginBottom: "20px",
+        }}
       >
         <StatCard
           testid="dashboard-stat-card-scans"
           label={i18n.t("dashboard.totalScans")}
           value={stats.total_scans?.value ?? 0}
-          sub={`${stats.total_scans?.delta ?? ""}`}
+          sub={stats.total_scans?.delta ?? ""}
+          icon="file-text"
+          iconColor="#2563eb"
           iconBg="var(--bg-info)"
-          icon="📋"
         />
         <StatCard
           testid="dashboard-stat-card-vulns"
           label={i18n.t("dashboard.vulnerabilities")}
           value={totalVulns}
-          sub={`${(sevDist.high as number) ?? 0}H · ${(sevDist.medium as number) ?? 0}M · ${(sevDist.low as number) ?? 0}L`}
+          sub={`${(sevDist.high as number) ?? 0}H · ${(sevDist.medium as number) ?? 0}M · ${(sevDist.low as number) ?? 0}L · ${(sevDist.info as number) ?? 0}I`}
+          icon="shield"
+          iconColor="var(--brand)"
           iconBg="var(--bg-error)"
-          icon="🔴"
         />
         <StatCard
           testid="dashboard-stat-card-duration"
           label={i18n.t("dashboard.avgDuration")}
           value={`${stats.avg_duration_min?.value ?? 0} min`}
           sub={i18n.t("dashboard.perScan")}
+          icon="clock"
+          iconColor="#16a34a"
           iconBg="var(--bg-success)"
-          icon="⏱"
         />
         <StatCard
           testid="dashboard-stat-card-tokens"
           label={i18n.t("dashboard.tokenUsage")}
           value="—"
           sub={i18n.t("dashboard.cumulative")}
+          icon="activity"
+          iconColor="#7c3aed"
           iconBg="var(--bg-purple)"
-          icon="🔮"
         />
       </div>
 
       {/* Charts row */}
       <div
-        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "24px" }}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "16px",
+          marginBottom: "20px",
+        }}
       >
         {/* Severity Distribution */}
         <div
@@ -162,28 +264,65 @@ export function DashboardPage() {
           style={{
             background: "var(--bg-card)",
             borderRadius: "10px",
-            padding: "20px 24px",
+            padding: "22px 24px",
             border: "1px solid var(--border)",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
           }}
         >
-          <h3 style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 16px" }}>
-            {i18n.t("dashboard.severityDist")}
-          </h3>
-          {(["high", "medium", "low", "info"] as const).map((sev) => {
-            const count = (sevDist[sev] as number) ?? 0;
-            const pct = sevMax > 0 ? (count / sevMax) * 100 : 0;
-            return (
-              <div key={sev} style={{ marginBottom: "10px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "4px" }}>
-                  <span style={{ color: SEV_COLORS[sev], fontWeight: 600, textTransform: "capitalize" }}>{sev}</span>
-                  <span style={{ color: "var(--text-secondary)" }}>{count}</span>
+          <SectionHeader title={i18n.t("dashboard.severityDist")} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {(["high", "medium", "low", "info"] as const).map((sev) => {
+              const count = (sevDist[sev] as number) ?? 0;
+              const pct = sevMax > 0 ? (count / sevMax) * 100 : 0;
+              return (
+                <div
+                  key={sev}
+                  style={{ display: "grid", gridTemplateColumns: "56px 1fr 30px", alignItems: "center", gap: "12px" }}
+                >
+                  <span
+                    style={{
+                      color: "var(--text-secondary)",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      textAlign: "right",
+                    }}
+                  >
+                    {i18n.t(sevLabelKey[sev])}
+                  </span>
+                  <div
+                    style={{
+                      height: "22px",
+                      background: "var(--divider)",
+                      borderRadius: "4px",
+                      overflow: "hidden",
+                      position: "relative",
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${Math.max(pct, count > 0 ? 6 : 0)}%`,
+                        background: SEV_COLORS[sev],
+                        borderRadius: "4px",
+                        display: "flex",
+                        alignItems: "center",
+                        paddingLeft: "10px",
+                        color: "#fff",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        transition: "width 0.5s cubic-bezier(0.2,0.8,0.2,1)",
+                      }}
+                    >
+                      {count > 0 && count}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: "12px", color: "var(--text-secondary)", textAlign: "right" }}>
+                    {count}
+                  </span>
                 </div>
-                <div style={{ height: "8px", background: "var(--border)", borderRadius: "4px", overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${pct}%`, background: SEV_COLORS[sev], borderRadius: "4px", transition: "width 0.5s" }} />
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
 
         {/* CWE Top 5 */}
@@ -192,31 +331,67 @@ export function DashboardPage() {
           style={{
             background: "var(--bg-card)",
             borderRadius: "10px",
-            padding: "20px 24px",
+            padding: "22px 24px",
             border: "1px solid var(--border)",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
           }}
         >
-          <h3 style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 16px" }}>
-            {i18n.t("dashboard.cweTop5")}
-          </h3>
+          <SectionHeader title={i18n.t("dashboard.cweTop5")} />
           {cweTop5.length === 0 ? (
-            <div style={{ color: "var(--text-secondary)", fontSize: "13px" }}>{i18n.t("dashboard.noCwe")}</div>
+            <div style={{ color: "var(--text-secondary)", fontSize: "13px", padding: "8px 0" }}>
+              {i18n.t("dashboard.noCwe")}
+            </div>
           ) : (
-            cweTop5.map((item: { cwe: string | null; count: number }, i: number) => {
-              const maxCount = cweTop5[0]?.count ?? 1;
-              const pct = (item.count / maxCount) * 100;
-              return (
-                <div key={i} style={{ marginBottom: "10px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "4px" }}>
-                    <span style={{ fontWeight: 500 }}>{item.cwe ?? "Unknown"}</span>
-                    <span style={{ color: "var(--text-secondary)" }}>{item.count}</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {cweTop5.map((item: { cwe: string | null; count: number }, i: number) => {
+                const maxCount = cweTop5[0]?.count ?? 1;
+                const pct = (item.count / maxCount) * 100;
+                const id = item.cwe ?? "CWE-?";
+                const name = CWE_NAMES[id];
+                const color = CWE_BAR_COLORS[i % CWE_BAR_COLORS.length];
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(180px, 1fr) 1.3fr 30px",
+                      gap: "12px",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span style={{ fontSize: "12px", color: "var(--text-primary)", fontWeight: 500 }}>
+                      <span>{id}</span>
+                      {name && (
+                        <span style={{ color: "var(--text-secondary)", fontWeight: 400 }}> {name}</span>
+                      )}
+                    </span>
+                    <div
+                      style={{
+                        height: "14px",
+                        background: "var(--divider)",
+                        borderRadius: "3px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: "100%",
+                          width: `${pct}%`,
+                          background: color,
+                          borderRadius: "3px",
+                          transition: "width 0.5s cubic-bezier(0.2,0.8,0.2,1)",
+                        }}
+                      />
+                    </div>
+                    <span
+                      style={{ fontSize: "12px", color: "var(--text-secondary)", textAlign: "right" }}
+                    >
+                      {item.count}
+                    </span>
                   </div>
-                  <div style={{ height: "8px", background: "var(--border)", borderRadius: "4px", overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${pct}%`, background: "var(--chart-bar)", borderRadius: "4px" }} />
-                  </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
@@ -224,18 +399,49 @@ export function DashboardPage() {
       {/* Recent Scans */}
       <div
         data-testid="dashboard-recent-scans"
-        style={{ background: "var(--bg-card)", borderRadius: "10px", border: "1px solid var(--border)" }}
+        style={{
+          background: "var(--bg-card)",
+          borderRadius: "10px",
+          border: "1px solid var(--border)",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+          overflow: "hidden",
+        }}
       >
-        <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--divider)" }}>
-          <h3 style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", margin: 0 }}>
-            {i18n.t("dashboard.recentScans")}
-          </h3>
+        <div style={{ padding: "18px 24px 14px" }}>
+          <SectionHeader title={i18n.t("dashboard.recentScans")} />
         </div>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+          <thead>
+            <tr style={{ borderTop: "1px solid var(--divider)", borderBottom: "1px solid var(--divider)" }}>
+              {[
+                i18n.t("tasks.col.project") || "Project",
+                i18n.t("tasks.col.status") || "Status",
+                i18n.t("tasks.col.findings") || (i18n.locale() === "zh" ? "漏洞" : "Findings"),
+                i18n.t("tasks.col.riskScore"),
+                i18n.t("tasks.col.duration") || (i18n.locale() === "zh" ? "耗时" : "Duration"),
+                i18n.t("tasks.col.time") || (i18n.locale() === "zh" ? "时间" : "Time"),
+              ].map((h, i) => (
+                <th
+                  key={i}
+                  style={{
+                    padding: "10px 20px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    color: "var(--text-secondary)",
+                    textAlign: "left",
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
           <tbody>
             {recentScans.length === 0 ? (
               <tr>
-                <td style={{ padding: "24px", textAlign: "center", color: "var(--text-secondary)" }}>
+                <td colSpan={6} style={{ padding: "32px", textAlign: "center", color: "var(--text-secondary)" }}>
                   {i18n.t("dashboard.noScans")}
                 </td>
               </tr>
@@ -246,74 +452,95 @@ export function DashboardPage() {
                   project_name: string;
                   state: string;
                   severity_counts: { h: number; m: number; l: number; i: number };
-                  risk_score: number | null;
+                  risk_score: number | null | string;
                   duration_ms: number | null;
                   created_at: string;
-                }) => (
-                  <tr
-                    key={scan.id}
-                    data-testid="recent-scan-row"
-                    data-status={scan.state}
-                    onClick={() => navigate(`/tasks/${scan.id}`)}
-                    style={{
-                      borderBottom: "1px solid var(--divider)",
-                      cursor: "pointer",
-                      transition: "background 0.1s",
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-page)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                  >
-                    <td style={{ padding: "12px 24px", fontWeight: 500 }}>{scan.project_name}</td>
-                    <td style={{ padding: "12px 16px" }}>
-                      <span
+                }) => {
+                  const risk = parseRiskScore(scan.risk_score);
+                  const sc = scan.severity_counts;
+                  const hasCounts = sc.h + sc.m + sc.l + sc.i > 0;
+                  return (
+                    <tr
+                      key={scan.id}
+                      data-testid="recent-scan-row"
+                      data-status={scan.state}
+                      onClick={() => navigate(`/tasks/${scan.id}`)}
+                      style={{
+                        borderBottom: "1px solid var(--divider)",
+                        cursor: "pointer",
+                        transition: "background 0.1s",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                    >
+                      <td style={{ padding: "14px 20px", fontWeight: 500 }}>{scan.project_name}</td>
+                      <td style={{ padding: "14px 20px" }}>
+                        <StatusPill state={scan.state} />
+                      </td>
+                      <td style={{ padding: "14px 20px", fontSize: "12px" }}>
+                        {hasCounts ? (
+                          <span style={{ display: "inline-flex", gap: "6px" }}>
+                            {sc.h > 0 && <MiniSevChip count={sc.h} sev="high" />}
+                            {sc.m > 0 && <MiniSevChip count={sc.m} sev="medium" />}
+                            {sc.l > 0 && <MiniSevChip count={sc.l} sev="low" />}
+                            {sc.i > 0 && <MiniSevChip count={sc.i} sev="info" />}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--text-secondary)" }}>—</span>
+                        )}
+                      </td>
+                      <td
                         style={{
-                          color: STATE_COLORS[scan.state] ?? "var(--status-cancelled)",
-                          fontSize: "12px",
+                          padding: "14px 20px",
+                          fontSize: "13px",
                           fontWeight: 600,
-                          textTransform: "capitalize",
+                          color: risk != null ? riskScoreColor(risk) : "var(--text-secondary)",
                         }}
                       >
-                        ● {i18n.t(`tasks.status.${scan.state}`)}
-                      </span>
-                    </td>
-                    <td style={{ padding: "12px 16px", fontSize: "12px", color: "var(--text-secondary)" }}>
-                      {scan.severity_counts.h > 0 && (
-                        <span style={{ color: SEV_COLORS.high, marginRight: "6px", fontWeight: 600 }}>
-                          {scan.severity_counts.h}H
-                        </span>
-                      )}
-                      {scan.severity_counts.m > 0 && (
-                        <span style={{ color: SEV_COLORS.medium, marginRight: "6px", fontWeight: 600 }}>
-                          {scan.severity_counts.m}M
-                        </span>
-                      )}
-                      {scan.severity_counts.l > 0 && (
-                        <span style={{ color: SEV_COLORS.low, fontWeight: 600 }}>
-                          {scan.severity_counts.l}L
-                        </span>
-                      )}
-                      {!scan.severity_counts.h && !scan.severity_counts.m && !scan.severity_counts.l && (
-                        <span>—</span>
-                      )}
-                    </td>
-                    <td style={{ padding: "12px 16px", fontSize: "12px", color: "var(--text-secondary)" }}>
-                      {scan.duration_ms ? `${Math.round(scan.duration_ms / 60_000)} min` : "—"}
-                    </td>
-                    <td style={{ padding: "12px 24px", fontSize: "12px", color: "var(--text-secondary)" }}>
-                      {new Date(scan.created_at).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </td>
-                  </tr>
-                ),
+                        {risk != null ? risk.toFixed(1) : "—"}
+                      </td>
+                      <td style={{ padding: "14px 20px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                        {scan.duration_ms ? `${Math.round(scan.duration_ms / 60_000)} min` : "—"}
+                      </td>
+                      <td style={{ padding: "14px 20px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                        {formatRelativeTime(scan.created_at)}
+                      </td>
+                    </tr>
+                  );
+                },
               )
             )}
           </tbody>
         </table>
       </div>
     </div>
+  );
+}
+
+function MiniSevChip({ count, sev }: { count: number; sev: keyof typeof SEV_COLORS }) {
+  const letter = sev === "high" ? "H" : sev === "medium" ? "M" : sev === "low" ? "L" : "I";
+  const bgMap = {
+    high: "rgba(234, 88, 12, 0.14)",
+    medium: "rgba(202, 138, 4, 0.14)",
+    low: "rgba(37, 99, 235, 0.14)",
+    info: "rgba(156, 163, 175, 0.18)",
+  } as const;
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "2px 6px",
+        borderRadius: "4px",
+        background: bgMap[sev],
+        color: SEV_COLORS[sev],
+        fontSize: "11px",
+        fontWeight: 700,
+        letterSpacing: "0.02em",
+      }}
+    >
+      {count}
+      {letter}
+    </span>
   );
 }
