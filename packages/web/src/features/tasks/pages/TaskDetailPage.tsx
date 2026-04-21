@@ -110,16 +110,17 @@ export function TaskDetailPage() {
             color: "var(--text-secondary)",
             fontSize: "13px",
             fontWeight: 500,
+            lineHeight: 1,
             padding: 0,
-            marginBottom: "12px",
+            marginBottom: "14px",
             display: "inline-flex",
             alignItems: "center",
             gap: "6px",
             transition: "color 0.15s",
           }}
         >
-          <Icon name="arrow-left" size={16} />
-          {i18n.t("taskDetail.back")}
+          <Icon name="arrow-left" size={16} style={{ display: "block" }} />
+          <span style={{ lineHeight: 1 }}>{i18n.t("taskDetail.back")}</span>
         </button>
 
         {/* Title row: name + status pill inline */}

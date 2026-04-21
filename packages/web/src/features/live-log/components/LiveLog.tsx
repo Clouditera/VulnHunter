@@ -142,8 +142,7 @@ export function LiveLog({ taskId, taskState }: Props) {
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            height: "22px",
-            lineHeight: "22px",
+            lineHeight: 1.4,
           }}
         >
           {toolParts ? (
@@ -229,10 +228,18 @@ export function LiveLog({ taskId, taskState }: Props) {
             ))}
           </div>
 
-          {/* Event stream */}
+          {/* Event stream — single-line format matching prototype .lls-line */}
           <div
             ref={streamRef}
-            style={{ height: "320px", overflow: "auto", padding: "8px", fontFamily: "monospace", fontSize: "11px" }}
+            style={{
+              height: "340px",
+              overflow: "auto",
+              padding: "14px 18px",
+              fontFamily: "SF Mono, JetBrains Mono, Menlo, monospace",
+              fontSize: "12px",
+              lineHeight: 1.85,
+              color: "var(--code-text)",
+            }}
             onScroll={(e) => {
               const el = e.currentTarget;
               const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
@@ -240,38 +247,12 @@ export function LiveLog({ taskId, taskState }: Props) {
             }}
           >
             {filteredEvents.length === 0 ? (
-              <div style={{ color: "var(--log-text-dim)", padding: "16px" }}>{i18n.t("liveLog.noEvents")}</div>
+              <div style={{ color: "var(--log-text-dim)", padding: "6px 0" }}>
+                {i18n.t("liveLog.noEvents")}
+              </div>
             ) : (
               filteredEvents.map((ev, i) => (
-                <div key={`${ev.seq}-${i}`} data-testid="live-log-entry" style={{ display: "flex", gap: "8px", marginBottom: "3px" }}>
-                  <span data-testid="log-entry-timestamp" style={{ color: "var(--log-text-timestamp)", flexShrink: 0 }}>
-                    {new Date(ev.ts).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                  </span>
-                  <span style={{ color: sourceColor(ev.source), flexShrink: 0 }}>[{ev.source}]</span>
-                  {ev.type === "tool_call" && (
-                    <>
-                      <span data-testid="log-entry-tool" style={{ color: "var(--log-text-tool)" }}>{ev.tool}</span>
-                      {ev.args_summary && <span style={{ color: "var(--log-text-dim)" }}>{ev.args_summary}</span>}
-                      {ev.duration_ms && (
-                        <span data-testid="log-entry-status" style={{ color: ev.status === "success" ? "var(--log-stage-end)" : "var(--status-failed)" }}>
-                          {ev.duration_ms}ms
-                        </span>
-                      )}
-                    </>
-                  )}
-                  {ev.type === "stage_start" && (
-                    <span style={{ color: "var(--log-stage-start)" }}>[{ev.stage}] starting</span>
-                  )}
-                  {ev.type === "stage_end" && (
-                    <span style={{ color: "var(--log-stage-end)" }}>[{ev.stage}] done</span>
-                  )}
-                  {ev.type === "task_status" && (
-                    <span style={{ color: "var(--log-text-tool)", fontWeight: 600 }}>Task {ev.state}</span>
-                  )}
-                  {ev.type === "error" && (
-                    <span style={{ color: "var(--status-failed)" }}>ERROR: {(ev as LiveLogEvent & { summary?: string }).summary ?? "unknown"}</span>
-                  )}
-                </div>
+                <LogLine key={`${ev.seq}-${i}`} ev={ev} />
               ))
             )}
           </div>
@@ -303,4 +284,116 @@ export function LiveLog({ taskId, taskState }: Props) {
       )}
     </div>
   );
+}
+
+/**
+ * Single-line log entry matching prototype .lls-line:
+ * `[HH:MM:SS]  {✓|✕|⋯}  {tool}({args_summary}) · {duration}ms`
+ * Non-tool_call events (stage_start, stage_end, task_status, error)
+ * use the same skeleton with an appropriate icon + label.
+ */
+function LogLine({ ev }: { ev: LiveLogEvent }) {
+  const ts = new Date(ev.ts).toLocaleTimeString("en-US", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  let icon: { char: string; color: string; pulse?: boolean };
+  let tool = "";
+  let param = "";
+  let dur = ev.duration_ms;
+
+  if (ev.type === "tool_call") {
+    icon = ev.status === "error"
+      ? { char: "✕", color: "#ef4444" }
+      : ev.status === "success"
+        ? { char: "✓", color: "#10b981" }
+        : { char: "⋯", color: "#f59e0b", pulse: true };
+    tool = ev.tool ?? "";
+    // strip redundant "<tool>: " prefix from youngflow args_summary
+    let a = ev.args_summary ?? "";
+    if (tool && a.startsWith(`${tool}: `)) a = a.slice(tool.length + 2);
+    param = a;
+  } else if (ev.type === "stage_start") {
+    icon = { char: "▸", color: "#f59e0b" };
+    tool = "stage";
+    param = `${ev.stage ?? ""} starting`;
+    dur = undefined;
+  } else if (ev.type === "stage_end") {
+    icon = { char: "✓", color: "#10b981" };
+    tool = "stage";
+    param = `${ev.stage ?? ""} done`;
+    dur = undefined;
+  } else if (ev.type === "task_status") {
+    icon = { char: "●", color: "#93c5fd" };
+    tool = "task";
+    param = ev.state ?? "";
+    dur = undefined;
+  } else if (ev.type === "error") {
+    icon = { char: "✕", color: "#ef4444" };
+    tool = "error";
+    param = (ev as LiveLogEvent & { summary?: string }).summary ?? "unknown";
+    dur = undefined;
+  } else {
+    icon = { char: "·", color: "#737373" };
+    tool = ev.type;
+    param = "";
+    dur = undefined;
+  }
+
+  return (
+    <div
+      data-testid="live-log-entry"
+      style={{
+        display: "block",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      <span data-testid="log-entry-timestamp" style={{ color: "#6b7280", marginRight: "10px" }}>
+        [{ts}]
+      </span>
+      <span
+        style={{
+          display: "inline-block",
+          width: "14px",
+          textAlign: "center",
+          marginRight: "6px",
+          color: icon.color,
+          animation: icon.pulse ? "ls-pulse 1.2s infinite" : undefined,
+        }}
+      >
+        {icon.char}
+      </span>
+      {tool && (
+        <span data-testid="log-entry-tool" style={{ color: "#93c5fd", fontWeight: 600 }}>
+          {tool}
+        </span>
+      )}
+      {param && (
+        <>
+          <span style={{ color: "#d4d4d4" }}>({param})</span>
+        </>
+      )}
+      {dur != null && (
+        <span
+          data-testid="log-entry-status"
+          style={{ color: "#737373", marginLeft: "8px" }}
+        >
+          · {dur}ms
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Keyframes for pending icon pulse — inject once.
+if (typeof document !== "undefined" && !document.getElementById("ls-pulse-keyframes")) {
+  const styleTag = document.createElement("style");
+  styleTag.id = "ls-pulse-keyframes";
+  styleTag.textContent = `@keyframes ls-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.82); } }`;
+  document.head.appendChild(styleTag);
 }
