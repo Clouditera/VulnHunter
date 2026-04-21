@@ -38,6 +38,7 @@ export async function getDefaultCredential(): Promise<DecryptedLlmCredential | n
            api_key_ciphertext, api_key_iv, api_key_tag
     FROM llm_credentials
     WHERE is_default = true
+    ORDER BY created_at DESC
     LIMIT 1
   `;
 
