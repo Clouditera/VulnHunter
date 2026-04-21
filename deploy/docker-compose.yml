@@ -6,12 +6,12 @@ services:
     container_name: vulnhunt-service
     restart: unless-stopped
     ports:
-      - "${PORT:-8080}:8080"
+      - "${PORT:-28080}:28080"
     environment:
-      PORT: "8080"
+      PORT: "28080"
       DATABASE_URL: "postgresql://vulnhunt:${DB_PASSWORD:-vulnhunt}@db:5432/vulnhunt"
       MINIO_ENDPOINT: "minio"
-      MINIO_PORT: "9000"
+      MINIO_PORT: "9000"  # internal container port, not host
       MINIO_USE_SSL: "false"
       MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
       MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
@@ -36,6 +36,8 @@ services:
     image: postgres:16-alpine
     container_name: vulnhunt-db
     restart: unless-stopped
+    ports:
+      - "${DB_HOST_PORT:-25432}:5432"
     environment:
       POSTGRES_DB: vulnhunt
       POSTGRES_USER: vulnhunt
@@ -55,6 +57,9 @@ services:
     container_name: vulnhunt-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
+    ports:
+      - "29000:9000"
+      - "29001:9001"
     environment:
       MINIO_ROOT_USER: "${MINIO_ACCESS_KEY:-minioadmin}"
       MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY:-minioadmin}"

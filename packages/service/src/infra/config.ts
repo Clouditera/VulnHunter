@@ -36,14 +36,14 @@ export interface ServiceConfig {
 
 export function loadConfig(): ServiceConfig {
   return {
-    port: Number(optionalEnv("PORT", "8080")),
+    port: Number(optionalEnv("PORT", "28080")),
     dataDir: optionalEnv("DATA_DIR", "/data/vulnhunt"),
     db: {
-      url: optionalEnv("DATABASE_URL", "postgresql://vulnhunt:vulnhunt@localhost:5432/vulnhunt"),
+      url: optionalEnv("DATABASE_URL", "postgresql://vulnhunt:vulnhunt@localhost:25432/vulnhunt"),
     },
     minio: {
       endpoint: optionalEnv("MINIO_ENDPOINT", "localhost"),
-      port: Number(optionalEnv("MINIO_PORT", "9000")),
+      port: Number(optionalEnv("MINIO_PORT", "29000")),
       useSSL: optionalEnv("MINIO_USE_SSL", "false") === "true",
       accessKey: optionalEnv("MINIO_ACCESS_KEY", "minioadmin"),
       secretKey: optionalEnv("MINIO_SECRET_KEY", "minioadmin"),
