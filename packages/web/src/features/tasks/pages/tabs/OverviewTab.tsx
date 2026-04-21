@@ -58,21 +58,24 @@ export function OverviewTab() {
 
       {/* Risk Assessment */}
       <Card title="Risk Assessment">
-        {task.risk_score != null ? (
+        {task.risk_score != null ? (() => {
+          const rs = parseFloat(String(task.risk_score));
+          return (
           <div style={{ textAlign: "center", padding: "16px 0" }}>
             <div
               style={{
                 fontSize: "48px",
                 fontWeight: 800,
-                color: task.risk_score >= 7 ? "var(--sev-high)" : task.risk_score >= 4 ? "var(--sev-medium)" : "var(--status-completed)",
+                color: rs >= 7 ? "var(--sev-high)" : rs >= 4 ? "var(--sev-medium)" : "var(--status-completed)",
                 lineHeight: 1,
               }}
             >
-              {task.risk_score.toFixed(1)}
+              {rs.toFixed(1)}
             </div>
             <div style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: "4px" }}>/ 10</div>
           </div>
-        ) : (
+          );
+        })() : (
           <div style={{ color: "var(--text-secondary)", fontSize: "13px", padding: "16px 0" }}>
             {task.state === "completed" ? "Score not available" : "Analysis in progress…"}
           </div>

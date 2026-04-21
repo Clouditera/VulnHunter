@@ -13,6 +13,22 @@ const STATE_COLORS: Record<string, string> = {
   paused: "var(--status-paused)",
 };
 
+function toNum(v: string | number | null): number | null {
+  if (v == null) return null;
+  const n = typeof v === "number" ? v : parseFloat(String(v));
+  return Number.isNaN(n) ? null : n;
+}
+
+function RiskScore({ value }: { value: string | number | null }) {
+  const rs = toNum(value);
+  if (rs == null) return <span style={{ color: "var(--text-secondary)" }}>—</span>;
+  return (
+    <span style={{ fontWeight: 700, color: rs >= 7 ? "var(--sev-high)" : rs >= 4 ? "var(--sev-medium)" : "var(--status-completed)" }}>
+      {rs.toFixed(1)}
+    </span>
+  );
+}
+
 function StateBadge({ state }: { state: string }) {
   return (
     <span
@@ -190,14 +206,7 @@ export function TasksListPage() {
                   </td>
                   <td style={{ padding: "12px 16px" }}>
                     {task.risk_score != null ? (
-                      <span
-                        style={{
-                          fontWeight: 700,
-                          color: task.risk_score >= 7 ? "var(--sev-high)" : task.risk_score >= 4 ? "var(--sev-medium)" : "var(--status-completed)",
-                        }}
-                      >
-                        {task.risk_score.toFixed(1)}
-                      </span>
+                      <RiskScore value={task.risk_score} />
                     ) : (
                       <span style={{ color: "var(--text-secondary)" }}>—</span>
                     )}

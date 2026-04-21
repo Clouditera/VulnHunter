@@ -1,6 +1,8 @@
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../../shared/api/client.js";
+import { i18n } from "../../../shared/i18n/index.js";
 
 const SEV_COLORS = {
   high: "var(--sev-high)",
@@ -73,6 +75,8 @@ function StatCard({
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const [, forceUpdate] = useState(0);
+  useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
 
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard"],
@@ -87,7 +91,7 @@ export function DashboardPage() {
         data-testid="dashboard-page"
         style={{ padding: "40px", color: "var(--text-secondary)" }}
       >
-        Loading…
+        {i18n.t("dashboard.loading")}
       </div>
     );
   }
@@ -108,7 +112,7 @@ export function DashboardPage() {
       data-testid="dashboard-page"
       style={{ padding: "40px", minHeight: "100vh", background: "var(--bg-page)" }}
     >
-      <h1 style={{ fontSize: "24px", fontWeight: 700, margin: "0 0 28px" }}>Dashboard</h1>
+      <h1 style={{ fontSize: "24px", fontWeight: 700, margin: "0 0 28px" }}>{i18n.t("dashboard.title")}</h1>
 
       {/* Stat cards */}
       <div
@@ -116,7 +120,7 @@ export function DashboardPage() {
       >
         <StatCard
           testid="dashboard-stat-card-scans"
-          label="Total Scans"
+          label={i18n.t("dashboard.totalScans")}
           value={stats.total_scans?.value ?? 0}
           sub={`${stats.total_scans?.delta ?? ""}`}
           iconBg="var(--bg-info)"
@@ -124,7 +128,7 @@ export function DashboardPage() {
         />
         <StatCard
           testid="dashboard-stat-card-vulns"
-          label="Vulnerabilities"
+          label={i18n.t("dashboard.vulnerabilities")}
           value={totalVulns}
           sub={`${(sevDist.high as number) ?? 0}H · ${(sevDist.medium as number) ?? 0}M · ${(sevDist.low as number) ?? 0}L`}
           iconBg="var(--bg-error)"
@@ -132,17 +136,17 @@ export function DashboardPage() {
         />
         <StatCard
           testid="dashboard-stat-card-duration"
-          label="Avg. Duration"
+          label={i18n.t("dashboard.avgDuration")}
           value={`${stats.avg_duration_min?.value ?? 0} min`}
-          sub="per scan"
+          sub={i18n.t("dashboard.perScan")}
           iconBg="var(--bg-success)"
           icon="⏱"
         />
         <StatCard
           testid="dashboard-stat-card-tokens"
-          label="Token Usage"
+          label={i18n.t("dashboard.tokenUsage")}
           value="—"
-          sub="cumulative"
+          sub={i18n.t("dashboard.cumulative")}
           iconBg="var(--bg-purple)"
           icon="🔮"
         />
@@ -163,7 +167,7 @@ export function DashboardPage() {
           }}
         >
           <h3 style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 16px" }}>
-            Severity Distribution
+            {i18n.t("dashboard.severityDist")}
           </h3>
           {(["high", "medium", "low", "info"] as const).map((sev) => {
             const count = (sevDist[sev] as number) ?? 0;
@@ -193,10 +197,10 @@ export function DashboardPage() {
           }}
         >
           <h3 style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 16px" }}>
-            CWE Top 5
+            {i18n.t("dashboard.cweTop5")}
           </h3>
           {cweTop5.length === 0 ? (
-            <div style={{ color: "var(--text-secondary)", fontSize: "13px" }}>No CWE data yet</div>
+            <div style={{ color: "var(--text-secondary)", fontSize: "13px" }}>{i18n.t("dashboard.noCwe")}</div>
           ) : (
             cweTop5.map((item: { cwe: string | null; count: number }, i: number) => {
               const maxCount = cweTop5[0]?.count ?? 1;
@@ -224,7 +228,7 @@ export function DashboardPage() {
       >
         <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--divider)" }}>
           <h3 style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", margin: 0 }}>
-            Recent Scans
+            {i18n.t("dashboard.recentScans")}
           </h3>
         </div>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
@@ -232,7 +236,7 @@ export function DashboardPage() {
             {recentScans.length === 0 ? (
               <tr>
                 <td style={{ padding: "24px", textAlign: "center", color: "var(--text-secondary)" }}>
-                  No scans yet
+                  {i18n.t("dashboard.noScans")}
                 </td>
               </tr>
             ) : (

@@ -115,7 +115,7 @@ export function TaskDetailPage() {
                 ● {task.state}
               </span>
               {task.risk_score != null && (
-                <span>Risk: <strong>{task.risk_score.toFixed(1)}/10</strong></span>
+                <span>Risk: <strong>{parseFloat(String(task.risk_score)).toFixed(1)}/10</strong></span>
               )}
               <span>Duration: <strong>{formatDuration(task.duration_ms)}</strong></span>
               <span>Started: <strong>{formatDate(task.started_at)}</strong></span>
