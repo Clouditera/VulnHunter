@@ -304,17 +304,9 @@ export function DashboardPage() {
                         width: `${Math.max(pct, count > 0 ? 6 : 0)}%`,
                         background: SEV_COLORS[sev],
                         borderRadius: "4px",
-                        display: "flex",
-                        alignItems: "center",
-                        paddingLeft: "10px",
-                        color: "#fff",
-                        fontSize: "11px",
-                        fontWeight: 700,
                         transition: "width 0.5s cubic-bezier(0.2,0.8,0.2,1)",
                       }}
-                    >
-                      {count > 0 && count}
-                    </div>
+                    />
                   </div>
                   <span style={{ fontSize: "12px", color: "var(--text-secondary)", textAlign: "right" }}>
                     {count}

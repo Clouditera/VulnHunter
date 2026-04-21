@@ -128,7 +128,21 @@ export function LiveLog({ taskId, taskState }: Props) {
           transition: "background 0.15s",
         }}
       >
-        <span data-testid="live-log-status-badge" data-status={taskState} style={{ flexShrink: 0 }}>
+        {/*
+          Wrapper must be a flex/inline-flex container, not a bare <span>:
+          a bare span inherits the parent's line-height and pushes the pill
+          ~4px below its visual center in a 36px flex row.
+        */}
+        <span
+          data-testid="live-log-status-badge"
+          data-status={taskState}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            lineHeight: 0,
+            flexShrink: 0,
+          }}
+        >
           <StatusPill state={taskState} size="sm" />
         </span>
         <span
