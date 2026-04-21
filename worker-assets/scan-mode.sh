@@ -26,7 +26,7 @@ youngflow "$FLOW_DIR" \
   --json-log \
   ${UNTIL:+--until "$UNTIL"} \
   ${RESUME:+--resume} \
-  2>/workspace/out/.youngflow/logs/service-events.jsonl
+  2>/workspace/out/.youngflow/logs/youngflow.service.jsonl
 
 EXIT=$?
 
