@@ -171,6 +171,12 @@ function handleBridgeEvent(proxy: SessionProxy, line: string): void {
     });
   }
 
+  // Clear event buffer when conversation turn completes — completed messages
+  // are persisted to DB and loaded via REST. Only in-flight events need buffering.
+  if (event.type === "agent_end") {
+    proxy.eventBuffer = [];
+  }
+
   // Serialize with session_id envelope
   const serialized = JSON.stringify({ session_id: proxy.sessionId, ...event });
 
