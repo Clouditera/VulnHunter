@@ -22,6 +22,8 @@ export interface DbTask {
   started_at: Date | null;
   completed_at: Date | null;
   duration_ms: number | null;
+  findings_indexed_at: Date | null;
+  metadata: Record<string, unknown>;
 }
 
 export async function createTask(params: {
@@ -126,4 +128,10 @@ export async function getQueuedTasks(limit: number): Promise<DbTask[]> {
     ORDER BY created_at ASC
     LIMIT ${limit}
   `;
+}
+
+export async function deleteTask(id: string): Promise<boolean> {
+  const db = getDb();
+  const rows = await db`DELETE FROM tasks WHERE id = ${id} RETURNING id`;
+  return rows.length > 0;
 }

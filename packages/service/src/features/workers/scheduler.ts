@@ -4,6 +4,8 @@
  */
 
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { load as yamlLoad } from "js-yaml";
 
 import { execSync } from "node:child_process";
 import { logger } from "../../infra/logger.js";
@@ -53,6 +55,12 @@ export class TaskScheduler {
             logger.info({ taskId, count }, "Findings indexed after scan completion");
           } catch (err) {
             logger.error({ err, taskId }, "Failed to index findings");
+          }
+          // Extract profiler + execution metadata
+          try {
+            await this.extractMetadata(taskId);
+          } catch (err) {
+            logger.warn({ err, taskId }, "Failed to extract task metadata");
           }
         }
 
@@ -158,6 +166,89 @@ export class TaskScheduler {
       // If no code package (e.g. git clone still pending), just continue
       // Mock worker doesn't need source code
       logger.debug({ err, taskId: task.id }, "Could not extract code package (may be expected)");
+    }
+  }
+
+  private async extractMetadata(taskId: string): Promise<void> {
+    const db = getDb();
+    const hostWorkDir = getHostWorkDir(this.config.dataDir, taskId);
+    const metadata: Record<string, unknown> = {};
+
+    // 1. Profiler data
+    try {
+      const profilerPath = join(hostWorkDir, "out", "profiler", "project-profiler.yaml");
+      const raw = readFileSync(profilerPath, "utf-8");
+      const profiler = yamlLoad(raw) as Record<string, unknown>;
+      const techStack = (profiler.tech_stack ?? profiler) as Record<string, unknown>;
+      const codeStats = (profiler.code_stats ?? profiler) as Record<string, unknown>;
+      const basicInfo = (profiler.basic_info ?? profiler) as Record<string, unknown>;
+      metadata.profile = {
+        project_name: basicInfo.project_name,
+        language: techStack.language ?? profiler.primary_language,
+        build_system: techStack.package_manager ?? profiler.build_system,
+        total_files: codeStats.file_count ?? profiler.total_files,
+        total_loc: codeStats.loc ?? profiler.total_loc,
+        description: (profiler.scan_scope as Record<string, unknown>)?.description ?? profiler.description,
+      };
+    } catch {
+      // Profiler output may not exist
+    }
+
+    // 2. Execution stats from service events
+    try {
+      const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
+      const eventsFile = join(eventsDir, "youngflow.service.jsonl");
+      const lines = readFileSync(eventsFile, "utf-8").split("\n").filter(Boolean);
+      let totalTokensIn = 0;
+      let totalTokensOut = 0;
+      let toolCallCount = 0;
+      let stageCount = 0;
+
+      for (const line of lines) {
+        try {
+          const ev = JSON.parse(line);
+          if (ev.event === "stage_done" || ev.type === "stage_end") {
+            stageCount++;
+            totalTokensIn += ev.tokens_in ?? 0;
+            totalTokensOut += ev.tokens_out ?? 0;
+            toolCallCount += ev.tools ?? 0;
+          }
+        } catch { /* skip bad lines */ }
+      }
+
+      metadata.execution = {
+        model: undefined, // filled from cred below
+        stages_completed: stageCount,
+        total_tokens_in: totalTokensIn,
+        total_tokens_out: totalTokensOut,
+        tool_call_count: toolCallCount,
+      };
+
+      // Update numeric columns too
+      await db`
+        UPDATE tasks SET
+          total_tokens_in = ${totalTokensIn},
+          total_tokens_out = ${totalTokensOut},
+          tool_call_count = ${toolCallCount},
+          stage_count = ${stageCount}
+        WHERE id = ${taskId}
+      `;
+    } catch {
+      // Events file may not exist
+    }
+
+    // 3. Model info from credential
+    try {
+      const cred = await getDefaultCredential();
+      if (cred && metadata.execution) {
+        (metadata.execution as Record<string, unknown>).model = `${cred.proto_type}/${cred.model_id}`;
+      }
+    } catch { /* ok */ }
+
+    // Save metadata
+    if (Object.keys(metadata).length > 0) {
+      await db`UPDATE tasks SET metadata = ${JSON.stringify(metadata)} WHERE id = ${taskId}`;
+      logger.info({ taskId, keys: Object.keys(metadata) }, "Task metadata extracted");
     }
   }
 

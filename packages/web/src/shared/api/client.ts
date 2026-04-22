@@ -28,9 +28,14 @@ export interface Task {
   failure_reason: string | null;
   source_type: string;
   duration_ms: number | null;
+  total_tokens_in: number;
+  total_tokens_out: number;
+  tool_call_count: number;
+  stage_count: number;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  metadata: Record<string, unknown>;
 }
 
 export interface FindingMeta {
@@ -70,6 +75,10 @@ export const api = {
         : request<{ task: Task }>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
     cancel: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/cancel`, { method: "POST" }),
     restart: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/restart`, { method: "POST" }),
+    delete: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}`, { method: "DELETE" }),
+    poc: (id: string) => request<{ poc_files: PocFile[] }>(`/api/tasks/${id}/poc`),
+    pocContent: (id: string, filename: string, key: string) =>
+      request<{ filename: string; content: string }>(`/api/tasks/${id}/poc/${filename}?key=${encodeURIComponent(key)}`),
   },
   findings: {
     list: (taskId: string, severity?: string) =>
@@ -139,6 +148,12 @@ export interface SystemConfig {
   live_log_buffer_cap: number;
   chat_idle_timeout_min: number;
   worker_spawn_timeout_sec: number;
+}
+
+export interface PocFile {
+  key: string;
+  name: string;
+  size: number;
 }
 
 export interface DashboardData {
