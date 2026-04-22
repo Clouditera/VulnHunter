@@ -110,6 +110,14 @@ export const api = {
     poc: (id: string) => request<{ poc_files: PocFile[] }>(`/api/tasks/${id}/poc`),
     pocContent: (id: string, filename: string, key: string) =>
       request<{ filename: string; content: string }>(`/api/tasks/${id}/poc/${filename}?key=${encodeURIComponent(key)}`),
+    workspaceTree: (id: string) =>
+      request<{ tree: WorkspaceTreeNode[] }>(`/api/tasks/${id}/workspace/tree`),
+    workspaceFile: (id: string, path: string, line?: number) =>
+      request<WorkspaceFile>(
+        `/api/tasks/${id}/workspace/file?path=${encodeURIComponent(path)}${
+          line ? `&line=${line}` : ""
+        }`,
+      ),
   },
   findings: {
     list: (taskId: string, severity?: string) =>
@@ -135,6 +143,13 @@ export const api = {
       request<{ ok: boolean }>("/api/settings/system", {
         method: "PATCH",
         body: JSON.stringify(patch),
+      }),
+    listModels: () =>
+      request<{ models: Array<{ id: string; owned_by?: string }>; error?: string }>("/api/settings/models"),
+    testModel: (params: { proto_type: string; base_url?: string; model_id: string; api_key: string }) =>
+      request<{ ok: boolean; message?: string; error?: string }>("/api/settings/credential/test", {
+        method: "POST",
+        body: JSON.stringify(params),
       }),
   },
   dashboard: {
@@ -185,6 +200,35 @@ export interface PocFile {
   key: string;
   name: string;
   size: number;
+}
+
+export interface WorkspaceTreeNode {
+  name: string;
+  type: "file" | "dir";
+  /** Children present ⇒ this node is effectively a directory, even if backend
+      labelled it 'file' (buildTree has a known quirk with same-named entries). */
+  children?: WorkspaceTreeNode[];
+  /** Populated client-side: set to true when any finding's primary_file falls
+      under this node's subtree. Not returned by backend. */
+  hasVuln?: boolean;
+}
+
+export interface WorkspaceVulnDecoration {
+  line: number;
+  finding_key: string;
+  severity: string;
+  message: string;
+}
+
+export interface WorkspaceFile {
+  content: string;
+  language: string;
+  total_lines: number;
+  size_bytes: number;
+  is_truncated: boolean;
+  type: "text" | "binary" | "image";
+  vuln_decorations?: WorkspaceVulnDecoration[];
+  requested_line?: number;
 }
 
 export interface DashboardData {

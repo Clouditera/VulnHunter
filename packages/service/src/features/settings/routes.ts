@@ -7,6 +7,7 @@ import {
   getSystemConfig,
   updateSystemConfig,
 } from "./storage.js";
+import { logger } from "../../infra/logger.js";
 
 export const settingsRouter = new Hono();
 settingsRouter.use("*", licenseGuard);
@@ -50,6 +51,93 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
   });
 
   return c.json({ id });
+});
+
+// POST /api/settings/credential/test — test LLM connection
+settingsRouter.post("/credential/test", requireAdmin, async (c) => {
+  const body = await c.req.json<{
+    proto_type: string;
+    base_url?: string;
+    model_id: string;
+    api_key: string;
+  }>();
+
+  if (!body.api_key || !body.model_id) {
+    return c.json({ ok: false, error: "api_key and model_id required" }, 400);
+  }
+
+  const baseUrl = (body.base_url ?? "").replace(/\/$/, "");
+
+  try {
+    // Try a minimal chat completion request
+    // base_url may already include /v1 (e.g. http://host/v1), so use it as-is if present
+    const base = baseUrl || (body.proto_type === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1");
+    const endpoint = body.proto_type === "anthropic"
+      ? base + "/messages"
+      : base + "/chat/completions";
+
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    let reqBody: string;
+
+    if (body.proto_type === "anthropic") {
+      headers["x-api-key"] = body.api_key;
+      headers["anthropic-version"] = "2023-06-01";
+      reqBody = JSON.stringify({
+        model: body.model_id,
+        max_tokens: 1,
+        messages: [{ role: "user", content: "hi" }],
+      });
+    } else {
+      headers["Authorization"] = `Bearer ${body.api_key}`;
+      reqBody = JSON.stringify({
+        model: body.model_id,
+        max_tokens: 1,
+        messages: [{ role: "user", content: "hi" }],
+      });
+    }
+
+    const res = await fetch(endpoint, { method: "POST", headers, body: reqBody, signal: AbortSignal.timeout(15000) });
+    if (res.ok) {
+      return c.json({ ok: true, message: "Connection successful" });
+    }
+    const errBody = await res.text().catch(() => "");
+    return c.json({ ok: false, error: `HTTP ${res.status}: ${errBody.slice(0, 200)}` });
+  } catch (err) {
+    return c.json({ ok: false, error: String(err) });
+  }
+});
+
+// GET /api/settings/models — list available models from configured endpoint
+settingsRouter.get("/models", requireAdmin, async (c) => {
+  const cred = await getDefaultCredential();
+  if (!cred) return c.json({ models: [], error: "No credential configured" });
+
+  const baseUrl = (cred.base_url ?? "").replace(/\/$/, "");
+
+  try {
+    const base = baseUrl || (cred.proto_type === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1");
+    const endpoint = base + "/models";
+
+    const headers: Record<string, string> = {};
+    if (cred.proto_type === "anthropic") {
+      headers["x-api-key"] = cred.api_key;
+      headers["anthropic-version"] = "2023-06-01";
+    } else {
+      headers["Authorization"] = `Bearer ${cred.api_key}`;
+    }
+
+    const res = await fetch(endpoint, { headers, signal: AbortSignal.timeout(10000) });
+    if (!res.ok) {
+      return c.json({ models: [], error: `HTTP ${res.status}` });
+    }
+
+    const data = await res.json() as { data?: Array<{ id: string; owned_by?: string }> };
+    const models = (data.data ?? []).map((m) => ({ id: m.id, owned_by: m.owned_by }));
+    return c.json({ models });
+  } catch (err) {
+    logger.warn({ err }, "Failed to list models");
+    return c.json({ models: [], error: String(err) });
+  }
 });
 
 // GET /api/settings/system — system config
