@@ -3,6 +3,9 @@ import { requireAdmin, requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import {
   getDefaultCredential,
+  listCredentials,
+  deleteCredential,
+  setDefaultCredential,
   upsertCredential,
   getSystemConfig,
   updateSystemConfig,
@@ -21,9 +24,31 @@ settingsRouter.get("/credential", async (c) => {
   return c.json({ credential: safe });
 });
 
+// GET /api/settings/credentials — list all credentials (no api_key)
+settingsRouter.get("/credentials", requireAdmin, async (c) => {
+  const creds = await listCredentials();
+  return c.json({ credentials: creds });
+});
+
+// DELETE /api/settings/credentials/:id — delete a credential
+settingsRouter.delete("/credentials/:id", requireAdmin, async (c) => {
+  const id = c.req.param("id");
+  const ok = await deleteCredential(id);
+  if (!ok) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  return c.json({ ok: true });
+});
+
+// POST /api/settings/credentials/:id/default — set as default
+settingsRouter.post("/credentials/:id/default", requireAdmin, async (c) => {
+  const id = c.req.param("id");
+  await setDefaultCredential(id);
+  return c.json({ ok: true });
+});
+
 // PUT /api/settings/credential — save/update LLM credential (admin only)
 settingsRouter.put("/credential", requireAdmin, async (c) => {
   const body = await c.req.json<{
+    id?: string;
     provider: string;
     proto_type: string;
     base_url?: string;
@@ -31,6 +56,7 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
     thinking_effort?: string;
     label?: string;
     api_key: string;
+    is_default?: boolean;
   }>();
 
   if (!body.provider || !body.model_id || !body.api_key) {
@@ -41,6 +67,7 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
   }
 
   const id = await upsertCredential({
+    id: body.id,
     provider: body.provider,
     protoType: body.proto_type,
     baseUrl: body.base_url,
@@ -48,6 +75,7 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
     thinkingEffort: body.thinking_effort,
     label: body.label,
     apiKey: body.api_key,
+    isDefault: body.is_default,
   });
 
   return c.json({ id });

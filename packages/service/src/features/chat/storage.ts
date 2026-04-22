@@ -10,6 +10,7 @@ export interface DbChatSession {
   worker_state: string;
   worker_container_id: string | null;
   session_minio_key: string | null;
+  credential_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -24,11 +25,11 @@ export interface DbChatMessage {
   created_at: Date;
 }
 
-export async function createSession(userId: string, title?: string): Promise<DbChatSession> {
+export async function createSession(userId: string, title?: string, credentialId?: string): Promise<DbChatSession> {
   const db = getDb();
   const rows = await db<DbChatSession[]>`
-    INSERT INTO chat_sessions (tenant_id, user_id, title)
-    VALUES (${DEFAULT_TENANT_ID}, ${userId}, ${title ?? "New Chat"})
+    INSERT INTO chat_sessions (tenant_id, user_id, title, credential_id)
+    VALUES (${DEFAULT_TENANT_ID}, ${userId}, ${title ?? "New Chat"}, ${credentialId ?? null})
     RETURNING *
   `;
   return rows[0];

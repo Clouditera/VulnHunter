@@ -21,8 +21,8 @@ chatRouter.get("/sessions", async (c) => {
 // POST /api/chat/sessions — create new session
 chatRouter.post("/sessions", async (c) => {
   const user = c.get("user");
-  const body = await c.req.json<{ name?: string }>().catch(() => ({} as { name?: string }));
-  const session = await chatStorage.createSession(user.userId, body.name);  // name maps to title in DB
+  const body = await c.req.json<{ name?: string; credential_id?: string }>().catch(() => ({} as { name?: string; credential_id?: string }));
+  const session = await chatStorage.createSession(user.userId, body.name, body.credential_id);
   return c.json({ session }, 201);
 });
 

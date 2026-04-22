@@ -9,7 +9,8 @@ import {
   ensureWorkDir,
   getDocker,
 } from "../workers/docker-client.js";
-import { getDefaultCredential } from "../settings/storage.js";
+import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
+import { getSession } from "./storage.js";
 import { logger } from "../../infra/logger.js";
 import type { ServiceConfig } from "../../infra/config.js";
 
@@ -49,8 +50,10 @@ export async function ensureWorker(
   const containerName = `vh-chat-${sessionId.slice(0, 12)}`;
   workers.set(sessionId, { containerId: null, containerName, state: "starting" });
 
-  // Get LLM credentials
-  const cred = await getDefaultCredential();
+  // Get LLM credentials — session-specific or default
+  const session = await getSession(sessionId);
+  const credId = session?.credential_id;
+  const cred = credId ? await getCredentialById(credId) : await getDefaultCredential();
   if (!cred) throw new Error("No LLM credentials configured");
 
   // Prepare workspace

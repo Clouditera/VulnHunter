@@ -31,6 +31,7 @@ filesRouter.post("/tasks", async (c) => {
       return c.json({ error: { code: "ERR_TASK_UPLOAD_TOO_LARGE" } }, 413);
     }
 
+    const credentialId = (formData.get("credential_id") as string | null) || undefined;
     const taskId = randomUUID();
     const minioKey = `code-packages/${taskId}.zip`;
 
@@ -42,6 +43,7 @@ filesRouter.post("/tasks", async (c) => {
       projectName: file.name.replace(/\.(zip|tar\.gz|tar\.bz2)$/, ""),
       sourceType: "upload",
       sourceMeta: { filename: file.name, minio_key: minioKey },
+      credentialId,
     });
 
     return c.json({ task }, 201);
@@ -53,6 +55,7 @@ filesRouter.post("/tasks", async (c) => {
     git_branch?: string;
     project_name?: string;
     auto_skill_ids?: string[];
+    credential_id?: string;
   }>();
 
   if (!body.git_url) {
@@ -65,6 +68,7 @@ filesRouter.post("/tasks", async (c) => {
     sourceType: "git",
     sourceMeta: { git_url: body.git_url, git_branch: body.git_branch ?? "main" },
     autoSkillIds: body.auto_skill_ids,
+    credentialId: body.credential_id,
   });
 
   // Trigger async git clone (don't block response)

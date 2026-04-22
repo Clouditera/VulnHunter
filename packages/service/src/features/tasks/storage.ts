@@ -24,6 +24,7 @@ export interface DbTask {
   duration_ms: number | null;
   findings_indexed_at: Date | null;
   metadata: Record<string, unknown>;
+  credential_id: string | null;
 }
 
 export async function createTask(params: {
@@ -32,13 +33,14 @@ export async function createTask(params: {
   sourceType: "upload" | "git";
   sourceMeta: Record<string, string | number | boolean | null>;
   autoSkillIds?: string[];
+  credentialId?: string;
 }): Promise<DbTask> {
   const db = getDb();
   const rows = await db<DbTask[]>`
-    INSERT INTO tasks (tenant_id, created_by, project_name, source_type, source_meta, auto_skill_ids)
+    INSERT INTO tasks (tenant_id, created_by, project_name, source_type, source_meta, auto_skill_ids, credential_id)
     VALUES (${DEFAULT_TENANT_ID}, ${params.createdBy}, ${params.projectName},
             ${params.sourceType}, ${JSON.stringify(params.sourceMeta)},
-            ${params.autoSkillIds ?? []})
+            ${params.autoSkillIds ?? []}, ${params.credentialId ?? null})
     RETURNING *
   `;
   return rows[0];

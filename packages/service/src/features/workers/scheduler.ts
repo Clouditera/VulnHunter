@@ -13,7 +13,7 @@ import { getDb } from "../../infra/db/client.js";
 import { countTasksByState, getQueuedTasks, updateTaskState, type DbTask } from "../tasks/storage.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir } from "./scan-worker.js";
-import { getDefaultCredential } from "../settings/storage.js";
+import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
 import { startTailing, stopTailing } from "../events/event-tail.js";
 import { indexFindings } from "../findings/indexer.js";
 import { syncOutputsToMinio } from "./sync-outputs.js";
@@ -111,26 +111,29 @@ export class TaskScheduler {
     const queued = await getQueuedTasks(capacity);
     if (queued.length === 0) return;
 
-    // Get LLM credentials
-    const cred = await getDefaultCredential();
-    if (!cred) {
-      logger.warn("No LLM credentials configured — skipping task scheduling");
-      return;
-    }
-
-    const llmEnv: Record<string, string> = {
-      MODEL_PROTO_TYPE: cred.proto_type,
-      LLM_MODEL_NAME: cred.model_id,
-      LLM_BASE_URL: cred.base_url ?? "",
-      LLM_API_KEY: cred.api_key,
-      MODEL_EFFORT: cred.thinking_effort ?? "off",
-    };
-
     logger.info({ queued: queued.length, capacity }, "Scheduling queued tasks");
 
     for (const task of queued) {
       // Detect resume: if started_at is set, task was previously running/paused
       const isResume = task.started_at != null;
+
+      // Get LLM credentials — task-specific or default
+      const credId = (task as DbTask & { credential_id?: string }).credential_id;
+      const cred = credId
+        ? await getCredentialById(credId)
+        : await getDefaultCredential();
+      if (!cred) {
+        logger.warn({ taskId: task.id }, "No LLM credentials available — skipping");
+        continue;
+      }
+
+      const llmEnv: Record<string, string> = {
+        MODEL_PROTO_TYPE: cred.proto_type,
+        LLM_MODEL_NAME: cred.model_id,
+        LLM_BASE_URL: cred.base_url ?? "",
+        LLM_API_KEY: cred.api_key,
+        MODEL_EFFORT: cred.thinking_effort ?? "off",
+      };
 
       try {
         if (!isResume) {
