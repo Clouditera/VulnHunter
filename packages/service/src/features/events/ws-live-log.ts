@@ -5,7 +5,7 @@
  *   Server → Client: LiveLogEvent | SnapshotEndEvent | PingEvent
  */
 
-import { WebSocketServer, type WebSocket } from "ws";
+import { type WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
 import { getEventsSince, getAllEvents } from "./event-store.js";
 import { logger } from "../../infra/logger.js";
@@ -20,10 +20,8 @@ interface Subscription {
 const subscriptions = new Set<Subscription>();
 const PING_INTERVAL_MS = 30_000;
 
-export function createLiveLogWss(server: import("node:http").Server): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: "/ws/live-log" });
-
-  wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
+/** Handle a single live-log WS connection (called by ws-router) */
+export function handleLiveLogConnection(ws: WebSocket, req: IncomingMessage): void {
     logger.debug({ url: req.url }, "Live log WS connection");
 
     let sub: Subscription | null = null;
@@ -81,9 +79,11 @@ export function createLiveLogWss(server: import("node:http").Server): WebSocketS
     ws.on("error", (err) => {
       logger.warn({ err }, "Live log WS error");
     });
-  });
+}
 
-  return wss;
+/** @deprecated Use handleLiveLogConnection + ws-router instead */
+export function createLiveLogWss(_server: import("node:http").Server): void {
+  // No-op — kept for backward compat, ws-router handles upgrade now
 }
 
 function matchesFilter(event: { source?: string }, filter: string[] | null): boolean {

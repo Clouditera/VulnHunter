@@ -17,29 +17,13 @@ export function createChatWss(server: Server): WebSocketServer {
   return wss;
 }
 
-/**
- * Set up chat WS handling on the HTTP server.
- * We use the upgrade event directly to support dynamic session paths.
- */
-export function setupChatWs(server: Server): void {
-  const wss = new WebSocketServer({ noServer: true });
-
-  server.on("upgrade", (request, socket, head) => {
-    const url = request.url ?? "";
-
-    // Match /ws/chat/<session-id>
-    const match = url.match(/^\/ws\/chat\/([a-f0-9-]+)$/);
-    if (!match) return; // Not a chat WS request, let other handlers deal with it
-
-    const sessionId = match[1];
-
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      handleChatConnection(ws, sessionId);
-    });
-  });
+/** @deprecated Use handleChatWsConnection + ws-router instead */
+export function setupChatWs(_server: Server): void {
+  // No-op — ws-router handles upgrade now
 }
 
-function handleChatConnection(clientWs: WebSocket, sessionId: string): void {
+/** Handle a single chat WS connection (called by ws-router) */
+export function handleChatWsConnection(clientWs: WebSocket, sessionId: string): void {
   logger.debug({ sessionId }, "Chat WS client connected");
 
   const config = loadConfig();

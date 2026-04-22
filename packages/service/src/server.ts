@@ -11,8 +11,7 @@ import { dashboardRouter } from "./features/dashboard/index.js";
 import { workspaceRouter } from "./features/workspace/index.js";
 import { settingsRouter } from "./features/settings/index.js";
 import { chatRouter } from "./features/chat/index.js";
-import { createLiveLogWss } from "./features/events/index.js";
-import { setupChatWs } from "./features/chat/ws-chat.js";
+import { setupWsRouter } from "./ws-router.js";
 import { injectUser } from "./middleware/index.js";
 import { traceId } from "./middleware/trace-id.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -54,11 +53,6 @@ export function startServer(port: number): void {
     logger.info({ port: info.port }, `VulnHunt Service listening`);
   }) as unknown as Server;
 
-  // Attach Live Log WebSocket server to the same HTTP server
-  createLiveLogWss(httpServer);
-  logger.info("Live Log WebSocket server attached at /ws/live-log");
-
-  // Attach Chat WebSocket proxy
-  setupChatWs(httpServer);
-  logger.info("Chat WebSocket proxy attached at /ws/chat/:sessionId");
+  // Unified WebSocket routing (live-log + chat)
+  setupWsRouter(httpServer);
 }
