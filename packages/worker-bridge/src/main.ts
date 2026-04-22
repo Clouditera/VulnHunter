@@ -35,27 +35,28 @@ function setupPiConfig(): void {
   mkdirSync(piDir, { recursive: true });
 
   // models.json — register custom provider with correct API
+  // Key insight: apiKey field is an ENV VAR NAME, not the actual key
   if (BASE_URL && API_KEY) {
-    const providerKey = "vulnhunt-llm";
+    const providerKey = "vulnhunt";
     const api = MODEL_PROTO === "anthropic" ? "anthropic" : "openai-completions";
+    process.env.VH_LLM_API_KEY = API_KEY; // Set actual key in env
     const modelsJson = {
       providers: {
         [providerKey]: {
           baseUrl: BASE_URL,
           api,
-          apiKey: API_KEY,
-          compat: {
-            supportsDeveloperRole: false,
-            supportsReasoningEffort: false,
-          },
+          apiKey: "VH_LLM_API_KEY", // env var name, pi reads the value from process.env
           models: [
-            { id: MODEL_NAME },
+            { id: MODEL_NAME, input: ["text"], contextWindow: 200000, maxTokens: 16384 },
           ],
         },
       },
     };
     writeFileSync(join(piDir, "models.json"), JSON.stringify(modelsJson, null, 2));
   }
+
+  // Empty auth.json to prevent pi from complaining
+  writeFileSync(join(piDir, "auth.json"), "{}");
 
   // MCP config for platform tools
   if (SERVICE_URL && MCP_TOKEN) {
@@ -76,13 +77,16 @@ function spawnPi(): ChildProcess {
   const sessionFile = join(SESSION_DIR, "session.jsonl");
 
   const modelStr = BASE_URL
-    ? `vulnhunt-llm/${MODEL_NAME}`
+    ? `vulnhunt/${MODEL_NAME}`
     : `${MODEL_PROTO}/${MODEL_NAME}`;
 
   const args = [
     "--mode", "rpc",
     "--model", modelStr,
     "--no-skills",
+    "--no-extensions",
+    "--no-prompt-templates",
+    "--no-themes",
   ];
 
   if (existsSync(sessionFile)) {
@@ -91,10 +95,14 @@ function spawnPi(): ChildProcess {
 
   console.log(`[bridge] Spawning pi: pi ${args.join(" ")}`);
 
+  const piDir = join(process.env.HOME ?? "/root", ".pi", "agent");
   const child = spawn("pi", args, {
     stdio: ["pipe", "pipe", "pipe"],
     cwd: "/workspace",
-    env: { ...process.env },
+    env: {
+      ...process.env,
+      PI_CODING_AGENT_DIR: piDir, // Tell pi where to find models.json
+    },
   });
 
   // Parse stdout JSONL → broadcast to WS clients
@@ -102,6 +110,7 @@ function spawnPi(): ChildProcess {
   rl.on("line", (line) => {
     if (!line.trim()) return;
     lastActivity = Date.now();
+    console.log(`[pi stdout] ${line.substring(0, 120)}`);
     broadcastToClients(line);
   });
 
