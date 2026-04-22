@@ -69,6 +69,35 @@ export interface Task {
   metadata: TaskMetadata;
 }
 
+/**
+ * Finding detail — schema is deliberately loose because youngflow emits
+ * a simpler YAML shape than `bug-report.schema.yaml`.
+ *
+ * Real shape observed from the scanner:
+ *   vulnerability: { vuln_type, severity, file_path, function, line,
+ *                    language, source, sink }
+ *   metadata: { group_id, attack_surface, discovered_by, confidence,
+ *               composite_score, risk_level }
+ *   description / code / data_flow / attack / remediation: plain strings
+ *   references: Array<{ [label: string]: string }>
+ *
+ * The spec shape (structured objects) also still appears in some cases.
+ * Renderers must handle both.
+ */
+export type FindingDetailSection = string | Record<string, unknown> | null | undefined;
+export interface FindingDetail {
+  vulnerability?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  description?: FindingDetailSection;
+  code?: FindingDetailSection;
+  data_flow?: FindingDetailSection;
+  attack?: FindingDetailSection;
+  remediation?: FindingDetailSection;
+  references?: Array<string | Record<string, unknown>>;
+  related?: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
 export interface FindingMeta {
   id: string;
   task_id: string;
@@ -122,6 +151,10 @@ export const api = {
   findings: {
     list: (taskId: string, severity?: string) =>
       request<{ findings: FindingMeta[] }>(`/api/tasks/${taskId}/findings${severity ? `?severity=${severity}` : ""}`),
+    detail: (taskId: string, key: string) =>
+      request<{ meta: FindingMeta; detail: FindingDetail }>(
+        `/api/tasks/${taskId}/findings/${encodeURIComponent(key)}`,
+      ),
   },
   auth: {
     login: (email: string, password: string) =>

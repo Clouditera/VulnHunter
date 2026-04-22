@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import type * as React from "react";
 import { useOutletContext } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
+  type FindingDetail as FindingDetailData,
   type FindingMeta,
   type Task,
   type WorkspaceFile,
@@ -167,8 +169,10 @@ export function FindingsTab() {
 
   const [leftWidth, setLeftWidth] = useState(26); // percent
   const [midWidth, setMidWidth] = useState(22); // percent (of total)
+  const [detailHeight, setDetailHeight] = useState(40); // percent of right column
   const [draggingLeft, setDraggingLeft] = useState(false);
   const [draggingMid, setDraggingMid] = useState(false);
+  const [draggingDetail, setDraggingDetail] = useState(false);
 
   /* -------- Data queries -------- */
 
@@ -248,6 +252,24 @@ export function FindingsTab() {
   }, [fileData, allFindings, viewPath]);
 
   const activeLine = selectedFinding?.primary_line ?? null;
+
+  /* -------- Finding detail query (7-section YAML) -------- */
+
+  const {
+    data: detailData,
+    isLoading: detailLoading,
+    error: detailError,
+  } = useQuery({
+    queryKey: [
+      "finding-detail",
+      task.id,
+      selectedFinding?.finding_key,
+    ],
+    queryFn: () =>
+      api.findings.detail(task.id, selectedFinding!.finding_key),
+    enabled: !!selectedFinding,
+    staleTime: 5 * 60_000,
+  });
 
   /* -------- File tree (middle panel) -------- */
 
@@ -334,8 +356,6 @@ export function FindingsTab() {
       );
       if (!c) return;
       const rect = c.getBoundingClientRect();
-      // midWidth extends from left edge to splitter; its left boundary
-      // is at leftWidth% of the container.
       const pctFromContainer = ((mv.clientX - rect.left) / rect.width) * 100;
       const requestedMid = pctFromContainer - leftWidth;
       const minMid = rect.width > 0 ? (180 / rect.width) * 100 : 14;
@@ -344,6 +364,28 @@ export function FindingsTab() {
     }
     function onUp() {
       setDraggingMid(false);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  function startDetailDrag(e: React.MouseEvent) {
+    e.preventDefault();
+    setDraggingDetail(true);
+    function onMove(mv: MouseEvent) {
+      const c = document.querySelector<HTMLElement>(
+        "[data-testid='findings-code-viewer']",
+      );
+      if (!c) return;
+      const rect = c.getBoundingClientRect();
+      // Detail height = distance from bottom to mouse, as % of total height.
+      const pct = ((rect.bottom - mv.clientY) / rect.height) * 100;
+      setDetailHeight(Math.max(15, Math.min(70, pct)));
+    }
+    function onUp() {
+      setDraggingDetail(false);
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     }
@@ -566,7 +608,7 @@ export function FindingsTab() {
         />
 
         {/* ================================================================ */}
-        {/*  Right: code viewer                                              */}
+        {/*  Right: code viewer (top) + finding detail (bottom)              */}
         {/* ================================================================ */}
         <div
           data-testid="findings-code-viewer"
@@ -578,16 +620,70 @@ export function FindingsTab() {
             background: "var(--code-bg)",
           }}
         >
-          {viewPath ? (
-            <CodeViewer
-              path={viewPath}
-              file={fileData}
-              loading={fileLoading}
-              vulnLines={vulnLineSet}
-              activeLine={activeLine}
-            />
-          ) : (
-            <EmptyCodePlaceholder />
+          {/* Code viewer (top) */}
+          <div
+            style={{
+              flex: selectedFinding
+                ? `0 0 ${100 - detailHeight}%`
+                : "1 1 auto",
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
+              overflow: "hidden",
+            }}
+          >
+            {viewPath ? (
+              <CodeViewer
+                path={viewPath}
+                file={fileData}
+                loading={fileLoading}
+                vulnLines={vulnLineSet}
+                activeLine={activeLine}
+              />
+            ) : (
+              <EmptyCodePlaceholder />
+            )}
+          </div>
+
+          {/* Vertical splitter + detail panel (only when a finding is selected) */}
+          {selectedFinding && (
+            <>
+              <div
+                data-testid="findings-detail-splitter"
+                onMouseDown={startDetailDrag}
+                onDoubleClick={() => setDetailHeight(40)}
+                style={{
+                  height: "4px",
+                  flexShrink: 0,
+                  background: draggingDetail
+                    ? "var(--brand)"
+                    : "var(--border)",
+                  cursor: "row-resize",
+                  transition: draggingDetail
+                    ? "none"
+                    : "background 0.15s",
+                }}
+                title="Double-click to reset"
+              />
+              <div
+                data-testid="findings-detail-panel"
+                style={{
+                  flex: `0 0 ${detailHeight}%`,
+                  minHeight: 0,
+                  overflow: "auto",
+                  background: "var(--bg-card)",
+                  color: "var(--text-primary)",
+                  borderTop: "1px solid var(--border)",
+                }}
+              >
+                <FindingDetailPanel
+                  finding={selectedFinding}
+                  detail={detailData?.detail}
+                  loading={detailLoading}
+                  error={detailError as Error | null}
+                />
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -988,5 +1084,499 @@ function EmptyState({
       <Icon name={icon} size={28} style={{ opacity: 0.4 }} />
       <span style={{ fontSize: "13px" }}>{text}</span>
     </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Finding Detail Panel — renders the 7-section YAML as an accordion         */
+/* -------------------------------------------------------------------------- */
+
+function FindingDetailPanel({
+  finding,
+  detail,
+  loading,
+  error,
+}: {
+  finding: FindingMeta;
+  detail: FindingDetailData | undefined;
+  loading: boolean;
+  error: Error | null;
+}) {
+  const sev = (finding.severity ?? "info").toLowerCase();
+  const sevColor = SEV_COLORS[sev] ?? SEV_COLORS.info;
+
+  if (loading) {
+    return (
+      <div style={DETAIL_MSG_STYLE}>
+        {i18n.t("findings.detail.loading")}
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div style={{ ...DETAIL_MSG_STYLE, color: "var(--brand)" }}>
+        {i18n.t("findings.detail.error")}: {error.message}
+      </div>
+    );
+  }
+  if (!detail) {
+    return (
+      <div style={DETAIL_MSG_STYLE}>
+        {i18n.t("findings.detail.placeholder")}
+      </div>
+    );
+  }
+
+  // youngflow's YAML uses `vulnerability` for the core vuln metadata.
+  // Some scanners still emit the schema-v1 `metadata` structure. Fall back.
+  const vuln = (detail.vulnerability ?? detail.metadata ?? {}) as Record<string, unknown>;
+  const refs = detail.references ?? [];
+  const strFromField = (obj: Record<string, unknown>, ...keys: string[]): string | undefined => {
+    for (const k of keys) {
+      const v = obj[k];
+      if (typeof v === "string" && v.length > 0) return v;
+      if (typeof v === "number") return String(v);
+    }
+    return undefined;
+  };
+
+  return (
+    <div style={{ padding: "12px 16px", fontSize: "13px" }}>
+      {/* Sticky header: severity + BUG-ID + title */}
+      <div
+        data-testid="finding-detail-header"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          paddingBottom: "10px",
+          marginBottom: "12px",
+          borderBottom: "1px solid var(--divider)",
+        }}
+      >
+        <span
+          style={{
+            width: "10px",
+            height: "10px",
+            borderRadius: "50%",
+            background: sevColor,
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ fontWeight: 600, fontSize: "14px", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {finding.finding_key}
+        </span>
+        <span
+          style={{
+            fontSize: "11px",
+            fontWeight: 600,
+            color: sevColor,
+            textTransform: "uppercase",
+            letterSpacing: "0.5px",
+          }}
+        >
+          {sev}
+        </span>
+      </div>
+
+      {/* Metadata row (inline, always visible) */}
+      <div
+        data-testid="finding-section-metadata"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+          gap: "6px 16px",
+          marginBottom: "14px",
+        }}
+      >
+        <MetaField
+          label={i18n.t("findings.field.vulnType")}
+          value={strFromField(vuln, "vuln_type_full_name", "vuln_type")}
+        />
+        <MetaField label={i18n.t("findings.field.function")} value={strFromField(vuln, "function")} mono />
+        <MetaField label={i18n.t("findings.field.language")} value={strFromField(vuln, "language")} />
+        <MetaField
+          label={i18n.t("findings.field.permission")}
+          value={strFromField(vuln, "permission_requirement")}
+        />
+        <MetaField label={i18n.t("findings.field.source")} value={strFromField(vuln, "source")} mono />
+        <MetaField label={i18n.t("findings.field.sink")} value={strFromField(vuln, "sink")} mono />
+      </div>
+
+      <FlexibleSection
+        testid="finding-section-description"
+        title={i18n.t("findings.section.description")}
+        raw={detail.description}
+        defaultOpen
+        structuredFields={[
+          [i18n.t("findings.field.entryPoint"), "entry_point"],
+          [i18n.t("findings.field.taintSource"), "taint_source"],
+          [i18n.t("findings.field.trigger"), "trigger_condition"],
+        ]}
+        leadingField="detailed_description"
+      />
+
+      <FlexibleSection
+        testid="finding-section-code"
+        title={i18n.t("findings.section.code")}
+        raw={detail.code}
+        defaultOpen
+        codeTone="bad"
+        structuredCodePairs={[
+          [i18n.t("findings.field.vulnerableCode"), "vulnerable_code", "bad"],
+          [i18n.t("findings.field.fixCode"), "fix_code", "good"],
+        ]}
+      />
+
+      <FlexibleSection
+        testid="finding-section-dataflow"
+        title={i18n.t("findings.section.dataFlow")}
+        raw={detail.data_flow}
+      />
+
+      <FlexibleSection
+        testid="finding-section-attack"
+        title={i18n.t("findings.section.attack")}
+        raw={detail.attack}
+        structuredFields={[
+          [i18n.t("findings.field.payload"), "attack_payload_example", { code: true, tone: "neutral" }],
+        ]}
+        leadingField="attack_description"
+      />
+
+      <FlexibleSection
+        testid="finding-section-remediation"
+        title={i18n.t("findings.section.remediation")}
+        raw={detail.remediation}
+        structuredFields={[
+          [i18n.t("findings.field.fixCode"), "fix_code_example", { code: true, tone: "good" }],
+        ]}
+        leadingField="fix_recommendation"
+      />
+
+      {refs.length > 0 && (
+        <Section testid="finding-section-references" title={i18n.t("findings.section.references")}>
+          <ul style={{ margin: 0, paddingLeft: "20px", fontSize: "12px" }}>
+            {refs.map((ref, i) => {
+              // ref can be a string URL, or an object like { "OWASP": "Callback Injection" } / { "CWE-115": "..." }
+              if (typeof ref === "string") {
+                return (
+                  <li key={i} style={{ marginBottom: "4px" }}>
+                    {/^https?:\/\//.test(ref) ? (
+                      <a href={ref} target="_blank" rel="noopener noreferrer" style={{ color: "var(--sev-low)", wordBreak: "break-all" }}>
+                        {ref}
+                      </a>
+                    ) : (
+                      <span style={{ color: "var(--text-primary)" }}>{ref}</span>
+                    )}
+                  </li>
+                );
+              }
+              const entries = Object.entries(ref).filter(([, v]) => v != null);
+              return (
+                <li key={i} style={{ marginBottom: "4px" }}>
+                  {entries.map(([k, v], j) => (
+                    <span key={j}>
+                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{k}</span>
+                      {v != null && <span style={{ color: "var(--text-secondary)" }}>: {String(v)}</span>}
+                      {j < entries.length - 1 && <span>, </span>}
+                    </span>
+                  ))}
+                </li>
+              );
+            })}
+          </ul>
+        </Section>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Renders a section whose data may be either a plain string (youngflow
+ * current output) or a structured object (bug-report schema v1 format).
+ */
+function FlexibleSection({
+  testid,
+  title,
+  raw,
+  defaultOpen,
+  leadingField,
+  structuredFields,
+  structuredCodePairs,
+  codeTone,
+}: {
+  testid: string;
+  title: string;
+  raw: unknown;
+  defaultOpen?: boolean;
+  /** If raw is an object, render this field (if present) as a leading paragraph. */
+  leadingField?: string;
+  /** Structured field renderers: [label, key, options?] */
+  structuredFields?: Array<
+    | [string, string]
+    | [string, string, { code?: boolean; tone?: "bad" | "good" | "neutral" }]
+  >;
+  /** Pairs of code blocks (e.g. vulnerable_code + fix_code). */
+  structuredCodePairs?: Array<[string, string, "bad" | "good" | "neutral"]>;
+  /** Tone to use when raw itself is a string and should be rendered as code. */
+  codeTone?: "bad" | "good" | "neutral";
+}) {
+  // Nothing to render for undefined / null / empty
+  if (raw == null) return null;
+  if (typeof raw === "string" && raw.trim() === "") return null;
+
+  let body: React.ReactNode = null;
+
+  if (typeof raw === "string") {
+    // Heuristic: contains multiple lines or a recognizable code pattern → code block.
+    // Otherwise render as pre-wrap paragraph.
+    const hasCodeMarkers = /^\s*(\/\/|#|\{|function |void |class |def |<)/m.test(raw) ||
+      /;\s*$/m.test(raw);
+    if (codeTone || hasCodeMarkers) {
+      body = <CodeBlock content={raw} tone={codeTone ?? "neutral"} />;
+    } else {
+      body = <p style={PARA_STYLE}>{raw}</p>;
+    }
+  } else if (typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    const leadingVal = leadingField ? obj[leadingField] : undefined;
+    const extras: React.ReactNode[] = [];
+    if (typeof leadingVal === "string" && leadingVal) {
+      extras.push(<p key="lead" style={PARA_STYLE}>{leadingVal}</p>);
+    }
+    if (structuredCodePairs) {
+      for (const [label, key, tone] of structuredCodePairs) {
+        const v = obj[key];
+        if (typeof v === "string" && v) {
+          extras.push(
+            <div key={key} style={{ marginTop: "10px" }}>
+              <div style={SUBLABEL_STYLE}>{label}</div>
+              <CodeBlock content={v} tone={tone} />
+            </div>,
+          );
+        }
+      }
+    }
+    if (structuredFields) {
+      const rows: React.ReactNode[] = [];
+      for (const spec of structuredFields) {
+        const [label, key, opts] = spec as [string, string, { code?: boolean; tone?: "bad" | "good" | "neutral" } | undefined];
+        const v = obj[key];
+        if (v == null || v === "") continue;
+        if (opts?.code && typeof v === "string") {
+          extras.push(
+            <div key={key} style={{ marginTop: "8px" }}>
+              <div style={SUBLABEL_STYLE}>{label}</div>
+              <CodeBlock content={v} tone={opts.tone ?? "neutral"} />
+            </div>,
+          );
+        } else {
+          rows.push(
+            <Fragment key={key}>
+              <span style={LABEL_STYLE}>{label}</span>
+              <span style={VALUE_STYLE}>{String(v)}</span>
+            </Fragment>,
+          );
+        }
+      }
+      if (rows.length > 0) {
+        extras.push(
+          <div
+            key="rows"
+            style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 12px", marginTop: "10px" }}
+          >
+            {rows}
+          </div>,
+        );
+      }
+    }
+    if (extras.length === 0) {
+      // Fallback: dump remaining string-valued keys as label/value rows.
+      const rows: React.ReactNode[] = [];
+      for (const [k, v] of Object.entries(obj)) {
+        if (typeof v === "string" && v) {
+          rows.push(
+            <Fragment key={k}>
+              <span style={LABEL_STYLE}>{k}</span>
+              <span style={VALUE_STYLE}>{v}</span>
+            </Fragment>,
+          );
+        }
+      }
+      if (rows.length === 0) return null;
+      body = (
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 12px" }}>{rows}</div>
+      );
+    } else {
+      body = <>{extras}</>;
+    }
+  }
+
+  return (
+    <Section testid={testid} title={title} defaultOpen={defaultOpen}>
+      {body}
+    </Section>
+  );
+}
+
+/* ---- Finding detail sub-primitives ---- */
+
+const DETAIL_MSG_STYLE: React.CSSProperties = {
+  padding: "32px 16px",
+  textAlign: "center",
+  color: "var(--text-secondary)",
+  fontSize: "12px",
+};
+
+const LABEL_STYLE: React.CSSProperties = {
+  fontSize: "11px",
+  color: "var(--text-secondary)",
+  fontWeight: 500,
+  whiteSpace: "nowrap",
+};
+const VALUE_STYLE: React.CSSProperties = {
+  fontSize: "12px",
+  color: "var(--text-primary)",
+  lineHeight: 1.6,
+  wordBreak: "break-word",
+};
+const SUBLABEL_STYLE: React.CSSProperties = {
+  fontSize: "11px",
+  fontWeight: 600,
+  color: "var(--text-secondary)",
+  textTransform: "uppercase",
+  letterSpacing: "0.5px",
+  marginBottom: "4px",
+};
+const PARA_STYLE: React.CSSProperties = {
+  margin: 0,
+  fontSize: "12.5px",
+  lineHeight: 1.65,
+  color: "var(--text-primary)",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+};
+
+function MetaField({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string | number | undefined;
+  mono?: boolean;
+}) {
+  if (value === undefined || value === null || value === "") return null;
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={LABEL_STYLE}>{label}</div>
+      <div
+        style={{
+          ...VALUE_STYLE,
+          fontFamily: mono
+            ? "'SF Mono', Menlo, Consolas, monospace"
+            : undefined,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+        title={String(value)}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Section({
+  testid,
+  title,
+  defaultOpen,
+  children,
+}: {
+  testid: string;
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  return (
+    <section
+      data-testid={testid}
+      data-open={open || undefined}
+      style={{
+        borderTop: "1px solid var(--divider)",
+        padding: "10px 0",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          width: "100%",
+          textAlign: "left",
+          color: "var(--text-primary)",
+          fontSize: "13px",
+          fontWeight: 600,
+        }}
+      >
+        <Icon
+          name={open ? "chevron-down" : "chevron-right"}
+          size={12}
+          style={{ color: "var(--text-secondary)" }}
+        />
+        <span>{title}</span>
+      </button>
+      {open && <div style={{ marginTop: "8px", paddingLeft: "18px" }}>{children}</div>}
+    </section>
+  );
+}
+
+function CodeBlock({
+  content,
+  tone,
+}: {
+  content: string;
+  tone: "bad" | "good" | "neutral";
+}) {
+  const bg =
+    tone === "bad"
+      ? "rgba(220,38,38,0.08)"
+      : tone === "good"
+        ? "rgba(34,197,94,0.08)"
+        : "var(--terminal-bg, #0a0a0a)";
+  const border =
+    tone === "bad"
+      ? "1px solid rgba(220,38,38,0.3)"
+      : tone === "good"
+        ? "1px solid rgba(34,197,94,0.3)"
+        : "1px solid var(--border)";
+  return (
+    <pre
+      style={{
+        margin: "6px 0 0 0",
+        padding: "10px 12px",
+        background: bg,
+        border,
+        borderRadius: "6px",
+        fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+        fontSize: "12px",
+        lineHeight: 1.55,
+        color: "var(--text-primary)",
+        overflowX: "auto",
+        whiteSpace: "pre",
+        maxHeight: "220px",
+      }}
+    >
+      {content}
+    </pre>
   );
 }
