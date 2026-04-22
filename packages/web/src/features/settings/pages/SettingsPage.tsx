@@ -62,43 +62,74 @@ function SettingsCard({
   desc,
   children,
   testid,
+  actions,
 }: {
   icon: IconName;
   title: string;
   desc: string;
   children: ReactNode;
   testid?: string;
+  actions?: ReactNode;
 }) {
   return (
     <section style={CARD} data-testid={testid}>
-      <h3
+      <div
         style={{
-          fontSize: "15px",
-          fontWeight: 600,
-          margin: "0 0 4px",
           display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          color: "var(--text-primary)",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: "12px",
+          marginBottom: "20px",
         }}
       >
-        <Icon name={icon} size={18} style={{ color: "var(--text-secondary)" }} />
-        <span>{title}</span>
-      </h3>
-      <p
-        style={{
-          fontSize: "13px",
-          color: "var(--text-secondary)",
-          opacity: 0.85,
-          margin: "0 0 20px",
-        }}
-      >
-        {desc}
-      </p>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h3
+            style={{
+              fontSize: "15px",
+              fontWeight: 600,
+              margin: "0 0 4px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              color: "var(--text-primary)",
+            }}
+          >
+            <Icon
+              name={icon}
+              size={18}
+              style={{ color: "var(--text-secondary)" }}
+            />
+            <span>{title}</span>
+          </h3>
+          <p
+            style={{
+              fontSize: "13px",
+              color: "var(--text-secondary)",
+              opacity: 0.85,
+              margin: 0,
+            }}
+          >
+            {desc}
+          </p>
+        </div>
+        {actions ? <div style={{ flexShrink: 0 }}>{actions}</div> : null}
+      </div>
       {children}
     </section>
   );
 }
+
+const CRED_ROW_BTN: CSSProperties = {
+  padding: "4px 10px",
+  border: "1px solid var(--border)",
+  borderRadius: "5px",
+  background: "var(--bg-card)",
+  color: "var(--text-primary)",
+  fontSize: "11px",
+  fontWeight: 500,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
 
 function Field({
   label,
@@ -266,6 +297,10 @@ export function SettingsPage() {
   const [cred, setCred] = useState<LlmCredential | null>(null);
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  // Multi-credential support
+  const [credentials, setCredentials] = useState<LlmCredential[]>([]);
+  const [editingCredentialId, setEditingCredentialId] = useState<string | null>(null);
+  const [label, setLabel] = useState<string>("");
 
   const [protoType, setProtoType] = useState<string>("openai-completions");
   const [baseUrl, setBaseUrl] = useState<string>("");
@@ -296,7 +331,8 @@ export function SettingsPage() {
       api.system.status().catch(() => null),
       api.settings.getCredential().catch(() => ({ credential: null as LlmCredential | null })),
       api.settings.getSystemConfig().catch(() => null as { config: SystemConfig } | null),
-    ]).then(([s, credResp, cfg]) => {
+      api.settings.listCredentials().catch(() => ({ credentials: [] as LlmCredential[] })),
+    ]).then(([s, credResp, cfg, credList]) => {
       if (!mounted) return;
       if (s) setStatus(s);
       if (credResp?.credential) {
@@ -306,6 +342,8 @@ export function SettingsPage() {
         setBaseUrl(c.base_url ?? "");
         setModelId(c.model_id);
         setThinking((c.thinking_effort as ThinkingValue) ?? "medium");
+        setLabel(c.label ?? "");
+        setEditingCredentialId(c.id);
       } else {
         setModelId(PROTOCOLS[0].defaultModel);
       }
@@ -313,12 +351,87 @@ export function SettingsPage() {
         setConfig(cfg.config);
         setMaxParallel(cfg.config.max_parallel_scan);
       }
+      if (credList?.credentials) {
+        setCredentials(credList.credentials);
+      }
       setLoading(false);
     });
     return () => {
       mounted = false;
     };
   }, []);
+
+  /** Load a credential's values into the form for editing. */
+  function editCredential(c: LlmCredential) {
+    setCred(c);
+    setEditingCredentialId(c.id);
+    setProtoType(normalizeProtoType(c.proto_type));
+    setBaseUrl(c.base_url ?? "");
+    setModelId(c.model_id);
+    setThinking((c.thinking_effort as ThinkingValue) ?? "medium");
+    setLabel(c.label ?? "");
+    setApiKey(""); // always require re-entry for security
+    setTestState({ kind: "idle" });
+    setToast(null);
+  }
+
+  /** Clear form for creating a brand-new credential. */
+  function newCredential() {
+    setCred(null);
+    setEditingCredentialId(null);
+    const first = PROTOCOLS[0];
+    setProtoType(first.value);
+    setBaseUrl("");
+    setModelId(first.defaultModel);
+    setThinking("medium");
+    setLabel("");
+    setApiKey("");
+    setTestState({ kind: "idle" });
+    setToast(null);
+  }
+
+  async function handleDeleteCredential(c: LlmCredential) {
+    const msg = i18n
+      .t("settings.credentials.deleteConfirm")
+      .replace("{label}", c.label || c.provider);
+    if (!window.confirm(msg)) return;
+    try {
+      await api.settings.deleteCredential(c.id);
+      const fresh = await api.settings
+        .listCredentials()
+        .catch(() => ({ credentials: [] as LlmCredential[] }));
+      setCredentials(fresh.credentials);
+      if (editingCredentialId === c.id) {
+        // If we just deleted the one being edited, reset form.
+        newCredential();
+        // Also refresh the "default" loaded credential.
+        const cur = await api.settings
+          .getCredential()
+          .catch(() => ({ credential: null as LlmCredential | null }));
+        if (cur?.credential) editCredential(cur.credential);
+      }
+      setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
+      setTimeout(() => setToast(null), 2000);
+    } catch (err) {
+      setToast({ kind: "err", msg: String((err as Error).message || err) });
+      setTimeout(() => setToast(null), 2800);
+    }
+  }
+
+  async function handleSetDefault(c: LlmCredential) {
+    try {
+      await api.settings.setDefaultCredential(c.id);
+      const fresh = await api.settings
+        .listCredentials()
+        .catch(() => ({ credentials: [] as LlmCredential[] }));
+      setCredentials(fresh.credentials);
+      setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
+      setTimeout(() => setToast(null), 2000);
+    } catch (err) {
+      setToast({ kind: "err", msg: String((err as Error).message || err) });
+      setTimeout(() => setToast(null), 2800);
+    }
+  }
 
   const dirty = useMemo(() => {
     const credChanged =
@@ -353,6 +466,9 @@ export function SettingsPage() {
       if (apiKey.length > 0) {
         ops.push(
           api.settings.saveCredential({
+            // Include id when editing an existing credential; backend treats
+            // absence as "create new".
+            id: editingCredentialId ?? undefined,
             // `provider` is kept as a vendor metadata string on the backend;
             // we mirror proto_type so this stays consistent in the DB but
             // is no longer user-configurable in the UI.
@@ -361,6 +477,7 @@ export function SettingsPage() {
             base_url: baseUrl || undefined,
             model_id: modelId,
             thinking_effort: thinking,
+            label: label || undefined,
             api_key: apiKey,
           }),
         );
@@ -382,7 +499,15 @@ export function SettingsPage() {
 
       // Refresh credential state so UI shows "saved" masked view.
       const fresh = await api.settings.getCredential().catch(() => ({ credential: cred }));
-      if (fresh?.credential) setCred(fresh.credential);
+      if (fresh?.credential) {
+        setCred(fresh.credential);
+        setEditingCredentialId(fresh.credential.id);
+      }
+      // Also refresh the credentials list so the new/edited row shows.
+      const freshList = await api.settings
+        .listCredentials()
+        .catch(() => ({ credentials: [] as LlmCredential[] }));
+      setCredentials(freshList.credentials);
       if (config) setConfig({ ...config, max_parallel_scan: maxParallel });
       setApiKey("");
       setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
@@ -554,14 +679,237 @@ export function SettingsPage() {
           </SettingsCard>
 
           {/* ============================================================= */}
-          {/*  Model Configuration                                           */}
+          {/*  Credentials list (multi-credential support)                  */}
+          {/* ============================================================= */}
+          <SettingsCard
+            icon="shield"
+            title={i18n.t("settings.credentials.title")}
+            desc={i18n.t("settings.credentials.desc")}
+            testid="settings-card-credentials"
+            actions={
+              <button
+                type="button"
+                data-testid="settings-credential-new-btn"
+                onClick={newCredential}
+                style={{
+                  padding: "6px 12px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  background: "var(--bg-card)",
+                  color: "var(--text-primary)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {i18n.t("settings.credentials.new")}
+              </button>
+            }
+          >
+            {credentials.length === 0 ? (
+              <div
+                style={{
+                  padding: "20px 4px",
+                  color: "var(--text-secondary)",
+                  fontSize: "13px",
+                }}
+              >
+                {i18n.t("settings.credentials.empty")}
+              </div>
+            ) : (
+              <div
+                data-testid="settings-credentials-list"
+                style={{ display: "flex", flexDirection: "column", gap: "6px" }}
+              >
+                {credentials.map((c) => {
+                  const isEditing = editingCredentialId === c.id;
+                  return (
+                    <div
+                      key={c.id}
+                      data-testid="settings-credential-row"
+                      data-cred-id={c.id}
+                      data-is-default={c.is_default || undefined}
+                      data-editing={isEditing || undefined}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        padding: "10px 12px",
+                        borderRadius: "8px",
+                        border: `1px solid ${
+                          isEditing
+                            ? "var(--brand)"
+                            : "var(--border)"
+                        }`,
+                        background: isEditing
+                          ? "rgba(220,38,38,0.04)"
+                          : "var(--bg-page)",
+                      }}
+                    >
+                      {/* Default indicator */}
+                      <span
+                        aria-hidden
+                        style={{
+                          width: "18px",
+                          height: "18px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: c.is_default
+                            ? "var(--sev-medium)"
+                            : "var(--text-secondary)",
+                          opacity: c.is_default ? 1 : 0.25,
+                          fontSize: "14px",
+                          lineHeight: 1,
+                        }}
+                        title={
+                          c.is_default
+                            ? i18n.t("settings.credentials.default")
+                            : ""
+                        }
+                      >
+                        ★
+                      </span>
+                      {/* Main info */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            color: "var(--text-primary)",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {c.label || c.provider}
+                          {isEditing && (
+                            <span
+                              style={{
+                                marginLeft: "8px",
+                                fontSize: "11px",
+                                fontWeight: 500,
+                                color: "var(--brand)",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.04em",
+                              }}
+                            >
+                              {i18n.t("settings.credentials.edit")}
+                            </span>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            color: "var(--text-secondary)",
+                            fontFamily:
+                              "'SF Mono', Menlo, Consolas, monospace",
+                            marginTop: "2px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {c.model_id}
+                          {c.base_url ? " · " + c.base_url : ""}
+                        </div>
+                      </div>
+                      {/* Actions */}
+                      <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
+                        {!c.is_default && (
+                          <button
+                            type="button"
+                            data-testid="settings-credential-setdefault"
+                            onClick={() => handleSetDefault(c)}
+                            title={i18n.t("settings.credentials.setDefault")}
+                            style={CRED_ROW_BTN}
+                          >
+                            {i18n.t("settings.credentials.setDefault")}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          data-testid="settings-credential-edit"
+                          onClick={() => editCredential(c)}
+                          disabled={isEditing}
+                          style={{
+                            ...CRED_ROW_BTN,
+                            opacity: isEditing ? 0.5 : 1,
+                            cursor: isEditing ? "default" : "pointer",
+                          }}
+                        >
+                          {i18n.t("settings.credentials.edit")}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="settings-credential-delete"
+                          onClick={() => handleDeleteCredential(c)}
+                          style={{
+                            ...CRED_ROW_BTN,
+                            color: "var(--brand)",
+                            borderColor: "rgba(220,38,38,0.3)",
+                          }}
+                        >
+                          {i18n.t("settings.credentials.delete")}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </SettingsCard>
+
+          {/* ============================================================= */}
+          {/*  Model Configuration — form used for both create and edit     */}
           {/* ============================================================= */}
           <SettingsCard
             icon="lock"
-            title={i18n.t("settings.model.title")}
+            title={
+              editingCredentialId && cred
+                ? i18n
+                    .t("settings.credentials.editing")
+                    .replace("{label}", cred.label || cred.provider)
+                : i18n.t("settings.model.title")
+            }
             desc={i18n.t("settings.model.desc")}
             testid="settings-card-model"
+            actions={
+              editingCredentialId ? (
+                <button
+                  type="button"
+                  data-testid="settings-credential-cancel-edit"
+                  onClick={newCredential}
+                  style={{
+                    padding: "6px 12px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    background: "var(--bg-card)",
+                    color: "var(--text-secondary)",
+                    fontSize: "12px",
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  {i18n.t("settings.credentials.cancelEdit")}
+                </button>
+              ) : undefined
+            }
           >
+            {/* Label (optional, used to distinguish credentials in list) */}
+            <Field
+              label={i18n.t("settings.model.labelLabel")}
+              hint={i18n.t("settings.model.labelHint")}
+            >
+              <input
+                data-testid="settings-credential-label-input"
+                type="text"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder={i18n.t("settings.model.labelPlaceholder")}
+                style={FIELD_INPUT}
+              />
+            </Field>
             <div style={{ display: "flex", gap: "12px", marginBottom: "18px" }}>
               <div style={{ flex: 1 }}>
                 <label style={FIELD_LABEL}>{i18n.t("settings.model.protocol")}</label>

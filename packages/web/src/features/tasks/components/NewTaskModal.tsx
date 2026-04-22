@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { api } from "../../../shared/api/client.js";
+import { api, type LlmCredential } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 
 interface Props {
@@ -16,6 +16,31 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Multi-credential support: load all credentials and let user pick one.
+  // When only 1 credential exists (or none), we hide the selector and fall
+  // back to the backend's is_default behavior.
+  const [credentials, setCredentials] = useState<LlmCredential[]>([]);
+  const [credentialId, setCredentialId] = useState<string>("");
+  useEffect(() => {
+    let mounted = true;
+    api.settings
+      .listCredentials()
+      .then((res) => {
+        if (!mounted) return;
+        setCredentials(res.credentials ?? []);
+        const def = res.credentials?.find((c) => c.is_default);
+        if (def) setCredentialId(def.id);
+        else if (res.credentials && res.credentials.length > 0)
+          setCredentialId(res.credentials[0].id);
+      })
+      .catch(() => {
+        /* legacy service without /credentials endpoint — fall back to default */
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
   const [, forceI18n] = useState(0);
   useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
 
@@ -27,11 +52,16 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         if (!file) return;
         const fd = new FormData();
         fd.append("file", file);
+        if (credentialId) fd.append("credential_id", credentialId);
         setUploadPct(0);
         await api.tasks.createWithProgress(fd, (pct) => setUploadPct(pct));
       } else {
         if (!gitUrl) return;
-        await api.tasks.create({ git_url: gitUrl, project_name: gitUrl.split("/").pop() });
+        await api.tasks.create({
+          git_url: gitUrl,
+          project_name: gitUrl.split("/").pop(),
+          credential_id: credentialId || undefined,
+        });
       }
       onCreated();
     } catch (err) {
@@ -135,6 +165,54 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
 
         {/* Body */}
         <div style={{ padding: "24px" }}>
+          {/* Credential picker — only shown when multiple credentials exist */}
+          {credentials.length > 1 && (
+            <div
+              data-testid="new-task-credential-picker"
+              style={{ marginBottom: "16px" }}
+            >
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  color: "var(--text-secondary)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  marginBottom: "6px",
+                }}
+              >
+                {i18n.t("newTask.credential")}
+              </label>
+              <select
+                data-testid="new-task-credential-select"
+                value={credentialId}
+                onChange={(e) => setCredentialId(e.target.value)}
+                style={{
+                  width: "100%",
+                  height: "40px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  padding: "0 10px",
+                  fontSize: "13px",
+                  background: "var(--bg-page)",
+                  color: "var(--text-primary)",
+                  outline: "none",
+                  cursor: "pointer",
+                }}
+              >
+                {credentials.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {(c.label || c.provider) +
+                      " — " +
+                      c.model_id +
+                      (c.is_default ? " ★" : "")}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {tab === "upload" ? (
             <div>
               <div

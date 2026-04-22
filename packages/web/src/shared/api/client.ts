@@ -129,7 +129,11 @@ export const api = {
     list: (state?: string) =>
       request<{ tasks: Task[] }>(`/api/tasks${state ? `?state=${state}` : ""}`),
     get: (id: string) => request<{ task: Task }>(`/api/tasks/${id}`),
-    create: (body: FormData | { git_url: string; project_name?: string }) =>
+    create: (
+      body:
+        | FormData
+        | { git_url: string; project_name?: string; credential_id?: string },
+    ) =>
       body instanceof FormData
         ? fetch("/api/tasks", { method: "POST", credentials: "include", body }).then((r) => r.json() as Promise<{ task: Task }>)
         : request<{ task: Task }>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
@@ -206,6 +210,19 @@ export const api = {
   },
   settings: {
     getCredential: () => request<{ credential: LlmCredential | null }>("/api/settings/credential"),
+    /** List all credentials (multi-credential support). */
+    listCredentials: () =>
+      request<{ credentials: LlmCredential[] }>("/api/settings/credentials"),
+    /** Delete a credential by id. */
+    deleteCredential: (id: string) =>
+      request<{ ok: boolean }>(`/api/settings/credentials/${id}`, {
+        method: "DELETE",
+      }),
+    /** Set a credential as the default. */
+    setDefaultCredential: (id: string) =>
+      request<{ ok: boolean }>(`/api/settings/credentials/${id}/default`, {
+        method: "POST",
+      }),
     saveCredential: (cred: SaveCredentialPayload) =>
       request<{ id: string }>("/api/settings/credential", {
         method: "PUT",
@@ -292,6 +309,8 @@ export interface LlmCredential {
 }
 
 export interface SaveCredentialPayload {
+  /** Optional credential id. Present = update, absent = create. */
+  id?: string;
   provider: string;
   proto_type: string;
   base_url?: string;
@@ -299,6 +318,7 @@ export interface SaveCredentialPayload {
   thinking_effort?: string;
   label?: string;
   api_key: string;
+  is_default?: boolean;
 }
 
 export interface SystemConfig {
