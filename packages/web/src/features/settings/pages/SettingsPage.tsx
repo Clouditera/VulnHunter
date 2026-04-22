@@ -182,12 +182,45 @@ function SegGroup<T extends string>({
 /*  The page                                                                  */
 /* -------------------------------------------------------------------------- */
 
-const PROVIDERS: Array<{ value: string; proto: string; label: string; defaultModel: string }> = [
-  { value: "anthropic", proto: "anthropic", label: "Anthropic", defaultModel: "claude-sonnet-4-5" },
-  { value: "openai", proto: "openai", label: "OpenAI", defaultModel: "gpt-4o" },
-  { value: "minimax", proto: "openai", label: "MiniMax", defaultModel: "minimax-m2.5" },
-  { value: "custom", proto: "openai", label: "Custom (OpenAI-compat)", defaultModel: "" },
+/**
+ * Pure protocol type — this drives which API shape pi-cli/worker uses
+ * when talking to the LLM endpoint. Changed from a provider abstraction
+ * (anthropic/openai/minimax/custom) to 3 protocol options per Architect's
+ * correction: pi's models.json `api` field must be one of these three
+ * strings, otherwise endpoints like DeepSeek/mimo/kimi fail.
+ */
+const PROTOCOLS: ReadonlyArray<{
+  value: string;
+  labelKey: string;
+  defaultModel: string;
+}> = [
+  {
+    value: "openai-completions",
+    labelKey: "settings.model.proto.openaiCompletions",
+    defaultModel: "mimo-v2-pro",
+  },
+  {
+    value: "openai-responses",
+    labelKey: "settings.model.proto.openaiResponses",
+    defaultModel: "gpt-4o",
+  },
+  {
+    value: "anthropic",
+    labelKey: "settings.model.proto.anthropic",
+    defaultModel: "claude-sonnet-4-5",
+  },
 ];
+
+/**
+ * Migration: old credentials stored proto_type as either "anthropic" or
+ * "openai". Map them to the new 3-option scheme on load so the dropdown
+ * always shows a valid selection.
+ */
+function normalizeProtoType(raw: string): string {
+  if (raw === "openai") return "openai-completions"; // safer default for 3rd-party
+  if (PROTOCOLS.some((p) => p.value === raw)) return raw;
+  return "openai-completions";
+}
 
 const THINKING_VALUES = ["off", "minimal", "low", "medium", "high"] as const;
 type ThinkingValue = (typeof THINKING_VALUES)[number];
@@ -234,8 +267,7 @@ export function SettingsPage() {
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [provider, setProvider] = useState<string>("anthropic");
-  const [protoType, setProtoType] = useState<string>("anthropic");
+  const [protoType, setProtoType] = useState<string>("openai-completions");
   const [baseUrl, setBaseUrl] = useState<string>("");
   const [modelId, setModelId] = useState<string>("");
   const [thinking, setThinking] = useState<ThinkingValue>("medium");
@@ -270,13 +302,12 @@ export function SettingsPage() {
       if (credResp?.credential) {
         const c = credResp.credential;
         setCred(c);
-        setProvider(c.provider);
-        setProtoType(c.proto_type);
+        setProtoType(normalizeProtoType(c.proto_type));
         setBaseUrl(c.base_url ?? "");
         setModelId(c.model_id);
         setThinking((c.thinking_effort as ThinkingValue) ?? "medium");
       } else {
-        setModelId(PROVIDERS[0].defaultModel);
+        setModelId(PROTOCOLS[0].defaultModel);
       }
       if (cfg?.config) {
         setConfig(cfg.config);
@@ -293,15 +324,14 @@ export function SettingsPage() {
     const credChanged =
       apiKey.length > 0 ||
       (cred &&
-        (cred.provider !== provider ||
-          cred.proto_type !== protoType ||
+        (normalizeProtoType(cred.proto_type) !== protoType ||
           (cred.base_url ?? "") !== baseUrl ||
           cred.model_id !== modelId ||
           cred.thinking_effort !== thinking)) ||
       (!cred && (apiKey.length > 0 || modelId.length > 0));
     const cfgChanged = config ? config.max_parallel_scan !== maxParallel : false;
     return Boolean(credChanged) || cfgChanged;
-  }, [apiKey, cred, provider, protoType, baseUrl, modelId, thinking, config, maxParallel]);
+  }, [apiKey, cred, protoType, baseUrl, modelId, thinking, config, maxParallel]);
 
   const canSaveCred = apiKey.length > 0 || Boolean(cred);
 
@@ -315,8 +345,7 @@ export function SettingsPage() {
       const credChangedNoKey =
         cred &&
         apiKey.length === 0 &&
-        (cred.provider !== provider ||
-          cred.proto_type !== protoType ||
+        (normalizeProtoType(cred.proto_type) !== protoType ||
           (cred.base_url ?? "") !== baseUrl ||
           cred.model_id !== modelId ||
           cred.thinking_effort !== thinking);
@@ -324,7 +353,10 @@ export function SettingsPage() {
       if (apiKey.length > 0) {
         ops.push(
           api.settings.saveCredential({
-            provider,
+            // `provider` is kept as a vendor metadata string on the backend;
+            // we mirror proto_type so this stays consistent in the DB but
+            // is no longer user-configurable in the UI.
+            provider: protoType,
             proto_type: protoType,
             base_url: baseUrl || undefined,
             model_id: modelId,
@@ -534,19 +566,23 @@ export function SettingsPage() {
               <div style={{ flex: 1 }}>
                 <label style={FIELD_LABEL}>{i18n.t("settings.model.protocol")}</label>
                 <Select
-                  testid="settings-provider-select"
-                  value={provider}
+                  testid="settings-protocol-select"
+                  value={protoType}
                   onChange={(v) => {
-                    const p = PROVIDERS.find((x) => x.value === v);
-                    setProvider(v);
-                    if (p) {
-                      setProtoType(p.proto);
-                      if (!modelId || PROVIDERS.some((x) => x.defaultModel === modelId)) {
-                        setModelId(p.defaultModel);
-                      }
+                    setProtoType(v);
+                    // If the user has never typed a custom model id (or is
+                    // still on a known default), swap to the new protocol's
+                    // recommended default. Otherwise leave their input alone.
+                    const knownDefaults = PROTOCOLS.map((p) => p.defaultModel);
+                    if (!modelId || knownDefaults.includes(modelId)) {
+                      const next = PROTOCOLS.find((p) => p.value === v);
+                      if (next) setModelId(next.defaultModel);
                     }
                   }}
-                  options={PROVIDERS.map((p) => ({ value: p.value, label: p.label }))}
+                  options={PROTOCOLS.map((p) => ({
+                    value: p.value,
+                    label: i18n.t(p.labelKey),
+                  }))}
                 />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
