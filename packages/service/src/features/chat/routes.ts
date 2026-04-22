@@ -3,7 +3,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import * as chatStorage from "./storage.js";
 import { ensureWorker, stopWorker, getWorkerUrl } from "./worker-manager.js";
-import { waitForBridgeWs } from "./ws-chat.js";
+import { connectBridgeProxy, disconnectBridgeProxy } from "./bridge-proxy.js";
 import { loadConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
 
@@ -36,6 +36,7 @@ chatRouter.get("/sessions/:id", async (c) => {
 // DELETE /api/chat/sessions/:id
 chatRouter.delete("/sessions/:id", async (c) => {
   const id = c.req.param("id");
+  disconnectBridgeProxy(id);
   await stopWorker(id);
   await chatStorage.deleteSession(id);
   return c.json({ ok: true });
@@ -81,13 +82,13 @@ chatRouter.post("/sessions/:id/prompt", async (c) => {
     return c.json({ error: { code: "ERR_INTERNAL", detail: String(err) } }, 503);
   }
 
-  // Wait for service→bridge WS proxy to be connected (frontend WS triggers connectToBridge).
-  // Without this, pi may finish processing before the WS is up → events lost.
+  // Proactively connect service→bridge WS (session-level singleton).
+  // This MUST succeed before forwarding the prompt, otherwise events will be lost.
   try {
-    await waitForBridgeWs(sessionId, 8000);
+    await connectBridgeProxy(sessionId, bridgeUrl, 10000);
   } catch (err) {
-    logger.warn({ err, sessionId }, "Bridge WS not ready, proceeding anyway");
-    // Don't fail the request — bridge HTTP may still work, and events may arrive late
+    logger.error({ err, sessionId }, "Failed to connect bridge WS proxy");
+    return c.json({ error: { code: "ERR_INTERNAL", detail: "Bridge WS not ready" } }, 503);
   }
 
   // Forward prompt to bridge
