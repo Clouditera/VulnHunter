@@ -126,15 +126,69 @@ async function computeDashboard(range: string): Promise<DashboardData> {
     }),
   );
 
+  // Compute delta vs previous period
+  const deltas = await computeDeltas(db, range, since, totalScans, totalVulns, avgDurationMin);
+
   return {
     range,
     stats: {
-      total_scans: { value: totalScans, delta: "" },
-      vulnerabilities: { value: totalVulns, delta: "" },
-      avg_duration_min: { value: avgDurationMin, delta: "" },
+      total_scans: { value: totalScans, delta: deltas.scans },
+      vulnerabilities: { value: totalVulns, delta: deltas.vulns },
+      avg_duration_min: { value: avgDurationMin, delta: deltas.duration },
     },
     severity_dist: severityDist,
     cwe_top5: cweRows.map((r) => ({ cwe: r.cwe, count: Number(r.count) })),
     recent_scans: recentWithCounts,
   };
+}
+
+/** Compute "vs previous period" delta strings (e.g. "+25%", "-10%", "—") */
+async function computeDeltas(
+  db: ReturnType<typeof getDb>,
+  range: string,
+  since: Date,
+  currentScans: number,
+  currentVulns: number,
+  currentAvgMin: number,
+): Promise<{ scans: string; vulns: string; duration: string }> {
+  if (range === "all") return { scans: "", vulns: "", duration: "" };
+
+  const periodMs = range === "30d" ? 30 * 86400_000 : 90 * 86400_000;
+  const prevSince = new Date(since.getTime() - periodMs);
+
+  const [prevScansRows, prevVulnsRows, prevDurRows] = await Promise.all([
+    db<{ count: string }[]>`
+      SELECT COUNT(*) as count FROM tasks
+      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND state = 'completed'
+        AND created_at >= ${prevSince} AND created_at < ${since}
+    `,
+    db<{ count: string }[]>`
+      SELECT COUNT(*) as count FROM findings_meta
+      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+        AND indexed_at >= ${prevSince} AND indexed_at < ${since}
+    `,
+    db<{ avg_duration: string | null }[]>`
+      SELECT AVG(duration_ms) as avg_duration FROM tasks
+      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND state = 'completed'
+        AND created_at >= ${prevSince} AND created_at < ${since}
+    `,
+  ]);
+
+  const prevScans = Number(prevScansRows[0]?.count ?? 0);
+  const prevVulns = Number(prevVulnsRows[0]?.count ?? 0);
+  const prevAvgMin = Math.round(Number(prevDurRows[0]?.avg_duration ?? 0) / 60_000 * 10) / 10;
+
+  return {
+    scans: formatDelta(currentScans, prevScans),
+    vulns: formatDelta(currentVulns, prevVulns),
+    duration: formatDelta(currentAvgMin, prevAvgMin),
+  };
+}
+
+function formatDelta(current: number, previous: number): string {
+  if (previous === 0 && current === 0) return "";
+  if (previous === 0) return current > 0 ? "+∞" : "";
+  const pct = Math.round(((current - previous) / previous) * 100);
+  if (pct === 0) return "0%";
+  return pct > 0 ? `+${pct}%` : `${pct}%`;
 }
