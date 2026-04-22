@@ -11,6 +11,8 @@ import { getMinio } from "../infra/minio/client.js";
 import { loadConfig } from "../infra/config.js";
 import { logger } from "../infra/logger.js";
 
+type ToolResult = { content: Array<{ type: "text"; text: string }> };
+
 // ─── list-findings ───
 
 export const listFindingsSchema = {
@@ -23,7 +25,7 @@ export async function listFindings(args: {
   task_id: string;
   severity?: "high" | "medium" | "low" | "info";
   limit?: number;
-}): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+}): Promise<ToolResult> {
   logger.debug({ args }, "MCP list-findings");
 
   const findings = await findingsStorage.listFindings({
@@ -56,7 +58,7 @@ export const readFindingSchema = {
 export async function readFinding(args: {
   task_id: string;
   finding_key: string;
-}): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+}): Promise<ToolResult> {
   logger.debug({ args }, "MCP read-finding");
 
   const meta = await findingsStorage.getFindingByKey(args.task_id, args.finding_key);
@@ -134,7 +136,7 @@ export const readTaskMetadataSchema = {
 
 export async function readTaskMetadata(args: {
   task_id: string;
-}): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+}): Promise<ToolResult> {
   logger.debug({ args }, "MCP read-task-metadata");
 
   const task = await taskStorage.getTaskById(args.task_id);
@@ -175,4 +177,67 @@ export async function readTaskMetadata(args: {
   if (meta.total_stages) sections.push(`- **Stages**: ${meta.total_stages}`);
 
   return { content: [{ type: "text", text: sections.join("\n") }] };
+}
+
+// ─── list-tasks ───
+
+export const listTasksSchema = {
+  state: z.enum(["queued", "running", "paused", "completed", "failed", "cancelled"]).optional().describe("Filter by state"),
+  limit: z.number().optional().default(10).describe("Max results (default 10)"),
+};
+
+export async function listTasks(args: {
+  state?: string;
+  limit?: number;
+}): Promise<ToolResult> {
+  logger.debug({ args }, "MCP list-tasks");
+
+  const tasks = await taskStorage.listTasks({
+    state: args.state as never,
+    limit: args.limit ?? 10,
+  });
+
+  if (tasks.length === 0) {
+    return {
+      content: [{ type: "text", text: `No tasks found${args.state ? ` with state ${args.state}` : ""}.` }],
+    };
+  }
+
+  const lines = tasks.map((t) =>
+    `- **${t.project_name}** (${t.id.slice(0, 8)}) [${t.state}] created ${new Date(t.created_at).toLocaleDateString()}${
+      t.duration_ms ? ` (${(t.duration_ms / 1000).toFixed(0)}s)` : ""
+    }`,
+  );
+
+  return {
+    content: [{ type: "text", text: `Found ${tasks.length} task(s):\n\n${lines.join("\n")}` }],
+  };
+}
+
+// ─── cancel-task ───
+
+export const cancelTaskSchema = {
+  task_id: z.string().describe("The task ID to cancel"),
+};
+
+export async function cancelTask(args: {
+  task_id: string;
+}): Promise<ToolResult> {
+  logger.debug({ args }, "MCP cancel-task");
+
+  const task = await taskStorage.getTaskById(args.task_id);
+  if (!task) {
+    return { content: [{ type: "text", text: `Task ${args.task_id} not found.` }] };
+  }
+
+  if (!["running", "paused", "queued"].includes(task.state)) {
+    return {
+      content: [{ type: "text", text: `Task ${task.project_name} is in state '${task.state}' and cannot be cancelled.` }],
+    };
+  }
+
+  await taskStorage.updateTaskState(task.id, "cancelled", { completedAt: new Date() });
+  return {
+    content: [{ type: "text", text: `Task ${task.project_name} (${task.id.slice(0, 8)}) has been cancelled.` }],
+  };
 }

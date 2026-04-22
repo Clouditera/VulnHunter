@@ -17,6 +17,8 @@ import {
   listFindingsSchema, listFindings,
   readFindingSchema, readFinding,
   readTaskMetadataSchema, readTaskMetadata,
+  listTasksSchema, listTasks,
+  cancelTaskSchema, cancelTask,
 } from "./tools.js";
 
 // Per-MCP-session state (each pi instance gets its own session)
@@ -51,6 +53,20 @@ function createToolServer(): McpServer {
     "Read task metadata including project profile, execution summary, and findings count breakdown.",
     readTaskMetadataSchema,
     async (args) => readTaskMetadata(args),
+  );
+
+  server.tool(
+    "list-tasks",
+    "List scan tasks with their status, project name, and creation date. Optionally filter by state.",
+    listTasksSchema,
+    async (args) => listTasks(args),
+  );
+
+  server.tool(
+    "cancel-task",
+    "Cancel a running, paused, or queued scan task.",
+    cancelTaskSchema,
+    async (args) => cancelTask(args),
   );
 
   return server;

@@ -11,6 +11,8 @@ vi.mock("../../src/features/findings/storage.js", () => ({
 }));
 vi.mock("../../src/features/tasks/storage.js", () => ({
   getTaskById: vi.fn(),
+  listTasks: vi.fn(),
+  updateTaskState: vi.fn(),
 }));
 vi.mock("../../src/infra/minio/client.js", () => ({
   getMinio: vi.fn(),
@@ -22,7 +24,7 @@ vi.mock("../../src/infra/logger.js", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import { listFindings, readFinding, readTaskMetadata } from "../../src/mcp/tools.js";
+import { listFindings, readFinding, readTaskMetadata, listTasks, cancelTask } from "../../src/mcp/tools.js";
 import * as findingsStorage from "../../src/features/findings/storage.js";
 import * as taskStorage from "../../src/features/tasks/storage.js";
 
@@ -106,6 +108,75 @@ describe("MCP tools", () => {
       expect(result.content[0].text).toContain("BUG-001");
       expect(result.content[0].text).toContain("HIGH");
       expect(result.content[0].text).toContain("Buffer Overflow");
+    });
+  });
+
+  describe("list-tasks", () => {
+    it("returns formatted task list", async () => {
+      vi.mocked(taskStorage.listTasks).mockResolvedValue([
+        {
+          id: "t1", tenant_id: "tid", created_by: "u1",
+          project_name: "clay-ui-lib", state: "completed",
+          source_type: "upload", source_meta: {},
+          risk_score: null, failure_reason: null,
+          total_tokens_in: 0, total_tokens_out: 0,
+          tool_call_count: 0, stage_count: 0,
+          auto_skill_ids: [], created_at: new Date("2026-04-20"),
+          started_at: null, completed_at: null,
+          duration_ms: 300000, findings_indexed_at: null,
+          metadata: {}, credential_id: null,
+        },
+      ]);
+
+      const result = await listTasks({});
+      expect(result.content[0].text).toContain("clay-ui-lib");
+      expect(result.content[0].text).toContain("completed");
+    });
+
+    it("returns empty message", async () => {
+      vi.mocked(taskStorage.listTasks).mockResolvedValue([]);
+      const result = await listTasks({});
+      expect(result.content[0].text).toContain("No tasks found");
+    });
+  });
+
+  describe("cancel-task", () => {
+    it("cancels a running task", async () => {
+      vi.mocked(taskStorage.getTaskById).mockResolvedValue({
+        id: "t1", tenant_id: "tid", created_by: "u1",
+        project_name: "test", state: "running",
+        source_type: "upload", source_meta: {},
+        risk_score: null, failure_reason: null,
+        total_tokens_in: 0, total_tokens_out: 0,
+        tool_call_count: 0, stage_count: 0,
+        auto_skill_ids: [], created_at: new Date(),
+        started_at: new Date(), completed_at: null,
+        duration_ms: null, findings_indexed_at: null,
+        metadata: {}, credential_id: null,
+      });
+      vi.mocked(taskStorage.updateTaskState).mockResolvedValue();
+
+      const result = await cancelTask({ task_id: "t1" });
+      expect(result.content[0].text).toContain("cancelled");
+      expect(taskStorage.updateTaskState).toHaveBeenCalledWith("t1", "cancelled", expect.any(Object));
+    });
+
+    it("refuses to cancel completed task", async () => {
+      vi.mocked(taskStorage.getTaskById).mockResolvedValue({
+        id: "t1", tenant_id: "tid", created_by: "u1",
+        project_name: "test", state: "completed",
+        source_type: "upload", source_meta: {},
+        risk_score: null, failure_reason: null,
+        total_tokens_in: 0, total_tokens_out: 0,
+        tool_call_count: 0, stage_count: 0,
+        auto_skill_ids: [], created_at: new Date(),
+        started_at: null, completed_at: new Date(),
+        duration_ms: 1000, findings_indexed_at: null,
+        metadata: {}, credential_id: null,
+      });
+
+      const result = await cancelTask({ task_id: "t1" });
+      expect(result.content[0].text).toContain("cannot be cancelled");
     });
   });
 
