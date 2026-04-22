@@ -20,7 +20,19 @@ tasksRouter.get("/", async (c) => {
   const offset = Number(c.req.query("offset") ?? 0);
 
   const tasks = await taskStorage.listTasks({ state: state as never, limit, offset });
-  return c.json({ tasks });
+
+  // Enrich with findings severity counts
+  const taskIds = tasks.map((t) => t.id);
+  const severityCounts = taskIds.length > 0
+    ? await taskStorage.getFindingsSeverityCounts(taskIds)
+    : new Map<string, Record<string, number>>();
+
+  const enriched = tasks.map((t) => ({
+    ...t,
+    severity_counts: severityCounts.get(t.id) ?? { high: 0, medium: 0, low: 0, info: 0 },
+  }));
+
+  return c.json({ tasks: enriched });
 });
 
 // GET /api/tasks/:id

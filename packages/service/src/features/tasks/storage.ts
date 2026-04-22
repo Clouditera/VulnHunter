@@ -135,3 +135,27 @@ export async function deleteTask(id: string): Promise<boolean> {
   const rows = await db`DELETE FROM tasks WHERE id = ${id} RETURNING id`;
   return rows.length > 0;
 }
+
+export async function getFindingsSeverityCounts(
+  taskIds: string[],
+): Promise<Map<string, Record<string, number>>> {
+  const db = getDb();
+  if (taskIds.length === 0) return new Map();
+
+  const rows = await db<{ task_id: string; severity: string; count: number }[]>`
+    SELECT task_id, severity, COUNT(*)::int as count
+    FROM findings_meta
+    WHERE task_id = ANY(${taskIds})
+    GROUP BY task_id, severity
+  `;
+
+  const result = new Map<string, Record<string, number>>();
+  for (const row of rows) {
+    if (!result.has(row.task_id)) {
+      result.set(row.task_id, { high: 0, medium: 0, low: 0, info: 0 });
+    }
+    const counts = result.get(row.task_id)!;
+    counts[row.severity] = row.count;
+  }
+  return result;
+}
