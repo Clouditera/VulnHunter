@@ -56,6 +56,14 @@ export function TaskDetailPage() {
     mutationFn: () => api.tasks.cancel(taskId!),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["task", taskId] }),
   });
+  const pauseMut = useMutation({
+    mutationFn: () => api.tasks.pause(taskId!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["task", taskId] }),
+  });
+  const resumeMut = useMutation({
+    mutationFn: () => api.tasks.resume(taskId!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["task", taskId] }),
+  });
   const restartMut = useMutation({
     mutationFn: () => api.tasks.restart(taskId!),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["task", taskId] }),
@@ -184,7 +192,51 @@ export function TaskDetailPage() {
 
           {/* Action buttons */}
           <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
-            {["running", "queued"].includes(task.state) && (
+            {task.state === "running" && (
+              <button
+                data-testid="task-pause-btn"
+                onClick={() => pauseMut.mutate()}
+                disabled={pauseMut.isPending}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                style={{
+                  padding: "7px 14px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  background: "transparent",
+                  color: "var(--text-primary)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: pauseMut.isPending ? "not-allowed" : "pointer",
+                  transition: "background 0.15s",
+                }}
+              >
+                {pauseMut.isPending ? i18n.t("taskDetail.pausing") : i18n.t("taskDetail.pause")}
+              </button>
+            )}
+            {task.state === "paused" && (
+              <button
+                data-testid="task-resume-btn"
+                onClick={() => resumeMut.mutate()}
+                disabled={resumeMut.isPending}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#b91c1c")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--brand)")}
+                style={{
+                  padding: "7px 14px",
+                  border: "1px solid var(--brand)",
+                  borderRadius: "6px",
+                  background: "var(--brand)",
+                  color: "var(--btn-primary-text)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: resumeMut.isPending ? "not-allowed" : "pointer",
+                  transition: "background 0.15s",
+                }}
+              >
+                {resumeMut.isPending ? i18n.t("taskDetail.resuming") : i18n.t("taskDetail.resume")}
+              </button>
+            )}
+            {["running", "queued", "paused"].includes(task.state) && (
               <button
                 data-testid="task-cancel-btn"
                 onClick={() => cancelMut.mutate()}

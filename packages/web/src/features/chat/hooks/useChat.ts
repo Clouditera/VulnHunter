@@ -116,6 +116,14 @@ export function useChat() {
 
   useEffect(() => {
     if (!activeId) return;
+    // Reset per-session transient state whenever we switch / reconnect.
+    // Without this, a stale `currentAssistantId.current` or `streaming`
+    // flag from the previous session can cause replayed bridge-proxy
+    // events to append phantom bubbles to the new session.
+    currentAssistantId.current = null;
+    setStreaming(false);
+    setLastError(null);
+
     const wsUrl = buildWsUrl(`/ws/chat/${activeId}`);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -166,14 +174,29 @@ export function useChat() {
       case "message_start": {
         const role = evt.message?.role;
         if (role !== "assistant") return; // user echoes are ignored
-        // Dedup: the service currently forwards duplicate events (known
-        // backend issue). If an assistant message is already in flight,
-        // keep streaming into it rather than creating a second bubble.
+        // Dedup 1: if an assistant message is already in flight, keep
+        // streaming into it rather than creating a second bubble.
         if (currentAssistantId.current) return;
-        const id = `asst-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        currentAssistantId.current = id;
+        // Dedup 2 (belt-and-braces): if the tail of the session is already
+        // a completed assistant message that was added within the last
+        // second, treat this `message_start` as a replayed stale event
+        // (bridge-proxy event-buffer race) and skip it. This protects
+        // against the "切换 session 后消息累积" class of bugs even if
+        // the backend buffer flush ever regresses.
         setMessagesBySession((prev) => {
           const arr = prev[sid] ?? [];
+          const tail = arr[arr.length - 1];
+          if (
+            tail &&
+            tail.role === "assistant" &&
+            tail.streaming === false &&
+            Date.now() - Date.parse(tail.created_at) < 1500
+          ) {
+            // Just loaded from DB or recently settled — don't double-add.
+            return prev;
+          }
+          const id = `asst-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          currentAssistantId.current = id;
           const newMsg: ChatMessage = {
             id,
             role: "assistant",

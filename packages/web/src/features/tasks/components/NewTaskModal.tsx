@@ -44,6 +44,11 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
 
   const canSubmit = tab === "upload" ? !!file : !!gitUrl;
 
+  // Track where mousedown originated so a text-selection drag that
+  // happens to release on the overlay does NOT close the modal.
+  // Only close when BOTH mousedown AND mouseup happen on the overlay itself.
+  const overlayMouseDownRef = useRef(false);
+
   return (
     <div
       data-testid="new-task-modal"
@@ -56,7 +61,18 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         justifyContent: "center",
         zIndex: 50,
       }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onMouseDown={(e) => {
+        overlayMouseDownRef.current = e.target === e.currentTarget;
+      }}
+      onMouseUp={(e) => {
+        if (
+          overlayMouseDownRef.current &&
+          e.target === e.currentTarget
+        ) {
+          onClose();
+        }
+        overlayMouseDownRef.current = false;
+      }}
     >
       <div
         style={{

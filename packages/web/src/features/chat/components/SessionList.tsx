@@ -207,21 +207,26 @@ function SessionRow({
           transition: "opacity 0.12s, color 0.12s",
           padding: 0,
         }}
-        onFocus={(e) => (e.currentTarget.style.opacity = "1")}
-        onBlur={(e) => (e.currentTarget.style.opacity = "0")}
+        /* Visibility is driven entirely by the CSS :hover / :focus-visible
+           rules below — do NOT set inline opacity here, or it will stick
+           after mouseleave and make the icon visible on non-hovered rows. */
         onMouseEnter={(e) => {
-          e.currentTarget.style.opacity = "1";
           e.currentTarget.style.color = "var(--brand)";
         }}
-        onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-secondary)")}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = "var(--text-secondary)";
+        }}
       >
         <Icon name="trash" size={12} />
       </button>
 
-      {/* Sibling trick: bump the delete button to visible when the row is
-          hovered. React inline styles can't do :hover, so we attach listeners
-          on the parent row to toggle. */}
-      <style>{`[data-testid="chat-session-row"]:hover [data-testid="chat-session-delete"] { opacity: 1 !important; }`}</style>
+      {/* Show delete icon when: row is hovered OR button is keyboard-focused.
+          React inline styles can't do :hover / :focus-visible — use a
+          single <style> block. */}
+      <style>{`
+        [data-testid="chat-session-row"]:hover [data-testid="chat-session-delete"],
+        [data-testid="chat-session-delete"]:focus-visible { opacity: 1 !important; }
+      `}</style>
     </div>
   );
 }

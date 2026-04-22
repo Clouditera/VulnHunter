@@ -774,6 +774,101 @@ export function SettingsPage() {
                 }))}
               />
             </Field>
+
+            {/* Test Connection lives inside the model card so it's right
+                next to the credentials the user just filled in, not
+                buried at the bottom of the page next to "Save". */}
+            <div
+              style={{
+                marginTop: "12px",
+                paddingTop: "14px",
+                borderTop: "1px solid var(--divider)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+              }}
+            >
+              <div>
+                <button
+                  type="button"
+                  data-testid="settings-test-connection-btn"
+                  onClick={testConnection}
+                  disabled={testState.kind === "loading" || !apiKey}
+                  title={!apiKey ? i18n.t("settings.model.testNeedsKey") : undefined}
+                  style={{
+                    padding: "10px 16px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    background: "var(--bg-card)",
+                    color: "var(--text-primary)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor:
+                      testState.kind === "loading" || !apiKey
+                        ? "not-allowed"
+                        : "pointer",
+                    opacity: !apiKey ? 0.6 : 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    lineHeight: 1,
+                  }}
+                >
+                  <Icon
+                    name="activity"
+                    size={13}
+                    style={{
+                      animation:
+                        testState.kind === "loading"
+                          ? "vh-spin 0.9s linear infinite"
+                          : undefined,
+                    }}
+                  />
+                  {testState.kind === "loading"
+                    ? i18n.t("settings.model.testing")
+                    : i18n.t("settings.model.test")}
+                </button>
+              </div>
+              {(testState.kind === "ok" || testState.kind === "err") && (
+                <div
+                  data-testid="settings-test-result"
+                  data-kind={testState.kind}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    lineHeight: 1.5,
+                    fontFamily:
+                      testState.kind === "err"
+                        ? "'SF Mono', Menlo, Consolas, monospace"
+                        : undefined,
+                    background:
+                      testState.kind === "ok"
+                        ? "var(--bg-success)"
+                        : "var(--bg-error)",
+                    color:
+                      testState.kind === "ok"
+                        ? "var(--bg-success-text)"
+                        : "var(--brand)",
+                    border: `1px solid ${
+                      testState.kind === "ok"
+                        ? "var(--bg-success-border)"
+                        : "rgba(220,38,38,0.28)"
+                    }`,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  <strong style={{ marginRight: "6px", fontWeight: 700 }}>
+                    {testState.kind === "ok"
+                      ? i18n.t("settings.model.testOk")
+                      : i18n.t("settings.model.testFail")}
+                  </strong>
+                  {testState.kind === "ok"
+                    ? testState.msg ?? ""
+                    : testState.msg}
+                </div>
+              )}
+            </div>
           </SettingsCard>
 
           {/* ============================================================= */}
@@ -869,53 +964,16 @@ export function SettingsPage() {
             </Field>
           </SettingsCard>
 
-          {/* Test connection + Save (the two bottom actions) */}
-          <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-            <button
-              type="button"
-              data-testid="settings-test-connection-btn"
-              onClick={testConnection}
-              disabled={testState.kind === "loading" || !apiKey}
-              title={!apiKey ? i18n.t("settings.model.testNeedsKey") : undefined}
-              style={{
-                flex: "0 0 auto",
-                padding: "12px 18px",
-                border: "1px solid var(--border)",
-                borderRadius: "8px",
-                background: "var(--bg-card)",
-                color: "var(--text-primary)",
-                fontSize: "13px",
-                fontWeight: 600,
-                cursor:
-                  testState.kind === "loading" || !apiKey
-                    ? "not-allowed"
-                    : "pointer",
-                opacity: !apiKey ? 0.6 : 1,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                lineHeight: 1,
-              }}
-            >
-              <Icon
-                name="activity"
-                size={14}
-                style={{
-                  animation:
-                    testState.kind === "loading" ? "vh-spin 0.9s linear infinite" : undefined,
-                }}
-              />
-              {testState.kind === "loading"
-                ? i18n.t("settings.model.testing")
-                : i18n.t("settings.model.test")}
-            </button>
+          {/* Save is the only bottom-level action now; Test Connection
+              moved to live inside the Model Config card. */}
+          <div style={{ marginTop: "8px" }}>
             <button
               type="button"
               data-testid="settings-save-btn"
               disabled={!dirty || saving || !canSaveCred}
               onClick={handleSave}
               style={{
-                flex: 1,
+                width: "100%",
                 padding: "12px",
                 background: !dirty || !canSaveCred ? "var(--bg-disabled)" : "var(--brand)",
                 color: "var(--btn-primary-text)",
@@ -931,44 +989,6 @@ export function SettingsPage() {
               {saving ? i18n.t("settings.saving") : i18n.t("settings.saveBtn")}
             </button>
           </div>
-
-          {/* Inline test-connection result (below both buttons) */}
-          {testState.kind === "ok" || testState.kind === "err" ? (
-            <div
-              data-testid="settings-test-result"
-              data-kind={testState.kind}
-              style={{
-                marginTop: "10px",
-                padding: "10px 14px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                lineHeight: 1.5,
-                fontFamily:
-                  testState.kind === "err"
-                    ? "'SF Mono', Menlo, Consolas, monospace"
-                    : undefined,
-                background:
-                  testState.kind === "ok" ? "var(--bg-success)" : "var(--bg-error)",
-                color:
-                  testState.kind === "ok"
-                    ? "var(--bg-success-text)"
-                    : "var(--brand)",
-                border: `1px solid ${
-                  testState.kind === "ok"
-                    ? "var(--bg-success-border)"
-                    : "rgba(220,38,38,0.28)"
-                }`,
-                wordBreak: "break-word",
-              }}
-            >
-              <strong style={{ marginRight: "6px", fontWeight: 700 }}>
-                {testState.kind === "ok"
-                  ? i18n.t("settings.model.testOk")
-                  : i18n.t("settings.model.testFail")}
-              </strong>
-              {testState.kind === "ok" ? testState.msg ?? "" : testState.msg}
-            </div>
-          ) : null}
         </>
       )}
 
