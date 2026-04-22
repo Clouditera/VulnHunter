@@ -210,10 +210,24 @@ function licenseStatusColor(s: string | undefined): { bg: string; fg: string; do
   }
 }
 
+// Inject once: a simple keyframe animation the fetch/test buttons use
+// while a network call is in flight. Scoped by a fixed id so hot-reload
+// doesn't duplicate it.
+function ensureSpinKeyframes() {
+  if (typeof document === "undefined") return;
+  if (document.getElementById("vh-spin-keyframes")) return;
+  const style = document.createElement("style");
+  style.id = "vh-spin-keyframes";
+  style.textContent =
+    "@keyframes vh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }";
+  document.head.appendChild(style);
+}
+
 export function SettingsPage() {
   const [, force] = useState(0);
   useEffect(() => i18n.onChange(() => force((n) => n + 1)), []);
   useEffect(() => themeStore.onChange(() => force((n) => n + 1)), []);
+  useEffect(() => ensureSpinKeyframes(), []);
 
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [cred, setCred] = useState<LlmCredential | null>(null);
@@ -232,6 +246,17 @@ export function SettingsPage() {
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+
+  // Model enhancements
+  const [modelOptions, setModelOptions] = useState<string[] | null>(null);
+  const [modelFetchState, setModelFetchState] = useState<
+    { kind: "idle" | "loading" } | { kind: "error"; msg: string }
+  >({ kind: "idle" });
+  const [testState, setTestState] = useState<
+    { kind: "idle" | "loading" }
+    | { kind: "ok"; msg?: string }
+    | { kind: "err"; msg: string }
+  >({ kind: "idle" });
 
   useEffect(() => {
     let mounted = true;
@@ -345,6 +370,59 @@ export function SettingsPage() {
 
   const isDark = themeStore.current() === "dark";
   const licColor = licenseStatusColor(status?.license?.status);
+
+  /** Pull `/v1/models` from the current provider + key. */
+  async function fetchModels() {
+    setModelFetchState({ kind: "loading" });
+    try {
+      const resp = await api.settings.listModels();
+      const ids = (resp.models ?? []).map((m) => m.id);
+      if (ids.length === 0) {
+        setModelOptions([]);
+        setModelFetchState({ kind: "error", msg: i18n.t("settings.model.fetchNone") });
+        return;
+      }
+      setModelOptions(ids);
+      setModelFetchState({ kind: "idle" });
+    } catch (err) {
+      const code = (err as Error)?.message ?? "";
+      setModelFetchState({
+        kind: "error",
+        msg: `${i18n.t("settings.model.fetchError")}${code ? ` (${code})` : ""}`,
+      });
+    }
+  }
+
+  /** Send a small chat-completion ping using the current form values.
+   *  The backend endpoint always requires an `api_key` in the body (for
+   *  obvious security reasons it won't reuse the stored one), so we force
+   *  the user to type it before the button becomes clickable. */
+  async function testConnection() {
+    if (!apiKey) {
+      setTestState({ kind: "err", msg: i18n.t("settings.model.testNeedsKey") });
+      return;
+    }
+    setTestState({ kind: "loading" });
+    try {
+      const resp = await api.settings.testModel({
+        proto_type: protoType,
+        base_url: baseUrl || undefined,
+        model_id: modelId,
+        api_key: apiKey,
+      });
+      if (resp.ok) {
+        setTestState({ kind: "ok", msg: resp.message });
+      } else {
+        setTestState({
+          kind: "err",
+          msg: resp.error ?? i18n.t("settings.model.testFail"),
+        });
+      }
+    } catch (err) {
+      const code = (err as Error)?.message ?? "ERR_INTERNAL";
+      setTestState({ kind: "err", msg: code });
+    }
+  }
 
   return (
     <div data-testid="settings-page" style={{ maxWidth: 640, margin: "0 auto", padding: "40px 24px" }}>
@@ -471,16 +549,121 @@ export function SettingsPage() {
                   options={PROVIDERS.map((p) => ({ value: p.value, label: p.label }))}
                 />
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <label style={FIELD_LABEL}>{i18n.t("settings.model.model")}</label>
-                <input
-                  data-testid="settings-model-input"
-                  type="text"
-                  value={modelId}
-                  onChange={(e) => setModelId(e.target.value)}
-                  placeholder="claude-sonnet-4-5"
-                  style={FIELD_INPUT}
-                />
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <input
+                    data-testid="settings-model-input"
+                    type="text"
+                    value={modelId}
+                    onChange={(e) => setModelId(e.target.value)}
+                    placeholder="claude-sonnet-4-5"
+                    list="settings-model-datalist"
+                    style={{ ...FIELD_INPUT, flex: 1, minWidth: 0 }}
+                  />
+                  <button
+                    type="button"
+                    data-testid="settings-fetch-models-btn"
+                    onClick={fetchModels}
+                    disabled={modelFetchState.kind === "loading"}
+                    title={i18n.t("settings.model.fetch")}
+                    style={{
+                      flexShrink: 0,
+                      height: "40px",
+                      padding: "0 12px",
+                      border: "1px solid var(--border)",
+                      borderRadius: "8px",
+                      background: "var(--bg-card)",
+                      color: "var(--text-secondary)",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      cursor: modelFetchState.kind === "loading" ? "wait" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      whiteSpace: "nowrap",
+                      lineHeight: 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (modelFetchState.kind !== "loading")
+                        e.currentTarget.style.background = "var(--bg-hover)";
+                    }}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-card)")}
+                  >
+                    <Icon
+                      name="search"
+                      size={12}
+                      style={{
+                        animation:
+                          modelFetchState.kind === "loading"
+                            ? "vh-spin 0.9s linear infinite"
+                            : undefined,
+                      }}
+                    />
+                    <span>
+                      {modelFetchState.kind === "loading"
+                        ? i18n.t("settings.model.fetching")
+                        : i18n.t("settings.model.fetch")}
+                    </span>
+                  </button>
+                </div>
+                {/* Suggestions popover */}
+                {modelOptions && modelOptions.length > 0 ? (
+                  <div
+                    data-testid="settings-model-suggestions"
+                    style={{
+                      marginTop: "6px",
+                      padding: "6px",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      background: "var(--bg-page)",
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "4px",
+                    }}
+                  >
+                    {modelOptions.map((id) => {
+                      const active = id === modelId;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          data-testid="settings-model-suggestion"
+                          data-active={active || undefined}
+                          onClick={() => setModelId(id)}
+                          style={{
+                            padding: "4px 10px",
+                            fontSize: "11px",
+                            fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+                            border: `1px solid ${active ? "var(--brand)" : "var(--border)"}`,
+                            borderRadius: "4px",
+                            background: active
+                              ? "var(--bg-active-filter)"
+                              : "var(--bg-card)",
+                            color: active ? "var(--brand)" : "var(--text-primary)",
+                            cursor: "pointer",
+                            fontWeight: active ? 600 : 500,
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {id}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : modelFetchState.kind === "error" ? (
+                  <div
+                    data-testid="settings-model-fetch-error"
+                    style={{
+                      marginTop: "6px",
+                      fontSize: "11px",
+                      color: "var(--brand)",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {modelFetchState.msg}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -650,28 +833,106 @@ export function SettingsPage() {
             </Field>
           </SettingsCard>
 
-          <button
-            type="button"
-            data-testid="settings-save-btn"
-            disabled={!dirty || saving || !canSaveCred}
-            onClick={handleSave}
-            style={{
-              width: "100%",
-              padding: "12px",
-              marginTop: "8px",
-              background: !dirty || !canSaveCred ? "var(--bg-disabled)" : "var(--brand)",
-              color: "var(--btn-primary-text)",
-              border: "none",
-              borderRadius: "8px",
-              fontSize: "14px",
-              fontWeight: 600,
-              cursor: !dirty || saving || !canSaveCred ? "not-allowed" : "pointer",
-              opacity: !dirty || !canSaveCred ? 0.6 : 1,
-              transition: "background 0.15s, opacity 0.15s",
-            }}
-          >
-            {saving ? i18n.t("settings.saving") : i18n.t("settings.saveBtn")}
-          </button>
+          {/* Test connection + Save (the two bottom actions) */}
+          <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+            <button
+              type="button"
+              data-testid="settings-test-connection-btn"
+              onClick={testConnection}
+              disabled={testState.kind === "loading" || !apiKey}
+              title={!apiKey ? i18n.t("settings.model.testNeedsKey") : undefined}
+              style={{
+                flex: "0 0 auto",
+                padding: "12px 18px",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+                background: "var(--bg-card)",
+                color: "var(--text-primary)",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor:
+                  testState.kind === "loading" || !apiKey
+                    ? "not-allowed"
+                    : "pointer",
+                opacity: !apiKey ? 0.6 : 1,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                lineHeight: 1,
+              }}
+            >
+              <Icon
+                name="activity"
+                size={14}
+                style={{
+                  animation:
+                    testState.kind === "loading" ? "vh-spin 0.9s linear infinite" : undefined,
+                }}
+              />
+              {testState.kind === "loading"
+                ? i18n.t("settings.model.testing")
+                : i18n.t("settings.model.test")}
+            </button>
+            <button
+              type="button"
+              data-testid="settings-save-btn"
+              disabled={!dirty || saving || !canSaveCred}
+              onClick={handleSave}
+              style={{
+                flex: 1,
+                padding: "12px",
+                background: !dirty || !canSaveCred ? "var(--bg-disabled)" : "var(--brand)",
+                color: "var(--btn-primary-text)",
+                border: "none",
+                borderRadius: "8px",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: !dirty || saving || !canSaveCred ? "not-allowed" : "pointer",
+                opacity: !dirty || !canSaveCred ? 0.6 : 1,
+                transition: "background 0.15s, opacity 0.15s",
+              }}
+            >
+              {saving ? i18n.t("settings.saving") : i18n.t("settings.saveBtn")}
+            </button>
+          </div>
+
+          {/* Inline test-connection result (below both buttons) */}
+          {testState.kind === "ok" || testState.kind === "err" ? (
+            <div
+              data-testid="settings-test-result"
+              data-kind={testState.kind}
+              style={{
+                marginTop: "10px",
+                padding: "10px 14px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                lineHeight: 1.5,
+                fontFamily:
+                  testState.kind === "err"
+                    ? "'SF Mono', Menlo, Consolas, monospace"
+                    : undefined,
+                background:
+                  testState.kind === "ok" ? "var(--bg-success)" : "var(--bg-error)",
+                color:
+                  testState.kind === "ok"
+                    ? "var(--bg-success-text)"
+                    : "var(--brand)",
+                border: `1px solid ${
+                  testState.kind === "ok"
+                    ? "var(--bg-success-border)"
+                    : "rgba(220,38,38,0.28)"
+                }`,
+                wordBreak: "break-word",
+              }}
+            >
+              <strong style={{ marginRight: "6px", fontWeight: 700 }}>
+                {testState.kind === "ok"
+                  ? i18n.t("settings.model.testOk")
+                  : i18n.t("settings.model.testFail")}
+              </strong>
+              {testState.kind === "ok" ? testState.msg ?? "" : testState.msg}
+            </div>
+          ) : null}
         </>
       )}
 
