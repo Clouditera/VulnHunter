@@ -21,7 +21,7 @@ chatRouter.get("/sessions", async (c) => {
 chatRouter.post("/sessions", async (c) => {
   const user = c.get("user");
   const body = await c.req.json<{ name?: string }>().catch(() => ({} as { name?: string }));
-  const session = await chatStorage.createSession(user.userId, body.name);
+  const session = await chatStorage.createSession(user.userId, body.name);  // name maps to title in DB
   return c.json({ session }, 201);
 });
 

@@ -22,6 +22,8 @@ COPY flows/vulnhunt /opt/vulnhunt/flows/vulnhunt
 
 # Worker bridge (for chat/report modes)
 COPY packages/worker-bridge/dist/bundle.js /opt/bridge/bundle.js
+COPY packages/worker-bridge/package.json /opt/bridge/package.json
+RUN cd /opt/bridge && npm install --omit=dev --ignore-scripts 2>/dev/null || true
 
 # Worker scripts
 COPY worker-assets/entrypoint.sh /opt/entrypoint.sh

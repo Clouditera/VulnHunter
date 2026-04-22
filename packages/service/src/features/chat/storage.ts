@@ -6,8 +6,10 @@ export interface DbChatSession {
   id: string;
   tenant_id: string;
   user_id: string;
-  name: string;
-  state: "active" | "archived";
+  title: string;
+  worker_state: string;
+  worker_container_id: string | null;
+  session_minio_key: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -22,11 +24,11 @@ export interface DbChatMessage {
   created_at: Date;
 }
 
-export async function createSession(userId: string, name?: string): Promise<DbChatSession> {
+export async function createSession(userId: string, title?: string): Promise<DbChatSession> {
   const db = getDb();
   const rows = await db<DbChatSession[]>`
-    INSERT INTO chat_sessions (tenant_id, user_id, name)
-    VALUES (${DEFAULT_TENANT_ID}, ${userId}, ${name ?? "New Chat"})
+    INSERT INTO chat_sessions (tenant_id, user_id, title)
+    VALUES (${DEFAULT_TENANT_ID}, ${userId}, ${title ?? "New Chat"})
     RETURNING *
   `;
   return rows[0];
@@ -36,7 +38,7 @@ export async function listSessions(userId: string): Promise<DbChatSession[]> {
   const db = getDb();
   return db<DbChatSession[]>`
     SELECT * FROM chat_sessions
-    WHERE user_id = ${userId} AND state = 'active'
+    WHERE user_id = ${userId}
     ORDER BY updated_at DESC
     LIMIT 50
   `;

@@ -94,7 +94,7 @@ export class TaskScheduler {
         SELECT config FROM system_config WHERE id = 1
       `;
       if (rows[0]) {
-        this.maxParallelScan = rows[0].config.max_parallel_scan;
+        this.maxParallelScan = Number(rows[0].config.max_parallel_scan) || 3;
       }
     } catch (err) {
       logger.warn({ err }, "Could not refresh system_config, using default max_parallel_scan=3");

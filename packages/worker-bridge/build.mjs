@@ -8,6 +8,13 @@ await esbuild.build({
   format: "esm",
   outfile: "dist/bundle.js",
   external: [],
+  // ws uses dynamic require — we need CJS compat for bundling
+  banner: {
+    js: `
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+`,
+  },
   sourcemap: true,
   minify: false,
 });

@@ -34,21 +34,26 @@ function setupPiConfig(): void {
   const piDir = join(process.env.HOME ?? "/root", ".pi", "agent");
   mkdirSync(piDir, { recursive: true });
 
-  // models.json — register custom model with openai-completions API
-  const modelsJson: Record<string, unknown> = {};
+  // models.json — register custom provider with correct API
   if (BASE_URL && API_KEY) {
-    const providerKey = `custom-${MODEL_PROTO}`;
-    modelsJson[providerKey] = {
-      name: providerKey,
-      baseURL: BASE_URL,
-      envKey: "CUSTOM_LLM_API_KEY",
-      api: "openai-completions",
-      models: {
-        [MODEL_NAME]: {},
+    const providerKey = "vulnhunt-llm";
+    const api = MODEL_PROTO === "anthropic" ? "anthropic" : "openai-completions";
+    const modelsJson = {
+      providers: {
+        [providerKey]: {
+          baseUrl: BASE_URL,
+          api,
+          apiKey: API_KEY,
+          compat: {
+            supportsDeveloperRole: false,
+            supportsReasoningEffort: false,
+          },
+          models: [
+            { id: MODEL_NAME },
+          ],
+        },
       },
     };
-    // Set env for the custom provider
-    process.env.CUSTOM_LLM_API_KEY = API_KEY;
     writeFileSync(join(piDir, "models.json"), JSON.stringify(modelsJson, null, 2));
   }
 
@@ -71,7 +76,7 @@ function spawnPi(): ChildProcess {
   const sessionFile = join(SESSION_DIR, "session.jsonl");
 
   const modelStr = BASE_URL
-    ? `custom-${MODEL_PROTO}/${MODEL_NAME}`
+    ? `vulnhunt-llm/${MODEL_NAME}`
     : `${MODEL_PROTO}/${MODEL_NAME}`;
 
   const args = [
