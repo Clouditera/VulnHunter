@@ -45,6 +45,12 @@ const ZH: Record<string, string> = {
   "tasks.sourceGit": "Git",
   "tasks.sourceUpload": "上传",
   "tasks.filterAll": "全部",
+  "tasks.searchPlaceholder": "搜索项目名 / ID…",
+  "tasks.sort.label": "排序",
+  "tasks.sort.newest": "最新优先",
+  "tasks.sort.oldest": "最早优先",
+  "tasks.sort.name": "按名称",
+  "tasks.countFormat": "{count} 条",
 
   // Task Detail
   "taskDetail.tab.overview": "概览",
@@ -410,6 +416,12 @@ const EN: Record<string, string> = {
   "tasks.sourceGit": "Git",
   "tasks.sourceUpload": "Upload",
   "tasks.filterAll": "all",
+  "tasks.searchPlaceholder": "Search project name / ID…",
+  "tasks.sort.label": "SORT",
+  "tasks.sort.newest": "Newest first",
+  "tasks.sort.oldest": "Oldest first",
+  "tasks.sort.name": "By name",
+  "tasks.countFormat": "{count} tasks",
 
   // Task Detail
   "taskDetail.tab.overview": "Overview",

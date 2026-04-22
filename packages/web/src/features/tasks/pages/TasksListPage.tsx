@@ -47,8 +47,12 @@ function renderFindingsCell(task: Task): JSX.Element {
   return <SeverityBadges counts={counts} />;
 }
 
+type SortMode = "newest" | "oldest" | "name";
+
 export function TasksListPage() {
   const [stateFilter, setStateFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [sortBy, setSortBy] = useState<SortMode>("newest");
   const [showModal, setShowModal] = useState(false);
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -74,8 +78,29 @@ export function TasksListPage() {
     },
   });
 
-  const tasks = data?.tasks ?? [];
+  const rawTasks = data?.tasks ?? [];
   const filters = ["all", "running", "completed", "failed", "queued"] as const;
+
+  // Apply search (case-insensitive substring match on project_name + id).
+  const q = searchQuery.trim().toLowerCase();
+  const filteredTasks = q
+    ? rawTasks.filter(
+        (t) =>
+          (t.project_name ?? "").toLowerCase().includes(q) ||
+          t.id.toLowerCase().includes(q),
+      )
+    : rawTasks;
+
+  // Sort. Backend returns newest-first already for "newest"; we re-sort
+  // client-side so that oldest/name modes work identically.
+  const tasks = [...filteredTasks].sort((a, b) => {
+    if (sortBy === "name") {
+      return (a.project_name ?? "").localeCompare(b.project_name ?? "");
+    }
+    const tA = Date.parse(a.created_at);
+    const tB = Date.parse(b.created_at);
+    return sortBy === "oldest" ? tA - tB : tB - tA;
+  });
 
   return (
     <div data-testid="tasks-page" style={{ padding: "32px 40px 48px" }}>
@@ -112,6 +137,102 @@ export function TasksListPage() {
           <Icon name="plus" size={15} strokeWidth={2.5} />
           {i18n.t("tasks.newTask")}
         </button>
+      </div>
+
+      {/* Search + Sort row */}
+      <div
+        style={{
+          display: "flex",
+          gap: "10px",
+          alignItems: "center",
+          marginBottom: "12px",
+          flexWrap: "wrap",
+        }}
+      >
+        <div
+          style={{
+            position: "relative",
+            flex: 1,
+            minWidth: "200px",
+            maxWidth: "360px",
+          }}
+        >
+          <Icon
+            name="search"
+            size={14}
+            style={{
+              position: "absolute",
+              left: "10px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "var(--text-secondary)",
+              pointerEvents: "none",
+            }}
+          />
+          <input
+            type="search"
+            data-testid="tasks-search-input"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={i18n.t("tasks.searchPlaceholder")}
+            style={{
+              width: "100%",
+              height: "34px",
+              padding: "0 10px 0 30px",
+              border: "1px solid var(--border)",
+              borderRadius: "6px",
+              fontSize: "13px",
+              background: "var(--bg-card)",
+              color: "var(--text-primary)",
+              outline: "none",
+            }}
+          />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <label
+            style={{
+              fontSize: "11px",
+              fontWeight: 600,
+              color: "var(--text-secondary)",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            {i18n.t("tasks.sort.label")}
+          </label>
+          <select
+            data-testid="tasks-sort-select"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortMode)}
+            style={{
+              height: "34px",
+              padding: "0 10px",
+              border: "1px solid var(--border)",
+              borderRadius: "6px",
+              fontSize: "12px",
+              background: "var(--bg-card)",
+              color: "var(--text-primary)",
+              cursor: "pointer",
+              outline: "none",
+            }}
+          >
+            <option value="newest">{i18n.t("tasks.sort.newest")}</option>
+            <option value="oldest">{i18n.t("tasks.sort.oldest")}</option>
+            <option value="name">{i18n.t("tasks.sort.name")}</option>
+          </select>
+        </div>
+        <span
+          data-testid="tasks-count"
+          style={{
+            fontSize: "12px",
+            color: "var(--text-secondary)",
+            marginLeft: "auto",
+          }}
+        >
+          {i18n
+            .t("tasks.countFormat")
+            .replace("{count}", String(tasks.length))}
+        </span>
       </div>
 
       {/* Filter pills */}
