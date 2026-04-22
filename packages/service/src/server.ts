@@ -12,6 +12,7 @@ import { workspaceRouter } from "./features/workspace/index.js";
 import { settingsRouter } from "./features/settings/index.js";
 import { chatRouter } from "./features/chat/index.js";
 import { setupWsRouter } from "./ws-router.js";
+import { mcpRouter } from "./mcp/index.js";
 import { injectUser } from "./middleware/index.js";
 import { traceId } from "./middleware/trace-id.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -40,6 +41,9 @@ export function createApp(): Hono {
   app.route("/api/settings", settingsRouter);
   app.route("/api/chat", chatRouter);
   app.route("/api", filesRouter); // includes POST /api/tasks (upload)
+
+  // MCP server for Chat agent tools (no license/auth middleware — has own auth)
+  app.route("/mcp", mcpRouter);
 
   app.onError(errorHandler);
 

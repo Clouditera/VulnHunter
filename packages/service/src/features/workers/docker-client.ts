@@ -69,6 +69,7 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
       MemorySwap: spec.memoryBytes ?? 4 * 1024 * 1024 * 1024,
       NetworkMode: spec.network ?? "vulnhunt-internal",
       Mounts: mounts,
+      ExtraHosts: ["vulnhunt-service:host-gateway"],
     },
   });
 
