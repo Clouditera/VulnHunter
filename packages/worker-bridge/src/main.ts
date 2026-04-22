@@ -87,7 +87,7 @@ function spawnPi(): ChildProcess {
     "--model", modelStr,
     "--no-skills",
     "--no-extensions",
-    "-e", "pi-mcp-adapter",  // explicitly load MCP adapter only
+    "-e", "/usr/local/lib/node_modules/pi-mcp-adapter",  // explicitly load MCP adapter
     "--no-prompt-templates",
     "--no-themes",
   ];
