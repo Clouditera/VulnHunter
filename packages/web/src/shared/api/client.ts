@@ -20,6 +20,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface SeverityCounts {
+  high: number;
+  medium: number;
+  low: number;
+  info: number;
+}
+
+export interface TaskProfile {
+  project_name?: string | null;
+  language?: string | null;
+  total_files?: number | null;
+  total_loc?: number | null;
+  build_system?: string | null;
+}
+
+export interface TaskExecution {
+  model?: string | null;
+  stages_completed?: number | null;
+  total_tokens_in?: number | null;
+  total_tokens_out?: number | null;
+  tool_call_count?: number | null;
+}
+
+export interface TaskMetadata {
+  profile?: TaskProfile;
+  execution?: TaskExecution;
+  [key: string]: unknown;
+}
+
 export interface Task {
   id: string;
   project_name: string;
@@ -35,7 +64,9 @@ export interface Task {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
-  metadata: Record<string, unknown>;
+  /** Populated by GET /api/tasks (list) — absent on single-task GET. */
+  severity_counts?: SeverityCounts;
+  metadata: TaskMetadata;
 }
 
 export interface FindingMeta {

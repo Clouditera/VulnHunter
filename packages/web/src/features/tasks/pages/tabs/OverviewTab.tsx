@@ -99,6 +99,13 @@ export function OverviewTab() {
     info: findings.filter((f) => f.severity === "info").length,
   };
   const risk = parseRiskScore(task.risk_score);
+  const profile = task.metadata?.profile ?? {};
+  const exec = task.metadata?.execution ?? {};
+
+  const totalTokens =
+    (Number(exec.total_tokens_in ?? task.total_tokens_in ?? 0) || 0) +
+    (Number(exec.total_tokens_out ?? task.total_tokens_out ?? 0) || 0);
+  const toolCalls = Number(exec.tool_call_count ?? task.tool_call_count ?? 0);
 
   // Top 3 findings sorted by severity weight desc
   const sevWeight: Record<string, number> = { high: 4, medium: 3, low: 2, info: 1 };
@@ -122,12 +129,19 @@ export function OverviewTab() {
               : i18n.t("overview.sourceUpload")
           }
         />
-        {/* Language / Build System / Files / LoC / Description are not yet surfaced by
-            the backend (will come from youngflow profiler output). Show "—" for now. */}
-        <KV label={i18n.t("overview.language")} value={null} />
-        <KV label={i18n.t("overview.buildSystem")} value={null} />
-        <KV label={i18n.t("overview.files")} value={null} />
-        <KV label={i18n.t("overview.loc")} value={null} />
+        <KV label={i18n.t("overview.language")} value={profile.language ?? null} />
+        <KV
+          label={i18n.t("overview.buildSystem")}
+          value={profile.build_system ?? null}
+        />
+        <KV
+          label={i18n.t("overview.files")}
+          value={profile.total_files != null ? profile.total_files.toLocaleString() : null}
+        />
+        <KV
+          label={i18n.t("overview.loc")}
+          value={profile.total_loc != null ? profile.total_loc.toLocaleString() : null}
+        />
       </Card>
 
       {/* Risk Assessment — large number + segmented severity bar + legend */}
@@ -298,15 +312,42 @@ export function OverviewTab() {
           label={i18n.t("overview.created")}
           value={task.created_at ? formatDateTime(task.created_at) : null}
         />
-        {/* Model / Concurrency / Token Usage / Tool Calls are not yet surfaced by
-            the backend task API. Placeholders until scan stats are wired through. */}
-        <KV label={i18n.t("overview.model")} value={null} />
+        <KV
+          label={i18n.t("overview.model")}
+          value={exec.model ? shortenModel(exec.model) : null}
+        />
+        {/* Concurrency is a per-scan system setting (not per-task); leave "—"
+            until the backend starts writing scheduler.max_parallel into
+            tasks.metadata.execution. */}
         <KV label={i18n.t("overview.concurrency")} value={null} />
-        <KV label={i18n.t("overview.tokenUsage")} value={null} />
-        <KV label={i18n.t("overview.toolCalls")} value={null} />
+        <KV
+          label={i18n.t("overview.tokenUsage")}
+          value={totalTokens > 0 ? formatTokens(totalTokens) : null}
+        />
+        <KV
+          label={i18n.t("overview.toolCalls")}
+          value={toolCalls > 0 ? toolCalls.toLocaleString() : null}
+        />
       </Card>
     </div>
   );
+}
+
+/**
+ * Turn a fully-qualified model id like "openai/MiniMax-M2.5" into a compact
+ * display form "MiniMax-M2.5 (openai)". Unqualified ids pass through.
+ */
+function shortenModel(raw: string): string {
+  if (!raw.includes("/")) return raw;
+  const [provider, ...rest] = raw.split("/");
+  return `${rest.join("/")}  ·  ${provider}`;
+}
+
+/** 1,234,567 → "1.23M"; 1234 → "1.2K"; <1000 → "734". */
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  return String(n);
 }
 
 function SevBar({ counts }: { counts: { high: number; medium: number; low: number; info: number } }) {

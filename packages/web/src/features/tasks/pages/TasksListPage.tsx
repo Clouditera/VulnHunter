@@ -6,6 +6,7 @@ import { NewTaskModal } from "../components/NewTaskModal.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
+import { SeverityBadges } from "../../../shared/components/SeverityBadges.js";
 import {
   formatDateTime,
   parseRiskScore,
@@ -16,6 +17,34 @@ function formatDuration(ms: number | null): string {
   if (!ms) return "—";
   const min = Math.round(ms / 60_000);
   return `${min} min`;
+}
+
+/**
+ * Per-row findings cell:
+ *  - running/queued:   “scanning…” (muted italic)
+ *  - completed + any:  sev-mini badges (2H 5M 3L 2I)
+ *  - completed + zero: “none”
+ *  - failed/cancelled: —
+ */
+function renderFindingsCell(task: Task): JSX.Element {
+  if (task.state === "running" || task.state === "queued") {
+    return (
+      <span style={{ fontStyle: "italic", opacity: 0.75 }}>
+        {i18n.t("tasks.findings.scanning")}
+      </span>
+    );
+  }
+  if (task.state !== "completed") {
+    return <span>—</span>;
+  }
+  const counts = task.severity_counts ?? { high: 0, medium: 0, low: 0, info: 0 };
+  const total = counts.high + counts.medium + counts.low + counts.info;
+  if (total === 0) {
+    return (
+      <span style={{ opacity: 0.75 }}>{i18n.t("tasks.findings.none")}</span>
+    );
+  }
+  return <SeverityBadges counts={counts} />;
 }
 
 export function TasksListPage() {
@@ -35,6 +64,14 @@ export function TasksListPage() {
   const cancelMut = useMutation({
     mutationFn: (id: string) => api.tasks.cancel(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => api.tasks.delete(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+    onError: () => {
+      alert(i18n.t("tasks.delete.error"));
+    },
   });
 
   const tasks = data?.tasks ?? [];
@@ -118,6 +155,7 @@ export function TasksListPage() {
                 [
                   "tasks.col.project",
                   "tasks.col.status",
+                  "tasks.col.findings",
                   "tasks.col.riskScore",
                   "tasks.col.duration",
                   "tasks.col.created",
@@ -145,7 +183,7 @@ export function TasksListPage() {
             {isLoading ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   style={{ padding: "32px", textAlign: "center", color: "var(--text-secondary)" }}
                 >
                   {i18n.t("tasks.loading")}
@@ -154,7 +192,7 @@ export function TasksListPage() {
             ) : tasks.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   style={{ padding: "48px", textAlign: "center", color: "var(--text-secondary)" }}
                 >
                   {i18n.t("tasks.empty")}
@@ -191,6 +229,12 @@ export function TasksListPage() {
                       <StatusPill state={task.state} />
                     </td>
                     <td
+                      data-testid="task-findings-cell"
+                      style={{ padding: "14px 20px", color: "var(--text-secondary)", fontSize: "12px" }}
+                    >
+                      {renderFindingsCell(task)}
+                    </td>
+                    <td
                       style={{
                         padding: "14px 20px",
                         fontWeight: 600,
@@ -210,32 +254,73 @@ export function TasksListPage() {
                       {formatDateTime(task.created_at)}
                     </td>
                     <td style={{ padding: "14px 20px" }} onClick={(e) => e.stopPropagation()}>
-                      {["running", "queued"].includes(task.state) && (
-                        <button
-                          data-testid="task-cancel-btn"
-                          onClick={() => cancelMut.mutate(task.id)}
-                          style={{
-                            padding: "5px 12px",
-                            border: "1px solid var(--border)",
-                            borderRadius: "6px",
-                            background: "transparent",
-                            fontSize: "12px",
-                            cursor: "pointer",
-                            color: "var(--text-secondary)",
-                            transition: "all 0.15s",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = "var(--brand)";
-                            e.currentTarget.style.color = "var(--brand)";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = "var(--border)";
-                            e.currentTarget.style.color = "var(--text-secondary)";
-                          }}
-                        >
-                          {i18n.t("tasks.cancel")}
-                        </button>
-                      )}
+                      <div style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
+                        {["running", "queued"].includes(task.state) && (
+                          <button
+                            data-testid="task-cancel-btn"
+                            onClick={() => cancelMut.mutate(task.id)}
+                            style={{
+                              padding: "5px 12px",
+                              border: "1px solid var(--border)",
+                              borderRadius: "6px",
+                              background: "transparent",
+                              fontSize: "12px",
+                              cursor: "pointer",
+                              color: "var(--text-secondary)",
+                              transition: "all 0.15s",
+                              lineHeight: 1,
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = "var(--brand)";
+                              e.currentTarget.style.color = "var(--brand)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = "var(--border)";
+                              e.currentTarget.style.color = "var(--text-secondary)";
+                            }}
+                          >
+                            {i18n.t("tasks.cancel")}
+                          </button>
+                        )}
+                        {!["running", "queued"].includes(task.state) && (
+                          <button
+                            data-testid="task-delete-btn"
+                            aria-label={i18n.t("tasks.delete")}
+                            title={i18n.t("tasks.delete")}
+                            disabled={deleteMut.isPending}
+                            onClick={() => {
+                              const msg = i18n
+                                .t("tasks.delete.confirm")
+                                .replace("{name}", task.project_name);
+                              if (window.confirm(msg)) deleteMut.mutate(task.id);
+                            }}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: "28px",
+                              height: "28px",
+                              border: "1px solid var(--border)",
+                              borderRadius: "6px",
+                              background: "transparent",
+                              cursor: "pointer",
+                              color: "var(--text-secondary)",
+                              transition: "all 0.15s",
+                              padding: 0,
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = "var(--brand)";
+                              e.currentTarget.style.color = "var(--brand)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = "var(--border)";
+                              e.currentTarget.style.color = "var(--text-secondary)";
+                            }}
+                          >
+                            <Icon name="trash" size={14} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

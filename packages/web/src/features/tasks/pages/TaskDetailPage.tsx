@@ -229,6 +229,9 @@ export function TaskDetailPage() {
           </div>
         </div>
 
+        {/* Failure banner (when state=failed) */}
+        {task.state === "failed" && <FailureBanner task={task} />}
+
         {/* Live Log (fused into topbar) */}
         <LiveLog taskId={task.id} taskState={task.state} />
       </div>
@@ -279,6 +282,89 @@ export function TaskDetailPage() {
       <div style={{ padding: "28px 40px 40px" }}>
         <Outlet context={{ task }} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Failure banner — shown only when task.state === 'failed'.
+ * Displays failure_reason + actions to jump to the log or retry.
+ */
+function FailureBanner({ task }: { task: Task }) {
+  const reason = (task.failure_reason ?? "").trim();
+  function expandLog() {
+    const el = document.querySelector<HTMLElement>('[data-testid="live-log-expand-btn"]');
+    if (el) {
+      // Expand if collapsed, then scroll it into view.
+      const panel = document.querySelector<HTMLElement>('[data-testid="live-log-stream"]');
+      if (!panel) el.click();
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+  return (
+    <div
+      data-testid="task-failure-banner"
+      style={{
+        marginTop: "14px",
+        display: "flex",
+        gap: "12px",
+        alignItems: "flex-start",
+        padding: "12px 14px",
+        background: "var(--bg-error)",
+        border: "1px solid rgba(220,38,38,0.28)",
+        borderLeft: "3px solid var(--brand)",
+        borderRadius: "8px",
+      }}
+    >
+      <Icon
+        name="alert-triangle"
+        size={18}
+        style={{ color: "var(--brand)", marginTop: "1px" }}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: "13px",
+            fontWeight: 600,
+            color: "var(--brand)",
+            marginBottom: "4px",
+            lineHeight: 1.3,
+          }}
+        >
+          {i18n.t("taskDetail.failure.title")}
+        </div>
+        <div
+          data-testid="task-failure-reason"
+          style={{
+            fontSize: "12px",
+            color: "var(--text-primary)",
+            lineHeight: 1.55,
+            wordBreak: "break-word",
+            fontFamily: reason ? "'SF Mono', Menlo, Consolas, monospace" : undefined,
+          }}
+        >
+          {reason || i18n.t("taskDetail.failure.noReason")}
+        </div>
+      </div>
+      <button
+        data-testid="task-failure-view-log"
+        onClick={expandLog}
+        style={{
+          flexShrink: 0,
+          padding: "6px 12px",
+          background: "transparent",
+          border: "1px solid var(--brand)",
+          borderRadius: "6px",
+          color: "var(--brand)",
+          fontSize: "12px",
+          fontWeight: 600,
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+          lineHeight: 1,
+        }}
+      >
+        {i18n.t("taskDetail.failure.viewLog")}
+      </button>
     </div>
   );
 }
