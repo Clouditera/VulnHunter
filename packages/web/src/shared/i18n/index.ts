@@ -270,6 +270,8 @@ const ZH: Record<string, string> = {
   "newTask.dropzone": "拖放或点击选择 .zip 文件",
   "newTask.submit": "开始扫描",
   "newTask.submitting": "创建中…",
+  "newTask.uploading": "上传中",
+  "newTask.processing": "处理中…",
   "newTask.cancel": "取消",
 
   // Chat
@@ -607,6 +609,8 @@ const EN: Record<string, string> = {
   "newTask.dropzone": "Drop or click to select .zip file",
   "newTask.submit": "Start Scan",
   "newTask.submitting": "Creating…",
+  "newTask.uploading": "Uploading",
+  "newTask.processing": "Processing…",
   "newTask.cancel": "Cancel",
 
   // Chat

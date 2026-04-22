@@ -133,6 +133,44 @@ export const api = {
       body instanceof FormData
         ? fetch("/api/tasks", { method: "POST", credentials: "include", body }).then((r) => r.json() as Promise<{ task: Task }>)
         : request<{ task: Task }>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
+    /**
+     * Upload a FormData body with progress events.
+     * Used by NewTaskModal so the user can see upload %.
+     * fetch() does not expose upload progress — XHR is required.
+     */
+    createWithProgress: (
+      body: FormData,
+      onProgress: (pct: number) => void,
+    ): Promise<{ task: Task }> =>
+      new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/tasks");
+        xhr.withCredentials = true;
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            onProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText));
+            } catch (err) {
+              reject(err);
+            }
+          } else {
+            let msg = `HTTP ${xhr.status}`;
+            try {
+              const parsed = JSON.parse(xhr.responseText);
+              msg = parsed?.error?.message ?? parsed?.error?.code ?? msg;
+            } catch {}
+            reject(new Error(msg));
+          }
+        };
+        xhr.onerror = () => reject(new Error("Network error"));
+        xhr.onabort = () => reject(new Error("Upload aborted"));
+        xhr.send(body);
+      }),
     cancel: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/cancel`, { method: "POST" }),
     restart: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/restart`, { method: "POST" }),
     delete: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}`, { method: "DELETE" }),

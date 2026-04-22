@@ -13,6 +13,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [gitBranch, setGitBranch] = useState("main");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const [, forceI18n] = useState(0);
@@ -26,7 +27,8 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         if (!file) return;
         const fd = new FormData();
         fd.append("file", file);
-        await api.tasks.create(fd);
+        setUploadPct(0);
+        await api.tasks.createWithProgress(fd, (pct) => setUploadPct(pct));
       } else {
         if (!gitUrl) return;
         await api.tasks.create({ git_url: gitUrl, project_name: gitUrl.split("/").pop() });
@@ -36,6 +38,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
       setError(String(err));
     } finally {
       setLoading(false);
+      setUploadPct(null);
     }
   }
 
@@ -160,6 +163,65 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                 style={{ display: "none" }}
                 onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])}
               />
+
+              {/* Upload progress bar — only visible during active upload */}
+              {uploadPct !== null && (
+                <div
+                  data-testid="upload-progress"
+                  data-pct={uploadPct}
+                  style={{ marginTop: "14px" }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "baseline",
+                      marginBottom: "6px",
+                      fontSize: "12px",
+                      color: "var(--text-secondary)",
+                    }}
+                  >
+                    <span>{i18n.t("newTask.uploading")}</span>
+                    <span
+                      style={{
+                        fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+                        fontVariantNumeric: "tabular-nums",
+                        fontWeight: 600,
+                        color:
+                          uploadPct >= 100
+                            ? "var(--sev-low)"
+                            : "var(--text-primary)",
+                      }}
+                    >
+                      {uploadPct >= 100
+                        ? i18n.t("newTask.processing")
+                        : `${uploadPct}%`}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "6px",
+                      borderRadius: "3px",
+                      background: "var(--border)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      data-testid="upload-progress-bar"
+                      style={{
+                        width: `${Math.max(uploadPct, 2)}%`,
+                        height: "100%",
+                        background:
+                          uploadPct >= 100
+                            ? "var(--sev-low)"
+                            : "var(--brand)",
+                        transition: "width 0.2s ease-out, background 0.2s",
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div>
@@ -233,7 +295,11 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
               cursor: !canSubmit || loading ? "not-allowed" : "pointer",
             }}
           >
-            {loading ? i18n.t("newTask.submitting") : i18n.t("newTask.submit")}
+            {loading
+              ? uploadPct !== null && uploadPct < 100
+                ? `${i18n.t("newTask.uploading")} ${uploadPct}%`
+                : i18n.t("newTask.submitting")
+              : i18n.t("newTask.submit")}
           </button>
         </div>
       </div>
