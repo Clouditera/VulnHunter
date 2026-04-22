@@ -597,8 +597,93 @@ export function SettingsPage() {
     }
   }
 
+  // Sub-nav sections. `id` becomes the anchor target; clicking scrolls.
+  const SUB_NAV_SECTIONS: Array<{ id: string; labelKey: string }> = [
+    { id: "license", labelKey: "settings.nav.license" },
+    { id: "credentials", labelKey: "settings.nav.credentials" },
+    { id: "appearance", labelKey: "settings.nav.appearance" },
+    { id: "engine", labelKey: "settings.nav.engine" },
+  ];
+
   return (
-    <div data-testid="settings-page" style={{ maxWidth: 640, margin: "0 auto", padding: "40px 24px" }}>
+    <div
+      data-testid="settings-page"
+      style={{
+        display: "flex",
+        gap: "32px",
+        maxWidth: 1120,
+        margin: "0 auto",
+        padding: "40px 24px",
+        alignItems: "flex-start",
+      }}
+    >
+      {/* Left sub-nav (sticky). Only shown when page content is loaded
+          so the nav doesn't tease sections that aren't rendered yet. */}
+      {!loading && (
+        <aside
+          data-testid="settings-subnav"
+          style={{
+            position: "sticky",
+            top: "40px",
+            width: "180px",
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: "2px",
+            paddingTop: "6px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "11px",
+              fontWeight: 600,
+              color: "var(--text-secondary)",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              padding: "8px 10px",
+            }}
+          >
+            {i18n.t("settings.title")}
+          </div>
+          {SUB_NAV_SECTIONS.map((s) => (
+            <a
+              key={s.id}
+              href={`#${s.id}`}
+              data-testid={`settings-subnav-${s.id}`}
+              onClick={(e) => {
+                e.preventDefault();
+                const el = document.getElementById(s.id);
+                if (el)
+                  el.scrollIntoView({ behavior: "smooth", block: "start" });
+                history.replaceState(null, "", `#${s.id}`);
+              }}
+              style={{
+                display: "block",
+                padding: "8px 10px",
+                fontSize: "13px",
+                fontWeight: 500,
+                color: "var(--text-primary)",
+                textDecoration: "none",
+                borderRadius: "6px",
+                borderLeft: "2px solid transparent",
+                transition: "all 0.12s",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.background =
+                  "var(--bg-hover)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.background =
+                  "transparent";
+              }}
+            >
+              {i18n.t(s.labelKey)}
+            </a>
+          ))}
+        </aside>
+      )}
+
+      <div style={{ flex: 1, minWidth: 0, maxWidth: "880px" }}>
       <h1
         style={{
           fontSize: "24px",
@@ -628,6 +713,7 @@ export function SettingsPage() {
           {/* ============================================================= */}
           {/*  License Information                                           */}
           {/* ============================================================= */}
+          <div id="license" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
             icon="shield"
             title={i18n.t("settings.license.title")}
@@ -697,6 +783,7 @@ export function SettingsPage() {
           {/* ============================================================= */}
           {/*  Credentials — unified list + inline editor (Phase 9)         */}
           {/* ============================================================= */}
+          <div id="credentials" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
             icon="shield"
             title={i18n.t("settings.credentials.title")}
@@ -1338,6 +1425,7 @@ export function SettingsPage() {
           {/* ============================================================= */}
           {/*  Language & Appearance                                          */}
           {/* ============================================================= */}
+          <div id="appearance" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
             icon="globe"
             title={i18n.t("settings.appearance.title")}
@@ -1391,6 +1479,7 @@ export function SettingsPage() {
           {/* ============================================================= */}
           {/*  Engine Settings                                                */}
           {/* ============================================================= */}
+          <div id="engine" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
             icon="sliders"
             title={i18n.t("settings.engine.title")}
@@ -1455,6 +1544,7 @@ export function SettingsPage() {
           </div>
         </>
       )}
+      </div>
 
       {/* ============================================================= */}
       {/*  Toast                                                         */}
