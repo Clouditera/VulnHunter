@@ -241,6 +241,19 @@ const ZH: Record<string, string> = {
   "liveLog.waiting": "等待事件…",
   "liveLog.allSources": "全部",
 
+  // Workspace tab
+  "workspace.files": "文件",
+  "workspace.empty": "该任务没有源码包或包为空",
+  "workspace.loading.tree": "加载文件树…",
+  "workspace.loading.file": "加载文件…",
+  "workspace.error.file": "文件加载失败",
+  "workspace.select": "从左侧选择文件查看代码",
+  "workspace.binary": "二进制文件，不适合预览",
+  "workspace.truncated": "文件过大，内容已截断",
+  "workspace.lines": "行",
+  "workspace.search": "搜索文件…",
+  "workspace.vulnsInFile": "{n} 个漏洞",
+
   // Common
   "common.loading": "加载中…",
   "common.noData": "—",
@@ -483,6 +496,19 @@ const EN: Record<string, string> = {
   "liveLog.events": "events",
   "liveLog.waiting": "Waiting for events…",
   "liveLog.allSources": "All",
+
+  // Workspace tab
+  "workspace.files": "Files",
+  "workspace.empty": "No source archive is available for this task.",
+  "workspace.loading.tree": "Loading file tree…",
+  "workspace.loading.file": "Loading file…",
+  "workspace.error.file": "Failed to load file",
+  "workspace.select": "Select a file from the tree to view its source.",
+  "workspace.binary": "Binary file — preview is not available.",
+  "workspace.truncated": "File is large — content has been truncated.",
+  "workspace.lines": "lines",
+  "workspace.search": "Search files…",
+  "workspace.vulnsInFile": "{n} finding(s)",
 
   // Common
   "common.loading": "Loading…",

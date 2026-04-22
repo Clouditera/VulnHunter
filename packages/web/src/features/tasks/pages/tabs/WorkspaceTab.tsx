@@ -1,0 +1,722 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useOutletContext } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import {
+  api,
+  type Task,
+  type WorkspaceFile,
+  type WorkspaceTreeNode,
+  type FindingMeta,
+} from "../../../../shared/api/client.js";
+import { i18n } from "../../../../shared/i18n/index.js";
+import { Icon } from "../../../../shared/components/Icon.js";
+
+/* -------------------------------------------------------------------------- */
+/*  Helpers                                                                   */
+/* -------------------------------------------------------------------------- */
+
+interface FlatNode {
+  name: string;
+  path: string;
+  depth: number;
+  isDir: boolean;
+  hasVuln: boolean;
+  vulnCount: number;
+  /** Collapsed state — directories only. */
+  collapsed: boolean;
+}
+
+/**
+ * Flatten the backend tree into a rendering-ready list honouring:
+ *  - collapsed state for directories
+ *  - vuln markers derived from the findings list (primary_file path match)
+ *  - search filter on leaf names (directories are auto-expanded when a
+ *    descendant matches, and leaves that don't match are filtered out)
+ */
+function flattenTree(
+  tree: WorkspaceTreeNode[],
+  findings: FindingMeta[],
+  collapsed: Set<string>,
+  query: string,
+): FlatNode[] {
+  // Map from workspace-path → vuln count. We normalize:
+  //   /workspace/src/foo/bar.c  → src/foo/bar.c  → bar.c last-segment match
+  const vulnCountsByPath = new Map<string, number>();
+  const vulnLeafNames = new Map<string, number>();
+  for (const f of findings) {
+    const raw = (f.primary_file ?? "").replace(/^\/+workspace\/+/, "").replace(/^\/+/, "");
+    if (!raw) continue;
+    vulnCountsByPath.set(raw, (vulnCountsByPath.get(raw) ?? 0) + 1);
+    const leaf = raw.split("/").pop() ?? raw;
+    vulnLeafNames.set(leaf, (vulnLeafNames.get(leaf) ?? 0) + 1);
+  }
+
+  const q = query.trim().toLowerCase();
+  const out: FlatNode[] = [];
+
+  function walk(nodes: WorkspaceTreeNode[], depth: number, parentPath: string): boolean {
+    let anyMatch = false;
+    for (const node of nodes) {
+      const path = parentPath ? `${parentPath}/${node.name}` : node.name;
+      // Treat as directory if children array exists (backend quirk: may label
+      // a dir as 'file' but still set children.length > 0).
+      const isDir = node.type === "dir" || !!(node.children && node.children.length > 0);
+
+      if (isDir) {
+        // Recurse first to know whether any descendant matches the query.
+        const collector: FlatNode[] = [];
+        const saved = out.length;
+        // Temporarily swap out to a sub-array; easier to just call
+        // recursively with a local output and splice in.
+        const subHits = walkInto(
+          node.children ?? [],
+          depth + 1,
+          path,
+          collapsed,
+          q,
+          findings,
+          collector,
+        );
+        const dirMatchesByName = !q || node.name.toLowerCase().includes(q);
+        const shouldShow = !q || subHits > 0 || dirMatchesByName;
+        if (!shouldShow) continue;
+        const isCollapsed = collapsed.has(path) && !q;
+        const vulnCount = collector.reduce((a, b) => a + b.vulnCount, 0);
+        out.push({
+          name: node.name,
+          path,
+          depth,
+          isDir: true,
+          hasVuln: vulnCount > 0,
+          vulnCount,
+          collapsed: isCollapsed,
+        });
+        // If not collapsed (or search is active — force expand), emit children.
+        if (!isCollapsed) {
+          // Re-run visibly with collector's already-computed results.
+          out.push(...collector);
+        }
+        void saved;
+        anyMatch = anyMatch || subHits > 0 || dirMatchesByName;
+      } else {
+        const matches = !q || node.name.toLowerCase().includes(q);
+        if (!matches) continue;
+        const vulnByPath = vulnCountsByPath.get(path);
+        const vulnCount =
+          vulnByPath !== undefined ? vulnByPath : vulnLeafNames.get(node.name) ?? 0;
+        out.push({
+          name: node.name,
+          path,
+          depth,
+          isDir: false,
+          hasVuln: vulnCount > 0,
+          vulnCount,
+          collapsed: false,
+        });
+        anyMatch = true;
+      }
+    }
+    return anyMatch;
+  }
+
+  function walkInto(
+    nodes: WorkspaceTreeNode[],
+    depth: number,
+    parentPath: string,
+    collapsed: Set<string>,
+    q: string,
+    findings: FindingMeta[],
+    target: FlatNode[],
+  ): number {
+    // Reuse the outer logic but push into a local target.
+    const ownOut = out;
+    // Swap the shared `out` by using a shadow: collect via shim.
+    let hits = 0;
+    for (const node of nodes) {
+      const path = parentPath ? `${parentPath}/${node.name}` : node.name;
+      const isDir = node.type === "dir" || !!(node.children && node.children.length > 0);
+      if (isDir) {
+        const sub: FlatNode[] = [];
+        const subHits = walkInto(
+          node.children ?? [],
+          depth + 1,
+          path,
+          collapsed,
+          q,
+          findings,
+          sub,
+        );
+        const dirMatchesByName = !q || node.name.toLowerCase().includes(q);
+        const shouldShow = !q || subHits > 0 || dirMatchesByName;
+        if (!shouldShow) continue;
+        const isCollapsed = collapsed.has(path) && !q;
+        const vulnCount = sub.reduce((a, b) => a + b.vulnCount, 0);
+        target.push({
+          name: node.name,
+          path,
+          depth,
+          isDir: true,
+          hasVuln: vulnCount > 0,
+          vulnCount,
+          collapsed: isCollapsed,
+        });
+        if (!isCollapsed) target.push(...sub);
+        hits += subHits;
+        if (dirMatchesByName) hits += 1;
+      } else {
+        const matches = !q || node.name.toLowerCase().includes(q);
+        if (!matches) continue;
+        const vulnByPath = vulnCountsByPath.get(path);
+        const vulnCount =
+          vulnByPath !== undefined ? vulnByPath : vulnLeafNames.get(node.name) ?? 0;
+        target.push({
+          name: node.name,
+          path,
+          depth,
+          isDir: false,
+          hasVuln: vulnCount > 0,
+          vulnCount,
+          collapsed: false,
+        });
+        hits += 1;
+      }
+    }
+    void ownOut;
+    return hits;
+  }
+
+  walk(tree, 0, "");
+  return out;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Component                                                                 */
+/* -------------------------------------------------------------------------- */
+
+export function WorkspaceTab() {
+  const { task } = useOutletContext<{ task: Task }>();
+  const [, force] = useState(0);
+  useEffect(() => i18n.onChange(() => force((n) => n + 1)), []);
+
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState("");
+  const [leftWidth, setLeftWidth] = useState(26); // percent
+  const [dragging, setDragging] = useState(false);
+
+  const { data: treeData, isLoading: treeLoading, error: treeError } = useQuery({
+    queryKey: ["workspace-tree", task.id],
+    queryFn: () => api.tasks.workspaceTree(task.id),
+    staleTime: 60_000,
+  });
+
+  const { data: findingsData } = useQuery({
+    queryKey: ["findings", task.id],
+    queryFn: () => api.findings.list(task.id),
+    staleTime: 30_000,
+  });
+
+  const {
+    data: fileData,
+    isLoading: fileLoading,
+    error: fileError,
+  } = useQuery<WorkspaceFile>({
+    queryKey: ["workspace-file", task.id, selectedPath],
+    queryFn: () => api.tasks.workspaceFile(task.id, selectedPath!),
+    enabled: !!selectedPath,
+    staleTime: 5 * 60_000,
+  });
+
+  const flat = useMemo(
+    () =>
+      flattenTree(
+        treeData?.tree ?? [],
+        findingsData?.findings ?? [],
+        collapsed,
+        query,
+      ),
+    [treeData, findingsData, collapsed, query],
+  );
+
+  function toggleDir(path: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }
+
+  /* --- splitter --- */
+  function handleSplitterMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    setDragging(true);
+    function onMove(mv: MouseEvent) {
+      const container = document.querySelector(
+        "[data-testid='workspace-container']",
+      ) as HTMLElement | null;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const pct = ((mv.clientX - rect.left) / rect.width) * 100;
+      const minPct = rect.width > 0 ? (220 / rect.width) * 100 : 18;
+      const clamped = Math.max(minPct, Math.min(50, pct));
+      setLeftWidth(clamped);
+    }
+    function onUp() {
+      setDragging(false);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  const vulnLineSet = useMemo(() => {
+    const set = new Set<number>();
+    (fileData?.vuln_decorations ?? []).forEach((d) => set.add(d.line));
+    // If backend hasn't populated vuln_decorations yet, fall back to the
+    // current findings list and match by filename.
+    if (set.size === 0 && findingsData?.findings && selectedPath) {
+      const leaf = selectedPath.split("/").pop() ?? "";
+      for (const f of findingsData.findings) {
+        const fp = (f.primary_file ?? "").replace(/^\/+workspace\/+/, "");
+        const fpLeaf = fp.split("/").pop() ?? "";
+        if ((fp && selectedPath.endsWith(fp)) || (!!leaf && leaf === fpLeaf)) {
+          if (f.primary_line) set.add(f.primary_line);
+        }
+      }
+    }
+    return set;
+  }, [fileData, findingsData, selectedPath]);
+
+  return (
+    <div
+      data-testid="task-detail-panel-workspace"
+      style={{ position: "relative" }}
+    >
+      <div
+        data-testid="workspace-container"
+        style={{
+          display: "flex",
+          height: "calc(100vh - 360px)",
+          minHeight: "420px",
+          border: "1px solid var(--border)",
+          borderRadius: "10px",
+          overflow: "hidden",
+          background: "var(--bg-card)",
+        }}
+      >
+        {/* ================================================================= */}
+        {/*  Left: file tree                                                  */}
+        {/* ================================================================= */}
+        <div
+          data-testid="workspace-tree"
+          style={{
+            width: `${leftWidth}%`,
+            flexShrink: 0,
+            borderRight: "1px solid var(--border)",
+            background: "var(--bg-page)",
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+          }}
+        >
+          {/* Search bar */}
+          <div
+            style={{
+              padding: "10px 12px",
+              borderBottom: "1px solid var(--divider)",
+              background: "var(--bg-card)",
+            }}
+          >
+            <div style={{ position: "relative" }}>
+              <Icon
+                name="search"
+                size={13}
+                style={{
+                  position: "absolute",
+                  left: "8px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "var(--text-secondary)",
+                  pointerEvents: "none",
+                }}
+              />
+              <input
+                data-testid="workspace-tree-search"
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={i18n.t("workspace.search")}
+                style={{
+                  width: "100%",
+                  height: "28px",
+                  padding: "0 8px 0 28px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  color: "var(--text-primary)",
+                  background: "var(--bg-page)",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Tree list */}
+          <div style={{ flex: 1, overflow: "auto", padding: "6px 0" }}>
+            {treeLoading ? (
+              <div style={TREE_MSG}>{i18n.t("workspace.loading.tree")}</div>
+            ) : treeError ? (
+              <div style={{ ...TREE_MSG, color: "var(--brand)" }}>
+                {i18n.t("workspace.empty")}
+              </div>
+            ) : flat.length === 0 ? (
+              <div style={TREE_MSG}>{i18n.t("workspace.empty")}</div>
+            ) : (
+              flat.map((n) => (
+                <TreeRow
+                  key={n.path}
+                  node={n}
+                  selected={selectedPath === n.path}
+                  onClick={() => {
+                    if (n.isDir) toggleDir(n.path);
+                    else setSelectedPath(n.path);
+                  }}
+                />
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Splitter */}
+        <div
+          data-testid="workspace-splitter"
+          onMouseDown={handleSplitterMouseDown}
+          onDoubleClick={() => setLeftWidth(26)}
+          style={{
+            width: "4px",
+            flexShrink: 0,
+            background: dragging ? "var(--brand)" : "var(--border)",
+            cursor: "col-resize",
+            transition: dragging ? "none" : "background 0.15s",
+          }}
+          title="Double-click to reset"
+        />
+
+        {/* ================================================================= */}
+        {/*  Right: code viewer                                               */}
+        {/* ================================================================= */}
+        <div
+          data-testid="workspace-code"
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+            background: "var(--code-bg)",
+          }}
+        >
+          {selectedPath ? (
+            <CodeViewer
+              path={selectedPath}
+              file={fileData}
+              loading={fileLoading}
+              error={fileError as Error | null}
+              vulnLines={vulnLineSet}
+            />
+          ) : (
+            <EmptyCodePlaceholder />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const TREE_MSG: React.CSSProperties = {
+  padding: "16px 14px",
+  color: "var(--text-secondary)",
+  fontSize: "12px",
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Tree row                                                                  */
+/* -------------------------------------------------------------------------- */
+
+function TreeRow({
+  node,
+  selected,
+  onClick,
+}: {
+  node: FlatNode;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      data-testid="workspace-tree-row"
+      data-is-dir={node.isDir || undefined}
+      data-has-vuln={node.hasVuln || undefined}
+      data-selected={selected || undefined}
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        padding: "4px 10px",
+        paddingLeft: `${10 + node.depth * 14}px`,
+        cursor: "pointer",
+        fontSize: "12px",
+        color: selected
+          ? "var(--text-primary)"
+          : node.isDir
+            ? "var(--text-primary)"
+            : "var(--text-secondary)",
+        fontWeight: node.isDir ? 600 : selected ? 500 : 400,
+        background: selected
+          ? "var(--border)"
+          : "transparent",
+        borderLeft: selected ? "2px solid var(--brand)" : "2px solid transparent",
+        lineHeight: 1.6,
+        userSelect: "none",
+      }}
+      onMouseEnter={(e) => {
+        if (!selected) e.currentTarget.style.background = "var(--bg-hover)";
+      }}
+      onMouseLeave={(e) => {
+        if (!selected) e.currentTarget.style.background = "transparent";
+      }}
+    >
+      {/* Icon column */}
+      {node.isDir ? (
+        <Icon
+          name={node.collapsed ? "chevron-right" : "chevron-down"}
+          size={12}
+          style={{ color: "var(--text-secondary)", flexShrink: 0 }}
+        />
+      ) : (
+        <Icon
+          name="file-text"
+          size={12}
+          style={{ color: "var(--text-secondary)", flexShrink: 0, opacity: 0.7 }}
+        />
+      )}
+
+      {/* Name */}
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {node.name}
+        {node.isDir ? "/" : ""}
+      </span>
+
+      {/* Vuln marker */}
+      {node.hasVuln && (
+        <span
+          data-testid="workspace-tree-vuln-dot"
+          title={i18n.t("workspace.vulnsInFile").replace("{n}", String(node.vulnCount))}
+          style={{
+            width: "6px",
+            height: "6px",
+            borderRadius: "50%",
+            background: "var(--brand)",
+            flexShrink: 0,
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Code viewer                                                               */
+/* -------------------------------------------------------------------------- */
+
+function CodeViewer({
+  path,
+  file,
+  loading,
+  error,
+  vulnLines,
+}: {
+  path: string;
+  file: WorkspaceFile | undefined;
+  loading: boolean;
+  error: Error | null;
+  vulnLines: Set<number>;
+}) {
+  const streamRef = useRef<HTMLDivElement | null>(null);
+
+  // When file loads, scroll to the first vuln line (if any).
+  useEffect(() => {
+    if (!file || vulnLines.size === 0) return;
+    const firstLine = Math.min(...Array.from(vulnLines));
+    const t = window.setTimeout(() => {
+      const el = streamRef.current?.querySelector<HTMLElement>(
+        `[data-ln="${firstLine}"]`,
+      );
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+    return () => window.clearTimeout(t);
+  }, [file, vulnLines]);
+
+  const lines = useMemo(() => (file?.content ?? "").split("\n"), [file]);
+
+  return (
+    <>
+      {/* Code header */}
+      <div
+        data-testid="workspace-code-header"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          padding: "8px 14px",
+          borderBottom: "1px solid var(--border)",
+          background: "var(--bg-card)",
+          fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+          fontSize: "12px",
+          color: "var(--text-secondary)",
+          flexShrink: 0,
+        }}
+      >
+        <span
+          data-testid="workspace-code-path"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "var(--text-primary)",
+          }}
+        >
+          {path}
+        </span>
+        {file?.total_lines ? (
+          <span>
+            {file.total_lines.toLocaleString()} {i18n.t("workspace.lines")}
+          </span>
+        ) : null}
+        {file?.is_truncated ? (
+          <span
+            style={{
+              padding: "1px 8px",
+              borderRadius: "3px",
+              background: "rgba(220,38,38,0.15)",
+              color: "var(--brand)",
+              fontSize: "11px",
+              fontWeight: 600,
+            }}
+            title={i18n.t("workspace.truncated")}
+          >
+            TRUNCATED
+          </span>
+        ) : null}
+      </div>
+
+      {/* Code body */}
+      <div
+        ref={streamRef}
+        data-testid="workspace-code-body"
+        style={{
+          flex: 1,
+          overflow: "auto",
+          background: "var(--code-bg)",
+          color: "var(--code-text)",
+          fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+          fontSize: "12px",
+          lineHeight: 1.7,
+          padding: "8px 0",
+        }}
+      >
+        {loading ? (
+          <div style={{ padding: "24px", color: "#737373", fontSize: "12px" }}>
+            {i18n.t("workspace.loading.file")}
+          </div>
+        ) : error ? (
+          <div
+            style={{
+              padding: "24px",
+              color: "#f87171",
+              fontSize: "12px",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {i18n.t("workspace.error.file")}: {(error as Error).message}
+          </div>
+        ) : file?.type === "binary" ? (
+          <div style={{ padding: "24px", color: "#737373", fontSize: "12px" }}>
+            {i18n.t("workspace.binary")}
+          </div>
+        ) : (
+          lines.map((line, i) => {
+            const ln = i + 1;
+            const isVuln = vulnLines.has(ln);
+            return (
+              <div
+                key={ln}
+                data-ln={ln}
+                data-testid={isVuln ? "workspace-vuln-line" : undefined}
+                style={{
+                  display: "flex",
+                  padding: "0 14px",
+                  background: isVuln ? "rgba(220,38,38,0.14)" : "transparent",
+                  borderLeft: isVuln
+                    ? "3px solid var(--brand)"
+                    : "3px solid transparent",
+                  whiteSpace: "pre",
+                }}
+              >
+                <span
+                  style={{
+                    color: "#555",
+                    userSelect: "none",
+                    display: "inline-block",
+                    width: "48px",
+                    textAlign: "right",
+                    marginRight: "14px",
+                    flexShrink: 0,
+                  }}
+                >
+                  {ln}
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>{line}</span>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </>
+  );
+}
+
+function EmptyCodePlaceholder() {
+  return (
+    <div
+      data-testid="workspace-empty"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100%",
+        color: "var(--code-comment, #555)",
+        fontSize: "12px",
+        fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+        gap: "10px",
+      }}
+    >
+      <Icon name="code" size={28} style={{ opacity: 0.3 }} />
+      <span>{i18n.t("workspace.select")}</span>
+    </div>
+  );
+}

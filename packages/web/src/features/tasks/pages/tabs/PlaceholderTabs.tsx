@@ -24,4 +24,4 @@ function Placeholder({ labelKey, testid }: { labelKey: string; testid: string })
 
 export function ReportsTab() { return <Placeholder labelKey="placeholder.reports" testid="task-detail-panel-reports" />; }
 export function PocTab() { return <Placeholder labelKey="placeholder.poc" testid="task-detail-panel-poc" />; }
-export function WorkspaceTab() { return <Placeholder labelKey="placeholder.workspace" testid="task-detail-panel-workspace" />; }
+// WorkspaceTab moved to its own file (WorkspaceTab.tsx) in Phase 6.
