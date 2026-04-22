@@ -160,10 +160,16 @@ importers:
       '@vulnhunt/shared':
         specifier: workspace:*
         version: link:../shared
+      ws:
+        specifier: ^8.18.0
+        version: 8.20.0
     devDependencies:
       '@types/node':
         specifier: ^22.10.2
         version: 22.19.17
+      '@types/ws':
+        specifier: ^8.5.13
+        version: 8.18.1
       esbuild:
         specifier: ^0.24.2
         version: 0.24.2

@@ -3,6 +3,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import * as chatStorage from "./storage.js";
 import { ensureWorker, stopWorker, getWorkerUrl } from "./worker-manager.js";
+import { waitForBridgeWs } from "./ws-chat.js";
 import { loadConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
 
@@ -78,6 +79,15 @@ chatRouter.post("/sessions/:id/prompt", async (c) => {
   } catch (err) {
     logger.error({ err, sessionId }, "Failed to start chat worker");
     return c.json({ error: { code: "ERR_INTERNAL", detail: String(err) } }, 503);
+  }
+
+  // Wait for service→bridge WS proxy to be connected (frontend WS triggers connectToBridge).
+  // Without this, pi may finish processing before the WS is up → events lost.
+  try {
+    await waitForBridgeWs(sessionId, 8000);
+  } catch (err) {
+    logger.warn({ err, sessionId }, "Bridge WS not ready, proceeding anyway");
+    // Don't fail the request — bridge HTTP may still work, and events may arrive late
   }
 
   // Forward prompt to bridge
