@@ -65,6 +65,8 @@ function setupPiConfig(): void {
         vulnhunt: {
           url: `${SERVICE_URL}/mcp`,
           headers: { Authorization: `Bearer ${MCP_TOKEN}` },
+          directTools: true,
+          lifecycle: "eager",
         },
       },
     };
@@ -85,6 +87,7 @@ function spawnPi(): ChildProcess {
     "--model", modelStr,
     "--no-skills",
     "--no-extensions",
+    "-e", "pi-mcp-adapter",  // explicitly load MCP adapter only
     "--no-prompt-templates",
     "--no-themes",
   ];

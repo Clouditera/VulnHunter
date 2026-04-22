@@ -7,7 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # pi CLI (youngflow spawns it for each stage)
-RUN npm install -g @mariozechner/pi-coding-agent
+RUN npm install -g @mariozechner/pi-coding-agent \
+    && pi install npm:pi-mcp-adapter
 
 # youngflow — copy built dist + deps from submodule
 COPY submodules/youngflow/package.json /opt/youngflow/package.json
