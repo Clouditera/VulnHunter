@@ -177,6 +177,34 @@ export const api = {
     get: (range?: string) =>
       request<DashboardData>(`/api/dashboard${range ? `?range=${range}` : ""}`),
   },
+  chat: {
+    sessions: {
+      list: () =>
+        request<{ sessions: ChatSessionApi[] }>("/api/chat/sessions"),
+      create: (title?: string) =>
+        request<{ session: ChatSessionApi }>("/api/chat/sessions", {
+          method: "POST",
+          body: JSON.stringify(title ? { title } : {}),
+        }),
+      get: (id: string) =>
+        request<{ session: ChatSessionApi }>(`/api/chat/sessions/${id}`),
+      delete: (id: string) =>
+        request<{ ok: boolean }>(`/api/chat/sessions/${id}`, { method: "DELETE" }),
+      messages: (id: string) =>
+        request<{ messages: ChatMessageApi[] }>(
+          `/api/chat/sessions/${id}/messages`,
+        ),
+      prompt: (id: string, message: string) =>
+        request<{ ok: boolean }>(`/api/chat/sessions/${id}/prompt`, {
+          method: "POST",
+          body: JSON.stringify({ message }),
+        }),
+      abort: (id: string) =>
+        request<{ ok: boolean }>(`/api/chat/sessions/${id}/abort`, {
+          method: "POST",
+        }),
+    },
+  },
 };
 
 export interface LlmCredential {
@@ -268,6 +296,35 @@ export interface WorkspaceFile {
   type: "text" | "binary" | "image";
   vuln_decorations?: WorkspaceVulnDecoration[];
   requested_line?: number;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Chat API shapes (matches the contract Developer confirmed for 6B)        */
+/* -------------------------------------------------------------------------- */
+
+export interface ChatSessionApi {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  preview?: string | null;
+  worker_state?: "idle" | "running" | "spawning";
+}
+
+export interface ChatToolCallApi {
+  tool: string;
+  args: string;
+  result?: string | null;
+  error?: string | null;
+}
+
+export interface ChatMessageApi {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  seq: number;
+  created_at: string;
+  tool_calls?: ChatToolCallApi[];
 }
 
 export interface DashboardData {

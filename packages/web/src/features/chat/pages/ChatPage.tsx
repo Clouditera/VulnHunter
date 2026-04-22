@@ -4,6 +4,20 @@ import { SessionList } from "../components/SessionList.js";
 import { MessageFlow } from "../components/MessageFlow.js";
 import { ArtifactPanel } from "../components/ArtifactPanel.js";
 import { useChatMock } from "../hooks/useChatMock.js";
+import { useChat } from "../hooks/useChat.js";
+
+/**
+ * Toggle between the real backend-backed hook and the in-memory mock.
+ * Controlled by `localStorage.setItem('vh.chat.mock', '1')` so we can
+ * fall back to seeded demo sessions when the backend is unavailable
+ * (useful during Phase 6 rollout, demos, and e2e tests).
+ *
+ * Default is real backend — assumes Developer's 6B API is up.
+ */
+function useMockFromStorage(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem("vh.chat.mock") === "1";
+}
 
 /**
  * Three-column chat layout:
@@ -25,6 +39,11 @@ export function ChatPage() {
   const [, force] = useState(0);
   useEffect(() => i18n.onChange(() => force((n) => n + 1)), []);
 
+  const useMock = useMockFromStorage();
+  // Both hooks expose the same surface area; React rules require we always
+  // call the same hook, so we branch at module scope via a small wrapper.
+  const real = useChat();
+  const mock = useChatMock();
   const {
     sessions,
     activeId,
@@ -36,7 +55,7 @@ export function ChatPage() {
     deleteSession,
     sendPrompt,
     abort,
-  } = useChatMock();
+  } = useMock ? mock : real;
 
   return (
     <div
