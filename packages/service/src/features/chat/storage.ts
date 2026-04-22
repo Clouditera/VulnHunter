@@ -67,6 +67,10 @@ export async function appendMessage(params: {
   toolCalls?: unknown[];
 }): Promise<DbChatMessage> {
   const db = getDb();
+  // Get session to find tenant_id and user_id
+  const session = await getSession(params.sessionId);
+  if (!session) throw new Error("Session not found");
+
   // Get next seq
   const seqRows = await db<{ max: number | null }[]>`
     SELECT MAX(seq) as max FROM chat_messages WHERE session_id = ${params.sessionId}
@@ -74,9 +78,9 @@ export async function appendMessage(params: {
   const nextSeq = (seqRows[0]?.max ?? 0) + 1;
 
   const rows = await db<DbChatMessage[]>`
-    INSERT INTO chat_messages (session_id, role, content, seq, tool_calls)
-    VALUES (${params.sessionId}, ${params.role}, ${params.content}, ${nextSeq},
-            ${params.toolCalls ? JSON.stringify(params.toolCalls) : null})
+    INSERT INTO chat_messages (session_id, tenant_id, user_id, role, content, seq)
+    VALUES (${params.sessionId}, ${session.tenant_id}, ${session.user_id},
+            ${params.role}, ${params.content}, ${nextSeq})
     RETURNING *
   `;
   return rows[0];

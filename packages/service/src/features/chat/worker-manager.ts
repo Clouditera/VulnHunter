@@ -24,7 +24,7 @@ const workers = new Map<string, WorkerState>();
 export function getWorkerUrl(sessionId: string, _config: ServiceConfig): string | null {
   const w = workers.get(sessionId);
   if (!w || w.state !== "running" || !w.containerId) return null;
-  return `http://${w.containerName}:8080`;
+  return `http://${w.containerName}:8080`; // containerName stores IP after ensureWorker
 }
 
 export async function ensureWorker(
@@ -96,10 +96,18 @@ export async function ensureWorker(
 
   logger.info({ sessionId, containerName }, "Chat worker started");
 
-  // Wait a bit for bridge to initialize
-  await new Promise((r) => setTimeout(r, 2000));
+  // Wait for bridge to initialize
+  await new Promise((r) => setTimeout(r, 4000));
 
-  return `http://${containerName}:8080`;
+  // Get container IP (service runs on host, can't resolve container names)
+  const info = await container.inspect();
+  const ip = info.NetworkSettings?.Networks?.bridge?.IPAddress
+    ?? info.NetworkSettings?.IPAddress
+    ?? containerName;
+  const url = `http://${ip}:8080`;
+  w.containerName = ip; // Store IP for future lookups
+  logger.info({ sessionId, url }, "Chat worker bridge URL");
+  return url;
 }
 
 export async function stopWorker(sessionId: string): Promise<void> {
