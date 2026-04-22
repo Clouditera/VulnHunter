@@ -10,8 +10,9 @@ import { TasksListPage } from "../features/tasks/pages/TasksListPage.js";
 import { TaskDetailPage } from "../features/tasks/pages/TaskDetailPage.js";
 import { OverviewTab } from "../features/tasks/pages/tabs/OverviewTab.js";
 import { FindingsTab } from "../features/tasks/pages/tabs/FindingsTab.js";
-import { ReportsTab, PocTab } from "../features/tasks/pages/tabs/PlaceholderTabs.js";
+import { ReportsTab } from "../features/tasks/pages/tabs/PlaceholderTabs.js";
 import { WorkspaceTab } from "../features/tasks/pages/tabs/WorkspaceTab.js";
+import { PocTab } from "../features/tasks/pages/tabs/PocTab.js";
 import { ChatPage } from "../features/chat/pages/ChatPage.js";
 import { SettingsPage } from "../features/settings/pages/SettingsPage.js";
 
