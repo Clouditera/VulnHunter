@@ -20,10 +20,14 @@ RUN chmod +x /opt/youngflow/bin/youngflow.js \
 # vulnhunt flow assets (separate from youngflow submodule)
 COPY flows/vulnhunt /opt/vulnhunt/flows/vulnhunt
 
+# Worker bridge (for chat/report modes)
+COPY packages/worker-bridge/dist/bundle.js /opt/bridge/bundle.js
+
 # Worker scripts
 COPY worker-assets/entrypoint.sh /opt/entrypoint.sh
 COPY worker-assets/scan-mode.sh /opt/scan-mode.sh
-RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh
+COPY worker-assets/chat-mode.sh /opt/chat-mode.sh
+RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh
 
 WORKDIR /workspace
 ENTRYPOINT ["/opt/entrypoint.sh"]

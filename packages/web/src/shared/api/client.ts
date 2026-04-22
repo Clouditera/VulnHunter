@@ -152,6 +152,27 @@ export const api = {
         body: JSON.stringify(params),
       }),
   },
+  chat: {
+    listSessions: () => request<{ sessions: ChatSession[] }>("/api/chat/sessions"),
+    createSession: (name?: string) =>
+      request<{ session: ChatSession }>("/api/chat/sessions", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      }),
+    getSession: (id: string) => request<{ session: ChatSession }>(`/api/chat/sessions/${id}`),
+    deleteSession: (id: string) => request<{ ok: boolean }>(`/api/chat/sessions/${id}`, { method: "DELETE" }),
+    listMessages: (sessionId: string, sinceSeq?: number) =>
+      request<{ messages: ChatMessage[] }>(
+        `/api/chat/sessions/${sessionId}/messages${sinceSeq != null ? `?since_seq=${sinceSeq}` : ""}`
+      ),
+    sendPrompt: (sessionId: string, message: string) =>
+      request<{ ok: boolean }>(`/api/chat/sessions/${sessionId}/prompt`, {
+        method: "POST",
+        body: JSON.stringify({ message }),
+      }),
+    abort: (sessionId: string) =>
+      request<{ ok: boolean }>(`/api/chat/sessions/${sessionId}/abort`, { method: "POST" }),
+  },
   dashboard: {
     get: (range?: string) =>
       request<DashboardData>(`/api/dashboard${range ? `?range=${range}` : ""}`),
@@ -194,6 +215,24 @@ export interface SystemConfig {
   live_log_buffer_cap: number;
   chat_idle_timeout_min: number;
   worker_spawn_timeout_sec: number;
+}
+
+export interface ChatSession {
+  id: string;
+  name: string;
+  state: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  session_id: string;
+  role: "user" | "assistant";
+  content: string;
+  seq: number;
+  tool_calls?: Array<{ tool: string; args: string; result?: string }>;
+  created_at: string;
 }
 
 export interface PocFile {

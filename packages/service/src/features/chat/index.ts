@@ -1,2 +1,1 @@
-// TODO: implement
-export {};
+export { chatRouter } from "./routes.js";

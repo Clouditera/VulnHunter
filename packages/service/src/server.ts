@@ -10,7 +10,9 @@ import { findingsRouter } from "./features/findings/index.js";
 import { dashboardRouter } from "./features/dashboard/index.js";
 import { workspaceRouter } from "./features/workspace/index.js";
 import { settingsRouter } from "./features/settings/index.js";
+import { chatRouter } from "./features/chat/index.js";
 import { createLiveLogWss } from "./features/events/index.js";
+import { setupChatWs } from "./features/chat/ws-chat.js";
 import { injectUser } from "./middleware/index.js";
 import { traceId } from "./middleware/trace-id.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -37,6 +39,7 @@ export function createApp(): Hono {
   app.route("/api/tasks", workspaceRouter); // /:taskId/workspace/*
   app.route("/api/dashboard", dashboardRouter);
   app.route("/api/settings", settingsRouter);
+  app.route("/api/chat", chatRouter);
   app.route("/api", filesRouter); // includes POST /api/tasks (upload)
 
   app.onError(errorHandler);
@@ -54,4 +57,8 @@ export function startServer(port: number): void {
   // Attach Live Log WebSocket server to the same HTTP server
   createLiveLogWss(httpServer);
   logger.info("Live Log WebSocket server attached at /ws/live-log");
+
+  // Attach Chat WebSocket proxy
+  setupChatWs(httpServer);
+  logger.info("Chat WebSocket proxy attached at /ws/chat/:sessionId");
 }
