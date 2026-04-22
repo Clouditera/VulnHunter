@@ -66,7 +66,23 @@ tasksRouter.post("/:id/pause", async (c) => {
   if (task.state !== "running") {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "Task is not running" } }, 409);
   }
+  // Stop the worker container (youngflow checkpoint is preserved in workspace)
+  await stopScanWorker(task.id).catch((err) => {
+    logger.warn({ err, taskId: task.id }, "Failed to stop worker on pause");
+  });
   await taskStorage.updateTaskState(task.id, "paused");
+  return c.json({ ok: true });
+});
+
+// POST /api/tasks/:id/resume
+tasksRouter.post("/:id/resume", async (c) => {
+  const task = await taskStorage.getTaskById(c.req.param("id"));
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+  if (task.state !== "paused") {
+    return c.json({ error: { code: "ERR_INTERNAL", detail: "Task is not paused" } }, 409);
+  }
+  // Set to queued — scheduler picks it up with resume=true
+  await taskStorage.updateTaskState(task.id, "queued");
   return c.json({ ok: true });
 });
 

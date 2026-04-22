@@ -129,14 +129,23 @@ export class TaskScheduler {
     logger.info({ queued: queued.length, capacity }, "Scheduling queued tasks");
 
     for (const task of queued) {
+      // Detect resume: if started_at is set, task was previously running/paused
+      const isResume = task.started_at != null;
+
       try {
-        await this.prepareWorkspace(task);
-        await spawnScanWorker(task, this.config, llmEnv);
+        if (!isResume) {
+          await this.prepareWorkspace(task);
+        }
+        await spawnScanWorker(task, this.config, llmEnv, isResume);
 
         // Start tailing service event files
         const hostWorkDir = getHostWorkDir(this.config.dataDir, task.id);
         const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
         startTailing(task.id, [], [{ path: eventsDir, source: "scan" }]);
+
+        if (isResume) {
+          logger.info({ taskId: task.id }, "Task resumed from paused state");
+        }
       } catch (err) {
         logger.error({ err, taskId: task.id }, "Failed to spawn worker");
         await updateTaskState(task.id, "failed", {

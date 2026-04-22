@@ -107,6 +107,12 @@ const ZH: Record<string, string> = {
   "findings.description": "描述",
   "findings.remediation": "修复建议",
   "findings.selectToView": "选择漏洞查看源代码",
+  "findings.files": "文件",
+  "findings.filteredBy": "{n} 条漏洞 · {file}",
+  "findings.clearFilter": "× 清除过滤",
+  "findings.noVulnFiles": "无漏洞文件",
+  "findings.filesEmpty": "文件树不可用",
+  "findings.vulnsInFile": "{n} 个漏洞",
 
   // Dashboard
   "dashboard.title": "仪表板",
@@ -409,6 +415,12 @@ const EN: Record<string, string> = {
   "findings.description": "Description",
   "findings.remediation": "Remediation",
   "findings.selectToView": "Select a finding to view source",
+  "findings.files": "Files",
+  "findings.filteredBy": "{n} findings · {file}",
+  "findings.clearFilter": "× Clear filter",
+  "findings.noVulnFiles": "No vulnerable files",
+  "findings.filesEmpty": "File tree unavailable",
+  "findings.vulnsInFile": "{n} finding(s)",
 
   // Dashboard
   "dashboard.title": "Dashboard",

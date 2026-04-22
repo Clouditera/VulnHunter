@@ -9,6 +9,7 @@ import {
   getDocker,
   LABEL_TASK_ID,
 } from "./docker-client.js";
+
 import type { DbTask } from "../tasks/storage.js";
 
 export function getHostWorkDir(dataDir: string, taskId: string): string {
@@ -26,6 +27,13 @@ export async function spawnScanWorker(
   if (!resume) {
     ensureWorkDir(hostWorkDir);
   }
+
+  // Remove stale container with same name if it exists (e.g. from previous failed run)
+  try {
+    const docker = getDocker();
+    const old = docker.getContainer(`vh-scan-${task.id}`);
+    await old.remove({ force: true });
+  } catch { /* ok, doesn't exist */ }
 
   const container = await createWorkerContainer({
     taskId: task.id,
