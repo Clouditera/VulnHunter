@@ -300,6 +300,8 @@ export function SettingsPage() {
   // Multi-credential support
   const [credentials, setCredentials] = useState<LlmCredential[]>([]);
   const [editingCredentialId, setEditingCredentialId] = useState<string | null>(null);
+  /** True when the "+ New credential" draft row is visible and expanded. */
+  const [isNewDraft, setIsNewDraft] = useState(false);
   const [label, setLabel] = useState<string>("");
 
   const [protoType, setProtoType] = useState<string>("openai-completions");
@@ -365,6 +367,7 @@ export function SettingsPage() {
   function editCredential(c: LlmCredential) {
     setCred(c);
     setEditingCredentialId(c.id);
+    setIsNewDraft(false);
     setProtoType(normalizeProtoType(c.proto_type));
     setBaseUrl(c.base_url ?? "");
     setModelId(c.model_id);
@@ -375,10 +378,21 @@ export function SettingsPage() {
     setToast(null);
   }
 
-  /** Clear form for creating a brand-new credential. */
+  /** Collapse the current expanded row (no draft, no editing). */
+  function collapseExpanded() {
+    setCred(null);
+    setEditingCredentialId(null);
+    setIsNewDraft(false);
+    setApiKey("");
+    setTestState({ kind: "idle" });
+    setToast(null);
+  }
+
+  /** Open the "+ New credential" draft row at the top of the list. */
   function newCredential() {
     setCred(null);
     setEditingCredentialId(null);
+    setIsNewDraft(true);
     const first = PROTOCOLS[0];
     setProtoType(first.value);
     setBaseUrl("");
@@ -503,6 +517,8 @@ export function SettingsPage() {
         setCred(fresh.credential);
         setEditingCredentialId(fresh.credential.id);
       }
+      // After save, the draft row (if any) becomes a real row.
+      setIsNewDraft(false);
       // Also refresh the credentials list so the new/edited row shows.
       const freshList = await api.settings
         .listCredentials()
@@ -679,7 +695,7 @@ export function SettingsPage() {
           </SettingsCard>
 
           {/* ============================================================= */}
-          {/*  Credentials list (multi-credential support)                  */}
+          {/*  Credentials — unified list + inline editor (Phase 9)         */}
           {/* ============================================================= */}
           <SettingsCard
             icon="shield"
@@ -691,6 +707,7 @@ export function SettingsPage() {
                 type="button"
                 data-testid="settings-credential-new-btn"
                 onClick={newCredential}
+                disabled={isNewDraft}
                 style={{
                   padding: "6px 12px",
                   border: "1px solid var(--border)",
@@ -699,203 +716,18 @@ export function SettingsPage() {
                   color: "var(--text-primary)",
                   fontSize: "12px",
                   fontWeight: 600,
-                  cursor: "pointer",
+                  cursor: isNewDraft ? "not-allowed" : "pointer",
+                  opacity: isNewDraft ? 0.5 : 1,
                 }}
               >
                 {i18n.t("settings.credentials.new")}
               </button>
             }
           >
-            {credentials.length === 0 ? (
-              <div
-                style={{
-                  padding: "20px 4px",
-                  color: "var(--text-secondary)",
-                  fontSize: "13px",
-                }}
-              >
-                {i18n.t("settings.credentials.empty")}
-              </div>
-            ) : (
-              <div
-                data-testid="settings-credentials-list"
-                style={{ display: "flex", flexDirection: "column", gap: "6px" }}
-              >
-                {credentials.map((c) => {
-                  const isEditing = editingCredentialId === c.id;
-                  return (
-                    <div
-                      key={c.id}
-                      data-testid="settings-credential-row"
-                      data-cred-id={c.id}
-                      data-is-default={c.is_default || undefined}
-                      data-editing={isEditing || undefined}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "10px",
-                        padding: "10px 12px",
-                        borderRadius: "8px",
-                        border: `1px solid ${
-                          isEditing
-                            ? "var(--brand)"
-                            : "var(--border)"
-                        }`,
-                        background: isEditing
-                          ? "rgba(220,38,38,0.04)"
-                          : "var(--bg-page)",
-                      }}
-                    >
-                      {/* Default indicator */}
-                      <span
-                        aria-hidden
-                        style={{
-                          width: "18px",
-                          height: "18px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color: c.is_default
-                            ? "var(--sev-medium)"
-                            : "var(--text-secondary)",
-                          opacity: c.is_default ? 1 : 0.25,
-                          fontSize: "14px",
-                          lineHeight: 1,
-                        }}
-                        title={
-                          c.is_default
-                            ? i18n.t("settings.credentials.default")
-                            : ""
-                        }
-                      >
-                        ★
-                      </span>
-                      {/* Main info */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontSize: "13px",
-                            fontWeight: 600,
-                            color: "var(--text-primary)",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {c.label || c.provider}
-                          {isEditing && (
-                            <span
-                              style={{
-                                marginLeft: "8px",
-                                fontSize: "11px",
-                                fontWeight: 500,
-                                color: "var(--brand)",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.04em",
-                              }}
-                            >
-                              {i18n.t("settings.credentials.edit")}
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "11px",
-                            color: "var(--text-secondary)",
-                            fontFamily:
-                              "'SF Mono', Menlo, Consolas, monospace",
-                            marginTop: "2px",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {c.model_id}
-                          {c.base_url ? " · " + c.base_url : ""}
-                        </div>
-                      </div>
-                      {/* Actions */}
-                      <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
-                        {!c.is_default && (
-                          <button
-                            type="button"
-                            data-testid="settings-credential-setdefault"
-                            onClick={() => handleSetDefault(c)}
-                            title={i18n.t("settings.credentials.setDefault")}
-                            style={CRED_ROW_BTN}
-                          >
-                            {i18n.t("settings.credentials.setDefault")}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          data-testid="settings-credential-edit"
-                          onClick={() => editCredential(c)}
-                          disabled={isEditing}
-                          style={{
-                            ...CRED_ROW_BTN,
-                            opacity: isEditing ? 0.5 : 1,
-                            cursor: isEditing ? "default" : "pointer",
-                          }}
-                        >
-                          {i18n.t("settings.credentials.edit")}
-                        </button>
-                        <button
-                          type="button"
-                          data-testid="settings-credential-delete"
-                          onClick={() => handleDeleteCredential(c)}
-                          style={{
-                            ...CRED_ROW_BTN,
-                            color: "var(--brand)",
-                            borderColor: "rgba(220,38,38,0.3)",
-                          }}
-                        >
-                          {i18n.t("settings.credentials.delete")}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </SettingsCard>
-
-          {/* ============================================================= */}
-          {/*  Model Configuration — form used for both create and edit     */}
-          {/* ============================================================= */}
-          <SettingsCard
-            icon="lock"
-            title={
-              editingCredentialId && cred
-                ? i18n
-                    .t("settings.credentials.editing")
-                    .replace("{label}", cred.label || cred.provider)
-                : i18n.t("settings.model.title")
-            }
-            desc={i18n.t("settings.model.desc")}
-            testid="settings-card-model"
-            actions={
-              editingCredentialId ? (
-                <button
-                  type="button"
-                  data-testid="settings-credential-cancel-edit"
-                  onClick={newCredential}
-                  style={{
-                    padding: "6px 12px",
-                    border: "1px solid var(--border)",
-                    borderRadius: "6px",
-                    background: "var(--bg-card)",
-                    color: "var(--text-secondary)",
-                    fontSize: "12px",
-                    fontWeight: 500,
-                    cursor: "pointer",
-                  }}
-                >
-                  {i18n.t("settings.credentials.cancelEdit")}
-                </button>
-              ) : undefined
-            }
-          >
+            {(() => {
+              // Form body JSX — captured once; rendered inside draft row + editing rows.
+              const FORM_BODY = (
+                <>
             {/* Label (optional, used to distinguish credentials in list) */}
             <Field
               label={i18n.t("settings.model.labelLabel")}
@@ -1217,6 +1049,290 @@ export function SettingsPage() {
                 </div>
               )}
             </div>
+                </>
+              );
+
+              const renderExpandedRow = ({
+                isDraft,
+                c,
+              }: {
+                isDraft: boolean;
+                c: LlmCredential | null;
+              }) => {
+                const title = isDraft
+                  ? i18n.t("settings.credentials.newDraftTitle")
+                  : c?.label || c?.provider || "";
+                return (
+                  <div
+                    key={isDraft ? "__draft__" : c!.id}
+                    data-testid="settings-credential-row"
+                    data-cred-id={c?.id}
+                    data-editing={true}
+                    data-draft={isDraft || undefined}
+                    style={{
+                      border: "1px solid var(--brand)",
+                      borderRadius: "8px",
+                      background: "rgba(220,38,38,0.03)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        padding: "12px 14px",
+                      }}
+                    >
+                      <Icon
+                        name={isDraft ? "plus" : "chevron-up"}
+                        size={16}
+                        style={{ color: "var(--brand)", flexShrink: 0 }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            color: "var(--text-primary)",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {title}
+                        </div>
+                        {!isDraft && c && (
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: "var(--text-secondary)",
+                              fontFamily:
+                                "'SF Mono', Menlo, Consolas, monospace",
+                              marginTop: "2px",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {c.model_id}
+                            {c.base_url ? " · " + c.base_url : ""}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        data-testid="settings-credential-collapse"
+                        onClick={collapseExpanded}
+                        style={{
+                          padding: "4px 10px",
+                          border: "1px solid var(--border)",
+                          borderRadius: "5px",
+                          background: "var(--bg-card)",
+                          color: "var(--text-secondary)",
+                          fontSize: "11px",
+                          fontWeight: 500,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {i18n.t("settings.credentials.collapse")}
+                      </button>
+                    </div>
+                    <div
+                      style={{
+                        padding: "14px 16px 16px",
+                        borderTop: "1px solid var(--divider)",
+                      }}
+                    >
+                      {FORM_BODY}
+                      <div
+                        style={{
+                          marginTop: "18px",
+                          paddingTop: "14px",
+                          borderTop: "1px solid var(--divider)",
+                          display: "flex",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                        }}
+                      >
+                        {!isDraft && c && !c.is_default && (
+                          <button
+                            type="button"
+                            data-testid="settings-credential-setdefault"
+                            onClick={() => handleSetDefault(c)}
+                            style={CRED_ROW_BTN}
+                          >
+                            {i18n.t("settings.credentials.setDefault")}
+                          </button>
+                        )}
+                        {!isDraft && c && (
+                          <button
+                            type="button"
+                            data-testid="settings-credential-delete"
+                            onClick={() => handleDeleteCredential(c)}
+                            style={{
+                              ...CRED_ROW_BTN,
+                              color: "var(--brand)",
+                              borderColor: "rgba(220,38,38,0.3)",
+                            }}
+                          >
+                            {i18n.t("settings.credentials.delete")}
+                          </button>
+                        )}
+                        <span style={{ flex: 1 }} />
+                        <button
+                          type="button"
+                          data-testid="settings-credential-save"
+                          disabled={!apiKey || saving}
+                          onClick={handleSave}
+                          style={{
+                            padding: "6px 16px",
+                            border: "none",
+                            borderRadius: "6px",
+                            background: !apiKey
+                              ? "var(--bg-disabled)"
+                              : "var(--brand)",
+                            color: "var(--btn-primary-text)",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            cursor:
+                              !apiKey || saving ? "not-allowed" : "pointer",
+                            opacity: !apiKey ? 0.6 : 1,
+                          }}
+                        >
+                          {saving
+                            ? i18n.t("settings.saving")
+                            : isDraft
+                              ? i18n.t("settings.credentials.create")
+                              : i18n.t("settings.credentials.update")}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              };
+
+              const renderCollapsedRow = (c: LlmCredential) => (
+                <div
+                  key={c.id}
+                  data-testid="settings-credential-row"
+                  data-cred-id={c.id}
+                  data-is-default={c.is_default || undefined}
+                  onClick={() => editCredential(c)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "10px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border)",
+                    background: "var(--bg-page)",
+                    cursor: "pointer",
+                    transition: "background 0.12s, border-color 0.12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.background =
+                      "var(--bg-hover)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.background =
+                      "var(--bg-page)";
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    title={
+                      c.is_default
+                        ? i18n.t("settings.credentials.default")
+                        : ""
+                    }
+                    style={{
+                      width: "18px",
+                      height: "18px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: c.is_default
+                        ? "var(--sev-medium)"
+                        : "var(--text-secondary)",
+                      opacity: c.is_default ? 1 : 0.25,
+                      fontSize: "14px",
+                      lineHeight: 1,
+                    }}
+                  >
+                    ★
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        color: "var(--text-primary)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {c.label || c.provider}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--text-secondary)",
+                        fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+                        marginTop: "2px",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {c.model_id}
+                      {c.base_url ? " · " + c.base_url : ""}
+                    </div>
+                  </div>
+                  <Icon
+                    name="chevron-down"
+                    size={14}
+                    style={{
+                      color: "var(--text-secondary)",
+                      flexShrink: 0,
+                    }}
+                  />
+                </div>
+              );
+
+              return (
+                <div
+                  data-testid="settings-credentials-list"
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                  }}
+                >
+                  {isNewDraft &&
+                    renderExpandedRow({ isDraft: true, c: null })}
+                  {credentials.length === 0 && !isNewDraft ? (
+                    <div
+                      style={{
+                        padding: "20px 4px",
+                        color: "var(--text-secondary)",
+                        fontSize: "13px",
+                      }}
+                    >
+                      {i18n.t("settings.credentials.empty")}
+                    </div>
+                  ) : (
+                    credentials.map((c) =>
+                      editingCredentialId === c.id
+                        ? renderExpandedRow({ isDraft: false, c })
+                        : renderCollapsedRow(c),
+                    )
+                  )}
+                </div>
+              );
+            })()}
           </SettingsCard>
 
           {/* ============================================================= */}

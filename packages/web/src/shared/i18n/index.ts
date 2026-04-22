@@ -291,6 +291,10 @@ const ZH: Record<string, string> = {
   "settings.credentials.new": "+ 新建凭证",
   "settings.credentials.editing": "正在编辑：{label}",
   "settings.credentials.cancelEdit": "取消编辑",
+  "settings.credentials.newDraftTitle": "新建凭证",
+  "settings.credentials.collapse": "收起",
+  "settings.credentials.create": "创建凭证",
+  "settings.credentials.update": "保存修改",
   "newTask.cancel": "取消",
 
   // Chat
@@ -649,6 +653,10 @@ const EN: Record<string, string> = {
   "settings.credentials.new": "+ New credential",
   "settings.credentials.editing": "Editing: {label}",
   "settings.credentials.cancelEdit": "Cancel edit",
+  "settings.credentials.newDraftTitle": "New credential",
+  "settings.credentials.collapse": "Collapse",
+  "settings.credentials.create": "Create credential",
+  "settings.credentials.update": "Save changes",
   "newTask.cancel": "Cancel",
 
   // Chat
