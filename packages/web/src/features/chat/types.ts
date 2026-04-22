@@ -41,6 +41,9 @@ export interface ChatMessage {
   tool_calls?: ChatToolCall[];
   /** True while the assistant is still streaming this message. */
   streaming?: boolean;
+  /** Raw chain-of-thought captured from `thinking_*` events. Not rendered
+      by default in v1.0 — reserved for a future "Show thinking" toggle. */
+  thinking?: string;
 }
 
 export interface ChatSession {

@@ -1,35 +1,50 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type ChatMessageApi, type ChatSessionApi } from "../../../shared/api/client.js";
-import type { ChatMessage, ChatSession, ChatToolCall, PiEvent } from "../types.js";
+import type { ChatMessage, ChatSession, ChatToolCall } from "../types.js";
 
 /**
  * Real-data version of the chat hook — talks to the backend via REST +
- * WS (proxied by the service to the in-container bridge).
+ * WS (proxied by the service to the in-container pi bridge).
  *
- * Contract (6B, as discussed with @developer):
- *   REST  GET    /api/chat/sessions                 → { sessions }
- *         POST   /api/chat/sessions                 → { session }
- *         DELETE /api/chat/sessions/:id             → { ok }
- *         GET    /api/chat/sessions/:id/messages    → { messages }
- *         POST   /api/chat/sessions/:id/prompt      → { ok }
- *         POST   /api/chat/sessions/:id/abort       → { ok }
- *   WS    /ws/chat/:sessionId                        → envelope events:
- *           { session_id, type: 'message_start' | ..., ... }
+ * Same surface area as `useChatMock` so ChatPage can swap one import for
+ * the other. The mock stays in the tree for demos / offline dev.
  *
- * Events we act on:
- *   message_start         → append empty assistant message, start streaming
- *   message_update        → append delta to current assistant message
- *   message_end           → mark streaming=false; refetch to reconcile
- *   tool_execution_start  → push pending tool_call onto current message
- *   tool_execution_end    → resolve the matching tool_call (ok/err)
- *   thinking_*            → collected into a per-message `thinking` buffer
- *                           for the v1.0 "Show thinking" toggle (not rendered
- *                           by default — dropped from UI unless user asks)
- *   agent_start/end       → worker_state toggled on the local session
- *   error                 → surfaced via the lastError state field
+ * ## Actual event shape (verified against live backend)
  *
- * This hook exposes the same surface area as `useChatMock` so ChatPage
- * can swap one import for the other.
+ * The shape the bridge emits differs from the flat `{message_id, delta}`
+ * contract we initially sketched. Every event is wrapped with
+ * `{session_id, type, ...}` by the service proxy, and for streaming the
+ * payload is nested:
+ *
+ *   message_start  { message: { role, content: [] } }
+ *   message_update { assistantMessageEvent: {
+ *                      type: "text_delta" | "text_start" | "text_end"
+ *                          | "thinking_*",
+ *                      contentIndex: number,
+ *                      delta: string,
+ *                      partial: { role, content: [{type:'thinking'|'text', ...}] }
+ *                    } }
+ *   message_end    { message: { role, content: [...blocks...] } }
+ *   turn_end       { message: { ... } }
+ *   agent_end      { messages: [...] }
+ *
+ * Key insight: `assistantMessageEvent.partial.content` carries the full
+ * snapshot up to the current chunk. We use that as the source of truth
+ * instead of accumulating deltas — it makes the reducer idempotent
+ * (events occasionally arrive twice; replacing with the snapshot is a
+ * no-op on duplicates).
+ *
+ * ## Thinking
+ *
+ * Per earlier discussion, `thinking_*` events are not rendered in v1.0.
+ * We still capture the thinking text in `message.thinking` (future-proof
+ * for a "Show thinking" toggle), but `MessageBubble` doesn't surface it.
+ *
+ * ## Tool calls
+ *
+ * Not yet emitted on the path we verified (no MCP server wired); the
+ * reducer handles `tool_execution_*` defensively so the UI works once
+ * Developer lands 6C.
  */
 
 export function useChat() {
@@ -40,6 +55,8 @@ export function useChat() {
   const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastError, setLastError] = useState<string | null>(null);
+  // Id of the assistant message currently being streamed (one at a time).
+  const currentAssistantId = useRef<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   /* --------------------------------------------------------------------- */
@@ -74,8 +91,8 @@ export function useChat() {
   useEffect(() => {
     if (!activeId) return;
     let mounted = true;
-    // Short-circuit if we already have a populated buffer (avoid clobbering
-    // streaming in-flight messages when the user toggles sessions).
+    // Short-circuit if we already have a populated buffer (switching away +
+    // back shouldn't clobber in-flight streams).
     if ((messagesBySession[activeId] ?? []).length > 0) return;
     api.chat.sessions
       .messages(activeId)
@@ -85,7 +102,7 @@ export function useChat() {
         setMessagesBySession((prev) => ({ ...prev, [activeId]: msgs }));
       })
       .catch(() => {
-        /* 404 just means fresh session — leave [] */
+        /* fresh session — leave [] */
       });
     return () => {
       mounted = false;
@@ -104,14 +121,14 @@ export function useChat() {
     wsRef.current = ws;
 
     ws.onmessage = (evt) => {
-      let parsed: PiEvent;
+      let parsed: unknown;
       try {
         parsed = JSON.parse(evt.data);
       } catch {
         return;
       }
       if (!parsed || typeof parsed !== "object" || !("type" in parsed)) return;
-      applyEvent(activeId, parsed);
+      applyEvent(activeId, parsed as PiWsEvent);
     };
 
     ws.onerror = () => {
@@ -121,25 +138,44 @@ export function useChat() {
     return () => {
       ws.close();
       wsRef.current = null;
+      currentAssistantId.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
   /* --------------------------------------------------------------------- */
-  /*  Reducer — mutate messagesBySession based on pi event                  */
+  /*  Event reducer                                                         */
   /* --------------------------------------------------------------------- */
 
-  const applyEvent = useCallback((sid: string, evt: PiEvent) => {
-    setMessagesBySession((prev) => {
-      const arr = prev[sid] ?? [];
+  const applyEvent = useCallback((sid: string, evt: PiWsEvent) => {
+    switch (evt.type) {
+      case "agent_start":
+        setStreaming(true);
+        setSessions((s) =>
+          s.map((x) =>
+            x.id === sid ? { ...x, worker_state: "running" as const } : x,
+          ),
+        );
+        return;
 
-      switch (evt.type) {
-        case "message_start": {
-          // Push an empty assistant message we'll stream into.
-          const e = evt as typeof evt & { message_id: string; role: "user" | "assistant" };
-          if (e.role !== "assistant") return prev; // ignore user echoes
-          const next: ChatMessage = {
-            id: e.message_id,
+      case "agent_end":
+      case "turn_end":
+        setStreaming(false);
+        return;
+
+      case "message_start": {
+        const role = evt.message?.role;
+        if (role !== "assistant") return; // user echoes are ignored
+        // Dedup: the service currently forwards duplicate events (known
+        // backend issue). If an assistant message is already in flight,
+        // keep streaming into it rather than creating a second bubble.
+        if (currentAssistantId.current) return;
+        const id = `asst-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        currentAssistantId.current = id;
+        setMessagesBySession((prev) => {
+          const arr = prev[sid] ?? [];
+          const newMsg: ChatMessage = {
+            id,
             role: "assistant",
             content: "",
             seq: arr.length + 1,
@@ -147,110 +183,138 @@ export function useChat() {
             streaming: true,
             tool_calls: [],
           };
-          return { ...prev, [sid]: [...arr, next] };
-        }
+          return { ...prev, [sid]: [...arr, newMsg] };
+        });
+        return;
+      }
 
-        case "message_update": {
-          const e = evt as typeof evt & { message_id: string; delta: string };
-          const idx = arr.findIndex((m) => m.id === e.message_id);
+      case "message_update": {
+        const inner = evt.assistantMessageEvent;
+        if (!inner) return;
+        const id = currentAssistantId.current;
+        if (!id) return;
+
+        // Extract text content from the full partial snapshot — idempotent
+        // under duplicate events. `partial.content` is an array of
+        // `{type: 'thinking'|'text', ...}` blocks.
+        const blocks = inner.partial?.content ?? [];
+        const textBlock = blocks.find(
+          (b): b is { type: "text"; text: string } => b?.type === "text",
+        );
+        const thinkingBlock = blocks.find(
+          (b): b is { type: "thinking"; thinking: string } =>
+            b?.type === "thinking",
+        );
+
+        setMessagesBySession((prev) => {
+          const arr = prev[sid] ?? [];
+          const idx = arr.findIndex((m) => m.id === id);
           if (idx < 0) return prev;
-          const updated: ChatMessage = {
+          const next: ChatMessage = {
             ...arr[idx],
-            content: arr[idx].content + (e.delta ?? ""),
+            content: textBlock?.text ?? arr[idx].content,
+            // Stash thinking for the future "Show thinking" toggle.
+            // v1.0 UI never reads this field.
+            thinking: thinkingBlock?.thinking ?? arr[idx].thinking,
           };
           const copy = arr.slice();
-          copy[idx] = updated;
+          copy[idx] = next;
           return { ...prev, [sid]: copy };
-        }
+        });
+        return;
+      }
 
-        case "message_end": {
-          const e = evt as typeof evt & { message_id: string };
-          const idx = arr.findIndex((m) => m.id === e.message_id);
+      case "message_end": {
+        const role = evt.message?.role;
+        if (role !== "assistant") return;
+        const id = currentAssistantId.current;
+        if (!id) return;
+
+        // Reconcile against the final snapshot just in case we missed a
+        // delta. Same "partial = truth" approach.
+        const blocks = evt.message?.content ?? [];
+        const textBlock = blocks.find(
+          (b: { type?: string }): b is { type: "text"; text: string } =>
+            b?.type === "text",
+        );
+
+        setMessagesBySession((prev) => {
+          const arr = prev[sid] ?? [];
+          const idx = arr.findIndex((m) => m.id === id);
           if (idx < 0) return prev;
-          const updated: ChatMessage = { ...arr[idx], streaming: false };
-          const copy = arr.slice();
-          copy[idx] = updated;
-          return { ...prev, [sid]: copy };
-        }
-
-        case "tool_execution_start": {
-          const e = evt as typeof evt & {
-            tool_call_id: string;
-            tool: string;
-            args: string;
+          const next: ChatMessage = {
+            ...arr[idx],
+            content: textBlock?.text ?? arr[idx].content,
+            streaming: false,
           };
-          // Attach to the most recent assistant message (in progress).
-          const idx = lastAssistantIndex(arr);
+          const copy = arr.slice();
+          copy[idx] = next;
+          return { ...prev, [sid]: copy };
+        });
+        currentAssistantId.current = null;
+        return;
+      }
+
+      case "tool_execution_start": {
+        const id = currentAssistantId.current;
+        if (!id) return;
+        const tcId = evt.tool_call_id ?? `tc-${Date.now()}`;
+        const tool = evt.tool ?? evt.name ?? "tool";
+        const args =
+          typeof evt.args === "string" ? evt.args : JSON.stringify(evt.args ?? {});
+        setMessagesBySession((prev) => {
+          const arr = prev[sid] ?? [];
+          const idx = arr.findIndex((m) => m.id === id);
           if (idx < 0) return prev;
-          const newCall: ChatToolCall = {
-            tool: e.tool,
-            args: e.args ?? "",
+          const existing = arr[idx].tool_calls ?? [];
+          const call: ChatToolCall & { __id: string } = {
+            __id: tcId,
+            tool,
+            args,
             status: "pending",
           };
-          const existing = arr[idx].tool_calls ?? [];
-          const updated: ChatMessage = {
-            ...arr[idx],
-            tool_calls: [
-              ...existing,
-              Object.assign(newCall, { __id: e.tool_call_id }),
-            ],
-          };
           const copy = arr.slice();
-          copy[idx] = updated;
+          copy[idx] = { ...arr[idx], tool_calls: [...existing, call] };
           return { ...prev, [sid]: copy };
-        }
+        });
+        return;
+      }
 
-        case "tool_execution_end": {
-          const e = evt as typeof evt & {
-            tool_call_id: string;
-            result?: string;
-            error?: string;
-          };
-          const idx = lastAssistantIndex(arr);
+      case "tool_execution_end": {
+        const id = currentAssistantId.current;
+        if (!id) return;
+        const tcId = evt.tool_call_id;
+        setMessagesBySession((prev) => {
+          const arr = prev[sid] ?? [];
+          const idx = arr.findIndex((m) => m.id === id);
           if (idx < 0) return prev;
           const calls = (arr[idx].tool_calls ?? []).slice();
-          const callIdx = calls.findIndex(
-            (c) => (c as unknown as { __id?: string }).__id === e.tool_call_id,
+          const ci = calls.findIndex(
+            (c) => (c as unknown as { __id?: string }).__id === tcId,
           );
-          if (callIdx < 0) return prev;
-          calls[callIdx] = {
-            ...calls[callIdx],
-            status: e.error ? "err" : "ok",
-            result: e.result ?? null,
-            error: e.error,
+          if (ci < 0) return prev;
+          calls[ci] = {
+            ...calls[ci],
+            status: evt.error ? "err" : "ok",
+            result: evt.result ?? null,
+            error: evt.error,
           };
-          const updated: ChatMessage = { ...arr[idx], tool_calls: calls };
           const copy = arr.slice();
-          copy[idx] = updated;
+          copy[idx] = { ...arr[idx], tool_calls: calls };
           return { ...prev, [sid]: copy };
-        }
-
-        case "agent_start":
-          setStreaming(true);
-          setSessions((s) =>
-            s.map((x) =>
-              x.id === sid ? { ...x, worker_state: "running" as const } : x,
-            ),
-          );
-          return prev;
-
-        case "agent_end":
-          setStreaming(false);
-          // Worker often stays running for 10 min of idleness — don't flip
-          // back to "idle" until the server tells us explicitly.
-          return prev;
-
-        case "error": {
-          const e = evt as typeof evt & { error?: string };
-          setLastError(e.error ?? "pi error");
-          setStreaming(false);
-          return prev;
-        }
-
-        default:
-          return prev;
+        });
+        return;
       }
-    });
+
+      case "error": {
+        setLastError(evt.error ?? "pi error");
+        setStreaming(false);
+        return;
+      }
+
+      default:
+        return; // agent_end, turn_start, thinking_* handled above or ignored
+    }
   }, []);
 
   /* --------------------------------------------------------------------- */
@@ -286,7 +350,7 @@ export function useChat() {
       try {
         await api.chat.sessions.delete(id);
       } catch {
-        /* ignore; the UI removal below is what matters to the user */
+        /* ignore; UI removal is what the user sees */
       }
       setSessions((prev) => prev.filter((s) => s.id !== id));
       setMessagesBySession((prev) => {
@@ -307,7 +371,8 @@ export function useChat() {
     async (text: string) => {
       if (!activeId || !text.trim() || streaming) return;
       const sid = activeId;
-      // Optimistic user message (the service won't echo ours back via WS).
+      // Optimistic user message (the service does not echo user messages
+      // back over WS — only assistant/tool events).
       const optimistic: ChatMessage = {
         id: `u-${Date.now()}`,
         role: "user",
@@ -324,11 +389,10 @@ export function useChat() {
       try {
         await api.chat.sessions.prompt(sid, text);
       } catch (err) {
-        // Keep the user message visible (users get anxious when their
-        // text disappears) and surface an error "reply" so they know the
-        // send didn't go through. They can retry.
+        // Keep the user's message on screen. Append a visible error card
+        // so the retry affordance is obvious.
         const code = (err as Error)?.message ?? "ERR_INTERNAL";
-        const errorMsg: ChatMessage = {
+        const errMsg: ChatMessage = {
           id: `e-${Date.now()}`,
           role: "assistant",
           content: `⚠️ ${code}`,
@@ -338,7 +402,7 @@ export function useChat() {
         };
         setMessagesBySession((prev) => ({
           ...prev,
-          [sid]: [...(prev[sid] ?? []), errorMsg],
+          [sid]: [...(prev[sid] ?? []), errMsg],
         }));
         setStreaming(false);
         setLastError(code);
@@ -369,6 +433,34 @@ export function useChat() {
     sendPrompt,
     abort,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Loose event type (only the fields we read)                                */
+/* -------------------------------------------------------------------------- */
+
+interface PiWsEvent {
+  type: string;
+  session_id?: string;
+  message?: {
+    role?: string;
+    content?: Array<{ type?: string; text?: string; thinking?: string }>;
+  };
+  assistantMessageEvent?: {
+    type?: string;
+    contentIndex?: number;
+    delta?: string;
+    partial?: {
+      role?: string;
+      content?: Array<{ type?: string; text?: string; thinking?: string }>;
+    };
+  };
+  tool_call_id?: string;
+  tool?: string;
+  name?: string;
+  args?: unknown;
+  result?: string;
+  error?: string;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -403,14 +495,7 @@ function toDomainMessage(m: ChatMessageApi): ChatMessage {
   };
 }
 
-function lastAssistantIndex(arr: ChatMessage[]): number {
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (arr[i].role === "assistant") return i;
-  }
-  return -1;
-}
-
-/** Build a ws:// or wss:// URL from a path, honouring current scheme/host. */
+/** Build a ws:// or wss:// URL from a path. */
 function buildWsUrl(path: string): string {
   if (typeof window === "undefined") return path;
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
