@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import * as chatStorage from "../features/chat/storage.js";
+import * as reportStorage from "../features/reports/storage.js";
 import { logger } from "../infra/logger.js";
 import {
   listFindingsSchema, listFindings,
@@ -91,9 +92,10 @@ mcpRouter.use("*", async (c, next) => {
     return c.json({ error: "Missing Bearer token" }, 401);
   }
 
-  // Validate token is an active chat session
-  const session = await chatStorage.getSession(token);
-  if (!session) {
+  // Validate token is an active chat session OR report
+  const chatSession = await chatStorage.getSession(token);
+  const report = chatSession ? null : await reportStorage.getReport(token);
+  if (!chatSession && !report) {
     return c.json({ error: "Invalid session token" }, 401);
   }
 

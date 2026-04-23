@@ -30,7 +30,8 @@ RUN cd /opt/bridge && npm install --omit=dev --ignore-scripts 2>/dev/null || tru
 COPY worker-assets/entrypoint.sh /opt/entrypoint.sh
 COPY worker-assets/scan-mode.sh /opt/scan-mode.sh
 COPY worker-assets/chat-mode.sh /opt/chat-mode.sh
-RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh
+COPY worker-assets/report-mode.sh /opt/report-mode.sh
+RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh /opt/report-mode.sh
 
 WORKDIR /workspace
 ENTRYPOINT ["/opt/entrypoint.sh"]
