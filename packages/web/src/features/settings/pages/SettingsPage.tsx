@@ -1252,14 +1252,45 @@ export function SettingsPage() {
                           "var(--bg-page)";
                       }}
                     >
-                      <Icon
-                        name={isDraft ? "plus" : "shield"}
-                        size={16}
-                        style={{
-                          color: "var(--text-secondary)",
-                          flexShrink: 0,
-                        }}
-                      />
+                      {/* Left marker — same visual language as collapsed
+                          rows: ★ character, colored orange when the credential
+                          is the default, dimmed otherwise. For the draft row
+                          (no saved credential yet) we fall back to a "+" icon. */}
+                      {isDraft ? (
+                        <Icon
+                          name="plus"
+                          size={16}
+                          style={{
+                            color: "var(--text-secondary)",
+                            flexShrink: 0,
+                          }}
+                        />
+                      ) : (
+                        <span
+                          aria-hidden
+                          title={
+                            c?.is_default
+                              ? i18n.t("settings.credentials.default")
+                              : ""
+                          }
+                          style={{
+                            width: "18px",
+                            height: "18px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: c?.is_default
+                              ? "var(--sev-medium)"
+                              : "var(--text-secondary)",
+                            opacity: c?.is_default ? 1 : 0.25,
+                            fontSize: "14px",
+                            lineHeight: 1,
+                            flexShrink: 0,
+                          }}
+                        >
+                          ★
+                        </span>
+                      )}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
