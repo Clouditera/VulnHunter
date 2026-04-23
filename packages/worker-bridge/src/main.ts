@@ -107,9 +107,9 @@ function spawnPi(): ChildProcess {
     args.push("--system-prompt", REPORT_SYSTEM_PROMPT);
   }
 
-  if (existsSync(sessionFile)) {
-    args.push("--session", sessionFile);
-  }
+  // Always pass --session so pi persists conversation history.
+  // On first run it creates the file; on subsequent runs it resumes from it.
+  args.push("--session", sessionFile);
 
   console.log(`[bridge] Spawning pi: pi ${args.join(" ")}`);
 
