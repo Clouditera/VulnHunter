@@ -184,17 +184,25 @@ export class TaskScheduler {
     const meta = task.source_meta as { minio_key?: string };
     const minioKey = meta?.minio_key ?? `code-packages/${task.id}.zip`;
 
-    try {
-      const minio = getMinio();
-      const zipPath = join(hostWorkDir, "source.zip");
-      await minio.fGetObject(this.config.minio.bucket, minioKey, zipPath);
-      execSync(`cd "${srcDir}" && unzip -o -q "${zipPath}"`, { timeout: 60_000, stdio: "pipe" });
-      logger.info({ taskId: task.id, minioKey }, "Code package extracted to workspace");
-    } catch (err) {
-      // If no code package (e.g. git clone still pending), just continue
-      // Mock worker doesn't need source code
-      logger.debug({ err, taskId: task.id }, "Could not extract code package (may be expected)");
+    const zipPath = join(hostWorkDir, "source.zip");
+    const minio = getMinio();
+
+    // Wait for code package (git clone runs async after task creation)
+    for (let attempt = 0; attempt < 30; attempt++) {
+      try {
+        await minio.statObject(this.config.minio.bucket, minioKey);
+        break; // zip exists
+      } catch {
+        if (attempt === 29) {
+          throw new Error(`Code package not ready after 30s: ${minioKey}`);
+        }
+        await new Promise(r => setTimeout(r, 1000));
+      }
     }
+
+    await minio.fGetObject(this.config.minio.bucket, minioKey, zipPath);
+    execSync(`cd "${srcDir}" && unzip -o -q "${zipPath}"`, { timeout: 60_000, stdio: "pipe" });
+    logger.info({ taskId: task.id, minioKey }, "Code package extracted to workspace");
   }
 
   private async extractMetadata(taskId: string): Promise<void> {
