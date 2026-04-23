@@ -70,7 +70,16 @@ export async function connectBridgeProxy(
 
   // Clean up stale proxy if bridge WS is dead
   if (proxy && !proxy.connected) {
-    // Reuse proxy (keep clients + eventBuffer), just reconnect bridge WS
+    // Reuse proxy (keep clients + eventBuffer), but rebuild readyPromise for reconnection
+    let readyResolve!: () => void;
+    let readyReject!: (err: Error) => void;
+    const readyPromise = new Promise<void>((resolve, reject) => {
+      readyResolve = resolve;
+      readyReject = reject;
+    });
+    proxy.readyResolve = readyResolve;
+    proxy.readyReject = readyReject;
+    proxy.readyPromise = readyPromise;
   } else if (!proxy) {
     proxy = createProxy(sessionId);
   }

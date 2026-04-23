@@ -50,6 +50,13 @@ export async function ensureWorker(
   const containerName = `vh-chat-${sessionId.slice(0, 12)}`;
   workers.set(sessionId, { containerId: null, containerName, state: "starting" });
 
+  // Remove stale container with same name if it exists
+  try {
+    const docker = getDocker();
+    const old = docker.getContainer(containerName);
+    await old.remove({ force: true });
+  } catch { /* ok, doesn't exist */ }
+
   // Get LLM credentials — session-specific or default
   const session = await getSession(sessionId);
   const credId = session?.credential_id;

@@ -204,7 +204,7 @@ export async function listTasks(args: {
   }
 
   const lines = tasks.map((t) =>
-    `- **${t.project_name}** (${t.id.slice(0, 8)}) [${t.state}] created ${new Date(t.created_at).toLocaleDateString()}${
+    `- **${t.project_name}** (${t.id}) [${t.state}] created ${new Date(t.created_at).toLocaleDateString()}${
       t.duration_ms ? ` (${(t.duration_ms / 1000).toFixed(0)}s)` : ""
     }`,
   );
@@ -238,6 +238,6 @@ export async function cancelTask(args: {
 
   await taskStorage.updateTaskState(task.id, "cancelled", { completedAt: new Date() });
   return {
-    content: [{ type: "text", text: `Task ${task.project_name} (${task.id.slice(0, 8)}) has been cancelled.` }],
+    content: [{ type: "text", text: `Task ${task.project_name} (${task.id}) has been cancelled.` }],
   };
 }

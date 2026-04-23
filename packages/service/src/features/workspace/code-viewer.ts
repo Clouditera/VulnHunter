@@ -103,6 +103,7 @@ export async function getCodeFile(
   taskId: string,
   bucket: string,
   filePath: string,
+  overrideZipKey?: string,
 ): Promise<CodeFileResult | null> {
   const cacheKey = `${taskId}:${filePath}`;
   const cached = fileCache.get(cacheKey);
@@ -118,7 +119,7 @@ export async function getCodeFile(
     };
   }
 
-  const zipKey = `code-packages/${taskId}.zip`;
+  const zipKey = overrideZipKey ?? `code-packages/${taskId}.zip`;
   let tmpPath: string | null = null;
 
   try {
@@ -167,8 +168,9 @@ export async function getCodeFile(
 export async function getCodeTree(
   taskId: string,
   bucket: string,
+  overrideZipKey?: string,
 ): Promise<{ name: string; type: "file" | "dir"; hasVuln?: boolean; children?: unknown[] }[]> {
-  const zipKey = `code-packages/${taskId}.zip`;
+  const zipKey = overrideZipKey ?? `code-packages/${taskId}.zip`;
   let tmpPath: string | null = null;
 
   try {
