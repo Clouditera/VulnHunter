@@ -14,6 +14,7 @@ import { countTasksByState, getQueuedTasks, updateTaskState, type DbTask } from 
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir } from "./scan-worker.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
+import { credentialToWorkerEnv } from "../settings/credential-env.js";
 import { startTailing, stopTailing } from "../events/event-tail.js";
 import { indexFindings } from "../findings/indexer.js";
 import { syncOutputsToMinio } from "./sync-outputs.js";
@@ -127,13 +128,7 @@ export class TaskScheduler {
         continue;
       }
 
-      const llmEnv: Record<string, string> = {
-        MODEL_PROTO_TYPE: cred.proto_type,
-        LLM_MODEL_NAME: cred.model_id,
-        LLM_BASE_URL: cred.base_url ?? "",
-        LLM_API_KEY: cred.api_key,
-        MODEL_EFFORT: cred.thinking_effort ?? "off",
-      };
+      const llmEnv = credentialToWorkerEnv(cred);
 
       try {
         if (!isResume) {

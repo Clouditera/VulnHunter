@@ -10,6 +10,7 @@ import {
   getDocker,
 } from "../workers/docker-client.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
+import { credentialToWorkerEnv } from "../settings/credential-env.js";
 import { getSession } from "./storage.js";
 import { logger } from "../../infra/logger.js";
 import type { ServiceConfig } from "../../infra/config.js";
@@ -71,12 +72,9 @@ export async function ensureWorker(
     MODE: "chat",
     SESSION_ID: sessionId,
     SESSION_DIR: "/workspace/chat-session",
-    MODEL_PROTO_TYPE: cred.proto_type,
-    LLM_MODEL_NAME: cred.model_id,
-    LLM_API_KEY: cred.api_key,
-    LLM_BASE_URL: cred.base_url ?? "",
+    ...credentialToWorkerEnv(cred),
     SERVICE_URL: `http://vulnhunt-service:${config.port}`,
-    CHAT_WORKER_TOKEN: sessionId, // Simple token for MCP auth
+    CHAT_WORKER_TOKEN: sessionId,
     IDLE_TIMEOUT_MIN: "10",
   };
 
