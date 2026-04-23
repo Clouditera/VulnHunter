@@ -215,6 +215,15 @@ export const api = {
      *  task that didn't run all stages). */
     wiki: (id: string) =>
       request<WikiPayload>(`/api/tasks/${id}/wiki`),
+    /** Historical events for a finished task. Backend prefers the in-memory
+     *  ring buffer when present (running tasks), falling back to MinIO
+     *  archive `scan-outputs/<id>/.youngflow/logs/youngflow.service.jsonl`
+     *  for terminal tasks. Returns canonical translated events ready for
+     *  the LiveLog renderer. */
+    events: (id: string) =>
+      request<{ events: Array<Record<string, unknown>> }>(
+        `/api/tasks/${id}/events`,
+      ),
   },
   findings: {
     list: (taskId: string, severity?: string) =>

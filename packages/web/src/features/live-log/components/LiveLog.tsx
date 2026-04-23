@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
+import { api } from "../../../shared/api/client.js";
 
 export interface LiveLogEvent {
   type: string;
@@ -61,10 +62,96 @@ export function LiveLog({ taskId, taskState }: Props) {
   const streamRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const isRunning = taskState === "running";
+  // "Active" states keep a live WS subscription for streaming events.
+  // Terminal states (completed/failed/cancelled) load history from the
+  // REST archive endpoint instead — in-memory buffer is empty / evicted
+  // by then, and WS would just show "暂无事件" forever (fish #20 bug).
+  const isActive =
+    taskState === "running" ||
+    taskState === "queued" ||
+    taskState === "paused" ||
+    taskState === "resuming";
   const [, forceI18n] = useState(0);
   useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
 
+  // History load for terminal tasks — reads from MinIO
+  // `.youngflow/logs/youngflow.service.jsonl` archive via REST.
   useEffect(() => {
+    if (isActive) return; // Active tasks use WS path below.
+    let cancelled = false;
+    api.tasks
+      .events(taskId)
+      .then((res) => {
+        if (cancelled) return;
+        // Backend wraps each event as { seq, event: { ... } } for ordering;
+        // unwrap to the inner canonical event before handing to the renderer.
+        const list = (res.events ?? [])
+          .map((row: Record<string, unknown>) => {
+            const inner = (row?.event as LiveLogEvent | undefined) ?? null;
+            return inner ?? (row as unknown as LiveLogEvent);
+          })
+          .filter(Boolean);
+        // Cap at 1000 like the WS path does, keeping the latest tail —
+        // archives can be many thousands of events for a long scan.
+        const tail = list.slice(-1000);
+        setEvents(tail);
+        // Populate the source filter chips from what's actually present.
+        const srcs = Array.from(
+          new Set(tail.map((e) => e.source).filter(Boolean) as string[]),
+        );
+        if (srcs.length > 0) setSources(srcs);
+        // Bootstrap the collapsed-row summary with the last meaningful
+        // event so the strip says something useful instead of
+        // "等待事件…" on a finished task.
+        // Backend uses both "task" and "task_status" for the same kind of
+         // event — also normalise stage_start/stage_end → "stage".
+        const last = [...tail]
+          .reverse()
+          .find(
+            (e) =>
+              e.type === "tool_call" ||
+              e.type === "stage" ||
+              e.type === "stage_start" ||
+              e.type === "stage_end" ||
+              e.type === "error" ||
+              e.type === "task" ||
+              e.type === "task_status",
+          );
+        if (last) {
+          if (last.type === "tool_call" && last.tool) {
+            let args = last.args_summary ?? "";
+            const prefix = `${last.tool}: `;
+            if (args.startsWith(prefix)) args = args.slice(prefix.length);
+            setLatestTool(args ? `${last.tool} → ${args}` : last.tool);
+          } else if (
+            last.type === "stage" ||
+            last.type === "stage_start" ||
+            last.type === "stage_end"
+          ) {
+            const label = last.stage || last.name || last.state || "";
+            const suffix = last.type === "stage_start" ? " starting" : last.type === "stage_end" ? " done" : "";
+            setLatestTool(label ? `stage → ${label}${suffix}` : "stage");
+          } else if (last.type === "error") {
+            const raw = last.message || last.text || "";
+            const msg = raw.length > 80 ? raw.slice(0, 77) + "…" : raw;
+            setLatestTool(msg ? `error → ${msg}` : "error");
+          } else {
+            // task / task_status
+            setLatestTool(`task → ${last.state ?? last.status ?? "finished"}`);
+          }
+        }
+      })
+      .catch(() => {
+        /* leave events empty — the empty state handles this gracefully. */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, isActive]);
+
+  useEffect(() => {
+    if (!isActive) return; // Terminal tasks load via REST above.
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${proto}//${window.location.host}/ws/live-log`;
     const ws = new WebSocket(wsUrl);
@@ -118,7 +205,7 @@ export function LiveLog({ taskId, taskState }: Props) {
     return () => {
       ws.close();
     };
-  }, [taskId]);
+  }, [taskId, isActive]);
 
   // Auto-scroll
   useEffect(() => {
