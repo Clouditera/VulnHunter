@@ -171,6 +171,9 @@ const ZH: Record<string, string> = {
   "findings.detail.error": "详情加载失败",
   "findings.detail.placeholder": "选择漏洞查看完整详情",
   "findings.viewInCode": "在源码中查看",
+  "findings.tab.detail": "漏洞详情",
+  "findings.tab.code": "源代码",
+  "findings.tab.files": "文件树",
   "findings.section.metadata": "元数据",
   "findings.section.description": "描述",
   "findings.section.code": "漏洞代码",
@@ -195,8 +198,6 @@ const ZH: Record<string, string> = {
   "findings.field.fixCode": "修复代码",
   "findings.field.fixRecommendation": "修复建议",
   "findings.taintStep": "步骤 {n}",
-  "findings.tab.code": "源码",
-  "findings.tab.detail": "详情",
 
   // Dashboard
   "dashboard.title": "仪表板",
@@ -629,6 +630,9 @@ const EN: Record<string, string> = {
   "findings.filesEmpty": "File tree unavailable",
   "findings.vulnsInFile": "{n} finding(s)",
   "findings.viewInCode": "View in Code",
+  "findings.tab.detail": "Detail",
+  "findings.tab.code": "Source Code",
+  "findings.tab.files": "File Tree",
   "findings.detail.loading": "Loading detail…",
   "findings.detail.error": "Failed to load detail",
   "findings.detail.placeholder": "Select a finding to view full detail",
@@ -656,8 +660,6 @@ const EN: Record<string, string> = {
   "findings.field.fixCode": "Fix code",
   "findings.field.fixRecommendation": "Fix recommendation",
   "findings.taintStep": "Step {n}",
-  "findings.tab.code": "Source",
-  "findings.tab.detail": "Detail",
 
   // Dashboard
   "dashboard.title": "Dashboard",

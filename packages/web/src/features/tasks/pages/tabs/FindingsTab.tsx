@@ -175,12 +175,10 @@ export function FindingsTab() {
   const [nonVulnFile, setNonVulnFile] = useState<string | null>(null);
   const [treeCollapsed, setTreeCollapsed] = useState<Set<string>>(new Set());
 
-  const [leftWidth, setLeftWidth] = useState(26); // percent
-  const [midWidth, setMidWidth] = useState(22); // percent (of total)
-  const [detailHeight, setDetailHeight] = useState(40); // percent of right column
+  const [leftWidth, setLeftWidth] = useState(28); // percent
   const [draggingLeft, setDraggingLeft] = useState(false);
-  const [draggingMid, setDraggingMid] = useState(false);
-  const [draggingDetail, setDraggingDetail] = useState(false);
+  /** Right-side view: detail (7-section YAML), code viewer, or file tree. */
+  const [rightView, setRightView] = useState<"detail" | "code" | "files">("detail");
 
   /* -------- Data queries -------- */
 
@@ -340,71 +338,23 @@ export function FindingsTab() {
     setFileFilter(null);
   }
 
-  /* -------- Splitters -------- */
+  /* -------- Splitter -------- */
 
   function startLeftDrag(e: React.MouseEvent) {
     e.preventDefault();
     setDraggingLeft(true);
     function onMove(mv: MouseEvent) {
       const c = document.querySelector<HTMLElement>(
-        "[data-testid='findings-three-col']",
+        "[data-testid='findings-two-col']",
       );
       if (!c) return;
       const rect = c.getBoundingClientRect();
       const pct = ((mv.clientX - rect.left) / rect.width) * 100;
-      // Keep left between 200px and 40%, and leave room for mid + right.
       const minPct = rect.width > 0 ? (200 / rect.width) * 100 : 16;
-      const maxPct = 100 - midWidth - 20;
-      setLeftWidth(Math.max(minPct, Math.min(maxPct, pct)));
+      setLeftWidth(Math.max(minPct, Math.min(45, pct)));
     }
     function onUp() {
       setDraggingLeft(false);
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    }
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }
-
-  function startMidDrag(e: React.MouseEvent) {
-    e.preventDefault();
-    setDraggingMid(true);
-    function onMove(mv: MouseEvent) {
-      const c = document.querySelector<HTMLElement>(
-        "[data-testid='findings-three-col']",
-      );
-      if (!c) return;
-      const rect = c.getBoundingClientRect();
-      const pctFromContainer = ((mv.clientX - rect.left) / rect.width) * 100;
-      const requestedMid = pctFromContainer - leftWidth;
-      const minMid = rect.width > 0 ? (180 / rect.width) * 100 : 14;
-      const maxMid = 100 - leftWidth - 20;
-      setMidWidth(Math.max(minMid, Math.min(maxMid, requestedMid)));
-    }
-    function onUp() {
-      setDraggingMid(false);
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    }
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }
-
-  function startDetailDrag(e: React.MouseEvent) {
-    e.preventDefault();
-    setDraggingDetail(true);
-    function onMove(mv: MouseEvent) {
-      const c = document.querySelector<HTMLElement>(
-        "[data-testid='findings-code-viewer']",
-      );
-      if (!c) return;
-      const rect = c.getBoundingClientRect();
-      // Detail height = distance from bottom to mouse, as % of total height.
-      const pct = ((rect.bottom - mv.clientY) / rect.height) * 100;
-      setDetailHeight(Math.max(15, Math.min(70, pct)));
-    }
-    function onUp() {
-      setDraggingDetail(false);
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     }
@@ -497,9 +447,9 @@ export function FindingsTab() {
         )}
       </div>
 
-      {/* Three-column container */}
+      {/* Two-column container (refactored from three-col for breathing room) */}
       <div
-        data-testid="findings-three-col"
+        data-testid="findings-two-col"
         style={{
           display: "flex",
           height: "calc(100vh - 360px)",
@@ -534,17 +484,20 @@ export function FindingsTab() {
                 key={f.id}
                 finding={f}
                 selected={selectedFindingId === f.id}
-                onClick={() => handlePickFinding(f)}
+                onClick={() => {
+                  handlePickFinding(f);
+                  setRightView("detail");
+                }}
               />
             ))
           )}
         </div>
 
-        {/* Splitter 1 */}
+        {/* Splitter */}
         <div
           data-testid="findings-splitter-1"
           onMouseDown={startLeftDrag}
-          onDoubleClick={() => setLeftWidth(26)}
+          onDoubleClick={() => setLeftWidth(28)}
           style={{
             width: "4px",
             flexShrink: 0,
@@ -556,155 +509,168 @@ export function FindingsTab() {
         />
 
         {/* ================================================================ */}
-        {/*  Middle: file tree                                               */}
+        {/*  Right: Tab-switched panel — Detail / Code / Files               */}
         {/* ================================================================ */}
         <div
-          data-testid="findings-file-tree"
-          style={{
-            width: `${midWidth}%`,
-            flexShrink: 0,
-            overflow: "hidden",
-            borderRight: "1px solid var(--border)",
-            background: "var(--bg-page)",
-            display: "flex",
-            flexDirection: "column",
-            minWidth: 0,
-          }}
-        >
-          <div
-            style={{
-              padding: "10px 14px",
-              borderBottom: "1px solid var(--divider)",
-              fontSize: "13px",
-              fontWeight: 600,
-              color: "var(--text-primary)",
-              background: "var(--bg-card)",
-            }}
-          >
-            {i18n.t("findings.files")}
-          </div>
-          <div style={{ flex: 1, overflow: "auto", padding: "6px 0" }}>
-            {!treeData || (treeData.tree ?? []).length === 0 ? (
-              allFindings.length === 0 ? (
-                <EmptyState
-                  icon="shield"
-                  text={i18n.t("findings.noVulnFiles")}
-                />
-              ) : (
-                <div style={MSG_STYLE}>
-                  {i18n.t("findings.filesEmpty")}
-                </div>
-              )
-            ) : (
-              flatTree.map((n) => (
-                <FileTreeRow
-                  key={n.path}
-                  node={n}
-                  selected={
-                    (viewPath ?? "") === n.path ||
-                    (fileFilter ?? "") === n.path
-                  }
-                  onClick={() => handlePickTreeNode(n)}
-                />
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Splitter 2 */}
-        <div
-          data-testid="findings-splitter-2"
-          onMouseDown={startMidDrag}
-          onDoubleClick={() => setMidWidth(22)}
-          style={{
-            width: "4px",
-            flexShrink: 0,
-            background: draggingMid ? "var(--brand)" : "var(--border)",
-            cursor: "col-resize",
-            transition: draggingMid ? "none" : "background 0.15s",
-          }}
-          title="Double-click to reset"
-        />
-
-        {/* ================================================================ */}
-        {/*  Right: code viewer (top) + finding detail (bottom)              */}
-        {/* ================================================================ */}
-        <div
-          data-testid="findings-code-viewer"
           style={{
             flex: 1,
             display: "flex",
             flexDirection: "column",
             minWidth: 0,
-            background: "var(--code-bg)",
+            background: "var(--bg-card)",
           }}
         >
-          {/* Code viewer (top) */}
+          {/* Tab bar */}
           <div
+            data-testid="findings-right-tabs"
             style={{
-              flex: selectedFinding
-                ? `0 0 ${100 - detailHeight}%`
-                : "1 1 auto",
               display: "flex",
-              flexDirection: "column",
-              minHeight: 0,
-              overflow: "hidden",
+              alignItems: "center",
+              gap: "0",
+              borderBottom: "1px solid var(--divider)",
+              background: "var(--bg-card)",
+              flexShrink: 0,
             }}
           >
-            {viewPath ? (
-              <CodeViewer
-                path={viewPath}
-                file={fileData}
-                loading={fileLoading}
-                vulnLines={vulnLineSet}
-                activeLine={activeLine}
-              />
-            ) : (
-              <EmptyCodePlaceholder />
+            {(["detail", "code", "files"] as const).map((tab) => {
+              const active = rightView === tab;
+              const label =
+                tab === "detail"
+                  ? i18n.t("findings.tab.detail")
+                  : tab === "code"
+                    ? i18n.t("findings.tab.code")
+                    : i18n.t("findings.tab.files");
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  data-testid={`findings-tab-${tab}`}
+                  onClick={() => setRightView(tab)}
+                  style={{
+                    padding: "10px 18px",
+                    border: "none",
+                    borderBottom: active
+                      ? "2px solid var(--brand)"
+                      : "2px solid transparent",
+                    background: "transparent",
+                    color: active
+                      ? "var(--text-primary)"
+                      : "var(--text-secondary)",
+                    fontSize: "12.5px",
+                    fontWeight: active ? 600 : 400,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    transition: "color 0.12s, border-color 0.12s",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+            {/* File filter chip (shown when a file is active) */}
+            {fileFilter && (
+              <span
+                style={{
+                  marginLeft: "auto",
+                  marginRight: "12px",
+                  fontSize: "11px",
+                  color: "var(--text-secondary)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                {fileFilter.split("/").pop()}
+                <button
+                  type="button"
+                  onClick={clearFilter}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--brand)",
+                    cursor: "pointer",
+                    padding: "0 2px",
+                    fontSize: "11px",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  ×
+                </button>
+              </span>
             )}
           </div>
 
-          {/* Vertical splitter + detail panel (only when a finding is selected) */}
-          {selectedFinding && (
-            <>
-              <div
-                data-testid="findings-detail-splitter"
-                onMouseDown={startDetailDrag}
-                onDoubleClick={() => setDetailHeight(40)}
-                style={{
-                  height: "4px",
-                  flexShrink: 0,
-                  background: draggingDetail
-                    ? "var(--brand)"
-                    : "var(--border)",
-                  cursor: "row-resize",
-                  transition: draggingDetail
-                    ? "none"
-                    : "background 0.15s",
-                }}
-                title="Double-click to reset"
-              />
-              <div
-                data-testid="findings-detail-panel"
-                style={{
-                  flex: `0 0 ${detailHeight}%`,
-                  minHeight: 0,
-                  overflow: "auto",
-                  background: "var(--bg-card)",
-                  color: "var(--text-primary)",
-                  borderTop: "1px solid var(--border)",
-                }}
-              >
+          {/* Tab content — only one rendered at a time */}
+          <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            {rightView === "detail" && (
+              selectedFinding ? (
                 <FindingDetailPanel
                   taskId={task.id}
                   finding={selectedFinding}
                   detail={detailData?.detail}
                   loading={detailLoading}
                   error={detailError as Error | null}
+                  onViewCode={() => setRightView("code")}
                 />
+              ) : (
+                <EmptyState icon="shield" text={i18n.t("findings.detail.placeholder")} />
+              )
+            )}
+
+            {rightView === "code" && (
+              viewPath ? (
+                <CodeViewer
+                  path={viewPath}
+                  file={fileData}
+                  loading={fileLoading}
+                  vulnLines={vulnLineSet}
+                  activeLine={activeLine}
+                />
+              ) : (
+                <EmptyCodePlaceholder />
+              )
+            )}
+
+            {rightView === "files" && (
+              <div
+                data-testid="findings-file-tree"
+                style={{
+                  background: "var(--bg-page)",
+                  minHeight: "100%",
+                  padding: "6px 0",
+                }}
+              >
+                {!treeData || (treeData.tree ?? []).length === 0 ? (
+                  allFindings.length === 0 ? (
+                    <EmptyState
+                      icon="shield"
+                      text={i18n.t("findings.noVulnFiles")}
+                    />
+                  ) : (
+                    <div style={MSG_STYLE}>
+                      {i18n.t("findings.filesEmpty")}
+                    </div>
+                  )
+                ) : (
+                  flatTree.map((n) => (
+                    <FileTreeRow
+                      key={n.path}
+                      node={n}
+                      selected={
+                        (viewPath ?? "") === n.path ||
+                        (fileFilter ?? "") === n.path
+                      }
+                      onClick={() => {
+                        handlePickTreeNode(n);
+                        // After picking a file, switch to code view.
+                        if (!n.isDir) setRightView("code");
+                      }}
+                    />
+                  ))
+                )}
               </div>
-            </>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -1117,12 +1083,15 @@ function FindingDetailPanel({
   detail,
   loading,
   error,
+  onViewCode,
 }: {
   taskId: string;
   finding: FindingMeta;
   detail: FindingDetailData | undefined;
   loading: boolean;
   error: Error | null;
+  /** Switch to the code tab within the same page (two-column layout). */
+  onViewCode?: () => void;
 }) {
   const navigate = useNavigate();
   const sev = (finding.severity ?? "info").toLowerCase();
@@ -1206,10 +1175,16 @@ function FindingDetailPanel({
             data-testid="finding-view-in-code"
             title={i18n.t("findings.viewInCode")}
             onClick={() => {
-              const params = new URLSearchParams();
-              params.set("file", normalizePath(finding.primary_file!));
-              if (finding.primary_line) params.set("line", String(finding.primary_line));
-              navigate(`/tasks/${taskId}/workspace?${params.toString()}`);
+              if (onViewCode) {
+                // Same-page: switch to code tab within the two-column layout.
+                onViewCode();
+              } else {
+                // Cross-page fallback: navigate to workspace tab.
+                const params = new URLSearchParams();
+                params.set("file", normalizePath(finding.primary_file!));
+                if (finding.primary_line) params.set("line", String(finding.primary_line));
+                navigate(`/tasks/${taskId}/workspace?${params.toString()}`);
+              }
             }}
             style={{
               display: "inline-flex",
