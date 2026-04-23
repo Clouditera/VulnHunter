@@ -127,11 +127,8 @@ export function OverviewTab() {
   const { data: findingsData } = useQuery({
     queryKey: ["findings", task.id],
     queryFn: () => api.findings.list(task.id),
-    refetchInterval: (query) => {
-      // Refetch while findings might still be indexing
-      if (task.state === "running") return 5000;
-      return query.state.data?.findings?.length ? false : 3000;
-    },
+    // Server SSE (`findings_indexed`) invalidates this key when the scan
+    // finishes, so no refetchInterval is needed.
   });
 
   const findings = (findingsData?.findings ?? []) as FindingMeta[];

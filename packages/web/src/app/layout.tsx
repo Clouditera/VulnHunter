@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { i18n } from "../shared/i18n/index.js";
 import { theme } from "../shared/theme/index.js";
 import { Icon, type IconName } from "../shared/components/Icon.js";
+import { useNotifications } from "../shared/hooks/useNotifications.js";
 
 const TOP_NAV_ITEMS: Array<{ to: string; icon: IconName; labelKey: string; testid: string }> = [
   { to: "/dashboard", icon: "dashboard", labelKey: "nav.dashboard", testid: "nav-dashboard" },
@@ -17,6 +18,11 @@ export function AppLayout() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [, forceUpdate] = useState(0);
+
+  // Subscribe to server SSE channel once at the root layout. This replaces
+  // the per-query refetchInterval polling that used to live in TasksList,
+  // TaskDetail, and Dashboard.
+  useNotifications();
 
   useEffect(() => {
     const unsub1 = i18n.onChange(() => forceUpdate((n) => n + 1));

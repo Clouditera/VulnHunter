@@ -62,7 +62,7 @@ export function TasksListPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["tasks", stateFilter],
     queryFn: () => api.tasks.list(stateFilter === "all" ? undefined : stateFilter),
-    refetchInterval: 5000,
+    // Server SSE (`task_state`) invalidates ["tasks"] on every state change.
   });
 
   const cancelMut = useMutation({

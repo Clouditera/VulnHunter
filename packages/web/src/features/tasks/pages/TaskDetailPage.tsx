@@ -65,17 +65,9 @@ export function TaskDetailPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["task", taskId],
     queryFn: () => api.tasks.get(taskId!),
-    // Poll whenever the task is in a state that can still transition.
-    // Previously only 'running' was polled, so a 'queued' or 'paused'
-    // task would appear stuck until manual refresh.
-    refetchInterval: (query) => {
-      const state = query.state.data?.task?.state;
-      if (state === "running" || state === "queued" || state === "paused") {
-        return 3000;
-      }
-      return false;
-    },
     enabled: !!taskId,
+    // No refetchInterval: server SSE (`task_state` event) invalidates
+    // this cache key whenever the task transitions.
   });
 
   // Shared findings query — also used inside OverviewTab/FindingsTab via same cache key.
@@ -83,7 +75,7 @@ export function TaskDetailPage() {
     queryKey: ["findings", taskId],
     queryFn: () => api.findings.list(taskId!),
     enabled: !!taskId,
-    refetchInterval: 5000,
+    // Server SSE (`findings_indexed`) invalidates when new findings land.
   });
   const findingsCount = findingsData?.findings?.length ?? 0;
 
