@@ -7,15 +7,6 @@ import { i18n } from "../shared/i18n/index.js";
 import { theme } from "../shared/theme/index.js";
 import { Icon, type IconName } from "../shared/components/Icon.js";
 
-const SIDEBAR_STATE_KEY = "vh.sidebar.expanded";
-function loadSidebarExpanded(): boolean {
-  try {
-    return localStorage.getItem(SIDEBAR_STATE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
 const TOP_NAV_ITEMS: Array<{ to: string; icon: IconName; labelKey: string; testid: string }> = [
   { to: "/dashboard", icon: "dashboard", labelKey: "nav.dashboard", testid: "nav-dashboard" },
   { to: "/tasks", icon: "tasks", labelKey: "nav.tasks", testid: "nav-tasks" },
@@ -26,13 +17,6 @@ export function AppLayout() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [, forceUpdate] = useState(0);
-  const [sidebarExpanded, setSidebarExpanded] = useState<boolean>(loadSidebarExpanded);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(SIDEBAR_STATE_KEY, sidebarExpanded ? "1" : "0");
-    } catch {}
-  }, [sidebarExpanded]);
 
   useEffect(() => {
     const unsub1 = i18n.onChange(() => forceUpdate((n) => n + 1));
@@ -58,107 +42,68 @@ export function AppLayout() {
       data-theme={currentTheme}
       style={{ display: "flex", height: "100vh", background: "var(--bg-page)", overflow: "hidden" }}
     >
-      {/* Left nav — fixed height, bottom section always visible.
-          Can be expanded (220px, horizontal labels) or collapsed (68px, icons + tiny labels below). */}
+      {/* Left nav — fixed height, bottom section always visible */}
       <nav
         data-testid="nav-sidebar"
-        data-expanded={sidebarExpanded || undefined}
         style={{
-          width: sidebarExpanded ? "220px" : "68px",
+          width: "68px",
           background: "var(--nav-bg)",
           display: "flex",
           flexDirection: "column",
-          alignItems: sidebarExpanded ? "stretch" : "center",
+          alignItems: "center",
           paddingTop: "16px",
           flexShrink: 0,
           height: "100vh",
           position: "sticky",
           top: 0,
           zIndex: 10,
-          transition: "width 0.2s ease",
         }}
       >
-        {/* Logo row (includes product name when expanded) */}
+        {/* Logo */}
         <div
           style={{
+            width: "40px",
+            height: "40px",
+            borderRadius: "10px",
+            background: "var(--brand)",
+            color: "#fff",
+            fontWeight: 800,
+            fontSize: "20px",
+            letterSpacing: "-1px",
             display: "flex",
             alignItems: "center",
-            gap: "10px",
-            padding: sidebarExpanded ? "0 14px" : "0",
-            justifyContent: sidebarExpanded ? "flex-start" : "center",
-            marginBottom: "24px",
+            justifyContent: "center",
+            marginBottom: "28px",
             flexShrink: 0,
           }}
         >
-          <div
-            style={{
-              width: "40px",
-              height: "40px",
-              borderRadius: "10px",
-              background: "var(--brand)",
-              color: "#fff",
-              fontWeight: 800,
-              fontSize: "20px",
-              letterSpacing: "-1px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            V
-          </div>
-          {sidebarExpanded && (
-            <span
-              style={{
-                fontSize: "15px",
-                fontWeight: 700,
-                color: "#fff",
-                letterSpacing: "0.01em",
-              }}
-            >
-              VulnHunt
-            </span>
-          )}
+          V
         </div>
 
         {/* Top nav items (Dashboard / Tasks / Chat) */}
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            gap: "4px",
-            width: "100%",
-            padding: "0 8px",
-          }}
-        >
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px", width: "100%", padding: "0 8px" }}>
           {TOP_NAV_ITEMS.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               data-testid={item.testid}
-              title={sidebarExpanded ? undefined : i18n.t(item.labelKey)}
               style={({ isActive }) => ({
                 display: "flex",
-                flexDirection: sidebarExpanded ? "row" : "column",
+                flexDirection: "column",
                 alignItems: "center",
-                justifyContent: sidebarExpanded ? "flex-start" : "center",
-                gap: sidebarExpanded ? "12px" : "3px",
-                padding: sidebarExpanded ? "10px 12px" : "10px 0",
+                gap: "3px",
+                padding: "10px 0",
                 borderRadius: "6px",
                 textDecoration: "none",
                 color: isActive ? "#ffffff" : "#888",
-                background: isActive
-                  ? "rgba(255,255,255,0.1)"
-                  : "transparent",
-                fontSize: sidebarExpanded ? "13px" : "10px",
+                background: isActive ? "rgba(255,255,255,0.1)" : "transparent",
+                fontSize: "10px",
                 fontWeight: 500,
                 letterSpacing: "0.02em",
                 transition: "all 0.15s",
               })}
             >
-              <Icon name={item.icon} size={sidebarExpanded ? 18 : 20} />
+              <Icon name={item.icon} size={20} />
               <span>{i18n.t(item.labelKey)}</span>
             </NavLink>
           ))}
@@ -180,70 +125,26 @@ export function AppLayout() {
           <NavLink
             to="/settings"
             data-testid="nav-settings"
-            title={sidebarExpanded ? undefined : i18n.t("nav.settings")}
             style={({ isActive }) => ({
               display: "flex",
-              flexDirection: sidebarExpanded ? "row" : "column",
+              flexDirection: "column",
               alignItems: "center",
-              justifyContent: sidebarExpanded ? "flex-start" : "center",
-              gap: sidebarExpanded ? "12px" : "3px",
-              padding: sidebarExpanded ? "10px 12px" : "10px 0",
+              gap: "3px",
+              padding: "10px 0",
               borderRadius: "6px",
               textDecoration: "none",
               color: isActive ? "#ffffff" : "#888",
-              background: isActive
-                ? "rgba(255,255,255,0.1)"
-                : "transparent",
-              fontSize: sidebarExpanded ? "13px" : "10px",
+              background: isActive ? "rgba(255,255,255,0.1)" : "transparent",
+              fontSize: "10px",
               fontWeight: 500,
               letterSpacing: "0.02em",
               width: "100%",
               transition: "all 0.15s",
             })}
           >
-            <Icon name="settings" size={sidebarExpanded ? 18 : 20} />
+            <Icon name="settings" size={20} />
             <span>{i18n.t("nav.settings")}</span>
           </NavLink>
-          {/* Expand/collapse toggle */}
-          <button
-            type="button"
-            data-testid="nav-sidebar-toggle"
-            onClick={() => setSidebarExpanded((v) => !v)}
-            title={
-              sidebarExpanded
-                ? i18n.t("nav.sidebar.collapse")
-                : i18n.t("nav.sidebar.expand")
-            }
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: sidebarExpanded ? "flex-start" : "center",
-              gap: sidebarExpanded ? "12px" : 0,
-              padding: sidebarExpanded ? "10px 12px" : "10px 0",
-              margin: "4px 0",
-              width: "100%",
-              border: "none",
-              background: "transparent",
-              color: "#888",
-              cursor: "pointer",
-              fontSize: "13px",
-              fontWeight: 500,
-              borderRadius: "6px",
-              transition: "all 0.15s",
-            }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = "rgba(255,255,255,0.06)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "transparent")
-            }
-          >
-            <Icon
-              name={sidebarExpanded ? "chevron-left" : "chevron-right"}
-              size={sidebarExpanded ? 18 : 20}
-            />
-            {sidebarExpanded && <span>{i18n.t("nav.sidebar.collapse")}</span>}
-          </button>
 
           {/* Language toggle — globe + locale badge */}
           <IconToggle
