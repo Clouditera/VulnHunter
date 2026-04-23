@@ -35,40 +35,73 @@ let pi: ChildProcess | null = null;
 const wsClients = new Set<WebSocket>();
 let lastActivity = Date.now();
 
+const PROTO_API_MAP: Record<string, string> = {
+  "openai": "openai-completions",
+  "openai-completions": "openai-completions",
+  "openai-responses": "openai-responses",
+  "anthropic": "anthropic",
+};
+
+// Credential ID → provider key mapping for set_model
+const credProviderMap = new Map<string, { providerKey: string; modelId: string }>();
+
 function setupPiConfig(): void {
-  // Create models.json for custom provider (openai-completions API)
   const piDir = join(process.env.HOME ?? "/root", ".pi", "agent");
   mkdirSync(piDir, { recursive: true });
 
-  // models.json — register custom provider with correct API
-  // Key insight: apiKey field is an ENV VAR NAME, not the actual key
+  const providers: Record<string, unknown> = {};
+
+  // Register primary credential
   if (BASE_URL && API_KEY) {
-    const providerKey = "vulnhunt";
-    const PROTO_API_MAP: Record<string, string> = {
-      "openai": "openai-completions",
-      "openai-completions": "openai-completions",
-      "openai-responses": "openai-responses",
-      "anthropic": "anthropic",
-    };
     const api = PROTO_API_MAP[MODEL_PROTO];
     if (!api) {
       console.error(`[bridge] Unknown MODEL_PROTO_TYPE: "${MODEL_PROTO}". Valid: ${Object.keys(PROTO_API_MAP).join(", ")}`);
       process.exit(1);
     }
-    process.env.VH_LLM_API_KEY = API_KEY; // Set actual key in env
-    const modelsJson = {
-      providers: {
-        [providerKey]: {
-          baseUrl: BASE_URL,
-          api,
-          apiKey: "VH_LLM_API_KEY", // env var name, pi reads the value from process.env
-          models: [
-            { id: MODEL_NAME, input: ["text", "image"], contextWindow: 200000, maxTokens: 16384 },
-          ],
-        },
-      },
+    const providerKey = "vulnhunt";
+    process.env.VH_LLM_API_KEY = API_KEY;
+    providers[providerKey] = {
+      baseUrl: BASE_URL,
+      api,
+      apiKey: "VH_LLM_API_KEY",
+      models: [{ id: MODEL_NAME, input: ["text", "image"], contextWindow: 200000, maxTokens: 16384 }],
     };
-    writeFileSync(join(piDir, "models.json"), JSON.stringify(modelsJson, null, 2));
+  }
+
+  // Register all additional credentials for runtime switching
+  const allCredsJson = process.env.ALL_CREDENTIALS;
+  if (allCredsJson) {
+    try {
+      const allCreds = JSON.parse(allCredsJson) as Array<{
+        id: string; label: string; proto_type: string;
+        base_url: string; api_key: string; model_id: string;
+      }>;
+      for (const cred of allCreds) {
+        const api = PROTO_API_MAP[cred.proto_type];
+        if (!api) continue;
+        const providerKey = `vh-${cred.id.slice(0, 8)}`;
+        const apiKeyEnv = `VH_KEY_${cred.id.replace(/-/g, "_").slice(0, 12).toUpperCase()}`;
+        process.env[apiKeyEnv] = cred.api_key;
+
+        // Skip if same provider already registered (primary credential)
+        if (!providers[providerKey]) {
+          providers[providerKey] = {
+            baseUrl: cred.base_url,
+            api,
+            apiKey: apiKeyEnv,
+            models: [{ id: cred.model_id, input: ["text", "image"], contextWindow: 200000, maxTokens: 16384 }],
+          };
+        }
+        credProviderMap.set(cred.id, { providerKey, modelId: cred.model_id });
+      }
+      console.log(`[bridge] Registered ${Object.keys(providers).length} model providers`);
+    } catch (err) {
+      console.error(`[bridge] Failed to parse ALL_CREDENTIALS:`, err);
+    }
+  }
+
+  if (Object.keys(providers).length > 0) {
+    writeFileSync(join(piDir, "models.json"), JSON.stringify({ providers }, null, 2));
   }
 
   // Empty auth.json to prevent pi from complaining
@@ -212,6 +245,30 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     const ok = sendToPi({ type: "abort" });
     res.writeHead(ok ? 200 : 503, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok }));
+    return;
+  }
+
+  if (method === "POST" && url === "/chat/set-model") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { credentialId } = JSON.parse(body);
+        const mapping = credProviderMap.get(credentialId);
+        if (!mapping) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Credential not registered" }));
+          return;
+        }
+        const ok = sendToPi({ type: "set_model", provider: mapping.providerKey, modelId: mapping.modelId });
+        console.log(`[bridge] set_model → provider=${mapping.providerKey}, model=${mapping.modelId}`);
+        res.writeHead(ok ? 200 : 503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok, provider: mapping.providerKey, modelId: mapping.modelId }));
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "Invalid JSON" }));
+      }
+    });
     return;
   }
 

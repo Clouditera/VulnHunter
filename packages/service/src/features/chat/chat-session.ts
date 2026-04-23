@@ -14,7 +14,7 @@ import {
   ensureWorkDir,
   getDocker,
 } from "../workers/docker-client.js";
-import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
+import { getDefaultCredential, getCredentialById, listCredentials } from "../settings/storage.js";
 import { credentialToWorkerEnv } from "../settings/credential-env.js";
 import { getSession, appendMessage } from "./storage.js";
 import { loadConfig } from "../../infra/config.js";
@@ -198,11 +198,24 @@ export class ChatSession {
       const hostWorkDir = join(config.dataDir, "chat-sessions", this.sessionId);
       ensureWorkDir(hostWorkDir);
 
+      // Serialize all credentials for runtime model switching
+      const listedCreds = await listCredentials();
+      const decryptedCreds = await Promise.all(
+        listedCreds.map(c => getCredentialById(c.id)),
+      );
+      const allCredsJson = JSON.stringify(
+        decryptedCreds.filter(Boolean).map(c => ({
+          id: c!.id, label: c!.label, proto_type: c!.proto_type,
+          base_url: c!.base_url, api_key: c!.api_key, model_id: c!.model_id,
+        })),
+      );
+
       const env: Record<string, string> = {
         MODE: "chat",
         SESSION_ID: this.sessionId,
         SESSION_DIR: "/workspace/chat-session",
         ...credentialToWorkerEnv(cred),
+        ALL_CREDENTIALS: allCredsJson,
         SERVICE_URL: `http://vulnhunt-service:${config.port}`,
         CHAT_WORKER_TOKEN: this.sessionId,
         IDLE_TIMEOUT_MIN: "10",
@@ -395,6 +408,20 @@ export class ChatSession {
     });
     const result = (await res.json()) as { ok: boolean };
     if (!result.ok) throw new Error("Bridge rejected prompt");
+  }
+
+  /** Forward set-model command to bridge → pi */
+  async setModel(credentialId: string): Promise<void> {
+    if (!this.bridgeUrl) throw new Error("Bridge not available");
+
+    const res = await fetch(`${this.bridgeUrl}/chat/set-model`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentialId }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const result = (await res.json()) as { ok: boolean; error?: string };
+    if (!result.ok) throw new Error(result.error ?? "Bridge rejected set-model");
   }
 
   private async stopContainer(): Promise<void> {

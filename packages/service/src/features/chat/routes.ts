@@ -91,6 +91,31 @@ chatRouter.post("/sessions/:id/abort", async (c) => {
   return c.json({ ok: true });
 });
 
+// POST /api/chat/sessions/:id/set-model — runtime model switching
+chatRouter.post("/sessions/:id/set-model", async (c) => {
+  const sessionId = c.req.param("id");
+  const dbSession = await chatStorage.getSession(sessionId);
+  if (!dbSession) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+
+  const body = await c.req.json<{ credential_id: string }>();
+  if (!body.credential_id) {
+    return c.json({ error: { code: "ERR_INTERNAL", detail: "credential_id required" } }, 400);
+  }
+
+  try {
+    const session = getOrCreateSession(sessionId);
+    await session.setModel(body.credential_id);
+
+    // Update DB so next container spawn uses the new credential
+    await chatStorage.updateSessionCredential(sessionId, body.credential_id);
+
+    return c.json({ ok: true });
+  } catch (err) {
+    logger.error({ err, sessionId }, "Failed to set model");
+    return c.json({ error: { code: "ERR_INTERNAL", detail: String(err) } }, 503);
+  }
+});
+
 // POST /api/chat/sessions/:id/upload — file attachment upload
 chatRouter.post("/sessions/:id/upload", async (c) => {
   const sessionId = c.req.param("id");

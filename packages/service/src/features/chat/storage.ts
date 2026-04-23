@@ -61,6 +61,11 @@ export async function updateSessionTimestamp(id: string): Promise<void> {
   await db`UPDATE chat_sessions SET updated_at = now() WHERE id = ${id}`;
 }
 
+export async function updateSessionCredential(id: string, credentialId: string): Promise<void> {
+  const db = getDb();
+  await db`UPDATE chat_sessions SET credential_id = ${credentialId}, updated_at = now() WHERE id = ${id}`;
+}
+
 export async function appendMessage(params: {
   sessionId: string;
   role: "user" | "assistant";
