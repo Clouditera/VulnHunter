@@ -16,6 +16,10 @@ import type { LiveLogEvent } from "@vulnhunt/shared";
 
 const POLL_INTERVAL_MS = 500;
 
+// Track previous elapsed_s per stage to compute per-tool-call delta
+// youngflow's elapsed_s is cumulative from stage start, not per-call duration
+const stageElapsedTracker = new Map<string, number>();
+
 /**
  * Translate youngflow NDJSON event (has 'event' field) → canonical LiveLogEvent (has 'type' field).
  * Returns null for events that should not be forwarded (debug, checkpoint, etc.).
@@ -28,19 +32,27 @@ function translateYoungflowEvent(raw: Record<string, unknown>, source: string): 
 
   switch (event) {
     case "stage_start":
+      stageElapsedTracker.delete(`${source}:${stage}`);
       return { ...base, type: "stage_start" } as LiveLogEvent;
     case "stage_done":
       return { ...base, type: "stage_end", status: (raw.exit_code ?? 0) === 0 ? "success" : "error",
         duration_ms: (raw.duration_ms as number) ?? 0 } as LiveLogEvent;
     case "stage_skipped":
       return { ...base, type: "stage_end", status: "success", duration_ms: 0 } as LiveLogEvent;
-    case "tool_call":
+    case "tool_call": {
+      // Compute per-call duration from cumulative elapsed_s
+      const cumulativeS = (raw.elapsed_s as number) ?? 0;
+      const stageKey = `${source}:${stage}`;
+      const prevS = stageElapsedTracker.get(stageKey) ?? 0;
+      stageElapsedTracker.set(stageKey, cumulativeS);
+      const deltaMs = Math.max(0, Math.round((cumulativeS - prevS) * 1000));
       return { ...base, type: "tool_call",
         tool: (raw.tool as string) ?? "",
         args_summary: (raw.args_summary as string) ?? "",
-        duration_ms: ((raw.elapsed_s as number) ?? 0) * 1000,
+        duration_ms: deltaMs,
         status: raw.status === "ok" ? "success" : (raw.status as string) ?? "success",
       } as LiveLogEvent;
+    }
     case "flow_start":
       return { ...base, type: "task_status", status: "running" } as unknown as LiveLogEvent;
     case "flow_end":

@@ -12,6 +12,7 @@ import { workspaceRouter } from "./features/workspace/index.js";
 import { settingsRouter } from "./features/settings/index.js";
 import { chatRouter } from "./features/chat/index.js";
 import { reportsRouter } from "./features/reports/routes.js";
+import { wikiRouter } from "./features/wiki/routes.js";
 import { notificationRouter } from "./features/notifications/index.js";
 import { setupWsRouter } from "./ws-router.js";
 import { mcpRouter } from "./mcp/index.js";
@@ -39,6 +40,7 @@ export function createApp(): Hono {
   app.route("/api/tasks", tasksRouter);
   app.route("/api/tasks", findingsRouter); // /:taskId/findings
   app.route("/api/tasks", workspaceRouter); // /:taskId/workspace/*
+  app.route("/api/tasks", wikiRouter); // /:taskId/wiki
   app.route("/api/dashboard", dashboardRouter);
   app.route("/api/settings", settingsRouter);
   app.route("/api/chat", chatRouter);
