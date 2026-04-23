@@ -143,21 +143,35 @@ export function LiveLog({ taskId, taskState }: Props) {
   return (
     <div
       data-testid="live-log-bar"
-      style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--divider)" }}
+      data-expanded={expanded || undefined}
+      style={{
+        marginTop: "14px",
+        // Unified card — header + expanded body live inside the same
+        // border, so they read as one block instead of two separate
+        // widgets (fish feedback on the prototype split).
+        background: "var(--bg-card)",
+        border: "1px solid var(--border)",
+        borderRadius: "10px",
+        overflow: "hidden",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+      }}
     >
-      {/* Collapsed row */}
+      {/* Collapsed header row — part of the same card. */}
       <div
         data-testid="live-log-expand-btn"
         onClick={() => setExpanded((e) => !e)}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+        onMouseEnter={(e) =>
+          (e.currentTarget.style.background = "var(--bg-hover)")
+        }
+        onMouseLeave={(e) =>
+          (e.currentTarget.style.background = "transparent")
+        }
         style={{
-          height: "36px",
+          height: "44px",
           display: "flex",
           alignItems: "center",
           gap: "12px",
-          padding: "0 8px",
-          borderRadius: "6px",
+          padding: "0 14px",
           cursor: "pointer",
           userSelect: "none",
           transition: "background 0.15s",
@@ -253,19 +267,15 @@ export function LiveLog({ taskId, taskState }: Props) {
         </span>
       </div>
 
-      {/* Expanded state — Phase 11 #18 fish feedback: light-themed, unified
-          palette with the rest of the app. Semantic event colors carry meaning
-          via prefix font color only, so the panel still reads as a calm
-          white card rather than a dark terminal. */}
+      {/* Expanded state — lives inside the same card as the collapsed
+          header. Only a border-top divider separates them, so the widget
+          visually reads as one continuous panel (fish feedback #18 v2). */}
       {expanded && (
         <div
           data-testid="live-log-expanded"
           style={{
-            marginTop: "8px",
+            borderTop: "1px solid var(--divider)",
             background: "var(--bg-card)",
-            border: "1px solid var(--divider)",
-            borderRadius: "8px",
-            overflow: "hidden",
           }}
         >
           {/* Source tabs — pill style matching Tasks page filters */}
