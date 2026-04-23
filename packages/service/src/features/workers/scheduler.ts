@@ -19,6 +19,7 @@ import { startTailing, stopTailing } from "../events/event-tail.js";
 import { indexFindings } from "../findings/indexer.js";
 import { syncOutputsToMinio } from "./sync-outputs.js";
 import { getMinio } from "../../infra/minio/client.js";
+import { onChatContainerDie } from "../chat/chat-session.js";
 import type { ServiceConfig } from "../../infra/config.js";
 
 export class TaskScheduler {
@@ -37,6 +38,13 @@ export class TaskScheduler {
     // Subscribe to docker events
     this.unsubscribeEvents = subscribeToDockerEvents(async (event) => {
       const { action, taskId, exitCode } = event;
+
+      // Chat container lifecycle — event-driven state transition
+      if (event.taskType === "chat" && action === "die") {
+        onChatContainerDie(taskId);
+        return;
+      }
+
       if (event.taskType !== "scan") return;
 
       logger.debug({ action, taskId, exitCode }, "Docker event");

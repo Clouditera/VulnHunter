@@ -2,9 +2,7 @@ import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import * as chatStorage from "./storage.js";
-import { ensureWorker, stopWorker, getWorkerUrl } from "./worker-manager.js";
-import { connectBridgeProxy, disconnectBridgeProxy } from "./bridge-proxy.js";
-import { loadConfig } from "../../infra/config.js";
+import { getOrCreateSession, destroySession } from "./chat-session.js";
 import { logger } from "../../infra/logger.js";
 
 export const chatRouter = new Hono();
@@ -36,8 +34,7 @@ chatRouter.get("/sessions/:id", async (c) => {
 // DELETE /api/chat/sessions/:id
 chatRouter.delete("/sessions/:id", async (c) => {
   const id = c.req.param("id");
-  disconnectBridgeProxy(id);
-  await stopWorker(id);
+  await destroySession(id);
   await chatStorage.deleteSession(id);
   return c.json({ ok: true });
 });
@@ -63,8 +60,6 @@ chatRouter.post("/sessions/:id/prompt", async (c) => {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "message required" } }, 400);
   }
 
-  const config = loadConfig();
-
   // Save user message to DB
   await chatStorage.appendMessage({
     sessionId,
@@ -73,53 +68,21 @@ chatRouter.post("/sessions/:id/prompt", async (c) => {
   });
   await chatStorage.updateSessionTimestamp(sessionId);
 
-  // Ensure worker is running
-  let bridgeUrl: string;
+  // ChatSession handles all lifecycle: container spawn + WS connect + prompt forward
   try {
-    bridgeUrl = await ensureWorker(sessionId, config);
+    const session = getOrCreateSession(sessionId);
+    await session.sendPrompt(body.message, body.images);
+    return c.json({ ok: true });
   } catch (err) {
-    logger.error({ err, sessionId }, "Failed to start chat worker");
+    logger.error({ err, sessionId }, "Failed to send prompt");
     return c.json({ error: { code: "ERR_INTERNAL", detail: String(err) } }, 503);
-  }
-
-  // Proactively connect service→bridge WS (session-level singleton).
-  // This MUST succeed before forwarding the prompt, otherwise events will be lost.
-  try {
-    await connectBridgeProxy(sessionId, bridgeUrl, 10000);
-  } catch (err) {
-    logger.error({ err, sessionId }, "Failed to connect bridge WS proxy");
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "Bridge WS not ready" } }, 503);
-  }
-
-  // Forward prompt to bridge
-  try {
-    const res = await fetch(`${bridgeUrl}/chat/prompt`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: body.message, images: body.images }),
-      signal: AbortSignal.timeout(10000),
-    });
-    const result = await res.json() as { ok: boolean };
-    return c.json({ ok: result.ok });
-  } catch (err) {
-    logger.error({ err, sessionId }, "Failed to forward prompt to bridge");
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "Bridge unreachable" } }, 503);
   }
 });
 
 // POST /api/chat/sessions/:id/abort
 chatRouter.post("/sessions/:id/abort", async (c) => {
   const sessionId = c.req.param("id");
-  const config = loadConfig();
-  const bridgeUrl = getWorkerUrl(sessionId, config);
-
-  if (!bridgeUrl) {
-    return c.json({ ok: true }); // No worker running, nothing to abort
-  }
-
-  try {
-    await fetch(`${bridgeUrl}/chat/abort`, { method: "POST", signal: AbortSignal.timeout(5000) });
-  } catch { /* best effort */ }
-
+  const session = getOrCreateSession(sessionId);
+  await session.abort();
   return c.json({ ok: true });
 });

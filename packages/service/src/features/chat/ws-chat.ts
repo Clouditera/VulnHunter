@@ -1,14 +1,15 @@
 /**
- * WS proxy for chat events.
- * Frontend connects to /ws/chat/:sessionId → thin shell that delegates to bridge-proxy.
+ * WS handler for chat events.
+ * Frontend connects to /ws/chat/:sessionId → delegates to ChatSession.
  */
 
 import { WebSocket } from "ws";
-import { subscribeFrontendClient } from "./bridge-proxy.js";
+import { getOrCreateSession } from "./chat-session.js";
 import { logger } from "../../infra/logger.js";
 
 /** Handle a single chat WS connection (called by ws-router) */
 export function handleChatWsConnection(clientWs: WebSocket, sessionId: string): void {
   logger.debug({ sessionId }, "Chat WS client connected");
-  subscribeFrontendClient(sessionId, clientWs);
+  const session = getOrCreateSession(sessionId);
+  session.subscribeFrontendClient(clientWs);
 }
