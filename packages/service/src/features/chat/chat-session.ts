@@ -178,7 +178,8 @@ export class ChatSession {
     this.state = "starting";
 
     const config = loadConfig();
-    const containerName = `vh-chat-${this.sessionId.slice(0, 12)}`;
+    // Must match docker-client.ts: name = `vh-${taskType}-${taskId}`
+    const containerName = `vh-chat-${this.sessionId}`;
 
     try {
       // Remove stale container
