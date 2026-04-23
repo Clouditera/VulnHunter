@@ -169,14 +169,15 @@ export function TaskDetailPage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             {/* Title + status pill row.
-                Use baseline alignment so the pill's small label sits on
-                the h1's baseline rather than floating above the optical
-                center (B10 fish feedback). lineHeight 1.1 on the h1
-                tightens the bounding box so baseline math is predictable. */}
+                Center alignment (mid-line), matching the prototype.
+                h1 gets lineHeight 1 so its box height == its glyph height,
+                which means 'center' aligns the visual glyph center with
+                the pill's label center — not the box centers of oversized
+                line-boxes. Fish #10 v2 feedback. */}
             <div
               style={{
                 display: "flex",
-                alignItems: "baseline",
+                alignItems: "center",
                 gap: "12px",
                 flexWrap: "wrap",
               }}
@@ -188,12 +189,12 @@ export function TaskDetailPage() {
                   fontWeight: 700,
                   margin: 0,
                   letterSpacing: "-0.01em",
-                  lineHeight: 1.1,
+                  lineHeight: 1,
                 }}
               >
                 {task.project_name}
               </h1>
-              <span style={{ display: "inline-block", lineHeight: 1 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", lineHeight: 0 }}>
                 <StatusPill state={task.state} />
               </span>
             </div>
@@ -482,13 +483,19 @@ function FailureBanner({ task }: { task: Task }) {
 }
 
 function MetaItem({ icon, children }: { icon: "shield" | "clock" | "calendar"; children: React.ReactNode }) {
+  // Important for midline alignment (fish #10 v3):
+  //  - lineHeight 1 on the flex container collapses the line-box so
+  //    text's visual glyph center coincides with its flex-item center.
+  //  - Text children get wrapped in a span with explicit line-height
+  //    so Chinese glyphs render at their natural optical center instead
+  //    of floating above the icon's geometric center.
   return (
     <span
       style={{
         display: "inline-flex",
         alignItems: "center",
         gap: "6px",
-        lineHeight: 1.4,
+        lineHeight: 1,
       }}
     >
       <Icon
@@ -496,7 +503,9 @@ function MetaItem({ icon, children }: { icon: "shield" | "clock" | "calendar"; c
         size={14}
         style={{ display: "block", flexShrink: 0 }}
       />
-      {children}
+      <span style={{ display: "inline-flex", alignItems: "center" }}>
+        {children}
+      </span>
     </span>
   );
 }
