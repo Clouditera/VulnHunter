@@ -21,9 +21,38 @@ const TABS = [
 ];
 
 function formatDuration(ms: number | null): string {
-  if (!ms) return "—";
-  const min = Math.round(ms / 60_000);
-  return `${min} min`;
+  if (!ms || ms < 0) return "—";
+  const totalSec = Math.floor(ms / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  if (min < 60) return sec > 0 ? `${min}m ${sec}s` : `${min}m`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${h}h ${m}m`;
+}
+
+/**
+ * Live duration for running tasks: backend leaves `duration_ms` null while
+ * running, so we compute it from `started_at`. Re-renders every second via
+ * a timer hook so the value ticks without waiting for the 3s poll.
+ */
+function useLiveDurationMs(
+  task: { state: string; started_at: string | null; duration_ms: number | null },
+): number | null {
+  const [now, setNow] = useState(() => Date.now());
+  const isLive =
+    (task.state === "running" || task.state === "paused") &&
+    !!task.started_at;
+  useEffect(() => {
+    if (!isLive) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [isLive]);
+  if (isLive && task.started_at) {
+    return Math.max(0, now - Date.parse(task.started_at));
+  }
+  return task.duration_ms;
 }
 
 export function TaskDetailPage() {
@@ -57,6 +86,13 @@ export function TaskDetailPage() {
     refetchInterval: 5000,
   });
   const findingsCount = findingsData?.findings?.length ?? 0;
+
+  // Live-updating duration for running/paused tasks (re-ticks every 1s).
+  // Safe to call unconditionally before the early-return; returns null
+  // while task is still loading and falls through to task.duration_ms.
+  const liveDurationMs = useLiveDurationMs(
+    data?.task ?? { state: "", started_at: null, duration_ms: null },
+  );
 
   const cancelMut = useMutation({
     mutationFn: () => api.tasks.cancel(taskId!),
@@ -184,7 +220,7 @@ export function TaskDetailPage() {
               <MetaItem icon="clock">
                 {i18n.t("taskDetail.meta.duration")}:{" "}
                 <strong style={{ color: "var(--text-primary)", marginLeft: "4px" }}>
-                  {formatDuration(task.duration_ms)}
+                  {formatDuration(liveDurationMs)}
                 </strong>
               </MetaItem>
               <MetaItem icon="calendar">
