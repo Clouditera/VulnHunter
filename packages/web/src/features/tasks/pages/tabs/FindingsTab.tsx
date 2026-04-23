@@ -124,7 +124,17 @@ function flattenFindingsTree(
         if (rollup.maxSev)
           dirSev = maxSeverity(dirSev, rollup.maxSev) ?? dirSev;
       } else {
-        const hit = byPath.get(path) ?? byLeaf.get(node.name);
+        // Try exact path match, then suffix match, then leaf name match
+        let hit = byPath.get(path);
+        if (!hit) {
+          for (const [fp, slot] of byPath) {
+            if (path.endsWith("/" + fp) || fp.endsWith("/" + path)) {
+              hit = slot;
+              break;
+            }
+          }
+        }
+        if (!hit) hit = byLeaf.get(node.name);
         target.push({
           name: node.name,
           path,
@@ -215,9 +225,11 @@ export function FindingsTab() {
 
   const filteredFindings = useMemo(() => {
     if (!fileFilter) return allFindings;
-    return allFindings.filter(
-      (f) => normalizePath(f.primary_file ?? "") === fileFilter,
-    );
+    return allFindings.filter((f) => {
+      const fp = normalizePath(f.primary_file ?? "");
+      // Exact match or suffix match (zip root prefix may differ)
+      return fp === fileFilter || fileFilter.endsWith("/" + fp) || fp.endsWith("/" + fileFilter);
+    });
   }, [allFindings, fileFilter]);
 
   // When the filter changes and current selection is out of scope, re-select first match.
