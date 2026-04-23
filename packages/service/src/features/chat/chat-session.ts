@@ -216,6 +216,7 @@ export class ChatSession {
         hostWorkDir,
         cpuQuota: 100000,
         memoryBytes: 2 * 1024 * 1024 * 1024,
+        autoRemove: true,
         env,
       });
 

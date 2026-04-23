@@ -86,6 +86,7 @@ export async function spawnReportWorker(params: {
     hostWorkDir,
     cpuQuota: 100000,
     memoryBytes: 2 * 1024 * 1024 * 1024,
+    autoRemove: true,
     env,
   });
 

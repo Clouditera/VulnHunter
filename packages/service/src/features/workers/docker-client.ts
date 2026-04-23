@@ -30,6 +30,7 @@ export interface WorkerContainerSpec {
   volumeName?: string;
   hostWorkDir?: string; // bind mount host path → /workspace
   network?: string;
+  autoRemove?: boolean; // auto-remove container on exit (chat/report)
 }
 
 export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<Dockerode.Container> {
@@ -70,6 +71,7 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
       NetworkMode: spec.network ?? "vulnhunt-internal",
       Mounts: mounts,
       ExtraHosts: ["vulnhunt-service:host-gateway"],
+      ...(spec.autoRemove ? { AutoRemove: true } : {}),
     },
   });
 

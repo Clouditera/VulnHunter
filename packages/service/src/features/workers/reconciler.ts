@@ -6,6 +6,7 @@
 import { logger } from "../../infra/logger.js";
 import {
   listManagedContainers,
+  getDocker,
   LABEL_TASK_ID,
   LABEL_TASK_TYPE,
 } from "./docker-client.js";
@@ -69,6 +70,17 @@ export async function reconcileWorkers(): Promise<void> {
         completedAt: new Date(),
         failureReason: "Container missing after service restart",
       });
+    }
+  }
+
+  // Layer 3: clean up all exited managed containers to prevent name conflicts
+  const docker = getDocker();
+  for (const c of containers) {
+    if (c.State !== "running") {
+      try {
+        await docker.getContainer(c.Id).remove({ force: true });
+        logger.info({ id: c.Id, name: c.Names?.[0] }, "Removed exited managed container");
+      } catch { /* already gone */ }
     }
   }
 
