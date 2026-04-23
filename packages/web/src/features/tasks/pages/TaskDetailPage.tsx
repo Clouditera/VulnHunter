@@ -15,6 +15,7 @@ import {
 const TABS = [
   { labelKey: "taskDetail.tab.overview", path: "" },
   { labelKey: "taskDetail.tab.findings", path: "findings" },
+  { labelKey: "taskDetail.tab.wiki", path: "wiki" },
   { labelKey: "taskDetail.tab.reports", path: "reports" },
   { labelKey: "taskDetail.tab.poc", path: "poc" },
   { labelKey: "taskDetail.tab.workspace", path: "workspace" },

@@ -209,6 +209,12 @@ export const api = {
           line ? `&line=${line}` : ""
         }`,
       ),
+    /** Wiki payload: project profile + aggregated analysis docs + feature
+     *  cards. Backend assembles from `scan-outputs/<tid>/` MinIO files.
+     *  Any field may be null if the corresponding file is missing (e.g. a
+     *  task that didn't run all stages). */
+    wiki: (id: string) =>
+      request<WikiPayload>(`/api/tasks/${id}/wiki`),
   },
   findings: {
     list: (taskId: string, severity?: string) =>
@@ -519,6 +525,141 @@ export interface WorkspaceFile {
   type: "text" | "binary" | "image";
   vuln_decorations?: WorkspaceVulnDecoration[];
   requested_line?: number;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Wiki Tab                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** Risk level flag from feature cards. */
+export type WikiRiskLevel = "low" | "medium" | "high" | "critical" | string;
+
+/** Per-type project classification node from profiler.project_type. */
+export interface WikiProjectTypeFlag {
+  is_type: boolean;
+  reason?: string | null;
+}
+
+/** Parsed profiler YAML. Mirrors youngflow's nested structure verbatim —
+ *  the renderer flattens / formats; the wire shape stays close to source
+ *  so we can add fields without backend changes. */
+export interface WikiProfiler {
+  is_valid_scan_target?: boolean | null;
+  classification_basis?: string | null;
+  potential_risks?: string | null;
+  basic_info?: {
+    project_name?: string | null;
+    project_root?: string | null;
+  };
+  project_type?: Record<string, WikiProjectTypeFlag>;
+  tech_stack?: {
+    language?: string | null;
+    framework?: string | null;
+    package_manager?: string | null;
+  };
+  code_stats?: {
+    file_count?: number | null;
+    loc?: number | null;
+    structure?: string[] | null;
+  };
+  test_dirs?: string[];
+  entry_points?: {
+    main_files?: string[];
+    route_files?: string[];
+  };
+  route_snippets?: string | null;
+  attack_surface?: {
+    high_value_targets?: string | null;
+    potential_entry_points?: string | null;
+  };
+}
+
+/** A Markdown document rendered inline. */
+export interface WikiReport {
+  name: string;
+  format: "md";
+  content: string;
+}
+
+/** Backend wraps each feature in `{feature: {...}}`; keep that envelope. */
+export interface WikiFeatureEnvelope {
+  feature: WikiFeature;
+}
+
+export interface WikiFeature {
+  id: string;
+  name: string;
+  description?: string | null;
+  perspective?: string | null;
+  risk_level?: WikiRiskLevel | null;
+  risk_rationale?: string | null;
+  language?: string | null;
+  entry_points?: Array<{ type?: string; file: string; line?: number }>;
+  data_flow?: {
+    input_format?: string;
+    output_format?: string;
+    processing_chain?: Array<{
+      step?: number;
+      action: string;
+      file?: string;
+      line?: number;
+      function?: string;
+    }>;
+    secondary_parsing?: boolean;
+    secondary_format?: string;
+  };
+  security?: { auth_required?: boolean };
+  code_locations?: Array<{
+    file: string;
+    start_line?: number;
+    end_line?: number;
+    code_type?: string;
+  }>;
+  related_features?: string[];
+  discovered_by?: string;
+  confidence?: string;
+  perspectives?: string[];
+  composite_score?: number;
+}
+
+export interface WikiFeatureGroupEnvelope {
+  group: WikiFeatureGroup;
+}
+
+export interface WikiFeatureGroup {
+  id: string;
+  name: string;
+  attack_surface?: string | null;
+  feature_ids: string[];
+  context_feature_ids?: string[];
+  shared_code_paths?: Array<{
+    file: string;
+    functions?: string[];
+  }>;
+}
+
+/** Deep analysis summary per group (`analysis_summaries/<group>.yaml`). */
+export interface WikiAnalysisSummary {
+  group_id: string;
+  attack_surface?: string | null;
+  files_read?: Array<{ file: string; lines_read?: string }>;
+  covered_sinks?: Array<{
+    file: string;
+    line: number;
+    function?: string;
+    sink?: string;
+    vuln_type?: string;
+  }>;
+  /** Anything else (changes shape across versions). */
+  [key: string]: unknown;
+}
+
+export interface WikiPayload {
+  profiler: WikiProfiler | null;
+  reports: WikiReport[];
+  features: WikiFeatureEnvelope[];
+  featureGroups: WikiFeatureGroupEnvelope[];
+  analysisSummaries: WikiAnalysisSummary[];
 }
 
 /* -------------------------------------------------------------------------- */

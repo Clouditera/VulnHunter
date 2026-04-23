@@ -13,6 +13,7 @@ import { FindingsTab } from "../features/tasks/pages/tabs/FindingsTab.js";
 import { ReportsTab } from "../features/tasks/pages/tabs/ReportsTab.js";
 import { WorkspaceTab } from "../features/tasks/pages/tabs/WorkspaceTab.js";
 import { PocTab } from "../features/tasks/pages/tabs/PocTab.js";
+import { WikiTab } from "../features/tasks/pages/tabs/WikiTab.js";
 import { ChatPage } from "../features/chat/pages/ChatPage.js";
 import { SettingsPage } from "../features/settings/pages/SettingsPage.js";
 
@@ -62,6 +63,7 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <OverviewTab /> },
               { path: "findings", element: <FindingsTab /> },
+              { path: "wiki", element: <WikiTab /> },
               { path: "reports", element: <ReportsTab /> },
               { path: "poc", element: <PocTab /> },
               { path: "workspace", element: <WorkspaceTab /> },
