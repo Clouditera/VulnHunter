@@ -5,6 +5,7 @@ import { i18n } from "../../../shared/i18n/index.js";
 import { theme as themeStore } from "../../../shared/theme/index.js";
 import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential, type SystemConfig } from "../../../shared/api/client.js";
+import { SkillsSection } from "../components/SkillsSection.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Design tokens mirroring the prototype.                                    */
@@ -610,6 +611,7 @@ export function SettingsPage() {
   const SUB_NAV_SECTIONS: Array<{ id: string; labelKey: string }> = [
     { id: "license", labelKey: "settings.nav.license" },
     { id: "credentials", labelKey: "settings.nav.credentials" },
+    { id: "skills", labelKey: "settings.nav.skills" },
     { id: "appearance", labelKey: "settings.nav.appearance" },
     { id: "engine", labelKey: "settings.nav.engine" },
   ];
@@ -1467,6 +1469,9 @@ export function SettingsPage() {
           {/* ============================================================= */}
           {/*  Language & Appearance                                          */}
           {/* ============================================================= */}
+          <div id="skills" style={{ scrollMarginTop: "20px" }} />
+          <SkillsSection />
+
           <div id="appearance" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
             icon="globe"

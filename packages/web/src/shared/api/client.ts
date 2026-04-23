@@ -330,7 +330,73 @@ export const api = {
         }),
     },
   },
+  skills: {
+    list: () => request<{ skills: ReportSkill[] }>("/api/settings/skills"),
+    /** Upload a skill .zip via multipart/form-data. Field name must be `file`. */
+    upload: (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return fetch("/api/settings/skills", {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      }).then(async (r) => {
+        if (!r.ok) throw new Error((await r.text()) || "upload failed");
+        return r.json() as Promise<{ skill: ReportSkill }>;
+      });
+    },
+    delete: (id: string) =>
+      request<{ ok: boolean }>(`/api/settings/skills/${id}`, { method: "DELETE" }),
+  },
+  reports: {
+    list: (taskId: string) =>
+      request<{ reports: UserReport[] }>(`/api/tasks/${taskId}/reports`),
+    get: (taskId: string, reportId: string) =>
+      request<{ report: UserReport }>(
+        `/api/tasks/${taskId}/reports/${reportId}`,
+      ),
+    generate: (
+      taskId: string,
+      body: { skill_id: string; credential_id?: string },
+    ) =>
+      request<{ report: UserReport }>(
+        `/api/tasks/${taskId}/reports/generate`,
+        { method: "POST", body: JSON.stringify(body) },
+      ),
+    delete: (taskId: string, reportId: string) =>
+      request<{ ok: boolean }>(`/api/tasks/${taskId}/reports/${reportId}`, {
+        method: "DELETE",
+      }),
+    /** URL for preview/download; use directly as <iframe src> or anchor href. */
+    fileUrl: (taskId: string, reportId: string) =>
+      `/api/tasks/${taskId}/reports/${reportId}/file`,
+    downloadUrl: (taskId: string, reportId: string) =>
+      `/api/tasks/${taskId}/reports/${reportId}/download`,
+  },
 };
+
+export interface ReportSkill {
+  id: string;
+  name: string;
+  description: string | null;
+  size_bytes: number;
+  attachment_count: number;
+  created_at: string;
+}
+
+export interface UserReport {
+  id: string;
+  task_id: string;
+  skill_id: string;
+  skill_name?: string;
+  status: "generating" | "completed" | "failed";
+  format?: string | null;
+  primary_file?: string | null;
+  created_at: string;
+  completed_at?: string | null;
+  duration_ms?: number | null;
+  failure_reason?: string | null;
+}
 
 export interface LlmCredential {
   id: string;
