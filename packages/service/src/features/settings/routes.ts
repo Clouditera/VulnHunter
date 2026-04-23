@@ -117,14 +117,14 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
     // Try a minimal chat completion request
     // base_url may already include /v1 (e.g. http://host/v1), so use it as-is if present
     const base = baseUrl || (protoType === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1");
-    const endpoint = protoType === "anthropic"
-      ? base + "/messages"
-      : base + "/chat/completions";
 
+    // Use the actual API format based on proto_type — so test results match scan behavior
+    let endpoint: string;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     let reqBody: string;
 
     if (protoType === "anthropic") {
+      endpoint = base + "/messages";
       headers["x-api-key"] = apiKey;
       headers["anthropic-version"] = "2023-06-01";
       reqBody = JSON.stringify({
@@ -132,7 +132,17 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
         max_tokens: 1,
         messages: [{ role: "user", content: "hi" }],
       });
+    } else if (protoType === "openai-responses") {
+      endpoint = base + "/responses";
+      headers["Authorization"] = `Bearer ${apiKey}`;
+      reqBody = JSON.stringify({
+        model: modelId,
+        max_output_tokens: 1,
+        input: "hi",
+      });
     } else {
+      // openai-completions (default for most endpoints)
+      endpoint = base + "/chat/completions";
       headers["Authorization"] = `Bearer ${apiKey}`;
       reqBody = JSON.stringify({
         model: modelId,

@@ -44,7 +44,17 @@ function setupPiConfig(): void {
   // Key insight: apiKey field is an ENV VAR NAME, not the actual key
   if (BASE_URL && API_KEY) {
     const providerKey = "vulnhunt";
-    const api = MODEL_PROTO === "anthropic" ? "anthropic" : "openai-completions";
+    const PROTO_API_MAP: Record<string, string> = {
+      "openai": "openai-completions",
+      "openai-completions": "openai-completions",
+      "openai-responses": "openai-responses",
+      "anthropic": "anthropic",
+    };
+    const api = PROTO_API_MAP[MODEL_PROTO];
+    if (!api) {
+      console.error(`[bridge] Unknown MODEL_PROTO_TYPE: "${MODEL_PROTO}". Valid: ${Object.keys(PROTO_API_MAP).join(", ")}`);
+      process.exit(1);
+    }
     process.env.VH_LLM_API_KEY = API_KEY; // Set actual key in env
     const modelsJson = {
       providers: {
