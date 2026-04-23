@@ -24,7 +24,7 @@ const stageElapsedTracker = new Map<string, number>();
  * Translate youngflow NDJSON event (has 'event' field) → canonical LiveLogEvent (has 'type' field).
  * Returns null for events that should not be forwarded (debug, checkpoint, etc.).
  */
-function translateYoungflowEvent(raw: Record<string, unknown>, source: string): LiveLogEvent | null {
+export function translateYoungflowEvent(raw: Record<string, unknown>, source: string): LiveLogEvent | null {
   const event = raw.event as string;
   const ts = (raw.ts as string) ?? new Date().toISOString();
   const stage = (raw.stage as string) ?? "";

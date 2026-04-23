@@ -3,6 +3,9 @@ import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import * as taskStorage from "./storage.js";
 import { stopScanWorker, cleanupScanWorkDir } from "../workers/scan-worker.js";
+import { getAllEvents } from "../events/event-store.js";
+import { translateYoungflowEvent } from "../events/event-tail.js";
+import type { LiveLogEvent } from "@vulnhunt/shared";
 import { listCredentials } from "../settings/storage.js";
 import { notify } from "../notifications/index.js";
 import { loadConfig } from "../../infra/config.js";
@@ -238,5 +241,68 @@ tasksRouter.get("/:id/poc/:filename", async (c) => {
     return c.json({ filename, content: Buffer.concat(chunks).toString("utf-8") });
   } catch {
     return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  }
+});
+
+// GET /api/tasks/:id/events — live log events (in-memory for running, MinIO archive for completed)
+tasksRouter.get("/:id/events", async (c) => {
+  const task = await taskStorage.getTaskById(c.req.param("id"));
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+
+  // Try in-memory buffer first (running/recently active tasks)
+  const memEvents = getAllEvents(task.id);
+  if (memEvents.length > 0) {
+    return c.json({ events: memEvents });
+  }
+
+  // Fallback: read archived events from MinIO (completed/failed/cancelled tasks)
+  const config = loadConfig();
+  const minio = getMinio();
+  const prefix = `scan-outputs/${task.id}/.youngflow/logs/`;
+
+  try {
+    // List all .service.jsonl files
+    const keys: string[] = [];
+    const stream = minio.listObjects(config.minio.bucket, prefix, true);
+    for await (const obj of stream) {
+      if (obj.name?.endsWith(".service.jsonl") || obj.name?.endsWith("youngflow.service.jsonl")) {
+        keys.push(obj.name);
+      }
+    }
+
+    if (keys.length === 0) {
+      return c.json({ events: [] });
+    }
+
+    const events: { seq: number; event: LiveLogEvent }[] = [];
+    let seq = 0;
+
+    for (const key of keys) {
+      try {
+        const objStream = await minio.getObject(config.minio.bucket, key);
+        const chunks: Buffer[] = [];
+        for await (const chunk of objStream) chunks.push(Buffer.from(chunk));
+        const text = Buffer.concat(chunks).toString("utf-8");
+
+        for (const line of text.split("\n")) {
+          if (!line.trim()) continue;
+          try {
+            const raw = JSON.parse(line);
+            if (!raw.event) continue;
+            const translated = translateYoungflowEvent(raw, "scan");
+            if (translated) {
+              seq++;
+              translated.seq = seq;
+              events.push({ seq, event: translated });
+            }
+          } catch { /* skip malformed lines */ }
+        }
+      } catch { /* skip unreadable files */ }
+    }
+
+    return c.json({ events });
+  } catch (err) {
+    logger.warn({ err, taskId: task.id }, "Failed to load archived events");
+    return c.json({ events: [] });
   }
 });
