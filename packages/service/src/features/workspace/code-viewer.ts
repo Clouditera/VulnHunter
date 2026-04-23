@@ -189,18 +189,24 @@ export async function getCodeTree(
   }
 }
 
-async function listZipEntries(zipPath: string): Promise<string[]> {
+interface ZipEntry {
+  path: string;
+  isDir: boolean;
+}
+
+async function listZipEntries(zipPath: string): Promise<ZipEntry[]> {
   return new Promise((resolve, reject) => {
-    const names: string[] = [];
+    const entries: ZipEntry[] = [];
     yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
       if (err || !zipfile) return reject(err ?? new Error("Cannot open zip"));
 
       zipfile.readEntry();
       zipfile.on("entry", (entry: yauzl.Entry) => {
-        names.push(entry.fileName.replace(/\/$/, ""));
+        const isDir = entry.fileName.endsWith("/");
+        entries.push({ path: entry.fileName.replace(/\/$/, ""), isDir });
         zipfile.readEntry();
       });
-      zipfile.on("end", () => resolve(names));
+      zipfile.on("end", () => resolve(entries));
       zipfile.on("error", reject);
     });
   });
@@ -208,45 +214,57 @@ async function listZipEntries(zipPath: string): Promise<string[]> {
 
 type TreeNode = { name: string; type: "file" | "dir"; children?: TreeNode[] };
 
-function buildTree(paths: string[]): TreeNode[] {
-  const root: Record<string, TreeNode> = {};
+interface BuildNode {
+  name: string;
+  type: "file" | "dir";
+  children: Record<string, BuildNode>;
+}
 
-  for (const p of paths) {
-    if (!p) continue;
-    const parts = p.split("/");
+function buildTree(entries: ZipEntry[]): TreeNode[] {
+  const dirPaths = new Set<string>();
+  for (const e of entries) {
+    if (e.isDir) dirPaths.add(e.path);
+  }
+
+  const root: Record<string, BuildNode> = {};
+
+  for (const entry of entries) {
+    if (!entry.path) continue;
+    const parts = entry.path.split("/").filter(Boolean);
     let current = root;
 
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
-      if (!part) continue;
       const isLast = i === parts.length - 1;
+      const isDir = !isLast || entry.isDir || dirPaths.has(entry.path);
 
       if (!current[part]) {
-        current[part] = isLast
-          ? { name: part, type: "file" }
-          : { name: part, type: "dir", children: [] };
+        current[part] = { name: part, type: isDir ? "dir" : "file", children: {} };
+      } else if (isDir && current[part].type === "file") {
+        current[part].type = "dir";
       }
 
       if (!isLast) {
-        const children = current[part].children ?? [];
-        current[part].children = children;
-        // Convert children array to object for building
-        const childMap: Record<string, TreeNode> = {};
-        for (const c of children) childMap[c.name] = c;
-        current = childMap;
+        current = current[part].children;
       }
     }
   }
 
-  function toArray(obj: Record<string, TreeNode>): TreeNode[] {
-    return Object.values(obj).map((n) => ({
-      ...n,
-      children: n.children
-        ? toArray(
-            Object.fromEntries((n.children as TreeNode[]).map((c) => [c.name, c])),
-          )
-        : undefined,
-    }));
+  function toArray(obj: Record<string, BuildNode>): TreeNode[] {
+    return Object.values(obj)
+      .sort((a, b) => {
+        // Dirs first, then alphabetical
+        if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      })
+      .map((n) => {
+        const kids = Object.keys(n.children).length > 0 ? toArray(n.children) : undefined;
+        return {
+          name: n.name,
+          type: n.type,
+          ...(n.type === "dir" ? { children: kids ?? [] } : {}),
+        };
+      });
   }
 
   return toArray(root);
