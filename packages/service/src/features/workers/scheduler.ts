@@ -181,20 +181,25 @@ export class TaskScheduler {
     ensureWorkDir(srcDir);
 
     // Download code package from MinIO and extract
-    const meta = task.source_meta as { minio_key?: string };
-    const minioKey = meta?.minio_key ?? `code-packages/${task.id}.zip`;
+    // Defensive: source_meta may be double-serialized JSONB string
+    let meta = task.source_meta as { minio_key?: string } | string;
+    if (typeof meta === "string") {
+      try { meta = JSON.parse(meta); } catch { meta = {}; }
+    }
+    const minioKey = (meta as { minio_key?: string })?.minio_key ?? `code-packages/${task.id}.zip`;
 
     const zipPath = join(hostWorkDir, "source.zip");
     const minio = getMinio();
 
     // Wait for code package (git clone runs async after task creation)
-    for (let attempt = 0; attempt < 30; attempt++) {
+    const maxWaitSec = 120;
+    for (let attempt = 0; attempt < maxWaitSec; attempt++) {
       try {
         await minio.statObject(this.config.minio.bucket, minioKey);
         break; // zip exists
       } catch {
-        if (attempt === 29) {
-          throw new Error(`Code package not ready after 30s: ${minioKey}`);
+        if (attempt === maxWaitSec - 1) {
+          throw new Error(`Code package not ready after ${maxWaitSec}s: ${minioKey}`);
         }
         await new Promise(r => setTimeout(r, 1000));
       }
