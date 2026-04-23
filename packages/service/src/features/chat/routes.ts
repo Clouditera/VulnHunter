@@ -4,6 +4,10 @@ import { licenseGuard } from "../../middleware/license-guard.js";
 import * as chatStorage from "./storage.js";
 import { getOrCreateSession, destroySession } from "./chat-session.js";
 import { logger } from "../../infra/logger.js";
+import { loadConfig } from "../../infra/config.js";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join, extname } from "node:path";
+import { createHash } from "node:crypto";
 
 export const chatRouter = new Hono();
 chatRouter.use("*", licenseGuard);
@@ -85,4 +89,47 @@ chatRouter.post("/sessions/:id/abort", async (c) => {
   const session = getOrCreateSession(sessionId);
   await session.abort();
   return c.json({ ok: true });
+});
+
+// POST /api/chat/sessions/:id/upload — file attachment upload
+chatRouter.post("/sessions/:id/upload", async (c) => {
+  const sessionId = c.req.param("id");
+  const session = await chatStorage.getSession(sessionId);
+  if (!session) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+
+  const body = await c.req.parseBody();
+  const file = body["file"];
+  if (!file || typeof file === "string") {
+    return c.json({ error: { code: "ERR_INTERNAL", detail: "file field required" } }, 400);
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  if (buffer.length === 0) {
+    return c.json({ error: { code: "ERR_INTERNAL", detail: "Empty file" } }, 400);
+  }
+  if (buffer.length > 10 * 1024 * 1024) {
+    return c.json({ error: { code: "ERR_INTERNAL", detail: "File too large (max 10MB)" } }, 413);
+  }
+
+  // Hash-based filename to avoid collisions
+  const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 12);
+  const ext = extname(file.name || ".bin") || ".bin";
+  const storedName = `${hash}${ext}`;
+
+  // Store in session workspace — bind mount makes it visible inside container
+  const config = loadConfig();
+  const attachDir = join(config.dataDir, "chat-sessions", sessionId, "attachments");
+  mkdirSync(attachDir, { recursive: true });
+  writeFileSync(join(attachDir, storedName), buffer);
+
+  // Return container-relative path (workspace is mounted at /workspace)
+  const containerPath = `/workspace/attachments/${storedName}`;
+
+  logger.info({ sessionId, originalName: file.name, storedName, size: buffer.length }, "Chat attachment uploaded");
+
+  return c.json({
+    path: containerPath,
+    originalName: file.name || storedName,
+    size: buffer.length,
+  });
 });
