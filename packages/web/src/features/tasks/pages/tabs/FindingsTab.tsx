@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type * as React from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
@@ -694,6 +694,7 @@ export function FindingsTab() {
                 }}
               >
                 <FindingDetailPanel
+                  taskId={task.id}
                   finding={selectedFinding}
                   detail={detailData?.detail}
                   loading={detailLoading}
@@ -1109,16 +1110,19 @@ function EmptyState({
 /* -------------------------------------------------------------------------- */
 
 function FindingDetailPanel({
+  taskId,
   finding,
   detail,
   loading,
   error,
 }: {
+  taskId: string;
   finding: FindingMeta;
   detail: FindingDetailData | undefined;
   loading: boolean;
   error: Error | null;
 }) {
+  const navigate = useNavigate();
   const sev = (finding.severity ?? "info").toLowerCase();
   const sevColor = SEV_COLORS[sev] ?? SEV_COLORS.info;
 
@@ -1194,6 +1198,46 @@ function FindingDetailPanel({
         >
           {sev}
         </span>
+        {finding.primary_file ? (
+          <button
+            type="button"
+            data-testid="finding-view-in-code"
+            title={i18n.t("findings.viewInCode")}
+            onClick={() => {
+              const params = new URLSearchParams();
+              params.set("file", normalizePath(finding.primary_file!));
+              if (finding.primary_line) params.set("line", String(finding.primary_line));
+              navigate(`/tasks/${taskId}/workspace?${params.toString()}`);
+            }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              padding: "3px 8px",
+              borderRadius: "6px",
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontSize: "11px",
+              cursor: "pointer",
+              flexShrink: 0,
+              transition: "all 0.12s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "var(--brand)";
+              e.currentTarget.style.color = "var(--brand)";
+              e.currentTarget.style.background = "var(--bg-error)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "var(--border)";
+              e.currentTarget.style.color = "var(--text-secondary)";
+              e.currentTarget.style.background = "transparent";
+            }}
+          >
+            <Icon name="code" size={12} strokeWidth={2.5} />
+            {i18n.t("findings.viewInCode")}
+          </button>
+        ) : null}
       </div>
 
       {/* Metadata row (inline, always visible) */}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
@@ -210,7 +210,16 @@ export function WorkspaceTab() {
   // Re-init collapse on task switch.
   useEffect(() => setCollapseInitDone(false), [task.id]);
 
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  // Deep-link support: Findings "View in Code" navigates here with
+  // ?file=<path>&line=<n> search params. Read them once on mount so the
+  // code viewer opens the right file at the right line.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkFile = searchParams.get("file");
+  const deepLinkLine = searchParams.get("line");
+
+  const [selectedPath, setSelectedPath] = useState<string | null>(
+    deepLinkFile ?? null,
+  );
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   /** First-load init flag so we collapse-all once but don't undo user edits. */
   const [collapseInitDone, setCollapseInitDone] = useState(false);
@@ -263,13 +272,25 @@ export function WorkspaceTab() {
     staleTime: 30_000,
   });
 
+  // When we arrive via deep-link (?file=...&line=...), consume and clear
+  // the params so a manual tab switch doesn't replay them. Also expand
+  // any collapsed parent directories so the file is visible in the tree.
+  const deepLineNum = deepLinkLine ? Number(deepLinkLine) : undefined;
+  useEffect(() => {
+    if (!deepLinkFile) return;
+    // Clear query string without adding a history entry.
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkFile]);
+
   const {
     data: fileData,
     isLoading: fileLoading,
     error: fileError,
   } = useQuery<WorkspaceFile>({
     queryKey: ["workspace-file", task.id, selectedPath],
-    queryFn: () => api.tasks.workspaceFile(task.id, selectedPath!),
+    queryFn: () =>
+      api.tasks.workspaceFile(task.id, selectedPath!, deepLineNum),
     enabled: !!selectedPath,
     staleTime: 5 * 60_000,
   });
