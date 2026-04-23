@@ -63,7 +63,7 @@ function setupPiConfig(): void {
           api,
           apiKey: "VH_LLM_API_KEY", // env var name, pi reads the value from process.env
           models: [
-            { id: MODEL_NAME, input: ["text"], contextWindow: 200000, maxTokens: 16384 },
+            { id: MODEL_NAME, input: ["text", "image"], contextWindow: 200000, maxTokens: 16384 },
           ],
         },
       },
