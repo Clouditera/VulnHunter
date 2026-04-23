@@ -265,6 +265,20 @@ export function useChat() {
           const arr = prev[sid] ?? [];
           const idx = arr.findIndex((m) => m.id === id);
           if (idx < 0) return prev;
+          const finalText = (textBlock?.text ?? arr[idx].content ?? "").trim();
+          const hasToolCalls = (arr[idx].tool_calls ?? []).length > 0;
+
+          // B16 fix: pi emits multiple message_start → message_end cycles
+          // during multi-turn tool use. Some of those messages contain
+          // only a `thinking` block and no `text` block, which surfaces as
+          // an empty avatar bubble. When the final message has neither
+          // text content nor tool calls attached, drop it entirely.
+          if (!finalText && !hasToolCalls) {
+            const copy = arr.slice();
+            copy.splice(idx, 1);
+            return { ...prev, [sid]: copy };
+          }
+
           const next: ChatMessage = {
             ...arr[idx],
             content: textBlock?.text ?? arr[idx].content,
