@@ -36,9 +36,15 @@ export function TaskDetailPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["task", taskId],
     queryFn: () => api.tasks.get(taskId!),
+    // Poll whenever the task is in a state that can still transition.
+    // Previously only 'running' was polled, so a 'queued' or 'paused'
+    // task would appear stuck until manual refresh.
     refetchInterval: (query) => {
-      const task = query.state.data?.task;
-      return task?.state === "running" ? 3000 : false;
+      const state = query.state.data?.task?.state;
+      if (state === "running" || state === "queued" || state === "paused") {
+        return 3000;
+      }
+      return false;
     },
     enabled: !!taskId,
   });
@@ -423,8 +429,19 @@ function FailureBanner({ task }: { task: Task }) {
 
 function MetaItem({ icon, children }: { icon: "shield" | "clock" | "calendar"; children: React.ReactNode }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-      <Icon name={icon} size={14} />
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
+        lineHeight: 1.4,
+      }}
+    >
+      <Icon
+        name={icon}
+        size={14}
+        style={{ display: "block", flexShrink: 0 }}
+      />
       {children}
     </span>
   );

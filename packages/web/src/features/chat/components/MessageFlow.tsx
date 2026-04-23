@@ -141,9 +141,18 @@ export function MessageFlow({
           </div>
         ) : (
           <>
-            {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} />
-            ))}
+            {messages
+              .filter((m) => {
+                // Hide empty assistant messages — they appear as orphan avatar
+                // rows when the model returns no text (e.g. aborted call, tool
+                // loop, server error). User messages are never filtered.
+                if (m.role !== "assistant") return true;
+                const text = (m.content ?? "").trim();
+                return text.length > 0;
+              })
+              .map((m) => (
+                <MessageBubble key={m.id} message={m} />
+              ))}
             {streaming &&
             messages[messages.length - 1]?.role !== "assistant" ? (
               <div

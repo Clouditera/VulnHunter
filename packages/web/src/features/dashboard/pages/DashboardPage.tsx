@@ -149,7 +149,9 @@ export function DashboardPage() {
     queryKey: ["dashboard"],
     queryFn: () =>
       fetch("/api/dashboard?range=30d", { credentials: "include" }).then((r) => r.json()),
-    refetchInterval: 60_000,
+    // Tasks typically finish in ~1 minute, so poll the dashboard every
+    // 10s to reflect new task state without requiring manual refresh.
+    refetchInterval: 10_000,
   });
 
   if (isLoading || !data) {

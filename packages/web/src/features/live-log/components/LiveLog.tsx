@@ -14,6 +14,10 @@ export interface LiveLogEvent {
   status?: string;
   stage?: string;
   state?: string;
+  /** Optional human-readable payload fields used by various event types. */
+  name?: string;
+  message?: string;
+  text?: string;
 }
 
 interface Props {
@@ -69,13 +73,29 @@ export function LiveLog({ taskId, taskState }: Props) {
           setSources((prev) => (prev.includes(event.source) ? prev : [...prev, event.source]));
         }
 
+        // Update the collapsed-row summary from ANY meaningful event, not
+        // just tool_calls. Previously only tool_call events updated
+        // `latestTool`, so a task emitting only `stage` / `error` / `log`
+        // events would show "等待事件…" forever even though the log has
+        // content — which looked like a bug to users (B7).
         if (event.type === "tool_call" && event.tool) {
-          // args_summary sometimes arrives as "<tool>: <args>" (youngflow);
-          // strip the redundant tool prefix so the bar doesn't read "bash → bash: ls".
           let args = event.args_summary ?? "";
           const prefix = `${event.tool}: `;
           if (args.startsWith(prefix)) args = args.slice(prefix.length);
           setLatestTool(args ? `${event.tool} → ${args}` : event.tool);
+        } else if (event.type === "stage") {
+          // stage events may carry the stage name in `stage`, `name`, or
+          // `state` depending on producer; use whichever is present.
+          const label = event.stage || event.name || event.state || "";
+          setLatestTool(label ? `stage → ${label}` : "stage");
+        } else if (event.type === "error") {
+          const raw = event.message || event.text || "";
+          const msg = raw.length > 80 ? raw.slice(0, 77) + "…" : raw;
+          setLatestTool(msg ? `error → ${msg}` : "error");
+        } else if (event.type === "task" && !latestTool) {
+          // Bootstrap value so the strip doesn't say "等待事件…" once we
+          // already have a task-started event.
+          setLatestTool("task → started");
         }
       } catch {}
     };

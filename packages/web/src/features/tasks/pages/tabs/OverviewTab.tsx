@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Task, type FindingMeta } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
+import { Icon, type IconName } from "../../../../shared/components/Icon.js";
 import {
   formatDateTime,
   parseRiskScore,
@@ -16,13 +17,16 @@ const SEV_COLORS: Record<string, string> = {
   info: "var(--sev-info)",
 };
 
-/** Overview card matching prototype `.ov-card`. */
+/** Overview card matching prototype `.ov-card`. Accepts an optional icon
+ *  rendered inline with the title (used e.g. for the risk assessment card). */
 function Card({
   title,
+  icon,
   children,
   align,
 }: {
   title: string;
+  icon?: IconName;
   children: React.ReactNode;
   align?: "center";
 }) {
@@ -45,9 +49,14 @@ function Card({
           color: "var(--text-secondary)",
           letterSpacing: "0.06em",
           margin: "0 0 16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: align === "center" ? "center" : "flex-start",
+          gap: "6px",
         }}
       >
-        {title}
+        {icon && <Icon name={icon} size={14} style={{ opacity: 0.8 }} />}
+        <span>{title}</span>
       </h4>
       {children}
     </div>
@@ -145,7 +154,7 @@ export function OverviewTab() {
       </Card>
 
       {/* Risk Assessment — large number + segmented severity bar + legend */}
-      <Card title={i18n.t("overview.riskAssessment")} align="center">
+      <Card title={i18n.t("overview.riskAssessment")} icon="shield" align="center">
         {risk != null ? (
           <>
             <div

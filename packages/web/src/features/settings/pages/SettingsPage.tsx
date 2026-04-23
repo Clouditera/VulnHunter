@@ -1157,10 +1157,11 @@ export function SettingsPage() {
                     data-editing={true}
                     data-draft={isDraft || undefined}
                     style={{
-                      border: "1px solid var(--brand)",
+                      border: "1px solid var(--border)",
                       borderRadius: "8px",
-                      background: "rgba(220,38,38,0.03)",
+                      background: "var(--bg-card)",
                       overflow: "hidden",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
                     }}
                   >
                     {/* Entire header is clickable to collapse — symmetric
@@ -1186,20 +1187,24 @@ export function SettingsPage() {
                         padding: "12px 14px",
                         cursor: "pointer",
                         userSelect: "none",
+                        background: "var(--bg-page)",
                       }}
                       onMouseEnter={(e) => {
                         (e.currentTarget as HTMLDivElement).style.background =
-                          "rgba(220,38,38,0.06)";
+                          "var(--bg-hover)";
                       }}
                       onMouseLeave={(e) => {
                         (e.currentTarget as HTMLDivElement).style.background =
-                          "transparent";
+                          "var(--bg-page)";
                       }}
                     >
                       <Icon
                         name={isDraft ? "plus" : "shield"}
                         size={16}
-                        style={{ color: "var(--brand)", flexShrink: 0 }}
+                        style={{
+                          color: "var(--text-secondary)",
+                          flexShrink: 0,
+                        }}
                       />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div
