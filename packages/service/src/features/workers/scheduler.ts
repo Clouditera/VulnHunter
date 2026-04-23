@@ -20,6 +20,7 @@ import { indexFindings } from "../findings/indexer.js";
 import { syncOutputsToMinio } from "./sync-outputs.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { onChatContainerDie } from "../chat/chat-session.js";
+import { onReportContainerDie } from "../reports/report-worker.js";
 import { notify } from "../notifications/index.js";
 import type { ServiceConfig } from "../../infra/config.js";
 
@@ -43,6 +44,14 @@ export class TaskScheduler {
       // Chat container lifecycle — event-driven state transition
       if (event.taskType === "chat" && action === "die") {
         onChatContainerDie(taskId);
+        return;
+      }
+
+      // Report container lifecycle — one-shot completion
+      if (event.taskType === "report" && action === "die") {
+        onReportContainerDie(taskId, exitCode).catch((err) =>
+          logger.error({ err, taskId }, "Failed to handle report container die"),
+        );
         return;
       }
 

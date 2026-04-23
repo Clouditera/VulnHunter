@@ -5,10 +5,14 @@
 
 import { z } from "zod";
 import { load as yamlLoad } from "js-yaml";
+import { execSync } from "node:child_process";
+import { join } from "node:path";
 import * as findingsStorage from "../features/findings/storage.js";
 import * as taskStorage from "../features/tasks/storage.js";
-import { getMinio } from "../infra/minio/client.js";
+import * as reportStorage from "../features/reports/storage.js";
+import { getMinio, uploadFile } from "../infra/minio/client.js";
 import { loadConfig } from "../infra/config.js";
+import { notify } from "../features/notifications/index.js";
 import { logger } from "../infra/logger.js";
 
 type ToolResult = { content: Array<{ type: "text"; text: string }> };
@@ -239,4 +243,72 @@ export async function cancelTask(args: {
   return {
     content: [{ type: "text", text: `Task ${task.project_name} (${task.id}) has been cancelled.` }],
   };
+}
+
+// ─── submit-report ───
+
+export const submitReportSchema = {
+  task_id: z.string().describe("The task ID this report belongs to"),
+  report_id: z.string().describe("The report ID (from the generate API)"),
+  name: z.string().describe("Report file name (e.g. 'security-audit-report.md')"),
+  format: z.enum(["md", "html", "json", "pdf", "txt"]).describe("Report format"),
+  primary_file: z.string().describe("Path to the primary report file relative to /workspace/reports/"),
+};
+
+export async function submitReport(args: {
+  task_id: string;
+  report_id: string;
+  name: string;
+  format: string;
+  primary_file: string;
+}): Promise<ToolResult> {
+  logger.info({ args }, "MCP submit-report");
+
+  const report = await reportStorage.getReport(args.report_id);
+  if (!report) {
+    return { content: [{ type: "text", text: `Report ${args.report_id} not found.` }] };
+  }
+
+  if (report.status === "completed") {
+    return { content: [{ type: "text", text: `Report already submitted.` }] };
+  }
+
+  const config = loadConfig();
+  const bucket = config.minio.bucket;
+  const reportDir = join(config.dataDir, "report-workspaces", args.report_id, "reports");
+
+  try {
+    // Upload primary file
+    const primaryKey = `user-reports/${args.task_id}/${args.report_id}/primary.${args.format}`;
+    const primaryPath = join(reportDir, args.primary_file);
+    const { readFileSync } = await import("node:fs");
+    const primaryContent = readFileSync(primaryPath);
+    await uploadFile(bucket, primaryKey, primaryContent, primaryContent.length);
+
+    // Tar the entire reports directory → upload as bundle
+    const bundleKey = `user-reports/${args.task_id}/${args.report_id}/bundle.tar`;
+    const tarPath = join(config.dataDir, "report-workspaces", args.report_id, "bundle.tar");
+    execSync(`tar -cf "${tarPath}" -C "${reportDir}" .`, { timeout: 30_000, stdio: "pipe" });
+    const tarContent = readFileSync(tarPath);
+    await uploadFile(bucket, bundleKey, tarContent, tarContent.length);
+
+    // Update DB
+    await reportStorage.updateReportStatus(args.report_id, "completed", {
+      format: args.format,
+      primaryMinioKey: primaryKey,
+      bundleMinioKey: bundleKey,
+    });
+
+    // Notify frontend
+    notify({ type: "task_state", taskId: args.task_id, state: "completed" as never });
+
+    return {
+      content: [{ type: "text", text: `Report submitted successfully. Format: ${args.format}, file: ${args.name}` }],
+    };
+  } catch (err) {
+    logger.error({ err, reportId: args.report_id }, "Failed to submit report");
+    return {
+      content: [{ type: "text", text: `Failed to submit report: ${err}` }],
+    };
+  }
 }

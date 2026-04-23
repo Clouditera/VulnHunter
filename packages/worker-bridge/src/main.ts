@@ -1,5 +1,5 @@
 /**
- * VulnHunt Worker Bridge — Chat Mode
+ * VulnHunt Worker Bridge — Chat + Report Modes
  * Runs inside the worker container.
  * Spawns pi CLI in rpc mode, bridges stdio JSONL ↔ HTTP/WS.
  */
@@ -12,8 +12,14 @@ import { join } from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
 
 const PORT = Number(process.env.BRIDGE_PORT ?? "8080");
+const MODE = process.env.MODE ?? "chat";
 const SESSION_DIR = process.env.SESSION_DIR ?? "/workspace/chat-session";
 const IDLE_TIMEOUT_MS = Number(process.env.IDLE_TIMEOUT_MIN ?? "10") * 60 * 1000;
+
+// Report mode specific
+const SKILL_PATH = process.env.SKILL_PATH ?? "";
+const REPORT_SYSTEM_PROMPT = process.env.REPORT_SYSTEM_PROMPT ?? "";
+const TASK_ID = process.env.TASK_ID ?? "";
 
 // Model config from env
 const MODEL_PROTO = process.env.MODEL_PROTO_TYPE ?? "openai";
@@ -87,10 +93,19 @@ function spawnPi(): ChildProcess {
     "--model", modelStr,
     "--no-skills",
     "--no-extensions",
-    "-e", "/usr/local/lib/node_modules/pi-mcp-adapter",  // explicitly load MCP adapter
+    "-e", "/usr/local/lib/node_modules/pi-mcp-adapter",
     "--no-prompt-templates",
     "--no-themes",
   ];
+
+  // Report mode: inject skill + print flag
+  if (MODE === "report" && SKILL_PATH) {
+    args.push("--skill", SKILL_PATH);
+  }
+
+  if (MODE === "report" && REPORT_SYSTEM_PROMPT) {
+    args.push("--system-prompt", REPORT_SYSTEM_PROMPT);
+  }
 
   if (existsSync(sessionFile)) {
     args.push("--session", sessionFile);
@@ -240,6 +255,18 @@ function main(): void {
 
   // Spawn pi rpc
   pi = spawnPi();
+
+  // Report mode: auto-inject the generation prompt after a short delay
+  if (MODE === "report" && TASK_ID) {
+    setTimeout(() => {
+      const prompt = `Generate a comprehensive security report for task ${TASK_ID}. ` +
+        `Use the MCP tools (list-findings, read-finding, read-task-metadata) to gather data. ` +
+        `Write the report files to /workspace/reports/. ` +
+        `When done, call submit-report with the appropriate parameters.`;
+      console.log("[bridge] Injecting report generation prompt");
+      sendToPi({ type: "prompt", message: prompt });
+    }, 3000);
+  }
 
   // Start idle timer
   startIdleTimer();

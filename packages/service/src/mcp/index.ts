@@ -19,6 +19,7 @@ import {
   readTaskMetadataSchema, readTaskMetadata,
   listTasksSchema, listTasks,
   cancelTaskSchema, cancelTask,
+  submitReportSchema, submitReport,
 } from "./tools.js";
 
 // Per-MCP-session state (each pi instance gets its own session)
@@ -67,6 +68,13 @@ function createToolServer(): McpServer {
     "Cancel a running, paused, or queued scan task.",
     cancelTaskSchema,
     async (args) => cancelTask(args),
+  );
+
+  server.tool(
+    "submit-report",
+    "Submit a completed report. Called by the report agent after writing report files to /workspace/reports/.",
+    submitReportSchema,
+    async (args) => submitReport(args),
   );
 
   return server;
