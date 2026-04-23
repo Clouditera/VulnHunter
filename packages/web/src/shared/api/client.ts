@@ -67,6 +67,24 @@ export interface Task {
   /** Populated by GET /api/tasks (list) — absent on single-task GET. */
   severity_counts?: SeverityCounts;
   metadata: TaskMetadata;
+  /**
+   * Human-readable credential label (e.g. "Mimo V2 Pro — mimo-v2-pro").
+   * Populated on GET /api/tasks/:id. May be null if the credential was
+   * deleted after the task was created.
+   */
+  credential_label?: string | null;
+  /**
+   * Source archive metadata. For uploads: `{ filename, minio_key, size_bytes? }`.
+   * For git clones: `{ git_url, git_branch?, minio_key? }`.
+   */
+  source_meta?: {
+    filename?: string;
+    minio_key?: string;
+    size_bytes?: number;
+    git_url?: string;
+    git_branch?: string;
+    [key: string]: unknown;
+  } | null;
 }
 
 /**
@@ -236,7 +254,24 @@ export const api = {
       }),
     listModels: () =>
       request<{ models: Array<{ id: string; owned_by?: string }>; error?: string }>("/api/settings/models"),
-    testModel: (params: { proto_type: string; base_url?: string; model_id: string; api_key: string }) =>
+    /**
+     * Test connection.
+     *  - Pass `credential_id` to test against a stored credential using
+     *    the already-saved API key (backend decrypts it). Use this when
+     *    editing a credential the user hasn't typed the key for again.
+     *  - Pass `proto_type/base_url/model_id/api_key` explicitly for a
+     *    brand-new draft credential before it's saved.
+     */
+    testModel: (
+      params:
+        | { credential_id: string }
+        | {
+            proto_type: string;
+            base_url?: string;
+            model_id: string;
+            api_key: string;
+          },
+    ) =>
       request<{ ok: boolean; message?: string; error?: string }>("/api/settings/credential/test", {
         method: "POST",
         body: JSON.stringify(params),
@@ -306,6 +341,11 @@ export interface LlmCredential {
   thinking_effort: string;
   label: string;
   is_default: boolean;
+  /**
+   * Masked API key for display, e.g. "sk-c••••593f". Present on
+   * listCredentials / getCredential responses; never on write payloads.
+   */
+  masked_key?: string;
 }
 
 export interface SaveCredentialPayload {

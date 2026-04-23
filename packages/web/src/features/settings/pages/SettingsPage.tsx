@@ -568,21 +568,30 @@ export function SettingsPage() {
 
   /** Send a small chat-completion ping using the current form values.
    *  The backend endpoint always requires an `api_key` in the body (for
-   *  obvious security reasons it won't reuse the stored one), so we force
-   *  the user to type it before the button becomes clickable. */
+   *  Two modes (B1 fish request):
+   *   1. Editing a saved credential and user hasn't re-typed the key
+   *      — send `{credential_id}` so backend uses the already-stored key.
+   *   2. New draft, or user typed a fresh key — send the full param set
+   *      including `api_key`. */
   async function testConnection() {
-    if (!apiKey) {
+    const useStored =
+      editingCredentialId != null && !isNewDraft && apiKey.length === 0;
+    if (!useStored && !apiKey) {
       setTestState({ kind: "err", msg: i18n.t("settings.model.testNeedsKey") });
       return;
     }
     setTestState({ kind: "loading" });
     try {
-      const resp = await api.settings.testModel({
-        proto_type: protoType,
-        base_url: baseUrl || undefined,
-        model_id: modelId,
-        api_key: apiKey,
-      });
+      const resp = await api.settings.testModel(
+        useStored
+          ? { credential_id: editingCredentialId as string }
+          : {
+              proto_type: protoType,
+              base_url: baseUrl || undefined,
+              model_id: modelId,
+              api_key: apiKey,
+            },
+      );
       if (resp.ok) {
         setTestState({ kind: "ok", msg: resp.message });
       } else {
@@ -993,7 +1002,7 @@ export function SettingsPage() {
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder={
                     cred
-                      ? "••••••••••••••••"
+                      ? cred.masked_key || "••••••••••••••••"
                       : i18n.t("settings.model.apiKeyPlaceholder")
                   }
                   autoComplete="off"
@@ -1056,12 +1065,21 @@ export function SettingsPage() {
               }}
             >
               <div>
+                {/* Test enabled whenever:
+                    - editing a saved credential (uses stored key server-side), OR
+                    - user has typed a fresh api_key in the form.
+                    Only fully disabled when it's a brand-new draft with no key yet. */}
+                {(() => {
+                  const canUseStored =
+                    editingCredentialId != null && !isNewDraft;
+                  const canTest = canUseStored || apiKey.length > 0;
+                  return (
                 <button
                   type="button"
                   data-testid="settings-test-connection-btn"
                   onClick={testConnection}
-                  disabled={testState.kind === "loading" || !apiKey}
-                  title={!apiKey ? i18n.t("settings.model.testNeedsKey") : undefined}
+                  disabled={testState.kind === "loading" || !canTest}
+                  title={!canTest ? i18n.t("settings.model.testNeedsKey") : undefined}
                   style={{
                     padding: "10px 16px",
                     border: "1px solid var(--border)",
@@ -1071,10 +1089,10 @@ export function SettingsPage() {
                     fontSize: "12px",
                     fontWeight: 600,
                     cursor:
-                      testState.kind === "loading" || !apiKey
+                      testState.kind === "loading" || !canTest
                         ? "not-allowed"
                         : "pointer",
-                    opacity: !apiKey ? 0.6 : 1,
+                    opacity: !canTest ? 0.6 : 1,
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "6px",
@@ -1095,6 +1113,8 @@ export function SettingsPage() {
                     ? i18n.t("settings.model.testing")
                     : i18n.t("settings.model.test")}
                 </button>
+                  );
+                })()}
               </div>
               {(testState.kind === "ok" || testState.kind === "err") && (
                 <div
@@ -1397,6 +1417,7 @@ export function SettingsPage() {
                     >
                       {c.model_id}
                       {c.base_url ? " · " + c.base_url : ""}
+                      {c.masked_key ? " · " + c.masked_key : ""}
                     </div>
                   </div>
                   <Icon

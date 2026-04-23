@@ -58,9 +58,15 @@ function flattenTree(
     let anyMatch = false;
     for (const node of nodes) {
       const path = parentPath ? `${parentPath}/${node.name}` : node.name;
-      // Treat as directory if children array exists (backend quirk: may label
-      // a dir as 'file' but still set children.length > 0).
-      const isDir = node.type === "dir" || !!(node.children && node.children.length > 0);
+      // Treat as directory in any of these cases (B9 backend quirk):
+      //  - explicit `type: "dir"`
+      //  - `children` array present at all, even empty (backend currently
+      //    labels dirs as `type: "file"` but emits `children: []`)
+      //  - name contains no file extension (weaker heuristic fallback)
+      const isDir =
+        node.type === "dir" ||
+        Array.isArray(node.children) ||
+        (!node.type && !/\.[a-zA-Z0-9]{1,6}$/.test(node.name));
 
       if (isDir) {
         // Recurse first to know whether any descendant matches the query.
@@ -134,7 +140,10 @@ function flattenTree(
     let hits = 0;
     for (const node of nodes) {
       const path = parentPath ? `${parentPath}/${node.name}` : node.name;
-      const isDir = node.type === "dir" || !!(node.children && node.children.length > 0);
+      const isDir =
+        node.type === "dir" ||
+        Array.isArray(node.children) ||
+        (!node.type && !/\.[a-zA-Z0-9]{1,6}$/.test(node.name));
       if (isDir) {
         const sub: FlatNode[] = [];
         const subHits = walkInto(
