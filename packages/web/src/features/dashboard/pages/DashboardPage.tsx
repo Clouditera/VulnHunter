@@ -276,10 +276,55 @@ export function DashboardPage() {
             {(["high", "medium", "low", "info"] as const).map((sev) => {
               const count = (sevDist[sev] as number) ?? 0;
               const pct = sevMax > 0 ? (count / sevMax) * 100 : 0;
+              const clickable = count > 0;
               return (
                 <div
                   key={sev}
-                  style={{ display: "grid", gridTemplateColumns: "56px 1fr 30px", alignItems: "center", gap: "12px" }}
+                  data-testid={`dashboard-severity-row-${sev}`}
+                  data-severity={sev}
+                  onClick={
+                    clickable
+                      ? () => {
+                          // Scroll to Recent Scans table — currently the
+                          // most useful drill-down target until we have a
+                          // global findings view filtered by severity.
+                          const el = document.getElementById(
+                            "dashboard-recent-scans",
+                          );
+                          if (el) {
+                            el.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
+                          }
+                        }
+                      : undefined
+                  }
+                  title={
+                    clickable
+                      ? i18n.t("dashboard.severityClickHint")
+                      : undefined
+                  }
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "56px 1fr 30px",
+                    alignItems: "center",
+                    gap: "12px",
+                    padding: "4px 6px",
+                    margin: "-4px -6px",
+                    borderRadius: "6px",
+                    cursor: clickable ? "pointer" : "default",
+                    transition: "background 0.12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (clickable)
+                      (e.currentTarget as HTMLDivElement).style.background =
+                        "var(--bg-hover)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.background =
+                      "transparent";
+                  }}
                 >
                   <span
                     style={{
@@ -392,6 +437,7 @@ export function DashboardPage() {
 
       {/* Recent Scans */}
       <div
+        id="dashboard-recent-scans"
         data-testid="dashboard-recent-scans"
         style={{
           background: "var(--bg-card)",

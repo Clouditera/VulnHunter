@@ -36,7 +36,22 @@ function sourceColor(src: string): string {
   return "var(--log-text-dim)";
 }
 
+/**
+ * Inject the ticker slide-in keyframe exactly once. Scoped by a fixed id
+ * so React hot-reload / multiple mounts don't duplicate the <style> tag.
+ */
+function ensureLiveLogKeyframes() {
+  if (typeof document === "undefined") return;
+  if (document.getElementById("vh-livelog-keyframes")) return;
+  const style = document.createElement("style");
+  style.id = "vh-livelog-keyframes";
+  style.textContent =
+    "@keyframes vh-livelog-slide-in { from { transform: translateY(70%); opacity: 0 } to { transform: translateY(0); opacity: 1 } }";
+  document.head.appendChild(style);
+}
+
 export function LiveLog({ taskId, taskState }: Props) {
+  useEffect(() => ensureLiveLogKeyframes(), []);
   const [expanded, setExpanded] = useState(false);
   const [events, setEvents] = useState<LiveLogEvent[]>([]);
   const [sources, setSources] = useState<string[]>(["scan"]);
@@ -165,35 +180,50 @@ export function LiveLog({ taskId, taskState }: Props) {
         >
           <StatusPill state={taskState} size="sm" />
         </span>
+        {/*
+          Collapsed-row ticker: when `latestTool` changes we remount this
+          span via key, which triggers the slide-up-and-fade-in animation
+          (U18 fish feedback — "幻灯片上下流动刷新效果").
+        */}
         <span
           data-testid="live-log-current-tool"
           style={{
             flex: 1,
             minWidth: 0,
+            position: "relative",
+            overflow: "hidden",
             fontSize: "13px",
             fontFamily: "SF Mono, JetBrains Mono, Menlo, monospace",
             color: "var(--text-primary)",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
             lineHeight: 1.4,
           }}
         >
-          {toolParts ? (
-            <>
-              <span style={{ color: "var(--sev-low)", fontWeight: 600 }}>{toolParts.tool}</span>
-              {toolParts.param && (
-                <>
-                  <span style={{ color: "var(--text-secondary)", margin: "0 6px" }}>→</span>
-                  <span style={{ color: "var(--text-secondary)" }}>{toolParts.param}</span>
-                </>
-              )}
-            </>
-          ) : (
-            <span style={{ color: "var(--text-secondary)" }}>
-              {isRunning ? i18n.t("liveLog.waiting") : i18n.t("liveLog.noEvents")}
-            </span>
-          )}
+          <span
+            key={latestTool || "__empty__"}
+            style={{
+              display: "block",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              animation: "vh-livelog-slide-in 0.35s cubic-bezier(0.2,0.8,0.2,1)",
+            }}
+          >
+            {toolParts ? (
+              <>
+                <span style={{ color: "var(--sev-low)", fontWeight: 600 }}>{toolParts.tool}</span>
+                {toolParts.param && (
+                  <>
+                    <span style={{ color: "var(--text-secondary)", margin: "0 6px" }}>→</span>
+                    <span style={{ color: "var(--text-secondary)" }}>{toolParts.param}</span>
+                  </>
+                )}
+              </>
+            ) : (
+              <span style={{ color: "var(--text-secondary)" }}>
+                {isRunning ? i18n.t("liveLog.waiting") : i18n.t("liveLog.noEvents")}
+              </span>
+            )}
+          </span>
         </span>
         <span
           data-testid="live-log-event-count"
