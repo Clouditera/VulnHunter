@@ -20,6 +20,7 @@ import { indexFindings } from "../findings/indexer.js";
 import { syncOutputsToMinio } from "./sync-outputs.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { onChatContainerDie } from "../chat/chat-session.js";
+import { notify } from "../notifications/index.js";
 import type { ServiceConfig } from "../../infra/config.js";
 
 export class TaskScheduler {
@@ -62,6 +63,7 @@ export class TaskScheduler {
           try {
             const count = await indexFindings(taskId, this.config.minio.bucket);
             logger.info({ taskId, count }, "Findings indexed after scan completion");
+            notify({ type: "findings_indexed", taskId, count });
           } catch (err) {
             logger.error({ err, taskId }, "Failed to index findings");
           }
@@ -74,11 +76,13 @@ export class TaskScheduler {
         }
 
         const durationMs = await this.computeDuration(taskId);
-        await updateTaskState(taskId, ok ? "completed" : "failed", {
+        const newState = ok ? "completed" : "failed";
+        await updateTaskState(taskId, newState, {
           completedAt: new Date(),
           durationMs,
           failureReason: ok ? undefined : `Worker exited with code ${exitCode}`,
         }).catch((err) => logger.error({ err, taskId }, "Failed to update task on die"));
+        notify({ type: "task_state", taskId, state: newState as import("@vulnhunt/shared").TaskState });
       }
     });
 

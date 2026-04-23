@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { ServiceConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
 import { updateTaskState } from "../tasks/storage.js";
+import { notify } from "../notifications/index.js";
 import {
   createWorkerContainer,
   ensureWorkDir,
@@ -58,6 +59,7 @@ export async function spawnScanWorker(
 
   await container.start();
   await updateTaskState(task.id, "running", { startedAt: new Date() });
+  notify({ type: "task_state", taskId: task.id, state: "running" });
 
   logger.info({ taskId: task.id, hostWorkDir, resume }, "Scan worker started");
   return container.id;

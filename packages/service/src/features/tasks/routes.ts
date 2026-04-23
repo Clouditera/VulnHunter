@@ -4,6 +4,7 @@ import { licenseGuard } from "../../middleware/license-guard.js";
 import * as taskStorage from "./storage.js";
 import { stopScanWorker, cleanupScanWorkDir } from "../workers/scan-worker.js";
 import { listCredentials } from "../settings/storage.js";
+import { notify } from "../notifications/index.js";
 import { loadConfig } from "../../infra/config.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
@@ -66,6 +67,7 @@ tasksRouter.post("/:id/cancel", async (c) => {
     });
   }
   await taskStorage.updateTaskState(task.id, "cancelled");
+  notify({ type: "task_state", taskId: task.id, state: "cancelled" });
   return c.json({ ok: true });
 });
 
@@ -81,6 +83,7 @@ tasksRouter.post("/:id/pause", async (c) => {
     logger.warn({ err, taskId: task.id }, "Failed to stop worker on pause");
   });
   await taskStorage.updateTaskState(task.id, "paused");
+  notify({ type: "task_state", taskId: task.id, state: "paused" });
   return c.json({ ok: true });
 });
 
@@ -93,6 +96,7 @@ tasksRouter.post("/:id/resume", async (c) => {
   }
   // Set to queued — scheduler picks it up with resume=true
   await taskStorage.updateTaskState(task.id, "queued");
+  notify({ type: "task_state", taskId: task.id, state: "queued" });
   return c.json({ ok: true });
 });
 
@@ -104,6 +108,7 @@ tasksRouter.post("/:id/restart", async (c) => {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "Cannot restart in current state" } }, 409);
   }
   await taskStorage.updateTaskState(task.id, "queued");
+  notify({ type: "task_state", taskId: task.id, state: "queued" });
   return c.json({ ok: true });
 });
 

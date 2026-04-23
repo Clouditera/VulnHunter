@@ -18,6 +18,7 @@ import { getDefaultCredential, getCredentialById } from "../settings/storage.js"
 import { credentialToWorkerEnv } from "../settings/credential-env.js";
 import { getSession, appendMessage } from "./storage.js";
 import { loadConfig } from "../../infra/config.js";
+import { notify } from "../notifications/index.js";
 import { logger } from "../../infra/logger.js";
 
 type State = "idle" | "starting" | "ready" | "active" | "recovering";
@@ -241,6 +242,7 @@ export class ChatSession {
       for (const w of this.readyWaiters) w.resolve();
       this.readyWaiters = [];
 
+      notify({ type: "chat_worker_state", sessionId: this.sessionId, state: "ready" });
       logger.info({ sessionId: this.sessionId, url: this.bridgeUrl }, "ChatSession READY");
     } catch (err) {
       // Fail all waiters

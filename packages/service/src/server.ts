@@ -11,6 +11,7 @@ import { dashboardRouter } from "./features/dashboard/index.js";
 import { workspaceRouter } from "./features/workspace/index.js";
 import { settingsRouter } from "./features/settings/index.js";
 import { chatRouter } from "./features/chat/index.js";
+import { notificationRouter } from "./features/notifications/index.js";
 import { setupWsRouter } from "./ws-router.js";
 import { mcpRouter } from "./mcp/index.js";
 import { injectUser } from "./middleware/index.js";
@@ -41,6 +42,9 @@ export function createApp(): Hono {
   app.route("/api/settings", settingsRouter);
   app.route("/api/chat", chatRouter);
   app.route("/api", filesRouter); // includes POST /api/tasks (upload)
+
+  // SSE notifications (task state changes, findings indexed, etc.)
+  app.route("/api", notificationRouter);
 
   // MCP server for Chat agent tools (no license/auth middleware — has own auth)
   app.route("/mcp", mcpRouter);
