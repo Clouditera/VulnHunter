@@ -367,6 +367,14 @@ export const api = {
         request<{ ok: boolean }>(`/api/chat/sessions/${id}/abort`, {
           method: "POST",
         }),
+      /** Switch the model for a running session. The bridge sends pi
+       *  `set_model` to the already-running worker, and updates DB for
+       *  future container spawns. */
+      setModel: (id: string, credentialId: string) =>
+        request<{ ok: boolean }>(`/api/chat/sessions/${id}/set-model`, {
+          method: "POST",
+          body: JSON.stringify({ credential_id: credentialId }),
+        }),
     },
   },
   skills: {

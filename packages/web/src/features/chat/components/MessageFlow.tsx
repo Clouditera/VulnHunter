@@ -136,7 +136,7 @@ export function MessageFlow({
         >
           {session.title}
         </h2>
-        <ModelChip credentials={credentials} credentialId={session.credential_id ?? null} />
+        <ModelChip sessionId={session.id} credentials={credentials} credentialId={session.credential_id ?? null} />
         <WorkerBadge state={session.worker_state ?? "idle"} />
       </header>
 
@@ -213,60 +213,207 @@ export function MessageFlow({
 /* -------------------------------------------------------------------------- */
 
 function ModelChip({
+  sessionId,
   credentials,
   credentialId,
 }: {
+  sessionId: string;
   credentials: LlmCredential[];
   credentialId: string | null;
 }) {
-  // Resolve the session's credential — falls back to the default when
-  // the session has no explicit binding (matches backend behaviour at
-  // worker spawn time).
+  const [open, setOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [activeId, setActiveId] = useState(credentialId);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep activeId in sync when the session changes (e.g. switching sessions).
+  useEffect(() => setActiveId(credentialId), [credentialId]);
+
+  // Close dropdown on outside click.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
   const resolved =
-    (credentialId ? credentials.find((c) => c.id === credentialId) : null) ??
+    (activeId ? credentials.find((c) => c.id === activeId) : null) ??
     credentials.find((c) => c.is_default) ??
     credentials[0];
   if (!resolved) return null;
 
-  // Show the short model_id (e.g. "mimo-v2-pro") — it's the most
-  // scannable identifier. Provider goes into the tooltip so power users
-  // can still see it.
   const label = resolved.model_id || resolved.label || resolved.provider;
-  const tooltip = i18n
-    .t("chat.model.chipTooltip")
-    .replace("{label}", resolved.label || resolved.model_id)
-    .replace("{provider}", resolved.provider)
-    .replace("{proto}", resolved.proto_type);
+  const canSwitch = credentials.length > 1;
+
+  async function handleSelect(cred: LlmCredential) {
+    if (cred.id === resolved.id) {
+      setOpen(false);
+      return;
+    }
+    setSwitching(true);
+    try {
+      await api.chat.sessions.setModel(sessionId, cred.id);
+      setActiveId(cred.id);
+    } catch {
+      /* best-effort — chip still shows old model */
+    }
+    setSwitching(false);
+    setOpen(false);
+  }
 
   return (
-    <span
-      data-testid="chat-model-chip"
-      data-credential-id={resolved.id}
-      title={tooltip}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "5px",
-        padding: "3px 9px",
-        borderRadius: "999px",
-        fontSize: "11px",
-        fontWeight: 500,
-        lineHeight: 1.4,
-        color: "var(--text-secondary)",
-        background: "var(--bg-page)",
-        border: "1px solid var(--border)",
-        maxWidth: "220px",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-        cursor: "help",
-      }}
+    <div
+      ref={wrapRef}
+      style={{ position: "relative", display: "inline-flex" }}
     >
-      <Icon name="cpu" size={11} strokeWidth={2} />
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-        {label}
-      </span>
-    </span>
+      <button
+        type="button"
+        data-testid="chat-model-chip"
+        data-credential-id={resolved.id}
+        title={
+          canSwitch
+            ? i18n.t("chat.model.switchHint")
+            : i18n
+                .t("chat.model.chipTooltip")
+                .replace("{label}", resolved.label || resolved.model_id)
+                .replace("{provider}", resolved.provider)
+                .replace("{proto}", resolved.proto_type)
+        }
+        onClick={() => canSwitch && setOpen((v) => !v)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "5px",
+          padding: "3px 9px",
+          borderRadius: "999px",
+          fontSize: "11px",
+          fontWeight: 500,
+          lineHeight: 1.4,
+          color: "var(--text-secondary)",
+          background: open ? "var(--bg-hover)" : "var(--bg-page)",
+          border: "1px solid var(--border)",
+          maxWidth: "220px",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          cursor: canSwitch ? "pointer" : "default",
+          fontFamily: "inherit",
+          transition: "background 0.12s",
+        }}
+      >
+        <Icon name="cpu" size={11} strokeWidth={2} />
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+          {switching ? i18n.t("chat.model.switching") : label}
+        </span>
+        {canSwitch ? (
+          <Icon
+            name="chevron-down"
+            size={10}
+            style={{
+              marginLeft: "2px",
+              transform: open ? "rotate(180deg)" : undefined,
+              transition: "transform 0.15s",
+            }}
+          />
+        ) : null}
+      </button>
+
+      {open ? (
+        <div
+          data-testid="chat-model-dropdown"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            right: 0,
+            minWidth: "220px",
+            maxWidth: "320px",
+            background: "var(--bg-card)",
+            border: "1px solid var(--border)",
+            borderRadius: "8px",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+            zIndex: 50,
+            padding: "4px 0",
+            maxHeight: "240px",
+            overflowY: "auto",
+          }}
+        >
+          {credentials.map((c) => {
+            const isActive = c.id === resolved.id;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                data-testid="chat-model-option"
+                data-credential-id={c.id}
+                onClick={() => void handleSelect(c)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  width: "100%",
+                  padding: "8px 12px",
+                  border: "none",
+                  background: isActive ? "var(--bg-page)" : "transparent",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontFamily: "inherit",
+                  fontSize: "12px",
+                  color: "var(--text-primary)",
+                  transition: "background 0.1s",
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive)
+                    e.currentTarget.style.background = "var(--bg-hover)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = isActive
+                    ? "var(--bg-page)"
+                    : "transparent";
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {c.label || c.model_id}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "10.5px",
+                      color: "var(--text-secondary)",
+                      fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+                      marginTop: "1px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {c.model_id}
+                    {c.base_url ? " · " + c.base_url : ""}
+                  </div>
+                </div>
+                {isActive ? (
+                  <Icon
+                    name="check"
+                    size={14}
+                    style={{ color: "var(--brand)", flexShrink: 0 }}
+                  />
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
