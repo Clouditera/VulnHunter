@@ -267,17 +267,21 @@ export function LiveLog({ taskId, taskState }: Props) {
         </span>
       </div>
 
-      {/* Expanded state — lives inside the same card as the collapsed
-          header. Only a border-top divider separates them, so the widget
-          visually reads as one continuous panel (fish feedback #18 v2). */}
-      {expanded && (
-        <div
-          data-testid="live-log-expanded"
-          style={{
-            borderTop: "1px solid var(--divider)",
-            background: "var(--bg-card)",
-          }}
-        >
+      {/* Expanded state — always rendered, collapsed via max-height so we
+          get the smooth up/down reveal animation (fish feedback #18 v3). */}
+      <div
+        data-testid="live-log-expanded"
+        aria-hidden={!expanded}
+        style={{
+          maxHeight: expanded ? "460px" : 0,
+          overflow: "hidden",
+          transition: "max-height 0.32s cubic-bezier(0.2, 0.8, 0.2, 1)",
+          borderTop: expanded ? "1px solid var(--divider)" : "none",
+          background: "var(--bg-card)",
+          opacity: expanded ? 1 : 0,
+          transitionProperty: "max-height, opacity, border-color",
+        }}
+      >
           {/* Source tabs — pill style matching Tasks page filters */}
           <div
             style={{
@@ -430,8 +434,7 @@ export function LiveLog({ taskId, taskState }: Props) {
               ↓ {i18n.t("liveLog.resumeScroll")}
             </div>
           )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
