@@ -113,6 +113,23 @@ export async function updateTaskState(
   }
 }
 
+/** Full reset for restart — clears timestamps, metadata, findings so scheduler treats it as fresh */
+export async function resetTaskForRestart(id: string): Promise<void> {
+  const db = getDb();
+  await db`
+    UPDATE tasks
+    SET state = 'queued',
+        started_at = NULL,
+        completed_at = NULL,
+        duration_ms = NULL,
+        failure_reason = NULL,
+        findings_indexed_at = NULL,
+        metadata = '{}'
+    WHERE id = ${id}
+  `;
+  await db`DELETE FROM findings_meta WHERE task_id = ${id}`;
+}
+
 export async function countTasksByState(state: TaskState): Promise<number> {
   const db = getDb();
   const rows = await db<{ count: string }[]>`

@@ -100,14 +100,40 @@ tasksRouter.post("/:id/resume", async (c) => {
   return c.json({ ok: true });
 });
 
-// POST /api/tasks/:id/restart
+// POST /api/tasks/:id/restart — full reset per architecture spec §3
 tasksRouter.post("/:id/restart", async (c) => {
   const task = await taskStorage.getTaskById(c.req.param("id"));
   if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   if (!["failed", "cancelled", "completed"].includes(task.state)) {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "Cannot restart in current state" } }, 409);
   }
-  await taskStorage.updateTaskState(task.id, "queued");
+
+  const config = loadConfig();
+  const minio = getMinio();
+
+  // 1. Reset DB state (clears started_at, metadata, findings)
+  await taskStorage.resetTaskForRestart(task.id);
+
+  // 2. Clean host workspace so scheduler re-prepares it
+  cleanupScanWorkDir(config.dataDir, task.id);
+
+  // 3. Clean MinIO scan-outputs (keep code-packages — zip is reusable)
+  try {
+    const prefix = `scan-outputs/${task.id}/`;
+    const objects = await new Promise<string[]>((resolve, reject) => {
+      const keys: string[] = [];
+      const stream = minio.listObjects(config.minio.bucket, prefix, true);
+      stream.on("data", (obj) => { if (obj.name) keys.push(obj.name); });
+      stream.on("end", () => resolve(keys));
+      stream.on("error", reject);
+    });
+    if (objects.length > 0) {
+      await minio.removeObjects(config.minio.bucket, objects);
+    }
+  } catch (err) {
+    logger.warn({ err, taskId: task.id }, "Failed to cleanup MinIO scan-outputs on restart");
+  }
+
   notify({ type: "task_state", taskId: task.id, state: "queued" });
   return c.json({ ok: true });
 });

@@ -80,6 +80,7 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
 }
 
 import { mkdirSync, rmSync } from "node:fs";
+import { execSync } from "node:child_process";
 
 export function ensureWorkDir(hostPath: string): void {
   mkdirSync(hostPath, { recursive: true });
@@ -91,7 +92,16 @@ export function removeWorkDir(hostPath: string): void {
     rmSync(hostPath, { recursive: true, force: true });
     logger.info({ hostPath }, "Work directory removed");
   } catch (err) {
-    logger.warn({ hostPath, err }, "Could not remove work directory");
+    // Root-owned files (created by Docker containers) can't be removed by non-root service.
+    // Use a temp container to clean up.
+    logger.info({ hostPath }, "Permission denied, using Docker container for cleanup");
+    try {
+      execSync(`docker run --rm -v "${hostPath}:/cleanup" alpine sh -c "rm -rf /cleanup/*"`, { timeout: 15000 });
+      rmSync(hostPath, { recursive: true, force: true });
+      logger.info({ hostPath }, "Work directory removed via Docker cleanup");
+    } catch (dockerErr) {
+      logger.warn({ hostPath, err: dockerErr }, "Could not remove work directory");
+    }
   }
 }
 
