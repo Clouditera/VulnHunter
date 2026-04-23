@@ -456,6 +456,11 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
   let icon: { char: string; color: string; pulse?: boolean };
   let tool = "";
   let param = "";
+  // Show per-event duration only when the value looks like a real per-call
+  // elapsed time. Backend currently sometimes emits cumulative wall-clock
+  // since task start (e.g. 156000ms for a 1s `bash ls`), which is misleading
+  // — so we hide anything >= 2 min as likely suspect, and anything < 1s as
+  // noise. Formatting: 1s ≤ d < 60s → "2.3s"; 60s ≤ d < 120s → "1m 23s".
   let dur = ev.duration_ms;
 
   // Light-palette semantic colors (fish #18 feedback):
@@ -572,18 +577,22 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
         {param && (
           <span style={{ color: "var(--text-secondary)" }}> {param}</span>
         )}
-        {dur != null && (
-          <span
-            data-testid="log-entry-status"
-            style={{
-              color: "var(--text-secondary)",
-              marginLeft: "8px",
-              opacity: 0.6,
-            }}
-          >
-            · {dur}ms
-          </span>
-        )}
+        {(() => {
+          const txt = formatDuration(dur);
+          if (!txt) return null;
+          return (
+            <span
+              data-testid="log-entry-duration"
+              style={{
+                color: "var(--text-secondary)",
+                marginLeft: "8px",
+                opacity: 0.6,
+              }}
+            >
+              · {txt}
+            </span>
+          );
+        })()}
       </span>
     </div>
   );
@@ -595,4 +604,27 @@ if (typeof document !== "undefined" && !document.getElementById("ls-pulse-keyfra
   styleTag.id = "ls-pulse-keyframes";
   styleTag.textContent = `@keyframes ls-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.82); } }`;
   document.head.appendChild(styleTag);
+}
+
+/**
+ * Format a duration in milliseconds for display next to a log line.
+ *
+ * Rules (fish feedback):
+ *   - null / undefined / < 1s  → hidden (sub-second durations are noise)
+ *   - 1s ≤ d < 60s             → "2.3s" (one decimal)
+ *   - 60s ≤ d < 120s           → "1m 23s" (still plausibly a real call)
+ *   - d ≥ 120s                 → hidden (backend currently emits cumulative
+ *                                 wall-clock; likely not a real per-call time)
+ *
+ * The 120s ceiling is a heuristic to suppress the misleading values we saw
+ * in the field (156000ms for a `bash ls`). Remove the ceiling once the
+ * backend tool_execution_end carries a true per-call `elapsed_ms`.
+ */
+function formatDuration(ms: number | undefined | null): string | null {
+  if (ms == null || !Number.isFinite(ms)) return null;
+  if (ms < 1000) return null;
+  if (ms >= 120_000) return null;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
