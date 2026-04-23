@@ -1163,16 +1163,41 @@ export function SettingsPage() {
                       overflow: "hidden",
                     }}
                   >
+                    {/* Entire header is clickable to collapse — symmetric
+                        with collapsed rows (where entire row is clickable to
+                        expand). The chevron-up icon on the right mirrors the
+                        chevron-down on collapsed rows. */}
                     <div
+                      data-testid="settings-credential-collapse"
+                      role="button"
+                      tabIndex={0}
+                      onClick={collapseExpanded}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          collapseExpanded();
+                        }
+                      }}
+                      title={i18n.t("settings.credentials.collapse")}
                       style={{
                         display: "flex",
                         alignItems: "center",
                         gap: "10px",
                         padding: "12px 14px",
+                        cursor: "pointer",
+                        userSelect: "none",
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLDivElement).style.background =
+                          "rgba(220,38,38,0.06)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLDivElement).style.background =
+                          "transparent";
                       }}
                     >
                       <Icon
-                        name={isDraft ? "plus" : "chevron-up"}
+                        name={isDraft ? "plus" : "shield"}
                         size={16}
                         style={{ color: "var(--brand)", flexShrink: 0 }}
                       />
@@ -1207,23 +1232,14 @@ export function SettingsPage() {
                           </div>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        data-testid="settings-credential-collapse"
-                        onClick={collapseExpanded}
+                      <Icon
+                        name="chevron-up"
+                        size={14}
                         style={{
-                          padding: "4px 10px",
-                          border: "1px solid var(--border)",
-                          borderRadius: "5px",
-                          background: "var(--bg-card)",
                           color: "var(--text-secondary)",
-                          fontSize: "11px",
-                          fontWeight: 500,
-                          cursor: "pointer",
+                          flexShrink: 0,
                         }}
-                      >
-                        {i18n.t("settings.credentials.collapse")}
-                      </button>
+                      />
                     </div>
                     <div
                       style={{
