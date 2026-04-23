@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type {
+  ChatImageAttachment,
   ChatMessage,
   ChatSession,
 } from "../types.js";
@@ -155,8 +156,9 @@ export function useChatMock() {
     setActiveId((prev) => (prev === id ? sessions[0]?.id ?? null : prev));
   }
 
-  async function sendPrompt(text: string) {
-    if (!activeId || !text.trim() || streaming) return;
+  async function sendPrompt(text: string, images?: ChatImageAttachment[]) {
+    const hasImages = !!images && images.length > 0;
+    if (!activeId || (!text.trim() && !hasImages) || streaming) return;
     const sid = activeId;
     const now = new Date().toISOString();
     const prior = messagesBySession[sid] ?? [];
@@ -166,6 +168,7 @@ export function useChatMock() {
       content: text,
       seq: prior.length + 1,
       created_at: now,
+      images: hasImages ? images : undefined,
     };
     const assistantMsg: ChatMessage = {
       id: `a-${Date.now()}`,

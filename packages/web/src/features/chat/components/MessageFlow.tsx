@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
-import type { ChatMessage, ChatSession } from "../types.js";
+import type { ChatImageAttachment, ChatMessage, ChatSession } from "../types.js";
 import { MessageBubble } from "./MessageBubble.js";
 import { ChatInput } from "./ChatInput.js";
 
@@ -49,7 +49,7 @@ export function MessageFlow({
   session: ChatSession | null;
   messages: ChatMessage[];
   streaming: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, images?: ChatImageAttachment[]) => void;
   onAbort: () => void;
 }) {
   const streamRef = useRef<HTMLDivElement | null>(null);
@@ -178,6 +178,7 @@ export function MessageFlow({
 
       {/* Input bar */}
       <ChatInput
+        sessionId={session?.id ?? null}
         streaming={streaming}
         onSend={onSend}
         onAbort={onAbort}

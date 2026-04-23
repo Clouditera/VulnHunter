@@ -14,6 +14,32 @@
 
 export type ChatRole = "user" | "assistant";
 
+/**
+ * Image attachment on a user prompt.
+ *
+ * File-path approach (per Architect's revised design, matches bossmode):
+ *   1. Frontend uploads the file via `POST /api/chat/sessions/:id/upload`
+ *      → server stores under `{dataDir}/chat-sessions/{sid}/attachments/`
+ *      → returns `{ path: "/workspace/chat-session/attachments/<hash>.ext" }`
+ *   2. Frontend prepends `Attachment: [original filename: x.png](path)`
+ *      lines to the prompt text.
+ *   3. pi's `read` tool natively reads the file (image / code / log).
+ *
+ * `preview` is a local blob URL used for thumbnail rendering inside
+ * MessageBubble — session-lifetime only (revoked on unmount).
+ */
+export interface ChatImageAttachment {
+  /** Local blob URL for <img src> (revoked on unmount). */
+  preview: string;
+  /** Original file name (shown in tooltip). */
+  name: string;
+  /** MIME type, e.g. "image/png". */
+  mimeType: string;
+  /** Server-side container path returned by upload. Optional because the
+   *  UI may hold attachments pre-upload; set after a successful upload. */
+  path?: string;
+}
+
 export interface ChatToolCall {
   /** pi tool name, e.g. "list-findings", "read-finding". */
   tool: string;
@@ -44,6 +70,10 @@ export interface ChatMessage {
   /** Raw chain-of-thought captured from `thinking_*` events. Not rendered
       by default in v1.0 — reserved for a future "Show thinking" toggle. */
   thinking?: string;
+  /** Image attachments. Populated only on user messages that were sent
+      with paste/drop/file-picker attachments. Session-lifetime only
+      (not persisted — see ChatImageAttachment JSDoc). */
+  images?: ChatImageAttachment[];
 }
 
 export interface ChatSession {

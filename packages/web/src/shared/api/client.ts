@@ -324,6 +324,30 @@ export const api = {
           method: "POST",
           body: JSON.stringify({ message }),
         }),
+      /**
+       * Upload a file attachment. Server stores it under the session's
+       * attachments directory and returns `{ path, originalFilename }`.
+       * The path is container-local (`/workspace/chat-session/...`) so
+       * pi's `read` tool can open it directly.
+       */
+      upload: (id: string, file: File) => {
+        const fd = new FormData();
+        fd.append("file", file);
+        return fetch(`/api/chat/sessions/${id}/upload`, {
+          method: "POST",
+          credentials: "include",
+          body: fd,
+        }).then(async (r) => {
+          if (!r.ok) {
+            const text = await r.text().catch(() => "");
+            throw new Error(text || `upload failed (${r.status})`);
+          }
+          return r.json() as Promise<{
+            path: string;
+            originalName: string;
+          }>;
+        });
+      },
       abort: (id: string) =>
         request<{ ok: boolean }>(`/api/chat/sessions/${id}/abort`, {
           method: "POST",

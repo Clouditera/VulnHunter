@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type ChatMessageApi, type ChatSessionApi } from "../../../shared/api/client.js";
-import type { ChatMessage, ChatSession, ChatToolCall } from "../types.js";
+import type {
+  ChatImageAttachment,
+  ChatMessage,
+  ChatSession,
+  ChatToolCall,
+} from "../types.js";
 
 /**
  * Real-data version of the chat hook — talks to the backend via REST +
@@ -405,8 +410,11 @@ export function useChat() {
   );
 
   const sendPrompt = useCallback(
-    async (text: string) => {
-      if (!activeId || !text.trim() || streaming) return;
+    async (text: string, images?: ChatImageAttachment[]) => {
+      // Allow sending when there are images even with empty text
+      // (mirrors ChatGPT / Claude behaviour — "describe this image").
+      const hasImages = !!images && images.length > 0;
+      if (!activeId || (!text.trim() && !hasImages) || streaming) return;
       const sid = activeId;
       // Optimistic user message (the service does not echo user messages
       // back over WS — only assistant/tool events).
@@ -416,6 +424,7 @@ export function useChat() {
         content: text,
         seq: (messagesBySession[sid]?.length ?? 0) + 1,
         created_at: new Date().toISOString(),
+        images: hasImages ? images : undefined,
       };
       setMessagesBySession((prev) => ({
         ...prev,
@@ -424,6 +433,11 @@ export function useChat() {
       setStreaming(true);
       setLastError(null);
       try {
+        // Image attachments are sent as file-path references inside the
+        // prompt text (ChatInput already uploaded them and appended
+        // `Attachment: [name](/workspace/...)` lines). The wire prompt is
+        // plain text; `images` here is local-only metadata for thumbnail
+        // rendering in MessageBubble.
         await api.chat.sessions.prompt(sid, text);
       } catch (err) {
         // Keep the user's message on screen. Append a visible error card
