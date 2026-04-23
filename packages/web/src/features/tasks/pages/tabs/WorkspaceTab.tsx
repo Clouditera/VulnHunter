@@ -207,17 +207,55 @@ export function WorkspaceTab() {
   const [, force] = useState(0);
   useEffect(() => i18n.onChange(() => force((n) => n + 1)), []);
 
+  // Re-init collapse on task switch.
+  useEffect(() => setCollapseInitDone(false), [task.id]);
+
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  /** First-load init flag so we collapse-all once but don't undo user edits. */
+  const [collapseInitDone, setCollapseInitDone] = useState(false);
   const [query, setQuery] = useState("");
   const [leftWidth, setLeftWidth] = useState(26); // percent
   const [dragging, setDragging] = useState(false);
+
+  // Collect all directory paths from the tree once it loads, then collapse
+  // them by default. Users see only the root level on entry and click to
+  // drill in (vscode-style). Search auto-expands matching dirs in flatten,
+  // so this doesn't break find-in-tree UX. Runs once per task.
+  // (declared below; the actual effect runs after `treeData` is fetched)
 
   const { data: treeData, isLoading: treeLoading, error: treeError } = useQuery({
     queryKey: ["workspace-tree", task.id],
     queryFn: () => api.tasks.workspaceTree(task.id),
     staleTime: 60_000,
   });
+
+  // Default-collapse: on first tree load (per task), put every directory
+  // into `collapsed` so only the root level is visible. User clicks to drill
+  // in (vscode-style). Doesn't run again unless the task changes — user
+  // expand/collapse decisions persist within the session.
+  useEffect(() => {
+    if (collapseInitDone) return;
+    const tree = treeData?.tree;
+    if (!tree || tree.length === 0) return;
+    const allDirs = new Set<string>();
+    const walk = (nodes: typeof tree, prefix: string) => {
+      for (const n of nodes) {
+        const path = prefix ? `${prefix}/${n.name}` : n.name;
+        const isDir =
+          n.type === "dir" ||
+          Array.isArray(n.children) ||
+          (!n.type && !/\.[a-zA-Z0-9]{1,6}$/.test(n.name));
+        if (isDir) {
+          allDirs.add(path);
+          if (n.children?.length) walk(n.children, path);
+        }
+      }
+    };
+    walk(tree, "");
+    setCollapsed(allDirs);
+    setCollapseInitDone(true);
+  }, [treeData, collapseInitDone]);
 
   const { data: findingsData } = useQuery({
     queryKey: ["findings", task.id],
@@ -377,12 +415,42 @@ export function WorkspaceTab() {
           <div style={{ flex: 1, overflow: "auto", padding: "6px 0" }}>
             {treeLoading ? (
               <div style={TREE_MSG}>{i18n.t("workspace.loading.tree")}</div>
-            ) : treeError ? (
-              <div style={{ ...TREE_MSG, color: "var(--brand)" }}>
-                {i18n.t("workspace.empty")}
+            ) : treeError || flat.length === 0 ? (
+              // Pick the most useful empty-state message based on task state.
+              // Previously every error showed a red ERR_NOT_FOUND-ish line
+              // which fish (B3) found scary; now we explain WHY there's no
+              // code instead of treating it as an error.
+              <div
+                data-testid="workspace-empty-state"
+                style={{
+                  ...TREE_MSG,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "40px 16px",
+                  textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: "13px", fontWeight: 500 }}>
+                  {task.state === "running" || task.state === "queued"
+                    ? i18n.t("workspace.empty.running")
+                    : task.state === "cancelled"
+                      ? i18n.t("workspace.empty.cancelled")
+                      : task.state === "failed"
+                        ? i18n.t("workspace.empty.failed")
+                        : i18n.t("workspace.empty")}
+                </div>
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--text-secondary)",
+                    opacity: 0.85,
+                  }}
+                >
+                  {i18n.t("workspace.empty.hint")}
+                </div>
               </div>
-            ) : flat.length === 0 ? (
-              <div style={TREE_MSG}>{i18n.t("workspace.empty")}</div>
             ) : (
               flat.map((n) => (
                 <TreeRow

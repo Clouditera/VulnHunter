@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Task, type FindingMeta } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
@@ -121,6 +121,7 @@ function KV({ label, value }: { label: string; value: React.ReactNode }) {
 
 export function OverviewTab() {
   const { task } = useOutletContext<{ task: Task }>();
+  const navigate = useNavigate();
   const [, forceUpdate] = useState(0);
   useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
 
@@ -369,6 +370,16 @@ export function OverviewTab() {
             {topFindings.map((f) => (
               <div
                 key={f.id}
+                data-testid="overview-key-finding"
+                data-finding-key={f.finding_key}
+                onClick={() =>
+                  navigate(
+                    `/tasks/${task.id}/findings?bug=${encodeURIComponent(
+                      f.finding_key,
+                    )}`,
+                  )
+                }
+                title={i18n.t("overview.keyFindingClickHint")}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -378,6 +389,20 @@ export function OverviewTab() {
                   borderRadius: "6px",
                   border: "1px solid var(--border)",
                   fontSize: "13px",
+                  cursor: "pointer",
+                  transition: "background 0.12s, border-color 0.12s",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.background =
+                    "var(--bg-hover)";
+                  (e.currentTarget as HTMLDivElement).style.borderColor =
+                    "var(--brand)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.background =
+                    "var(--bg-page)";
+                  (e.currentTarget as HTMLDivElement).style.borderColor =
+                    "var(--border)";
                 }}
               >
                 <span

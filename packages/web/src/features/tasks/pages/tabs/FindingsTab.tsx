@@ -157,6 +157,14 @@ export function FindingsTab() {
   const [, forceUpdate] = useState(0);
   useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
 
+  // Deep-link support: ?bug=BUG-001 (from Overview Key Findings click)
+  // selects the matching finding once data loads.
+  const initialBugParam = (() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get("bug");
+  })();
+
   const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(
     null,
@@ -193,6 +201,15 @@ export function FindingsTab() {
   });
 
   const allFindings = findingsData?.findings ?? [];
+
+  // Apply ?bug=KEY deep-link once data is available. Runs only when nothing
+  // is selected yet to avoid clobbering subsequent user clicks.
+  useEffect(() => {
+    if (!initialBugParam) return;
+    if (selectedFindingId) return;
+    const match = allFindings.find((f) => f.finding_key === initialBugParam);
+    if (match) setSelectedFindingId(match.id);
+  }, [initialBugParam, allFindings, selectedFindingId]);
 
   /* -------- Filtered findings (left panel) -------- */
 

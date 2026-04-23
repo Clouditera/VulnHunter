@@ -168,10 +168,15 @@ export function TaskDetailPage() {
         {/* Title row: name + status pill inline */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Title + status pill row.
+                Use baseline alignment so the pill's small label sits on
+                the h1's baseline rather than floating above the optical
+                center (B10 fish feedback). lineHeight 1.1 on the h1
+                tightens the bounding box so baseline math is predictable. */}
             <div
               style={{
                 display: "flex",
-                alignItems: "center",
+                alignItems: "baseline",
                 gap: "12px",
                 flexWrap: "wrap",
               }}
@@ -183,11 +188,14 @@ export function TaskDetailPage() {
                   fontWeight: 700,
                   margin: 0,
                   letterSpacing: "-0.01em",
+                  lineHeight: 1.1,
                 }}
               >
                 {task.project_name}
               </h1>
-              <StatusPill state={task.state} />
+              <span style={{ display: "inline-block", lineHeight: 1 }}>
+                <StatusPill state={task.state} />
+              </span>
             </div>
 
             {/* Meta row: Risk · Duration · Started */}
@@ -201,14 +209,32 @@ export function TaskDetailPage() {
                 flexWrap: "wrap",
               }}
             >
-              {risk != null && (
-                <MetaItem icon="shield">
-                  {i18n.t("taskDetail.meta.risk")}:{" "}
-                  <strong style={{ color: riskScoreColor(risk), marginLeft: "4px" }}>
+              {/* Always render the risk row so the shield icon stays visible.
+                  Shows '—' until the scan completes and a score is computed
+                  (matches the prototype). */}
+              <MetaItem icon="shield">
+                {i18n.t("taskDetail.meta.risk")}:{" "}
+                {risk != null ? (
+                  <strong
+                    style={{
+                      color: riskScoreColor(risk),
+                      marginLeft: "4px",
+                    }}
+                  >
                     {risk.toFixed(1)}/10
                   </strong>
-                </MetaItem>
-              )}
+                ) : (
+                  <strong
+                    style={{
+                      color: "var(--text-secondary)",
+                      marginLeft: "4px",
+                      fontWeight: 500,
+                    }}
+                  >
+                    —
+                  </strong>
+                )}
+              </MetaItem>
               <MetaItem icon="clock">
                 {i18n.t("taskDetail.meta.duration")}:{" "}
                 <strong style={{ color: "var(--text-primary)", marginLeft: "4px" }}>
