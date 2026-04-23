@@ -10,6 +10,31 @@ import {
   riskScoreColor,
 } from "../../../../shared/utils/format.js";
 
+/**
+ * Normalize `task.source_meta` — backend postgres returns it as a JSON
+ * string for this column, not a parsed object. Callers expect an object.
+ * Gracefully handles: already-parsed object, string, null, malformed JSON.
+ */
+function parseSourceMeta(
+  raw: Task["source_meta"] | string | null | undefined,
+): {
+  filename?: string;
+  minio_key?: string;
+  size_bytes?: number;
+  git_url?: string;
+  git_branch?: string;
+  [key: string]: unknown;
+} | null {
+  if (!raw) return null;
+  if (typeof raw === "object") return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Human-readable bytes (1.2 MB / 456 KB / 789 B). */
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -147,64 +172,76 @@ export function OverviewTab() {
               : i18n.t("overview.sourceUpload")
           }
         />
-        {/* U8: surface source_meta so users can see exactly what was scanned. */}
-        {task.source_meta?.git_url && (
-          <KV
-            label={i18n.t("overview.gitUrl")}
-            value={
-              <a
-                href={task.source_meta.git_url}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  color: "var(--text-primary)",
-                  fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-                  fontSize: "12px",
-                  wordBreak: "break-all",
-                }}
-              >
-                {task.source_meta.git_url}
-              </a>
-            }
-          />
-        )}
-        {task.source_meta?.git_branch && (
-          <KV
-            label={i18n.t("overview.gitBranch")}
-            value={
-              <code
-                style={{
-                  fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-                  fontSize: "12px",
-                }}
-              >
-                {task.source_meta.git_branch}
-              </code>
-            }
-          />
-        )}
-        {task.source_meta?.filename && (
-          <KV
-            label={i18n.t("overview.filename")}
-            value={
-              <span
-                style={{
-                  fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-                  fontSize: "12px",
-                  wordBreak: "break-all",
-                }}
-              >
-                {task.source_meta.filename}
-              </span>
-            }
-          />
-        )}
-        {typeof task.source_meta?.size_bytes === "number" && (
-          <KV
-            label={i18n.t("overview.size")}
-            value={formatBytes(task.source_meta.size_bytes)}
-          />
-        )}
+        {/* U8: surface source_meta so users can see exactly what was scanned.
+            Backend returns this as a JSON string, so we parse defensively. */}
+        {(() => {
+          const sm = parseSourceMeta(task.source_meta as unknown as string);
+          if (!sm) return null;
+          return (
+            <>
+              {sm.git_url && (
+                <KV
+                  label={i18n.t("overview.gitUrl")}
+                  value={
+                    <a
+                      href={sm.git_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        color: "var(--text-primary)",
+                        fontFamily:
+                          "'SF Mono', Menlo, Consolas, monospace",
+                        fontSize: "12px",
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      {sm.git_url}
+                    </a>
+                  }
+                />
+              )}
+              {sm.git_branch && (
+                <KV
+                  label={i18n.t("overview.gitBranch")}
+                  value={
+                    <code
+                      style={{
+                        fontFamily:
+                          "'SF Mono', Menlo, Consolas, monospace",
+                        fontSize: "12px",
+                      }}
+                    >
+                      {sm.git_branch}
+                    </code>
+                  }
+                />
+              )}
+              {sm.filename && (
+                <KV
+                  label={i18n.t("overview.filename")}
+                  value={
+                    <span
+                      style={{
+                        fontFamily:
+                          "'SF Mono', Menlo, Consolas, monospace",
+                        fontSize: "12px",
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      {sm.filename}
+                    </span>
+                  }
+                />
+              )}
+              {typeof sm.size_bytes === "number" && (
+                <KV
+                  label={i18n.t("overview.size")}
+                  value={formatBytes(sm.size_bytes)}
+                />
+              )}
+            </>
+          );
+        })()}
         {task.credential_label && (
           <KV
             label={i18n.t("overview.credential")}
