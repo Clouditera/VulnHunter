@@ -68,7 +68,6 @@ function flattenFindingsTree(
 ): FlatFileNode[] {
   // Build path → (count, maxSev) lookup from findings.
   const byPath = new Map<string, { count: number; maxSev: string }>();
-  const byLeaf = new Map<string, { count: number; maxSev: string }>();
   for (const f of findings) {
     const raw = normalizePath(f.primary_file ?? "");
     if (!raw) continue;
@@ -79,14 +78,6 @@ function flattenFindingsTree(
       slot.maxSev = maxSeverity(slot.maxSev, sev)!;
     } else {
       byPath.set(raw, { count: 1, maxSev: sev });
-    }
-    const leaf = raw.split("/").pop() ?? raw;
-    const leafSlot = byLeaf.get(leaf);
-    if (leafSlot) {
-      leafSlot.count += 1;
-      leafSlot.maxSev = maxSeverity(leafSlot.maxSev, sev)!;
-    } else {
-      byLeaf.set(leaf, { count: 1, maxSev: sev });
     }
   }
 
@@ -124,7 +115,7 @@ function flattenFindingsTree(
         if (rollup.maxSev)
           dirSev = maxSeverity(dirSev, rollup.maxSev) ?? dirSev;
       } else {
-        // Try exact path match, then suffix match, then leaf name match
+        // Try exact path match, then suffix match
         let hit = byPath.get(path);
         if (!hit) {
           for (const [fp, slot] of byPath) {
@@ -134,7 +125,6 @@ function flattenFindingsTree(
             }
           }
         }
-        if (!hit) hit = byLeaf.get(node.name);
         target.push({
           name: node.name,
           path,
