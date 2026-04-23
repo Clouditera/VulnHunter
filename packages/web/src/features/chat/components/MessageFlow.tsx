@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
+import { api, type LlmCredential } from "../../../shared/api/client.js";
 import type { ChatImageAttachment, ChatMessage, ChatSession } from "../types.js";
 import { MessageBubble } from "./MessageBubble.js";
 import { ChatInput } from "./ChatInput.js";
@@ -54,6 +55,25 @@ export function MessageFlow({
 }) {
   const streamRef = useRef<HTMLDivElement | null>(null);
 
+  // Credentials are loaded once and resolved by id for the topbar chip.
+  // Read-only in v1.0 — Phase 12 Step 2 will add a dropdown to switch
+  // (requires bridge `models.json` + pi `set_model`).
+  const [credentials, setCredentials] = useState<LlmCredential[]>([]);
+  useEffect(() => {
+    let mounted = true;
+    api.settings
+      .listCredentials()
+      .then((res) => {
+        if (mounted) setCredentials(res.credentials);
+      })
+      .catch(() => {
+        /* silent — chip just won't render */
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Auto-scroll to bottom on message growth.
   useEffect(() => {
     const el = streamRef.current;
@@ -98,7 +118,7 @@ export function MessageFlow({
 
   return (
     <section data-testid="chat-center" style={CENTER}>
-      {/* Topbar: session title + worker status indicator */}
+      {/* Topbar: session title + model chip + worker status indicator */}
       <header style={TOPBAR}>
         <h2
           data-testid="chat-session-title"
@@ -116,6 +136,7 @@ export function MessageFlow({
         >
           {session.title}
         </h2>
+        <ModelChip credentials={credentials} credentialId={session.credential_id ?? null} />
         <WorkerBadge state={session.worker_state ?? "idle"} />
       </header>
 
@@ -190,6 +211,64 @@ export function MessageFlow({
 /* -------------------------------------------------------------------------- */
 /*  Bits                                                                      */
 /* -------------------------------------------------------------------------- */
+
+function ModelChip({
+  credentials,
+  credentialId,
+}: {
+  credentials: LlmCredential[];
+  credentialId: string | null;
+}) {
+  // Resolve the session's credential — falls back to the default when
+  // the session has no explicit binding (matches backend behaviour at
+  // worker spawn time).
+  const resolved =
+    (credentialId ? credentials.find((c) => c.id === credentialId) : null) ??
+    credentials.find((c) => c.is_default) ??
+    credentials[0];
+  if (!resolved) return null;
+
+  // Show the short model_id (e.g. "mimo-v2-pro") — it's the most
+  // scannable identifier. Provider goes into the tooltip so power users
+  // can still see it.
+  const label = resolved.model_id || resolved.label || resolved.provider;
+  const tooltip = i18n
+    .t("chat.model.chipTooltip")
+    .replace("{label}", resolved.label || resolved.model_id)
+    .replace("{provider}", resolved.provider)
+    .replace("{proto}", resolved.proto_type);
+
+  return (
+    <span
+      data-testid="chat-model-chip"
+      data-credential-id={resolved.id}
+      title={tooltip}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "5px",
+        padding: "3px 9px",
+        borderRadius: "999px",
+        fontSize: "11px",
+        fontWeight: 500,
+        lineHeight: 1.4,
+        color: "var(--text-secondary)",
+        background: "var(--bg-page)",
+        border: "1px solid var(--border)",
+        maxWidth: "220px",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        cursor: "help",
+      }}
+    >
+      <Icon name="cpu" size={11} strokeWidth={2} />
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+        {label}
+      </span>
+    </span>
+  );
+}
 
 function WorkerBadge({
   state,

@@ -532,6 +532,10 @@ export interface ChatSessionApi {
   updated_at: string;
   preview?: string | null;
   worker_state?: "idle" | "running" | "spawning";
+  /** Id of the LLM credential this session is bound to. `null` means the
+   *  system default is used at spawn time. Backend returns this on
+   *  `/api/chat/sessions` list and `/api/chat/sessions/:id`. */
+  credential_id?: string | null;
 }
 
 export interface ChatToolCallApi {

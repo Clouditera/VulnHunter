@@ -86,6 +86,10 @@ export interface ChatSession {
   /** Server-side worker state. `idle` means the worker container is
       down but can be spawned on next prompt. */
   worker_state?: "idle" | "running" | "spawning";
+  /** LLM credential this session is bound to. `null` = system default.
+      v1.0 is read-only; switching is Phase 12 Step 2 (needs bridge
+      `models.json` + pi `set_model`). */
+  credential_id?: string | null;
 }
 
 /* -------------------------------------------------------------------------- */

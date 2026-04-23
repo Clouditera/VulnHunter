@@ -526,6 +526,7 @@ function toDomainSession(s: ChatSessionApi): ChatSession {
     updated_at: s.updated_at,
     preview: s.preview ?? undefined,
     worker_state: s.worker_state ?? "idle",
+    credential_id: s.credential_id ?? null,
   };
 }
 
