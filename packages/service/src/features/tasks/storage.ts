@@ -39,7 +39,7 @@ export async function createTask(params: {
   const rows = await db<DbTask[]>`
     INSERT INTO tasks (tenant_id, created_by, project_name, source_type, source_meta, auto_skill_ids, credential_id)
     VALUES (${DEFAULT_TENANT_ID}, ${params.createdBy}, ${params.projectName},
-            ${params.sourceType}, ${JSON.stringify(params.sourceMeta)},
+            ${params.sourceType}, ${JSON.stringify(params.sourceMeta)}::jsonb,
             ${params.autoSkillIds ?? []}, ${params.credentialId ?? null})
     RETURNING *
   `;

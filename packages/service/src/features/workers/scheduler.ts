@@ -259,7 +259,7 @@ export class TaskScheduler {
 
     // Save metadata
     if (Object.keys(metadata).length > 0) {
-      await db`UPDATE tasks SET metadata = ${JSON.stringify(metadata)} WHERE id = ${taskId}`;
+      await db`UPDATE tasks SET metadata = ${JSON.stringify(metadata)}::jsonb WHERE id = ${taskId}`;
       logger.info({ taskId, keys: Object.keys(metadata) }, "Task metadata extracted");
     }
   }

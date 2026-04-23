@@ -42,7 +42,7 @@ filesRouter.post("/tasks", async (c) => {
       createdBy: user.userId,
       projectName: file.name.replace(/\.(zip|tar\.gz|tar\.bz2)$/, ""),
       sourceType: "upload",
-      sourceMeta: { filename: file.name, minio_key: minioKey },
+      sourceMeta: { filename: file.name, minio_key: minioKey, size_bytes: file.size },
       credentialId,
     });
 
