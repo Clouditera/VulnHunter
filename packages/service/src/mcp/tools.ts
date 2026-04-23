@@ -203,14 +203,13 @@ export async function listTasks(args: {
     };
   }
 
-  const lines = tasks.map((t) =>
-    `- **${t.project_name}** (${t.id}) [${t.state}] created ${new Date(t.created_at).toLocaleDateString()}${
-      t.duration_ms ? ` (${(t.duration_ms / 1000).toFixed(0)}s)` : ""
-    }`,
+  const header = `Found ${tasks.length} task(s):\n\n| project | id | state | created |\n|---|---|---|---|`;
+  const rows = tasks.map((t) =>
+    `| ${t.project_name} | ${t.id} | ${t.state} | ${new Date(t.created_at).toLocaleDateString()} |`,
   );
 
   return {
-    content: [{ type: "text", text: `Found ${tasks.length} task(s):\n\n${lines.join("\n")}` }],
+    content: [{ type: "text", text: `${header}\n${rows.join("\n")}\n\nUse the full \`id\` column value for subsequent tool calls (e.g. list-findings, read-task-metadata, cancel-task).` }],
   };
 }
 

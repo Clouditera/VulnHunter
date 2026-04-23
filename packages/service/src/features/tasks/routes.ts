@@ -3,6 +3,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import * as taskStorage from "./storage.js";
 import { stopScanWorker, cleanupScanWorkDir } from "../workers/scan-worker.js";
+import { listCredentials } from "../settings/storage.js";
 import { loadConfig } from "../../infra/config.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
@@ -39,7 +40,16 @@ tasksRouter.get("/", async (c) => {
 tasksRouter.get("/:id", async (c) => {
   const task = await taskStorage.getTaskById(c.req.param("id"));
   if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
-  return c.json({ task });
+
+  // Enrich with credential label if set
+  let credential_label: string | null = null;
+  if (task.credential_id) {
+    const creds = await listCredentials();
+    const cred = creds.find((c) => c.id === task.credential_id);
+    credential_label = cred ? `${cred.label || cred.provider} — ${cred.model_id}` : null;
+  }
+
+  return c.json({ task: { ...task, credential_label } });
 });
 
 // POST /api/tasks/:id/cancel

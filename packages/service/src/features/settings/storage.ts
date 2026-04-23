@@ -63,13 +63,48 @@ export async function getCredentialById(id: string): Promise<DecryptedLlmCredent
   return decryptRow(rows[0]);
 }
 
-export async function listCredentials(): Promise<DbLlmCredential[]> {
+export interface ListedLlmCredential extends DbLlmCredential {
+  masked_key: string;
+}
+
+export async function listCredentials(): Promise<ListedLlmCredential[]> {
   const db = getDb();
-  return db<DbLlmCredential[]>`
-    SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default
+  const rows = await db<(DbLlmCredential & {
+    api_key_ciphertext: Buffer;
+    api_key_iv: Buffer;
+    api_key_tag: Buffer;
+  })[]>`
+    SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
+           api_key_ciphertext, api_key_iv, api_key_tag
     FROM llm_credentials
     ORDER BY is_default DESC, created_at DESC
   `;
+
+  return rows.map((row) => {
+    let masked = "••••••••";
+    try {
+      const key = getVault().decrypt({
+        ciphertext: row.api_key_ciphertext,
+        iv: row.api_key_iv,
+        tag: row.api_key_tag,
+      });
+      if (key.length > 8) {
+        masked = `${key.slice(0, 4)}••••${key.slice(-4)}`;
+      }
+    } catch { /* can't decrypt, use default mask */ }
+
+    return {
+      id: row.id,
+      provider: row.provider,
+      proto_type: row.proto_type,
+      base_url: row.base_url,
+      model_id: row.model_id,
+      thinking_effort: row.thinking_effort,
+      label: row.label,
+      is_default: row.is_default,
+      masked_key: masked,
+    };
+  });
 }
 
 export async function deleteCredential(id: string): Promise<boolean> {

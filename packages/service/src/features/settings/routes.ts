@@ -20,8 +20,10 @@ settingsRouter.use("*", requireAuth);
 settingsRouter.get("/credential", async (c) => {
   const cred = await getDefaultCredential();
   if (!cred) return c.json({ credential: null });
+  const key = cred.api_key;
+  const masked_key = key.length > 8 ? `${key.slice(0, 4)}••••${key.slice(-4)}` : "••••••••";
   const { api_key: _ak, api_key_ciphertext: _c, api_key_iv: _i, api_key_tag: _t, ...safe } = cred as typeof cred & Record<string, unknown>;
-  return c.json({ credential: safe });
+  return c.json({ credential: { ...safe, masked_key } });
 });
 
 // GET /api/settings/credentials — list all credentials (no api_key)
@@ -84,41 +86,56 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
 // POST /api/settings/credential/test — test LLM connection
 settingsRouter.post("/credential/test", requireAdmin, async (c) => {
   const body = await c.req.json<{
-    proto_type: string;
+    credential_id?: string; // test using saved credential
+    proto_type?: string;
     base_url?: string;
-    model_id: string;
-    api_key: string;
+    model_id?: string;
+    api_key?: string;
   }>();
 
-  if (!body.api_key || !body.model_id) {
-    return c.json({ ok: false, error: "api_key and model_id required" }, 400);
+  let protoType = body.proto_type ?? "";
+  let baseUrl = (body.base_url ?? "").replace(/\/$/, "");
+  let modelId = body.model_id ?? "";
+  let apiKey = body.api_key ?? "";
+
+  // If credential_id provided, load saved credential
+  if (body.credential_id) {
+    const { getCredentialById } = await import("./storage.js");
+    const cred = await getCredentialById(body.credential_id);
+    if (!cred) return c.json({ ok: false, error: "Credential not found" }, 404);
+    protoType = protoType || cred.proto_type;
+    baseUrl = baseUrl || (cred.base_url ?? "").replace(/\/$/, "");
+    modelId = modelId || cred.model_id;
+    apiKey = apiKey || cred.api_key;
   }
 
-  const baseUrl = (body.base_url ?? "").replace(/\/$/, "");
+  if (!apiKey || !modelId) {
+    return c.json({ ok: false, error: "api_key and model_id required (provide directly or via credential_id)" }, 400);
+  }
 
   try {
     // Try a minimal chat completion request
     // base_url may already include /v1 (e.g. http://host/v1), so use it as-is if present
-    const base = baseUrl || (body.proto_type === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1");
-    const endpoint = body.proto_type === "anthropic"
+    const base = baseUrl || (protoType === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1");
+    const endpoint = protoType === "anthropic"
       ? base + "/messages"
       : base + "/chat/completions";
 
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     let reqBody: string;
 
-    if (body.proto_type === "anthropic") {
-      headers["x-api-key"] = body.api_key;
+    if (protoType === "anthropic") {
+      headers["x-api-key"] = apiKey;
       headers["anthropic-version"] = "2023-06-01";
       reqBody = JSON.stringify({
-        model: body.model_id,
+        model: modelId,
         max_tokens: 1,
         messages: [{ role: "user", content: "hi" }],
       });
     } else {
-      headers["Authorization"] = `Bearer ${body.api_key}`;
+      headers["Authorization"] = `Bearer ${apiKey}`;
       reqBody = JSON.stringify({
-        model: body.model_id,
+        model: modelId,
         max_tokens: 1,
         messages: [{ role: "user", content: "hi" }],
       });
