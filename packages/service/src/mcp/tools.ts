@@ -312,3 +312,60 @@ export async function submitReport(args: {
     };
   }
 }
+
+// ─── create-task ───
+
+export const createTaskSchema = {
+  git_url: z.string().describe("Git repository URL to scan"),
+  git_branch: z.string().optional().default("main").describe("Git branch (default: main)"),
+  project_name: z.string().optional().describe("Project name (defaults to repo name from URL)"),
+};
+
+export async function createMcpTask(args: {
+  git_url: string;
+  git_branch?: string;
+  project_name?: string;
+}): Promise<ToolResult> {
+  const { cloneAndUpload } = await import("../features/files/git-clone.js");
+  const { getDefaultCredential } = await import("../features/settings/storage.js");
+  const config = loadConfig();
+
+  const projectName = args.project_name ??
+    new URL(args.git_url).pathname.split("/").pop()?.replace(/\.git$/, "") ?? "project";
+
+  const cred = await getDefaultCredential();
+
+  const task = await taskStorage.createTask({
+    createdBy: "mcp-agent",
+    projectName,
+    sourceType: "git",
+    sourceMeta: { git_url: args.git_url, git_branch: args.git_branch ?? "main" },
+    credentialId: cred?.id,
+  });
+
+  // Trigger async git clone
+  cloneAndUpload(
+    task.id,
+    args.git_url,
+    args.git_branch ?? "main",
+    config.minio.bucket,
+  ).catch((err) => logger.error({ err, taskId: task.id }, "MCP create-task: git clone failed"));
+
+  notify({ type: "task_state", taskId: task.id, state: "queued" });
+
+  return {
+    content: [{
+      type: "text",
+      text: [
+        `Task created successfully.`,
+        `- **Task ID**: ${task.id}`,
+        `- **Project**: ${projectName}`,
+        `- **Source**: ${args.git_url} (branch: ${args.git_branch ?? "main"})`,
+        `- **State**: queued`,
+        `- **Credential**: ${cred?.label ?? "default"}`,
+        ``,
+        `Git clone is running in the background. The task will start scanning once the code is ready.`,
+      ].join("\n"),
+    }],
+  };
+}

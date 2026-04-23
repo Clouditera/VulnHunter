@@ -21,6 +21,7 @@ import {
   listTasksSchema, listTasks,
   cancelTaskSchema, cancelTask,
   submitReportSchema, submitReport,
+  createTaskSchema, createMcpTask,
 } from "./tools.js";
 
 // Per-MCP-session state (each pi instance gets its own session)
@@ -76,6 +77,13 @@ function createToolServer(): McpServer {
     "Submit a completed report. Called by the report agent after writing report files to /workspace/reports/.",
     submitReportSchema,
     async (args) => submitReport(args),
+  );
+
+  server.tool(
+    "create-task",
+    "Create a new scan task from a Git repository URL. The task will be queued and start scanning once the code is cloned.",
+    createTaskSchema,
+    async (args) => createMcpTask(args),
   );
 
   return server;
