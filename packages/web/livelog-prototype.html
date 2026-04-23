@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Live Log 设计原型 (#18) v2</title>
+    <style>
+      :root {
+        --bg-page: #fafafa;
+        --bg-card: #ffffff;
+        --bg-hover: rgba(0, 0, 0, 0.04);
+        --bg-subtle: #f6f6f6;
+        --border: #e5e5e5;
+        --divider: #ececec;
+        --text-primary: #18181b;
+        --text-secondary: #71717a;
+        --text-tertiary: #a1a1aa;
+        --brand: #dc2626;
+        --status-running: #3b82f6;
+        --status-completed: #22c55e;
+        --status-failed: #dc2626;
+        --status-paused: #f59e0b;
+        --sev-low: #2563eb;
+        /* Semantic event colors on light bg — toned down so they work against white */
+        --event-task: #16a34a; /* green */
+        --event-stage: #b45309; /* amber-brown */
+        --event-tool: #2563eb; /* blue */
+        --event-error: #dc2626; /* red */
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "PingFang SC",
+          "Helvetica Neue", sans-serif;
+        background: var(--bg-page);
+        color: var(--text-primary);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .page {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 32px 24px 96px;
+      }
+      h1 {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 0 0 4px;
+        letter-spacing: -0.01em;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin: 0 0 24px;
+      }
+      h2 {
+        font-size: 14px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-secondary);
+        margin: 32px 0 10px;
+      }
+      h2 em {
+        font-style: normal;
+        color: var(--text-tertiary);
+        font-weight: 500;
+        margin-left: 8px;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      .desc {
+        font-size: 12.5px;
+        color: var(--text-secondary);
+        margin: 6px 0 14px;
+        line-height: 1.6;
+      }
+      .controls {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+      }
+      .controls button {
+        padding: 6px 12px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg-card);
+        color: var(--text-primary);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .controls button:hover {
+        background: var(--bg-hover);
+      }
+
+      /* ───── Status pill ───── */
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.4;
+      }
+      .pill.running {
+        background: rgba(59, 130, 246, 0.12);
+        color: var(--status-running);
+      }
+      .pill.completed {
+        background: rgba(34, 197, 94, 0.12);
+        color: var(--status-completed);
+      }
+      .pill.failed {
+        background: rgba(220, 38, 38, 0.12);
+        color: var(--brand);
+      }
+      .pill.paused {
+        background: rgba(245, 158, 11, 0.12);
+        color: var(--status-paused);
+      }
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+
+      /* ───── Shared ticker ───── */
+      .ticker {
+        flex: 1;
+        min-width: 0;
+        height: 20px;
+        position: relative;
+        overflow: hidden;
+        font-family: "SF Mono", Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 20px;
+      }
+      .ticker-row {
+        position: absolute;
+        inset: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        animation: slide-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+      .ticker .tool {
+        color: var(--event-tool);
+        font-weight: 600;
+      }
+      .ticker .arrow {
+        color: var(--text-tertiary);
+        margin: 0 6px;
+      }
+      .ticker .param {
+        color: var(--text-secondary);
+      }
+      .ticker .stage {
+        color: var(--event-stage);
+        font-weight: 600;
+      }
+      .ticker .error {
+        color: var(--event-error);
+        font-weight: 600;
+      }
+      @keyframes slide-in {
+        from {
+          transform: translateY(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      /* ──────────── Variant A (light, unified) ──────────── */
+      .ll-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        overflow: hidden;
+        margin-bottom: 14px;
+      }
+      .ll-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.12s;
+      }
+      .ll-header:hover {
+        background: var(--bg-hover);
+      }
+      .ll-count {
+        font-size: 12px;
+        color: var(--text-secondary);
+        font-variant-numeric: tabular-nums;
+        flex-shrink: 0;
+      }
+      .ll-chevron {
+        width: 22px;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-secondary);
+        transition: transform 0.2s;
+        flex-shrink: 0;
+      }
+      .ll-card.expanded .ll-chevron {
+        transform: rotate(180deg);
+      }
+
+      .ll-body {
+        border-top: 1px solid var(--divider);
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.28s ease;
+      }
+      .ll-card.expanded .ll-body {
+        max-height: 400px;
+      }
+
+      .ll-tabs {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--divider);
+        background: var(--bg-card);
+      }
+      .ll-tab {
+        padding: 4px 12px;
+        border-radius: 999px;
+        background: transparent;
+        border: 1px solid transparent;
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .ll-tab.active {
+        background: var(--bg-subtle);
+        color: var(--text-primary);
+        border-color: var(--border);
+      }
+      .ll-tab .src-dot {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        margin-right: 5px;
+        vertical-align: 1px;
+      }
+      .autoscroll-toggle {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        color: var(--text-secondary);
+        border: 1px solid var(--border);
+        background: var(--bg-card);
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: 500;
+      }
+      .autoscroll-toggle.on {
+        background: var(--bg-subtle);
+        color: var(--text-primary);
+      }
+
+      /* Light-mode stream — unified palette */
+      .ll-stream-light {
+        background: var(--bg-card);
+        padding: 6px 0;
+        max-height: 320px;
+        overflow: auto;
+        font-family: "SF Mono", Menlo, Consolas, monospace;
+        font-size: 12.5px;
+        line-height: 1.75;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 74px 18px 1fr;
+        gap: 6px;
+        padding: 2px 14px;
+        align-items: center;
+      }
+      .row:hover {
+        background: var(--bg-hover);
+      }
+      .row .time {
+        color: var(--text-tertiary);
+        font-size: 11px;
+      }
+      .row .marker {
+        text-align: center;
+        font-weight: 700;
+        font-size: 11px;
+      }
+      .row .label {
+        color: var(--text-primary);
+      }
+      .row .label .arg {
+        color: var(--text-secondary);
+        font-weight: 400;
+      }
+      .row.task .marker,
+      .row.task .label strong {
+        color: var(--event-task);
+      }
+      .row.stage .marker,
+      .row.stage .label strong {
+        color: var(--event-stage);
+      }
+      .row.tool .marker,
+      .row.tool .label strong {
+        color: var(--event-tool);
+      }
+      .row.error .marker,
+      .row.error .label strong {
+        color: var(--event-error);
+      }
+      /* subtle left accent on the active row's marker column */
+      .row.error {
+        background: rgba(220, 38, 38, 0.03);
+      }
+      .row.stage {
+        background: rgba(180, 83, 9, 0.025);
+      }
+
+      /* ──────────── Variant B v2 — floating pill + expanded panel ──────────── */
+      .demo-frame {
+        position: relative;
+        background: var(--bg-page);
+        border: 2px dashed var(--border);
+        border-radius: 10px;
+        height: 460px;
+        padding: 14px;
+        overflow: hidden;
+      }
+      .demo-frame .placeholder {
+        color: var(--text-secondary);
+        font-size: 12px;
+        max-width: 520px;
+      }
+      .demo-frame .page-title {
+        font-size: 17px;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-bottom: 8px;
+      }
+      .demo-frame .page-meta {
+        display: flex;
+        gap: 14px;
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      /* floating pill — collapsed */
+      .b-pill {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 14px 8px 12px;
+        background: var(--bg-card);
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        font-size: 12px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+        cursor: pointer;
+        transition: transform 0.15s, box-shadow 0.15s;
+        max-width: 440px;
+        z-index: 5;
+      }
+      .b-pill:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+      }
+      .b-pill .dot.running {
+        background: var(--status-running);
+        animation: blink 1.3s steps(2) infinite;
+      }
+      .b-pill .dot.completed {
+        background: var(--status-completed);
+      }
+      .b-pill .dot.paused {
+        background: var(--status-paused);
+      }
+      .b-pill .dot.failed {
+        background: var(--status-failed);
+      }
+      .b-pill .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+      }
+      .b-pill .state-label {
+        font-weight: 600;
+        font-size: 12px;
+      }
+      .b-pill .divider {
+        width: 1px;
+        height: 14px;
+        background: var(--divider);
+      }
+      .b-pill .ticker {
+        height: 16px;
+        font-size: 11.5px;
+        max-width: 220px;
+      }
+      .b-pill .ticker-row {
+        line-height: 16px;
+      }
+      .b-pill .count {
+        color: var(--text-secondary);
+        font-variant-numeric: tabular-nums;
+        font-size: 11px;
+      }
+      .b-pill .open-icon {
+        color: var(--text-secondary);
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0.35;
+        }
+      }
+
+      /* expanded panel (popover above pill) */
+      .b-panel {
+        position: absolute;
+        bottom: 70px;
+        right: 20px;
+        width: 440px;
+        max-height: 380px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+        overflow: hidden;
+        display: none;
+        flex-direction: column;
+        z-index: 6;
+      }
+      .b-panel.open {
+        display: flex;
+      }
+      .b-panel-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--divider);
+        background: var(--bg-subtle);
+      }
+      .b-panel-header .title {
+        flex: 1;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .b-panel-header .close {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: var(--text-secondary);
+        font-size: 18px;
+        line-height: 1;
+        padding: 0 4px;
+      }
+      .b-panel-tabs {
+        display: flex;
+        gap: 4px;
+        padding: 6px 12px;
+        border-bottom: 1px solid var(--divider);
+        background: var(--bg-card);
+      }
+      .b-panel-tab {
+        padding: 3px 10px;
+        border-radius: 999px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: 11.5px;
+        font-weight: 500;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .b-panel-tab.active {
+        background: var(--bg-subtle);
+        color: var(--text-primary);
+        border-color: var(--border);
+      }
+
+      /* meta strip: stage progress + elapsed */
+      .b-meta {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 8px 14px;
+        font-size: 11.5px;
+        color: var(--text-secondary);
+        border-bottom: 1px solid var(--divider);
+        background: var(--bg-card);
+      }
+      .b-meta strong {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      .b-progress {
+        flex: 1;
+        height: 4px;
+        background: var(--divider);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .b-progress-bar {
+        height: 100%;
+        background: var(--status-running);
+        width: 45%;
+        transition: width 0.4s;
+      }
+
+      .b-panel-stream {
+        flex: 1;
+        overflow: auto;
+        background: var(--bg-card);
+        padding: 6px 0;
+        font-family: "SF Mono", Menlo, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.75;
+      }
+
+      .b-panel-footer {
+        display: flex;
+        align-items: center;
+        padding: 8px 14px;
+        border-top: 1px solid var(--divider);
+        background: var(--bg-subtle);
+        font-size: 11px;
+        color: var(--text-secondary);
+      }
+      .b-panel-footer a {
+        color: var(--status-running);
+        cursor: pointer;
+        text-decoration: none;
+        font-weight: 500;
+      }
+      .b-panel-footer a:hover {
+        text-decoration: underline;
+      }
+
+      .note {
+        padding: 10px 14px;
+        background: rgba(59, 130, 246, 0.08);
+        border-left: 3px solid var(--status-running);
+        font-size: 12.5px;
+        line-height: 1.6;
+        color: var(--text-primary);
+        border-radius: 0 6px 6px 0;
+        margin: 12px 0;
+      }
+      .note strong {
+        color: var(--status-running);
+      }
+      .diff {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 16px;
+      }
+      .diff .col {
+        padding: 12px 14px;
+        background: var(--bg-subtle);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+      .diff h3 {
+        font-size: 13px;
+        font-weight: 700;
+        margin: 0 0 8px;
+      }
+      .diff ul {
+        margin: 0;
+        padding: 0 0 0 16px;
+        font-size: 12.5px;
+        line-height: 1.7;
+        color: var(--text-primary);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <h1>Live Log #18 · 设计原型 v2</h1>
+      <p class="subtitle">
+        v2 变更：A 去掉深色 terminal 背景，改为浅色统一色板；B 强化为完整浮层（pill + 可展开 panel
+        + meta 条 + filter tabs + 完整事件流）。
+      </p>
+
+      <!-- ============================================== -->
+      <h2>方向 A · 折叠卡片 <em>浅色统一 · 折叠态与展开态视觉一致</em></h2>
+      <p class="desc">
+        统一 light palette，事件用语义化文字颜色（task=绿 / stage=琥珀 / tool=蓝 /
+        error=红），非深色终端。展开态 filter tabs + 自动滚动开关。
+      </p>
+
+      <div class="controls">
+        <button onclick="setVariantAState('running')">切换 running</button>
+        <button onclick="setVariantAState('paused')">切换 paused</button>
+        <button onclick="setVariantAState('completed')">切换 completed</button>
+        <button onclick="setVariantAState('failed')">切换 failed</button>
+        <button onclick="emitVariantAEvent()">追加新事件 (观察 ticker 动画)</button>
+      </div>
+
+      <div class="ll-card" id="vA" onclick="toggleVariantA()">
+        <div class="ll-header">
+          <span class="pill running" id="vAPill"
+            ><span class="dot"></span><span id="vAPillText">运行中</span></span
+          >
+          <div class="ticker">
+            <div class="ticker-row" id="vATicker">
+              <span class="tool">read_file</span
+              ><span class="arrow">→</span
+              ><span class="param">src/parser/lexer.c</span>
+            </div>
+          </div>
+          <span class="ll-count" id="vACount">12 个事件</span>
+          <div class="ll-chevron">⌄</div>
+        </div>
+        <div class="ll-body" onclick="event.stopPropagation()">
+          <div class="ll-tabs">
+            <button class="ll-tab active">全部</button>
+            <button class="ll-tab"
+              ><span class="src-dot" style="background: #3b82f6"></span
+              >scan</button
+            >
+            <button class="ll-tab"
+              ><span class="src-dot" style="background: #7c3aed"></span
+              >report</button
+            >
+            <button class="autoscroll-toggle on" id="vAAutoScroll"
+              ><span>⇩</span>自动滚动</button
+            >
+          </div>
+          <div class="ll-stream-light" id="vAStream">
+            <div class="row task">
+              <span class="time">14:21:07</span><span class="marker">●</span
+              ><span class="label"><strong>task</strong> started</span>
+            </div>
+            <div class="row stage">
+              <span class="time">14:21:07</span><span class="marker">▶</span
+              ><span class="label"
+                ><strong>stage</strong> <span class="arg">profiler</span></span
+              >
+            </div>
+            <div class="row tool">
+              <span class="time">14:21:09</span><span class="marker">⚙</span
+              ><span class="label"
+                ><strong>read_file</strong>
+                <span class="arg">→ src/parser/lexer.c</span></span
+              >
+            </div>
+            <div class="row tool">
+              <span class="time">14:21:11</span><span class="marker">⚙</span
+              ><span class="label"
+                ><strong>grep</strong>
+                <span class="arg">→ pattern: callback-injection</span></span
+              >
+            </div>
+            <div class="row error">
+              <span class="time">14:21:14</span><span class="marker">✗</span
+              ><span class="label"
+                ><strong>error</strong>
+                <span class="arg">503 Service temporarily unavailable</span></span
+              >
+            </div>
+            <div class="row stage">
+              <span class="time">14:21:18</span><span class="marker">▶</span
+              ><span class="label"
+                ><strong>stage</strong>
+                <span class="arg">analyzer (retry 1/3)</span></span
+              >
+            </div>
+            <div class="row tool">
+              <span class="time">14:21:23</span><span class="marker">⚙</span
+              ><span class="label"
+                ><strong>read_file</strong>
+                <span class="arg">→ src/parser/lexer.c</span></span
+              >
+            </div>
+            <div class="row tool">
+              <span class="time">14:21:25</span><span class="marker">⚙</span
+              ><span class="label"
+                ><strong>read_file</strong>
+                <span class="arg">→ src/runtime/heap.c</span></span
+              >
+            </div>
+            <div class="row tool">
+              <span class="time">14:21:28</span><span class="marker">⚙</span
+              ><span class="label"
+                ><strong>exec</strong>
+                <span class="arg">→ gcc -fsyntax-only clay.h</span></span
+              >
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="note">
+        <strong>配色说明</strong>：事件前缀颜色仅作为语义提示（不影响正文字体色）。
+        task = 绿，stage = 琥珀棕，tool = 蓝，error = 红 + 极浅红背景。整体保持白底
+        + 常规正文色，和你的 Overview 卡片风格一致。
+      </div>
+
+      <!-- ============================================== -->
+      <h2>方向 B · 浮动 Pill + 展开面板 <em>强化版</em></h2>
+      <p class="desc">
+        更完整：pill 在右下角，点击弹出 440×380px 浮层，浮层里包含 filter tabs + meta 条
+        (当前 stage / 耗时 / 进度条) + 事件流 + 底部链接"在新页面打开完整日志"。详情页内容完全不被日志占用。
+      </p>
+
+      <div class="controls">
+        <button onclick="toggleVariantB()">打开 / 关闭浮层</button>
+        <button onclick="emitVariantBEvent()">追加新事件</button>
+      </div>
+
+      <div class="demo-frame">
+        <div>
+          <div class="page-title">clay-ui-lib-v2</div>
+          <div class="page-meta">
+            <span>🛡 风险: —</span>
+            <span>⏱ 耗时: 2m 14s</span>
+            <span>📅 开始于: 2026-04-23 14:21</span>
+          </div>
+          <div class="placeholder" style="margin-top: 16px">
+            ↑ 任务详情内容区（概览卡片 / 漏洞列表 / 报告 / 源代码）<br />
+            ↘ 右下角浮动 pill 常驻展示当前任务进度，点击展开
+          </div>
+        </div>
+
+        <!-- Expanded panel -->
+        <div class="b-panel" id="vBPanel">
+          <div class="b-panel-header">
+            <span class="pill running"><span class="dot"></span>运行中</span>
+            <span class="title">实时日志</span>
+            <button class="close" onclick="toggleVariantB()">✕</button>
+          </div>
+          <div class="b-meta">
+            <span>阶段 <strong>analyzer (3/5)</strong></span>
+            <div class="b-progress"><div class="b-progress-bar"></div></div>
+            <span>耗时 <strong>2m 14s</strong></span>
+          </div>
+          <div class="b-panel-tabs">
+            <button class="b-panel-tab active">全部</button>
+            <button class="b-panel-tab"
+              ><span
+                style="
+                  display: inline-block;
+                  width: 6px;
+                  height: 6px;
+                  border-radius: 50%;
+                  background: #3b82f6;
+                  margin-right: 5px;
+                  vertical-align: 1px;
+                "
+              ></span
+              >scan</button
+            >
+            <button class="b-panel-tab"
+              ><span
+                style="
+                  display: inline-block;
+                  width: 6px;
+                  height: 6px;
+                  border-radius: 50%;
+                  background: #7c3aed;
+                  margin-right: 5px;
+                  vertical-align: 1px;
+                "
+              ></span
+              >report</button
+            >
+            <button
+              class="autoscroll-toggle on"
+              style="margin-left: auto; font-size: 11px"
+              >⇩ 自动滚动</button
+            >
+          </div>
+          <div class="b-panel-stream" id="vBStream">
+            <div class="row task">
+              <span class="time">14:21:07</span><span class="marker">●</span
+              ><span class="label"><strong>task</strong> started</span>
+            </div>
+            <div class="row stage">
+              <span class="time">14:21:07</span><span class="marker">▶</span
+              ><span class="label"
+                ><strong>stage</strong> <span class="arg">profiler</span></span
+              >
+            </div>
+            <div class="row tool">
+              <span class="time">14:21:09</span><span class="marker">⚙</span
+              ><span class="label"
+                ><strong>read_file</strong>
+                <span class="arg">→ src/parser/lexer.c</span></span
+              >
+            </div>
+            <div class="row error">
+              <span class="time">14:21:14</span><span class="marker">✗</span
+              ><span class="label"
+                ><strong>error</strong>
+                <span class="arg">503 Service unavailable</span></span
+              >
+            </div>
+            <div class="row stage">
+              <span class="time">14:21:18</span><span class="marker">▶</span
+              ><span class="label"
+                ><strong>stage</strong>
+                <span class="arg">analyzer (retry 1/3)</span></span
+              >
+            </div>
+            <div class="row tool">
+              <span class="time">14:21:23</span><span class="marker">⚙</span
+              ><span class="label"
+                ><strong>read_file</strong>
+                <span class="arg">→ src/parser/lexer.c</span></span
+              >
+            </div>
+            <div class="row tool">
+              <span class="time">14:21:28</span><span class="marker">⚙</span
+              ><span class="label"
+                ><strong>exec</strong>
+                <span class="arg">→ gcc -fsyntax-only</span></span
+              >
+            </div>
+          </div>
+          <div class="b-panel-footer">
+            <a onclick="alert('打开完整日志页面（未实现）')"
+              >在新页面打开完整日志 →</a
+            >
+          </div>
+        </div>
+
+        <!-- Floating pill (collapsed) -->
+        <div class="b-pill" id="vBPill" onclick="toggleVariantB()">
+          <span class="dot running"></span>
+          <span class="state-label">运行中</span>
+          <span class="divider"></span>
+          <div class="ticker">
+            <div class="ticker-row" id="vBTicker">
+              <span class="tool">read_file</span
+              ><span class="arrow">→</span
+              ><span class="param">src/parser/lexer.c</span>
+            </div>
+          </div>
+          <span class="count" id="vBCount">12</span>
+          <span class="open-icon">↗</span>
+        </div>
+      </div>
+
+      <div class="note">
+        <strong>强化点</strong>：
+        ①pill 带隐约阴影 + hover 上浮反馈；
+        ②展开浮层是独立 popover（不影响页面布局）；
+        ③meta 条显示当前 stage + 进度条 + 实时耗时，直观判断任务健康；
+        ④底部"在新页面打开完整日志"作为深度查看入口；
+        ⑤完成 / 失败态 pill 自动变色，5 秒后淡出消失（可配置）。
+      </div>
+
+      <!-- ============================================== -->
+      <h2>A vs B 对比 <em>同一套 visual system，选择基于布局哲学</em></h2>
+      <div class="diff">
+        <div class="col">
+          <h3>A · Inline 折叠卡片</h3>
+          <ul>
+            <li>✅ 日志是任务详情的一部分，视觉上统一</li>
+            <li>✅ 查看日志不打断浏览流</li>
+            <li>✅ 折叠态占用 50px 高度（几乎无感）</li>
+            <li>⚠️ 展开时会把下方内容推下去</li>
+            <li>⚠️ 切换到漏洞/报告 Tab 时日志不可见</li>
+          </ul>
+        </div>
+        <div class="col">
+          <h3>B · 浮动 Pill + Popover</h3>
+          <ul>
+            <li>✅ 详情页完全不被日志占用</li>
+            <li>✅ 切 Tab 时 pill 常驻可见，一眼可查看状态</li>
+            <li>✅ 浮层打开在右下，符合 VSCode Notification 直觉</li>
+            <li>⚠️ 日志不是"主内容"，容易被忽视</li>
+            <li>⚠️ 需处理多任务场景（一个 pill 还是多 pill）</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>请最终选择 <em>A / B / 混合</em></h2>
+      <ul style="font-size: 13px; line-height: 1.9">
+        <li>
+          <strong>选 A</strong>：inline 折叠卡片 + 浅色统一（当前已很接近，需加深色→浅色 + filter + 自动滚动）
+        </li>
+        <li>
+          <strong>选 B</strong>：浮动 pill + 弹出 popover（改动较大，需新建 floating root 组件）
+        </li>
+        <li>
+          <strong>混合</strong>：比如"多数情况 A inline，切到 Findings/Reports Tab 时退化成 B pill"——
+          让日志永远可见但不越权占用空间
+        </li>
+      </ul>
+    </div>
+
+    <script>
+      // ────── Variant A ──────
+      const vA = document.getElementById("vA");
+      function toggleVariantA() {
+        vA.classList.toggle("expanded");
+      }
+      function setVariantAState(state) {
+        const pill = document.getElementById("vAPill");
+        const text = document.getElementById("vAPillText");
+        pill.className = "pill " + state;
+        text.textContent = {
+          running: "运行中",
+          paused: "已暂停",
+          completed: "已完成",
+          failed: "失败",
+        }[state];
+      }
+      const mockEvents = [
+        {
+          klass: "tool",
+          html:
+            '<span class="tool">read_file</span><span class="arrow">→</span><span class="param">src/parser/lexer.c</span>',
+        },
+        {
+          klass: "tool",
+          html:
+            '<span class="tool">grep</span><span class="arrow">→</span><span class="param">callback-injection</span>',
+        },
+        {
+          klass: "stage",
+          html:
+            '<span class="stage">stage</span><span class="arrow">→</span><span class="param">analyzer</span>',
+        },
+        {
+          klass: "error",
+          html:
+            '<span class="error">error</span><span class="arrow">→</span><span class="param">503 Service unavailable</span>',
+        },
+        {
+          klass: "tool",
+          html:
+            '<span class="tool">read_file</span><span class="arrow">→</span><span class="param">src/runtime/heap.c</span>',
+        },
+        {
+          klass: "tool",
+          html:
+            '<span class="tool">exec</span><span class="arrow">→</span><span class="param">gcc -fsyntax-only</span>',
+        },
+      ];
+
+      let vAEventCount = 12;
+      let vAEventIdx = 0;
+      function emitVariantAEvent() {
+        const t = document.getElementById("vATicker");
+        t.style.animation = "none";
+        t.offsetHeight;
+        t.style.animation = "";
+        const ev = mockEvents[vAEventIdx % mockEvents.length];
+        t.innerHTML = ev.html;
+        vAEventIdx++;
+        vAEventCount++;
+        document.getElementById("vACount").textContent =
+          vAEventCount + " 个事件";
+      }
+
+      // ────── Variant B ──────
+      const vBPanel = document.getElementById("vBPanel");
+      function toggleVariantB() {
+        vBPanel.classList.toggle("open");
+      }
+      let vBEventCount = 12;
+      let vBEventIdx = 0;
+      function emitVariantBEvent() {
+        const t = document.getElementById("vBTicker");
+        t.style.animation = "none";
+        t.offsetHeight;
+        t.style.animation = "";
+        const ev = mockEvents[vBEventIdx % mockEvents.length];
+        t.innerHTML = ev.html;
+        vBEventIdx++;
+        vBEventCount++;
+        document.getElementById("vBCount").textContent = vBEventCount;
+      }
+    </script>
+  </body>
+</html>

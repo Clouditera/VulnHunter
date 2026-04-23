@@ -238,6 +238,7 @@ const ZH: Record<string, string> = {
   "settings.model.title": "模型配置",
   "settings.model.desc": "接入 LLM 服务以驱动安全分析",
   "settings.model.protocol": "协议",
+  "settings.model.protocolHelp": "· OpenAI 兼容：适用于 DeepSeek / MiniMax / Kimi / vLLM / Ollama 等兼容 OpenAI 格式的第三方服务（/v1/chat/completions 端点）\n· OpenAI 官方：适用于 OpenAI Platform 官方 API（/v1/responses 端点）\n· Anthropic 原生：适用于 Anthropic Claude 原生 API（/v1/messages 端点）\n· 选择后点击 '测试连接'，失败则尝试切换协议。大多数第三方 API 网关应选 'OpenAI 兼容'。",
   "settings.model.labelLabel": "标签（可选）",
   "settings.model.labelHint": "为此凭证命名（如 'Mimo 线上'、'Kimi 测试'），方便创建任务/会话时快速识别",
   "settings.model.labelPlaceholder": "留空则显示协议名",
@@ -376,6 +377,8 @@ const ZH: Record<string, string> = {
 
   // LiveLog
   "liveLog.noEvents": "暂无事件…",
+  "liveLog.autoscroll": "自动滚动",
+  "liveLog.resumeScroll": "有新事件 — 点击恢复自动滚动",
   "liveLog.events": "个事件",
   "liveLog.waiting": "等待事件…",
   "liveLog.allSources": "全部",
@@ -645,6 +648,7 @@ const EN: Record<string, string> = {
   "settings.model.title": "Model Configuration",
   "settings.model.desc": "Connect to an LLM provider to power security analysis",
   "settings.model.protocol": "PROTOCOL",
+  "settings.model.protocolHelp": "· OpenAI-compatible: for DeepSeek / MiniMax / Kimi / vLLM / Ollama and other OpenAI-format third-party services (/v1/chat/completions endpoint)\n· OpenAI Platform: for the official OpenAI API (/v1/responses endpoint)\n· Anthropic: for the native Anthropic Claude API (/v1/messages endpoint)\n· After selecting, click 'Test Connection'. If it fails, try a different protocol. Most third-party API gateways should use 'OpenAI-compatible'.",
   "settings.model.labelLabel": "LABEL (OPTIONAL)",
   "settings.model.labelHint": "Name this credential (e.g. 'Mimo prod', 'Kimi dev') to identify it quickly when creating tasks/chats",
   "settings.model.labelPlaceholder": "Leave blank to use protocol name",
@@ -783,6 +787,8 @@ const EN: Record<string, string> = {
 
   // LiveLog
   "liveLog.noEvents": "No events yet…",
+  "liveLog.autoscroll": "Auto-scroll",
+  "liveLog.resumeScroll": "New events — click to resume auto-scroll",
   "liveLog.events": "events",
   "liveLog.waiting": "Waiting for events…",
   "liveLog.allSources": "All",

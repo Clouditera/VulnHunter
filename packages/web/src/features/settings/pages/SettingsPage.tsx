@@ -842,7 +842,39 @@ export function SettingsPage() {
             </Field>
             <div style={{ display: "flex", gap: "12px", marginBottom: "18px" }}>
               <div style={{ flex: 1 }}>
-                <label style={FIELD_LABEL}>{i18n.t("settings.model.protocol")}</label>
+                <label
+                  style={{
+                    ...FIELD_LABEL,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span>{i18n.t("settings.model.protocol")}</span>
+                  <span
+                    data-testid="settings-protocol-help"
+                    title={i18n.t("settings.model.protocolHelp")}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "14px",
+                      height: "14px",
+                      borderRadius: "50%",
+                      border: "1px solid var(--text-tertiary, var(--text-secondary))",
+                      color: "var(--text-secondary)",
+                      fontSize: "9px",
+                      fontWeight: 700,
+                      lineHeight: 1,
+                      cursor: "help",
+                      userSelect: "none",
+                      opacity: 0.7,
+                      textTransform: "none",
+                    }}
+                  >
+                    i
+                  </span>
+                </label>
                 <Select
                   testid="settings-protocol-select"
                   value={protoType}

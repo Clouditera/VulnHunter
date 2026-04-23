@@ -253,65 +253,139 @@ export function LiveLog({ taskId, taskState }: Props) {
         </span>
       </div>
 
-      {/* Expanded state */}
+      {/* Expanded state — Phase 11 #18 fish feedback: light-themed, unified
+          palette with the rest of the app. Semantic event colors carry meaning
+          via prefix font color only, so the panel still reads as a calm
+          white card rather than a dark terminal. */}
       {expanded && (
         <div
           data-testid="live-log-expanded"
           style={{
             marginTop: "8px",
-            background: "var(--terminal-bg)",
-            borderRadius: "6px",
+            background: "var(--bg-card)",
+            border: "1px solid var(--divider)",
+            borderRadius: "8px",
             overflow: "hidden",
           }}
         >
-          {/* Source tabs */}
-          <div style={{ display: "flex", gap: "0", borderBottom: "1px solid var(--log-tab-border)", padding: "0 8px" }}>
-            {["all", ...sources].map((src) => (
-              <button
-                key={src}
-                data-testid={`live-log-tab-${src}`}
-                onClick={() => setActiveSource(src)}
-                style={{
-                  padding: "6px 12px",
-                  border: "none",
-                  background: "transparent",
-                  color: activeSource === src ? "var(--log-tab-active)" : "var(--log-tab-inactive)",
-                  borderBottom: activeSource === src ? "2px solid var(--log-tab-active)" : "2px solid transparent",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {src === "all" ? i18n.t("liveLog.allSources") : (
-                  <span>
-                    <span style={{ color: sourceColor(src), marginRight: "4px" }}>●</span>
-                    {src}
-                  </span>
-                )}
-              </button>
-            ))}
+          {/* Source tabs — pill style matching Tasks page filters */}
+          <div
+            style={{
+              display: "flex",
+              gap: "6px",
+              alignItems: "center",
+              padding: "8px 12px",
+              borderBottom: "1px solid var(--divider)",
+            }}
+          >
+            {["all", ...sources].map((src) => {
+              const active = activeSource === src;
+              return (
+                <button
+                  key={src}
+                  data-testid={`live-log-tab-${src}`}
+                  onClick={() => setActiveSource(src)}
+                  style={{
+                    padding: "4px 12px",
+                    border: `1px solid ${active ? "var(--border)" : "transparent"}`,
+                    borderRadius: "999px",
+                    background: active ? "var(--bg-page)" : "transparent",
+                    color: active
+                      ? "var(--text-primary)"
+                      : "var(--text-secondary)",
+                    fontSize: "12px",
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {src === "all" ? (
+                    i18n.t("liveLog.allSources")
+                  ) : (
+                    <span>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          width: "6px",
+                          height: "6px",
+                          borderRadius: "50%",
+                          background: sourceColor(src),
+                          marginRight: "5px",
+                          verticalAlign: "1px",
+                        }}
+                      />
+                      {src}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              data-testid="live-log-autoscroll"
+              data-on={autoScroll || undefined}
+              onClick={() => {
+                setAutoScroll((v) => !v);
+                if (!autoScroll && streamRef.current) {
+                  streamRef.current.scrollTop =
+                    streamRef.current.scrollHeight;
+                }
+              }}
+              title={i18n.t("liveLog.autoscroll")}
+              style={{
+                marginLeft: "auto",
+                padding: "4px 10px",
+                border: "1px solid var(--border)",
+                borderRadius: "6px",
+                background: autoScroll
+                  ? "var(--bg-page)"
+                  : "var(--bg-card)",
+                color: autoScroll
+                  ? "var(--text-primary)"
+                  : "var(--text-secondary)",
+                fontSize: "11px",
+                fontWeight: 500,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+              }}
+            >
+              <span>⇩</span>
+              {i18n.t("liveLog.autoscroll")}
+            </button>
           </div>
 
-          {/* Event stream — single-line format matching prototype .lls-line */}
+          {/* Event stream — white bg, semantic event prefix colors. */}
           <div
             ref={streamRef}
             style={{
               height: "340px",
               overflow: "auto",
-              padding: "14px 18px",
+              padding: "6px 0",
               fontFamily: "SF Mono, JetBrains Mono, Menlo, monospace",
-              fontSize: "12px",
-              lineHeight: 1.85,
-              color: "var(--code-text)",
+              fontSize: "12.5px",
+              lineHeight: 1.75,
+              background: "var(--bg-card)",
+              color: "var(--text-primary)",
             }}
             onScroll={(e) => {
               const el = e.currentTarget;
-              const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
-              setAutoScroll(atBottom);
+              const atBottom =
+                el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+              if (atBottom !== autoScroll) setAutoScroll(atBottom);
             }}
           >
             {filteredEvents.length === 0 ? (
-              <div style={{ color: "var(--log-text-dim)", padding: "6px 0" }}>
+              <div
+                style={{
+                  color: "var(--text-secondary)",
+                  padding: "12px 18px",
+                  fontSize: "12.5px",
+                }}
+              >
                 {i18n.t("liveLog.noEvents")}
               </div>
             ) : (
@@ -321,27 +395,29 @@ export function LiveLog({ taskId, taskState }: Props) {
             )}
           </div>
 
-          {/* Auto-scroll hint */}
           {!autoScroll && isRunning && (
             <div
               style={{
                 position: "sticky",
                 bottom: 0,
                 padding: "6px 12px",
-                background: "var(--log-pill-bg)",
-                color: "var(--log-pill-text)",
+                background: "var(--bg-page)",
+                borderTop: "1px solid var(--divider)",
+                color: "var(--text-primary)",
                 fontSize: "11px",
                 cursor: "pointer",
                 textAlign: "center",
+                fontWeight: 500,
               }}
               onClick={() => {
                 setAutoScroll(true);
                 if (streamRef.current) {
-                  streamRef.current.scrollTop = streamRef.current.scrollHeight;
+                  streamRef.current.scrollTop =
+                    streamRef.current.scrollHeight;
                 }
               }}
             >
-              ↓ {events.length - filteredEvents.length} new events — click to resume
+              ↓ {i18n.t("liveLog.resumeScroll")}
             </div>
           )}
         </div>
@@ -369,87 +445,133 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
   let param = "";
   let dur = ev.duration_ms;
 
+  // Light-palette semantic colors (fish #18 feedback):
+  // task = green, stage = amber-brown, tool = blue, error = red.
+  // Subtle full-row background tint for error/stage so attention-worthy
+  // events pop without looking like a dark terminal.
+  let rowBg: string | undefined;
+  let toolColor = "var(--sev-low)"; // #2563eb blue
+
   if (ev.type === "tool_call") {
-    icon = ev.status === "error"
-      ? { char: "✕", color: "#ef4444" }
-      : ev.status === "success"
-        ? { char: "✓", color: "#10b981" }
-        : { char: "⋯", color: "#f59e0b", pulse: true };
+    icon =
+      ev.status === "error"
+        ? { char: "✕", color: "#dc2626" }
+        : ev.status === "success"
+          ? { char: "✓", color: "#16a34a" }
+          : { char: "⋯", color: "#b45309", pulse: true };
     tool = ev.tool ?? "";
-    // strip redundant "<tool>: " prefix from youngflow args_summary
     let a = ev.args_summary ?? "";
     if (tool && a.startsWith(`${tool}: `)) a = a.slice(tool.length + 2);
     param = a;
+    toolColor = "#2563eb";
+    if (ev.status === "error") {
+      rowBg = "rgba(220,38,38,0.03)";
+      toolColor = "#dc2626";
+    }
   } else if (ev.type === "stage_start") {
-    icon = { char: "▸", color: "#f59e0b" };
+    icon = { char: "▸", color: "#b45309" };
     tool = "stage";
     param = `${ev.stage ?? ""} starting`;
     dur = undefined;
+    toolColor = "#b45309";
+    rowBg = "rgba(180,83,9,0.025)";
   } else if (ev.type === "stage_end") {
-    icon = { char: "✓", color: "#10b981" };
+    icon = { char: "✓", color: "#16a34a" };
     tool = "stage";
     param = `${ev.stage ?? ""} done`;
     dur = undefined;
-  } else if (ev.type === "task_status") {
-    icon = { char: "●", color: "#93c5fd" };
+    toolColor = "#16a34a";
+  } else if (ev.type === "task_status" || ev.type === "task") {
+    icon = { char: "●", color: "#16a34a" };
     tool = "task";
     param = ev.state ?? "";
     dur = undefined;
+    toolColor = "#16a34a";
   } else if (ev.type === "error") {
-    icon = { char: "✕", color: "#ef4444" };
+    icon = { char: "✕", color: "#dc2626" };
     tool = "error";
-    param = (ev as LiveLogEvent & { summary?: string }).summary ?? "unknown";
+    param =
+      (ev as LiveLogEvent & { summary?: string; message?: string }).summary ??
+      (ev as LiveLogEvent & { message?: string }).message ??
+      "unknown";
     dur = undefined;
+    toolColor = "#dc2626";
+    rowBg = "rgba(220,38,38,0.03)";
   } else {
-    icon = { char: "·", color: "#737373" };
+    icon = { char: "·", color: "var(--text-secondary)" };
     tool = ev.type;
     param = "";
     dur = undefined;
+    toolColor = "var(--text-secondary)";
   }
 
   return (
     <div
       data-testid="live-log-entry"
+      data-event-type={ev.type}
       style={{
-        display: "block",
+        display: "grid",
+        gridTemplateColumns: "72px 18px 1fr",
+        gap: "6px",
+        alignItems: "baseline",
+        padding: "2px 14px",
+        background: rowBg,
         whiteSpace: "nowrap",
         overflow: "hidden",
         textOverflow: "ellipsis",
       }}
     >
-      <span data-testid="log-entry-timestamp" style={{ color: "#6b7280", marginRight: "10px" }}>
-        [{ts}]
+      <span
+        data-testid="log-entry-timestamp"
+        style={{
+          color: "var(--text-secondary)",
+          opacity: 0.75,
+          fontSize: "11.5px",
+        }}
+      >
+        {ts}
       </span>
       <span
         style={{
-          display: "inline-block",
-          width: "14px",
           textAlign: "center",
-          marginRight: "6px",
           color: icon.color,
+          fontWeight: 700,
           animation: icon.pulse ? "ls-pulse 1.2s infinite" : undefined,
         }}
       >
         {icon.char}
       </span>
-      {tool && (
-        <span data-testid="log-entry-tool" style={{ color: "#93c5fd", fontWeight: 600 }}>
-          {tool}
-        </span>
-      )}
-      {param && (
-        <>
-          <span style={{ color: "#d4d4d4" }}>({param})</span>
-        </>
-      )}
-      {dur != null && (
-        <span
-          data-testid="log-entry-status"
-          style={{ color: "#737373", marginLeft: "8px" }}
-        >
-          · {dur}ms
-        </span>
-      )}
+      <span
+        style={{
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {tool && (
+          <span
+            data-testid="log-entry-tool"
+            style={{ color: toolColor, fontWeight: 600 }}
+          >
+            {tool}
+          </span>
+        )}
+        {param && (
+          <span style={{ color: "var(--text-secondary)" }}> {param}</span>
+        )}
+        {dur != null && (
+          <span
+            data-testid="log-entry-status"
+            style={{
+              color: "var(--text-secondary)",
+              marginLeft: "8px",
+              opacity: 0.6,
+            }}
+          >
+            · {dur}ms
+          </span>
+        )}
+      </span>
     </div>
   );
 }
