@@ -1,5 +1,6 @@
 /**
  * POC/EXP Settings section — DeVeye Server configuration + test connection.
+ * Matches SettingsCard visual pattern (borderRadius: 12px, padding: 24px).
  */
 
 import { useState, useEffect } from "react";
@@ -17,7 +18,6 @@ export function PocSettingsSection() {
     queryKey: ["poc-settings"],
     queryFn: () => api.settings.getPocSettings(),
   });
-
   const settings = data?.settings;
 
   const [serverUrl, setServerUrl] = useState("");
@@ -27,8 +27,8 @@ export function PocSettingsSection() {
   const [showToken, setShowToken] = useState(false);
   const [helpExpanded, setHelpExpanded] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; server_version?: string; error?: string } | null>(null);
+  const [saveLabel, setSaveLabel] = useState<"default" | "saving" | "saved">("default");
 
-  // Sync from server data
   useEffect(() => {
     if (settings) {
       setServerUrl(settings.deveye_server_url ?? "");
@@ -46,6 +46,10 @@ export function PocSettingsSection() {
         poc_timeout_s: Number(timeout) || 1800,
         default_concurrency: Number(concurrency) || 1,
       }),
+    onSuccess: () => {
+      setSaveLabel("saved");
+      setTimeout(() => setSaveLabel("default"), 2000);
+    },
   });
 
   const testMut = useMutation({
@@ -60,174 +64,129 @@ export function PocSettingsSection() {
 
   return (
     <section style={CARD} data-testid="settings-card-poc">
-      {/* Header */}
-      <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--divider)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={ICON_TILE}>
-            <Icon name="shield" size={18} />
-          </div>
-          <div>
-            <div style={{ fontSize: "14px", fontWeight: 600 }}>POC/EXP 设置</div>
-            <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "2px" }}>
-              配置 DeVeye 服务端地址，用于漏洞复现时的浏览器自动化
-            </div>
-          </div>
-        </div>
+      {/* Header — matches SettingsCard pattern */}
+      <div style={{ marginBottom: "20px" }}>
+        <h3 style={HEADER_TITLE}>
+          <Icon name="shield" size={18} style={{ color: "var(--text-secondary)" }} />
+          <span>{i18n.t("settings.poc.title")}</span>
+        </h3>
+        <p style={HEADER_DESC}>{i18n.t("settings.poc.desc")}</p>
       </div>
 
-      <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
-        {/* Help banner */}
-        <div style={HELP_BANNER}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <Icon name="alert-triangle" size={14} style={{ color: "#2563eb", flexShrink: 0 }} />
-            <span style={{ fontSize: "13px", color: "#1e40af" }}>
-              DeVeye 是 VulnHunt 配套的远程浏览器自动化工具，用于 POC/EXP 漏洞复现时自动操作浏览器。
-            </span>
-          </div>
-          <button
-            onClick={() => setHelpExpanded(!helpExpanded)}
-            style={{ ...GHOST_BTN, color: "#2563eb", marginTop: "6px", fontSize: "12px" }}
-          >
-            {helpExpanded ? "▾" : "▸"} 如何安装和启动 DeVeye Server
-          </button>
-          {helpExpanded && (
-            <div style={{ marginTop: "10px", fontSize: "12px", lineHeight: 1.7, color: "#374151" }}>
-              <p style={{ margin: "0 0 8px" }}>1. 下载 DeVeye CLI（需版本 ≥ v1.20.0）</p>
-              <p style={{ margin: "0 0 8px" }}>2. 在有 GUI + Chrome 的机器上启动 Server：</p>
-              <pre style={CODE_BLOCK_STYLE}>
-                deveye server start --host 0.0.0.0 --port 9888 --token &lt;your-token&gt;
-              </pre>
-              <p style={{ margin: "8px 0" }}>3. 确保 VulnHunt 容器能网络访问到该机器（建议填写内网 IP）</p>
-              <p style={{ margin: "0" }}>4. 返回此页面，填入 URL + Token，点击"测试连接"验证</p>
-            </div>
-          )}
+      {/* Help banner */}
+      <div style={HELP_BANNER}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <Icon name="file-text" size={14} style={{ color: "#2563eb", flexShrink: 0 }} />
+          <span style={{ fontSize: "13px", color: "#1e40af" }}>
+            {i18n.t("settings.poc.help.title")}。{i18n.t("settings.poc.help.desc")}
+          </span>
         </div>
+        <button
+          onClick={() => setHelpExpanded(!helpExpanded)}
+          style={{ ...GHOST_BTN, color: "#2563eb", marginTop: "6px", fontSize: "12px" }}
+        >
+          {helpExpanded ? "▾" : "▸"} {i18n.t("settings.poc.help.install")}
+        </button>
+        {helpExpanded && (
+          <div style={{ marginTop: "10px", fontSize: "12px", lineHeight: 1.7, color: "#374151" }}>
+            <p style={{ margin: "0 0 8px" }}>1. {i18n.t("settings.poc.help.step1")}</p>
+            <p style={{ margin: "0 0 8px" }}>2. {i18n.t("settings.poc.help.step2")}</p>
+            <pre style={CODE_BLOCK}>
+              deveye server start --host 0.0.0.0 --port 9888 --token &lt;your-token&gt;
+            </pre>
+            <p style={{ margin: "8px 0" }}>3. {i18n.t("settings.poc.help.step3")}</p>
+            <p style={{ margin: "0" }}>4. {i18n.t("settings.poc.help.step4")}</p>
+          </div>
+        )}
+      </div>
 
-        {/* Server URL */}
+      {/* Form fields */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px" }}>
         <div>
-          <label style={LABEL}>DeVeye Server URL</label>
+          <label style={LABEL}>{i18n.t("settings.poc.serverUrl")}</label>
           <input
             value={serverUrl}
             onChange={(e) => { setServerUrl(e.target.value); setTestResult(null); }}
             placeholder="ws://192.168.x.x:9888"
             style={INPUT}
           />
-          <div style={HINT}>支持 ws:// 或 wss://（TLS）</div>
+          <div style={HINT}>{i18n.t("settings.poc.serverUrlHint")}</div>
         </div>
 
-        {/* Token */}
         <div>
-          <label style={LABEL}>访问 Token</label>
+          <label style={LABEL}>{i18n.t("settings.poc.token")}</label>
           <div style={{ position: "relative" }}>
             <input
               type={showToken ? "text" : "password"}
               value={token}
               onChange={(e) => { setToken(e.target.value); setTestResult(null); }}
-              placeholder="与 Server 启动时的 --token 参数一致"
+              placeholder={i18n.t("settings.poc.tokenHint")}
               style={{ ...INPUT, paddingRight: "40px" }}
             />
             <button
               type="button"
               onClick={() => setShowToken(!showToken)}
-              style={{
-                position: "absolute",
-                right: "8px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                ...GHOST_BTN,
-                padding: "4px",
-              }}
+              style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", ...GHOST_BTN, padding: "4px" }}
             >
               <Icon name={showToken ? "eye-off" : "eye"} size={14} />
             </button>
           </div>
         </div>
 
-        {/* Timeout + Concurrency row */}
         <div style={{ display: "flex", gap: "16px" }}>
           <div style={{ flex: 1 }}>
-            <label style={LABEL}>默认超时（秒）</label>
-            <input
-              type="number"
-              value={timeout}
-              onChange={(e) => setTimeout_(e.target.value)}
-              min={60}
-              max={7200}
-              style={INPUT}
-            />
+            <label style={LABEL}>{i18n.t("settings.poc.timeout")}</label>
+            <input type="number" value={timeout} onChange={(e) => setTimeout_(e.target.value)} min={60} max={7200} style={INPUT} />
           </div>
           <div style={{ flex: 1 }}>
-            <label style={LABEL}>默认并发</label>
-            <input
-              type="number"
-              value={concurrency}
-              onChange={(e) => setConcurrency(e.target.value)}
-              min={1}
-              max={5}
-              style={INPUT}
-            />
+            <label style={LABEL}>{i18n.t("settings.poc.concurrency")}</label>
+            <input type="number" value={concurrency} onChange={(e) => setConcurrency(e.target.value)} min={1} max={5} style={INPUT} />
           </div>
         </div>
 
         {/* Test result */}
         {testResult && (
-          <div
-            style={{
-              padding: "10px 14px",
-              borderRadius: "6px",
-              fontSize: "12px",
-              lineHeight: 1.5,
-              background: testResult.ok ? "#dcfce7" : "#fee2e2",
-              color: testResult.ok ? "#166534" : "#991b1b",
-              border: `1px solid ${testResult.ok ? "#bbf7d0" : "#fecaca"}`,
-            }}
-          >
+          <div style={{
+            padding: "10px 14px",
+            borderRadius: "6px",
+            fontSize: "12px",
+            lineHeight: 1.5,
+            background: testResult.ok ? "#dcfce7" : "#fee2e2",
+            color: testResult.ok ? "#166534" : "#991b1b",
+            border: `1px solid ${testResult.ok ? "#bbf7d0" : "#fecaca"}`,
+          }}>
             {testResult.ok ? (
-              <>✓ 连接成功{testResult.server_version ? ` · DeVeye Server ${testResult.server_version}` : ""}</>
+              <>✓ {i18n.t("settings.poc.testSuccess")}{testResult.server_version ? ` · DeVeye Server ${testResult.server_version}` : ""}</>
             ) : (
               <>
-                ✕ 连接失败
+                ✕ {i18n.t("settings.poc.testFailed")}
                 {testResult.error && <div style={{ marginTop: "4px", opacity: 0.8 }}>{testResult.error}</div>}
-                <div style={{ marginTop: "4px", opacity: 0.7 }}>
-                  提示：检查 Server 是否启动 + 防火墙端口 + Token 是否正确
-                </div>
               </>
             )}
           </div>
         )}
 
         {/* Actions */}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
           <button
             onClick={() => testMut.mutate()}
             disabled={!serverUrl || testMut.isPending}
             style={{
-              ...GHOST_BTN,
-              padding: "8px 16px",
-              border: "1px solid var(--border)",
-              borderRadius: "6px",
-              fontSize: "13px",
+              ...OUTLINE_BTN,
               opacity: !serverUrl || testMut.isPending ? 0.5 : 1,
             }}
           >
-            {testMut.isPending ? "连接中..." : "测试连接"}
+            {testMut.isPending ? i18n.t("settings.poc.testing") : i18n.t("settings.poc.testConnection")}
           </button>
           <button
-            onClick={() => saveMut.mutate()}
+            onClick={() => { setSaveLabel("saving"); saveMut.mutate(); }}
             disabled={saveMut.isPending}
             style={{
-              padding: "8px 16px",
-              border: "none",
-              borderRadius: "6px",
-              background: "var(--brand)",
-              color: "var(--btn-primary-text, #fff)",
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: "pointer",
+              ...PRIMARY_BTN,
               opacity: saveMut.isPending ? 0.6 : 1,
             }}
           >
-            {saveMut.isPending ? "保存中..." : saveMut.isSuccess ? "✓ 已保存" : "保存"}
+            {saveLabel === "saving" ? "..." : saveLabel === "saved" ? `✓ ${i18n.t("settings.poc.saveSuccess")}` : i18n.t("settings.poc.save")}
           </button>
         </div>
       </div>
@@ -235,26 +194,31 @@ export function PocSettingsSection() {
   );
 }
 
-/* ── Styles ── */
+/* ── Styles matching SettingsCard pattern ── */
 
 const CARD: CSSProperties = {
   background: "var(--bg-card)",
   border: "1px solid var(--border)",
-  borderRadius: "10px",
-  overflow: "hidden",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+  borderRadius: "12px",
+  padding: "24px",
+  marginBottom: "16px",
 };
 
-const ICON_TILE: CSSProperties = {
-  width: "36px",
-  height: "36px",
-  borderRadius: "8px",
-  background: "var(--bg-page)",
+const HEADER_TITLE: CSSProperties = {
+  fontSize: "15px",
+  fontWeight: 600,
+  margin: "0 0 4px",
   display: "flex",
   alignItems: "center",
-  justifyContent: "center",
+  gap: "8px",
+  color: "var(--text-primary)",
+};
+
+const HEADER_DESC: CSSProperties = {
+  fontSize: "13px",
   color: "var(--text-secondary)",
-  flexShrink: 0,
+  opacity: 0.85,
+  margin: 0,
 };
 
 const LABEL: CSSProperties = {
@@ -293,6 +257,29 @@ const GHOST_BTN: CSSProperties = {
   padding: 0,
 };
 
+const OUTLINE_BTN: CSSProperties = {
+  padding: "8px 16px",
+  border: "1px solid var(--border)",
+  borderRadius: "6px",
+  background: "transparent",
+  color: "var(--text-primary)",
+  fontSize: "13px",
+  fontWeight: 500,
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+
+const PRIMARY_BTN: CSSProperties = {
+  padding: "8px 16px",
+  border: "none",
+  borderRadius: "6px",
+  background: "var(--brand)",
+  color: "var(--btn-primary-text, #fff)",
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
 const HELP_BANNER: CSSProperties = {
   background: "#eff6ff",
   border: "1px solid #bfdbfe",
@@ -300,7 +287,7 @@ const HELP_BANNER: CSSProperties = {
   padding: "12px 14px",
 };
 
-const CODE_BLOCK_STYLE: CSSProperties = {
+const CODE_BLOCK: CSSProperties = {
   margin: "4px 0",
   padding: "8px 12px",
   background: "var(--bg-page)",

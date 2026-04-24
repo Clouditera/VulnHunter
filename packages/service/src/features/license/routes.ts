@@ -11,6 +11,8 @@ systemRouter.get("/status", async (c) => {
   // Session check via cookie (if set, auth middleware already ran; here we check presence)
   const isAuthenticated = !!c.get("user");
 
+  const sessionUser = c.get("user");
+
   return c.json({
     license: {
       status: licenseState.status,
@@ -21,6 +23,13 @@ systemRouter.get("/status", async (c) => {
     has_admin: hasAdmin,
     is_authenticated: isAuthenticated,
     installation_id: licenseService.getInstallationId(),
+    user: sessionUser
+      ? {
+          id: sessionUser.userId,
+          email: sessionUser.email,
+          role: sessionUser.role,
+        }
+      : null,
   });
 });
 

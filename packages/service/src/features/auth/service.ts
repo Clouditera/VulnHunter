@@ -41,7 +41,7 @@ export async function login(params: {
   password: string;
   ip?: string;
   userAgent?: string;
-}): Promise<{ sessionId: string } | { error: "locked" | "invalid_credentials" }> {
+}): Promise<{ sessionId: string; user: storage.DbUser } | { error: "locked" | "invalid_credentials" }> {
   const ip = params.ip ?? "unknown";
 
   if (checkLockout(ip, params.email)) {
@@ -67,8 +67,11 @@ export async function login(params: {
     userAgent: params.userAgent,
   });
 
+  // Update last login timestamp
+  await storage.updateLastLogin(user.id);
+
   logger.info({ userId: user.id, email: user.email }, "User logged in");
-  return { sessionId };
+  return { sessionId, user };
 }
 
 export async function logout(sessionId: string): Promise<void> {
@@ -107,6 +110,45 @@ export async function bootstrap(params: {
 
   logger.info({ email: params.email }, "Admin account created via bootstrap");
   return { success: true };
+}
+
+export async function createUserAccount(params: {
+  email: string;
+  password: string;
+  displayName?: string;
+  role: "admin" | "member";
+}): Promise<storage.DbUser> {
+  const passwordHash = await bcrypt.hash(params.password, BCRYPT_COST);
+  return storage.createUser({
+    email: params.email,
+    passwordHash,
+    role: params.role,
+    displayName: params.displayName,
+    mustChangePassword: true,
+  });
+}
+
+export async function changePassword(
+  userId: string,
+  oldPassword: string,
+  newPassword: string,
+): Promise<{ ok: true } | { error: string }> {
+  const user = await storage.getUserById(userId);
+  if (!user) return { error: "User not found" };
+
+  const valid = await bcrypt.compare(oldPassword, user.password_hash);
+  if (!valid) return { error: "Invalid current password" };
+
+  const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
+  await storage.updateUser(userId, { passwordHash, mustChangePassword: false });
+  logger.info({ userId }, "Password changed");
+  return { ok: true };
+}
+
+export async function forceChangePassword(userId: string, newPassword: string): Promise<void> {
+  const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
+  await storage.updateUser(userId, { passwordHash, mustChangePassword: false });
+  logger.info({ userId }, "Password force-changed (first login)");
 }
 
 export { hasAnyAdmin } from "./storage.js";

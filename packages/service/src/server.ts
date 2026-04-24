@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import type { Server } from "node:http";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { authRouter } from "./features/auth/index.js";
+import { authRouter, userRouter } from "./features/auth/index.js";
 import { systemRouter } from "./features/license/index.js";
 import { tasksRouter } from "./features/tasks/index.js";
 import { filesRouter } from "./features/files/index.js";
@@ -34,6 +34,7 @@ export function createApp(): Hono {
   // Public routes (no license, no auth)
   app.route("/api/system", systemRouter);
   app.route("/api/auth", authRouter);
+  app.route("/api/users", userRouter);
 
   // Health check
   app.get("/health", (c) => c.json({ ok: true }));

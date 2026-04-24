@@ -9,6 +9,11 @@ export interface DbUser {
   password_hash: string;
   role: string;
   status: string;
+  display_name: string;
+  must_change_password: boolean;
+  last_login_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface DbSession {
@@ -18,10 +23,12 @@ export interface DbSession {
   expires_at: Date;
 }
 
+const USER_COLS = "id, tenant_id, email, password_hash, role, status, display_name, must_change_password, last_login_at, created_at, updated_at";
+
 export async function findUserByEmail(email: string): Promise<DbUser | null> {
   const db = getDb();
   const rows = await db<DbUser[]>`
-    SELECT id, tenant_id, email, password_hash, role, status
+    SELECT ${db(USER_COLS)}
     FROM users
     WHERE tenant_id = ${DEFAULT_TENANT_ID} AND email = ${email}
     LIMIT 1
@@ -33,12 +40,21 @@ export async function createUser(params: {
   email: string;
   passwordHash: string;
   role: "admin" | "member";
+  displayName?: string;
+  mustChangePassword?: boolean;
 }): Promise<DbUser> {
   const db = getDb();
   const rows = await db<DbUser[]>`
-    INSERT INTO users (tenant_id, email, password_hash, role)
-    VALUES (${DEFAULT_TENANT_ID}, ${params.email}, ${params.passwordHash}, ${params.role})
-    RETURNING id, tenant_id, email, password_hash, role, status
+    INSERT INTO users (tenant_id, email, password_hash, role, display_name, must_change_password)
+    VALUES (
+      ${DEFAULT_TENANT_ID},
+      ${params.email},
+      ${params.passwordHash},
+      ${params.role},
+      ${params.displayName ?? params.email.split("@")[0]},
+      ${params.mustChangePassword ?? false}
+    )
+    RETURNING *
   `;
   return rows[0];
 }
@@ -93,8 +109,60 @@ export async function deleteSession(sessionId: string): Promise<void> {
 export async function getUserById(userId: string): Promise<DbUser | null> {
   const db = getDb();
   const rows = await db<DbUser[]>`
-    SELECT id, tenant_id, email, password_hash, role, status
-    FROM users WHERE id = ${userId} LIMIT 1
+    SELECT * FROM users WHERE id = ${userId} LIMIT 1
   `;
   return rows[0] ?? null;
+}
+
+export async function listUsers(): Promise<DbUser[]> {
+  const db = getDb();
+  return db<DbUser[]>`
+    SELECT * FROM users
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ORDER BY created_at ASC
+  `;
+}
+
+export async function updateUser(
+  id: string,
+  fields: {
+    displayName?: string;
+    role?: string;
+    status?: string;
+    passwordHash?: string;
+    mustChangePassword?: boolean;
+  },
+): Promise<void> {
+  const db = getDb();
+  await db`
+    UPDATE users SET
+      display_name = COALESCE(${fields.displayName ?? null}, display_name),
+      role = COALESCE(${fields.role ?? null}, role),
+      status = COALESCE(${fields.status ?? null}, status),
+      password_hash = COALESCE(${fields.passwordHash ?? null}, password_hash),
+      must_change_password = COALESCE(${fields.mustChangePassword ?? null}, must_change_password),
+      updated_at = now()
+    WHERE id = ${id}
+  `;
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  const db = getDb();
+  // Delete sessions first
+  await db`DELETE FROM sessions WHERE user_id = ${id}`;
+  await db`DELETE FROM users WHERE id = ${id}`;
+}
+
+export async function countAdmins(): Promise<number> {
+  const db = getDb();
+  const rows = await db<{ count: string }[]>`
+    SELECT COUNT(*) as count FROM users
+    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND role = 'admin' AND status = 'active'
+  `;
+  return Number(rows[0].count);
+}
+
+export async function updateLastLogin(userId: string): Promise<void> {
+  const db = getDb();
+  await db`UPDATE users SET last_login_at = now() WHERE id = ${userId}`;
 }

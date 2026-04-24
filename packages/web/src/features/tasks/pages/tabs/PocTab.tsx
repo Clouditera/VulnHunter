@@ -705,7 +705,10 @@ function GenerateModal({
     onSuccess,
   });
 
-  const canSubmit = targetMode === "auto_deploy" || (targetMode === "provided" && targetUrl.trim());
+  const deveyeBlocked = browserTool === "deveye" && !deveyeConfigured;
+  const canSubmit =
+    (targetMode === "auto_deploy" || (targetMode === "provided" && targetUrl.trim())) &&
+    !deveyeBlocked;
 
   return (
     <ModalOverlay onClose={onClose}>
@@ -783,7 +786,7 @@ function GenerateModal({
               </div>
             )}
             {browserTool === "deveye" && deveyeConfigured && (
-              <div style={{ fontSize: "11px", color: "#16a34a", marginTop: "4px" }}>
+              <div style={{ fontSize: "11px", color: "var(--status-completed, #16a34a)", marginTop: "4px" }}>
                 ✓ 已连接到 {deveyeUrl}
               </div>
             )}
