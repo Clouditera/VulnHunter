@@ -118,7 +118,7 @@ export function WikiTab() {
       <nav
         data-testid="wiki-sidebar"
         style={{
-          width: "220px",
+          width: "260px",
           flexShrink: 0,
           overflow: "auto",
           borderRight: "1px solid var(--border)",
@@ -293,7 +293,7 @@ function SectionCard({
           display: "flex",
           alignItems: "center",
           gap: "8px",
-          padding: "14px 18px",
+          padding: "14px 24px",
           borderBottom: "1px solid var(--divider)",
         }}
       >
@@ -310,7 +310,7 @@ function SectionCard({
           {title}
         </h3>
       </header>
-      <div style={{ padding: "18px 20px 20px" }}>{children}</div>
+      <div style={{ padding: "20px 24px" }}>{children}</div>
     </section>
   );
 }

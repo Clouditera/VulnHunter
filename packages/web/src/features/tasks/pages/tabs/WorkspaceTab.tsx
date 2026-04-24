@@ -224,7 +224,9 @@ export function WorkspaceTab() {
   /** First-load init flag so we collapse-all once but don't undo user edits. */
   const [collapseInitDone, setCollapseInitDone] = useState(false);
   const [query, setQuery] = useState("");
-  const [leftWidth, setLeftWidth] = useState(26); // percent
+  // Group B Tabs (code-oriented right panel) default left width ~ 300px.
+  // User can still resize via splitter.
+  const [leftWidth, setLeftWidth] = useState(22); // percent (~300px at 1400px container)
   const [dragging, setDragging] = useState(false);
 
   // Collect all directory paths from the tree once it loads, then collapse
@@ -561,18 +563,18 @@ function TreeRow({
         display: "flex",
         alignItems: "center",
         gap: "6px",
-        padding: "4px 10px",
-        paddingLeft: `${10 + node.depth * 14}px`,
+        padding: "5px 12px",
+        paddingLeft: `${4 + node.depth * 12}px`,
         cursor: "pointer",
-        fontSize: "12px",
+        fontSize: "13px",
         color: selected
           ? "var(--text-primary)"
           : node.isDir
             ? "var(--text-primary)"
             : "var(--text-secondary)",
-        fontWeight: node.isDir ? 600 : selected ? 500 : 400,
+        fontWeight: selected ? 600 : node.isDir ? 500 : 400,
         background: selected
-          ? "var(--border)"
+          ? "var(--bg-card)"
           : "transparent",
         borderLeft: selected ? "2px solid var(--brand)" : "2px solid transparent",
         lineHeight: 1.6,
@@ -589,13 +591,13 @@ function TreeRow({
       {node.isDir ? (
         <Icon
           name={node.collapsed ? "chevron-right" : "chevron-down"}
-          size={12}
+          size={14}
           style={{ color: "var(--text-secondary)", flexShrink: 0 }}
         />
       ) : (
         <Icon
           name="file-text"
-          size={12}
+          size={14}
           style={{ color: "var(--text-secondary)", flexShrink: 0, opacity: 0.7 }}
         />
       )}

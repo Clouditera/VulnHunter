@@ -82,7 +82,7 @@ export function ReportsTab() {
       {/* ──────────────────── Report list column ──────────────────── */}
       <div
         style={{
-          width: "280px",
+          width: "260px",
           flexShrink: 0,
           overflow: "hidden",
           borderRight: "1px solid var(--border)",
@@ -91,28 +91,29 @@ export function ReportsTab() {
           flexDirection: "column",
         }}
       >
-        {/* Header */}
+        {/* Header — title only */}
         <div
           style={{
-            padding: "14px 16px",
+            padding: "10px 16px",
             borderBottom: "1px solid var(--divider)",
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
-            gap: "10px",
+            minHeight: "44px",
+            flexShrink: 0,
           }}
         >
           <span
             style={{
-              fontSize: "13px",
+              fontSize: "12px",
               fontWeight: 600,
               color: "var(--text-primary)",
+              letterSpacing: "0.01em",
             }}
           >
-            {i18n.t("reports.title")}{" "}
+            {i18n.t("reports.title")}
             <span
               style={{
-                fontSize: "12px",
+                fontSize: "11px",
                 color: "var(--text-secondary)",
                 fontWeight: 400,
                 marginLeft: "4px",
@@ -121,39 +122,6 @@ export function ReportsTab() {
               ({reports.length})
             </span>
           </span>
-          <button
-            type="button"
-            data-testid="reports-generate-btn"
-            disabled={!canGenerate || skills.length === 0}
-            onClick={() => setShowSkillPicker(true)}
-            title={
-              !canGenerate
-                ? i18n.t("reports.needsCompleted")
-                : skills.length === 0
-                  ? i18n.t("reports.noSkills")
-                  : undefined
-            }
-            style={{
-              padding: "6px 12px",
-              border: "none",
-              borderRadius: "6px",
-              background: canGenerate && skills.length > 0
-                ? "var(--brand)"
-                : "var(--bg-disabled)",
-              color: "var(--btn-primary-text)",
-              fontSize: "12px",
-              fontWeight: 600,
-              cursor:
-                canGenerate && skills.length > 0 ? "pointer" : "not-allowed",
-              opacity: canGenerate && skills.length > 0 ? 1 : 0.6,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "5px",
-            }}
-          >
-            <Icon name="plus" size={13} strokeWidth={2.5} />
-            {i18n.t("reports.generate")}
-          </button>
         </div>
 
         {/* Body */}
@@ -188,6 +156,53 @@ export function ReportsTab() {
               />
             ))
           )}
+        </div>
+
+        {/* Footer — primary action */}
+        <div
+          style={{
+            padding: "12px 16px",
+            borderTop: "1px solid var(--divider)",
+            flexShrink: 0,
+          }}
+        >
+          <button
+            type="button"
+            data-testid="reports-generate-btn"
+            disabled={!canGenerate || skills.length === 0}
+            onClick={() => setShowSkillPicker(true)}
+            title={
+              !canGenerate
+                ? i18n.t("reports.needsCompleted")
+                : skills.length === 0
+                  ? i18n.t("reports.noSkills")
+                  : undefined
+            }
+            style={{
+              width: "100%",
+              padding: "9px 0",
+              border: "none",
+              borderRadius: "6px",
+              background:
+                canGenerate && skills.length > 0
+                  ? "var(--brand)"
+                  : "var(--bg-disabled)",
+              color: "var(--btn-primary-text)",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor:
+                canGenerate && skills.length > 0 ? "pointer" : "not-allowed",
+              opacity: canGenerate && skills.length > 0 ? 1 : 0.6,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+              fontFamily: "inherit",
+            }}
+          >
+            <Icon name="plus" size={14} strokeWidth={2.5} />
+            {i18n.t("reports.generate")}
+          </button>
         </div>
       </div>
 

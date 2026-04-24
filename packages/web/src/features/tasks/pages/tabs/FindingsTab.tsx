@@ -175,8 +175,8 @@ export function FindingsTab() {
   const [nonVulnFile, setNonVulnFile] = useState<string | null>(null);
   const [treeCollapsed, setTreeCollapsed] = useState<Set<string>>(new Set());
 
-  const [leftWidth, setLeftWidth] = useState(28); // percent
-  const [draggingLeft, setDraggingLeft] = useState(false);
+  const LEFT_PANEL_WIDTH = 260; // px — Group A (content-right Tabs)
+
   /** Right-side view: detail (7-section YAML) or code+files (inline split). */
   const [rightView, setRightView] = useState<"detail" | "code">("detail");
 
@@ -338,29 +338,6 @@ export function FindingsTab() {
     setFileFilter(null);
   }
 
-  /* -------- Splitter -------- */
-
-  function startLeftDrag(e: React.MouseEvent) {
-    e.preventDefault();
-    setDraggingLeft(true);
-    function onMove(mv: MouseEvent) {
-      const c = document.querySelector<HTMLElement>(
-        "[data-testid='findings-two-col']",
-      );
-      if (!c) return;
-      const rect = c.getBoundingClientRect();
-      const pct = ((mv.clientX - rect.left) / rect.width) * 100;
-      const minPct = rect.width > 0 ? (200 / rect.width) * 100 : 16;
-      setLeftWidth(Math.max(minPct, Math.min(45, pct)));
-    }
-    function onUp() {
-      setDraggingLeft(false);
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    }
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }
 
   /* -------- Render -------- */
 
@@ -381,7 +358,7 @@ export function FindingsTab() {
         <div
           data-testid="findings-list-panel"
           style={{
-            width: `${leftWidth}%`,
+            width: `${LEFT_PANEL_WIDTH}px`,
             flexShrink: 0,
             overflow: "auto",
             borderRight: "1px solid var(--border)",
@@ -497,20 +474,6 @@ export function FindingsTab() {
         </div>
         </div>{/* end left panel */}
 
-        {/* Splitter */}
-        <div
-          data-testid="findings-splitter-1"
-          onMouseDown={startLeftDrag}
-          onDoubleClick={() => setLeftWidth(28)}
-          style={{
-            width: "4px",
-            flexShrink: 0,
-            background: draggingLeft ? "var(--brand)" : "var(--border)",
-            cursor: "col-resize",
-            transition: draggingLeft ? "none" : "background 0.15s",
-          }}
-          title="Double-click to reset"
-        />
 
         {/* ================================================================ */}
         {/*  Right: Tab-switched panel — Detail / Code / Files               */}
