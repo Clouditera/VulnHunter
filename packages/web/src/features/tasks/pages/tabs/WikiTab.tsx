@@ -247,8 +247,6 @@ const CONTENT_INNER: CSSProperties = {
   flexDirection: "column",
   gap: "20px",
   padding: "20px 24px 32px",
-  maxWidth: "1100px",
-  margin: "0 auto",
   width: "100%",
 };
 
