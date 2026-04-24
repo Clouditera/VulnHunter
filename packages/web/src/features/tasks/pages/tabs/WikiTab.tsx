@@ -128,7 +128,7 @@ export function WikiTab() {
           overflow: "auto",
           borderRight: "1px solid var(--border)",
           background: "var(--bg-page)",
-          padding: "8px 0",
+          padding: "12px 0",
         }}
       >
         {sections.map((key) => {

@@ -224,10 +224,9 @@ export function WorkspaceTab() {
   /** First-load init flag so we collapse-all once but don't undo user edits. */
   const [collapseInitDone, setCollapseInitDone] = useState(false);
   const [query, setQuery] = useState("");
-  // Group B Tabs (code-oriented right panel) default left width ~ 300px.
-  // User can still resize via splitter.
-  const [leftWidth, setLeftWidth] = useState(22); // percent (~300px at 1400px container)
-  const [dragging, setDragging] = useState(false);
+  // Group B Tabs (code-oriented right panel): fixed 300px left width,
+  // matching POC Tab for visual consistency.
+  const LEFT_PANEL_WIDTH = 300; // px
 
   // Collect all directory paths from the tree once it loads, then collapse
   // them by default. Users see only the root level on entry and click to
@@ -317,29 +316,6 @@ export function WorkspaceTab() {
     });
   }
 
-  /* --- splitter --- */
-  function handleSplitterMouseDown(e: React.MouseEvent) {
-    e.preventDefault();
-    setDragging(true);
-    function onMove(mv: MouseEvent) {
-      const container = document.querySelector(
-        "[data-testid='workspace-container']",
-      ) as HTMLElement | null;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
-      const pct = ((mv.clientX - rect.left) / rect.width) * 100;
-      const minPct = rect.width > 0 ? (220 / rect.width) * 100 : 18;
-      const clamped = Math.max(minPct, Math.min(50, pct));
-      setLeftWidth(clamped);
-    }
-    function onUp() {
-      setDragging(false);
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    }
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }
 
   const vulnLineSet = useMemo(() => {
     const set = new Set<number>();
@@ -383,7 +359,7 @@ export function WorkspaceTab() {
         <div
           data-testid="workspace-tree"
           style={{
-            width: `${leftWidth}%`,
+            width: `${LEFT_PANEL_WIDTH}px`,
             flexShrink: 0,
             borderRight: "1px solid var(--border)",
             background: "var(--bg-page)",
@@ -491,20 +467,6 @@ export function WorkspaceTab() {
           </div>
         </div>
 
-        {/* Splitter */}
-        <div
-          data-testid="workspace-splitter"
-          onMouseDown={handleSplitterMouseDown}
-          onDoubleClick={() => setLeftWidth(26)}
-          style={{
-            width: "4px",
-            flexShrink: 0,
-            background: dragging ? "var(--brand)" : "var(--border)",
-            cursor: "col-resize",
-            transition: dragging ? "none" : "background 0.15s",
-          }}
-          title="Double-click to reset"
-        />
 
         {/* ================================================================= */}
         {/*  Right: code viewer                                               */}
