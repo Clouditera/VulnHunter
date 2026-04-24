@@ -190,6 +190,14 @@ export function LiveLog({ taskId, taskState }: Props) {
           // `state` depending on producer; use whichever is present.
           const label = event.stage || event.name || event.state || "";
           setLatestTool(label ? `stage → ${label}` : "stage");
+        } else if (event.type === "poc_output") {
+          const msg = event.message || "";
+          const truncated = msg.length > 60 ? msg.slice(0, 57) + "…" : msg;
+          if (truncated) setLatestTool(`poc → ${truncated}`);
+        } else if (event.type === "poc_exit") {
+          const exitEv = event as LiveLogEvent & { exit_code?: number };
+          const ok = exitEv.exit_code === 0;
+          setLatestTool(ok ? "poc → completed" : `poc → failed (exit ${exitEv.exit_code})`);
         } else if (event.type === "error") {
           const raw = event.message || event.text || "";
           const msg = raw.length > 80 ? raw.slice(0, 77) + "…" : raw;
@@ -602,6 +610,24 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
     dur = undefined;
     toolColor = "#dc2626";
     rowBg = "rgba(220,38,38,0.03)";
+  } else if (ev.type === "poc_output") {
+    const pocEv = ev as LiveLogEvent & { stream?: string; message?: string };
+    const isStderr = pocEv.stream === "stderr";
+    icon = { char: isStderr ? "⚠" : "▸", color: isStderr ? "#d97706" : "var(--text-secondary)" };
+    tool = "";
+    param = pocEv.message ?? "";
+    dur = undefined;
+    toolColor = isStderr ? "#d97706" : "var(--text-primary)";
+    if (isStderr) rowBg = "rgba(217,119,6,0.03)";
+  } else if (ev.type === "poc_exit") {
+    const exitEv = ev as LiveLogEvent & { exit_code?: number; duration_ms?: number };
+    const ok = exitEv.exit_code === 0;
+    icon = ok ? { char: "✓", color: "#16a34a" } : { char: "✕", color: "#dc2626" };
+    tool = "poc";
+    param = ok ? `completed` : `failed (exit ${exitEv.exit_code})`;
+    dur = exitEv.duration_ms;
+    toolColor = ok ? "#16a34a" : "#dc2626";
+    if (!ok) rowBg = "rgba(220,38,38,0.03)";
   } else {
     icon = { char: "·", color: "var(--text-secondary)" };
     tool = ev.type;

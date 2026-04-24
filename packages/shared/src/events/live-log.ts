@@ -6,7 +6,9 @@ export type LiveLogEventType =
   | "stage_end"
   | "task_status"
   | "source_lifecycle"
-  | "error";
+  | "error"
+  | "poc_output"
+  | "poc_exit";
 
 export type TaskStatus = "running" | "completed" | "failed" | "cancelled" | "paused";
 
@@ -72,13 +74,35 @@ export interface ErrorEvent {
   retries?: number;
 }
 
+export interface PocOutputEvent {
+  type: "poc_output";
+  source: string;
+  seq: number;
+  ts: string;
+  stage: string;
+  stream: "stdout" | "stderr";
+  message: string;
+}
+
+export interface PocExitEvent {
+  type: "poc_exit";
+  source: string;
+  seq: number;
+  ts: string;
+  stage: string;
+  exit_code: number;
+  duration_ms: number;
+}
+
 export type LiveLogEvent =
   | ToolCallEvent
   | StageStartEvent
   | StageEndEvent
   | TaskStatusEvent
   | SourceLifecycleEvent
-  | ErrorEvent;
+  | ErrorEvent
+  | PocOutputEvent
+  | PocExitEvent;
 
 /** WS subscribe message (client → server) */
 export interface LiveLogSubscribe {

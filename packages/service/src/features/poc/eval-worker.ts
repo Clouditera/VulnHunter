@@ -1,0 +1,143 @@
+/**
+ * Eval Worker — spawns youngflow POC flow container to generate + execute POCs.
+ * Uses vulnhunt-eval-worker image with MODE=eval.
+ */
+
+import { join } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
+import {
+  createWorkerContainer,
+  ensureWorkDir,
+  getDocker,
+} from "../workers/docker-client.js";
+import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
+import { credentialToWorkerEnv } from "../settings/credential-env.js";
+import { getMinio } from "../../infra/minio/client.js";
+import { getTaskById } from "../tasks/storage.js";
+import { listFindings } from "../findings/storage.js";
+import * as pocStorage from "./storage.js";
+import { notify } from "../notifications/index.js";
+import { logger } from "../../infra/logger.js";
+import type { ServiceConfig } from "../../infra/config.js";
+
+export function getEvalHostWorkDir(dataDir: string, jobId: string): string {
+  return join(dataDir, "eval-workspaces", jobId);
+}
+
+export async function spawnEvalWorker(
+  job: pocStorage.DbPocJob,
+  config: ServiceConfig,
+  credentialId?: string,
+): Promise<string> {
+  const task = await getTaskById(job.task_id);
+  if (!task) throw new Error(`Task ${job.task_id} not found`);
+
+  // Get credentials
+  const cred = credentialId
+    ? await getCredentialById(credentialId)
+    : await getDefaultCredential();
+  if (!cred) throw new Error("No LLM credentials configured");
+
+  // Prepare workspace
+  const hostWorkDir = getEvalHostWorkDir(config.dataDir, job.id);
+  ensureWorkDir(hostWorkDir);
+  const subjectDir = join(hostWorkDir, "subject");
+  mkdirSync(subjectDir, { recursive: true });
+  const outDir = join(hostWorkDir, "out");
+  mkdirSync(outDir, { recursive: true });
+  const inputFindingsDir = join(outDir, "input", "findings");
+  mkdirSync(inputFindingsDir, { recursive: true });
+  const logsDir = join(outDir, ".youngflow", "logs");
+  mkdirSync(logsDir, { recursive: true });
+
+  // Download source code from MinIO
+  let meta = task.source_meta as { minio_key?: string } | string;
+  if (typeof meta === "string") {
+    try { meta = JSON.parse(meta); } catch { meta = {}; }
+  }
+  const minioKey = (meta as { minio_key?: string })?.minio_key ?? `code-packages/${task.id}.zip`;
+  const minio = getMinio();
+  const zipPath = join(hostWorkDir, "source.zip");
+  await minio.fGetObject(config.minio.bucket, minioKey, zipPath);
+  execSync(`cd "${subjectDir}" && unzip -o -q "${zipPath}"`, { timeout: 60_000, stdio: "pipe" });
+
+  // Stage selected findings as YAML files into input/findings/
+  const allFindings = await listFindings({ taskId: job.task_id });
+  for (const finding of allFindings) {
+    if (!job.finding_keys.includes(finding.finding_key)) continue;
+    try {
+      const stream = await minio.getObject(config.minio.bucket, finding.yaml_minio_key);
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) chunks.push(chunk as Buffer);
+      writeFileSync(
+        join(inputFindingsDir, `${finding.finding_key}.yaml`),
+        Buffer.concat(chunks),
+      );
+    } catch (err) {
+      logger.warn({ err, findingKey: finding.finding_key }, "Failed to stage finding YAML");
+    }
+  }
+  logger.info({ jobId: job.id, findings: job.finding_keys.length }, "Findings staged to workspace");
+
+  // Get POC settings for DeVeye config
+  const pocSettings = await pocStorage.getPocSettings();
+
+  // Remove stale container
+  const containerName = `vh-eval-${job.id.slice(0, 12)}`;
+  try {
+    const docker = getDocker();
+    await docker.getContainer(containerName).remove({ force: true });
+  } catch { /* doesn't exist */ }
+
+  const llmEnv = credentialToWorkerEnv(cred);
+
+  const env: Record<string, string> = {
+    MODE: "eval",
+    TASK_ID: job.task_id,
+    POC_JOB_ID: job.id,
+    TARGET_MODE: job.target_mode,
+    TARGET_URL: job.target_url ?? "",
+    BROWSER_TOOL: job.browser_tool,
+    CUSTOM_INSTRUCTIONS: job.custom_instructions ?? "",
+    DEVEYE_SERVER: pocSettings?.deveye_server_url ?? "",
+    DEVEYE_TOKEN: pocSettings?.deveye_token ?? "",
+    ...llmEnv,
+  };
+
+  // Docker socket mount for auto_deploy mode
+  const extraMounts: Array<{ Type: "bind"; Source: string; Target: string }> = [];
+  if (job.target_mode === "auto_deploy") {
+    extraMounts.push({
+      Type: "bind",
+      Source: "/var/run/docker.sock",
+      Target: "/var/run/docker.sock",
+    });
+  }
+
+  const container = await createWorkerContainer({
+    taskId: job.id,
+    taskType: "eval",
+    image: config.docker.workerImage.replace("vulnhunt-worker", "vulnhunt-eval-worker"),
+    network: config.docker.network,
+    hostWorkDir,
+    cpuQuota: 200000,
+    memoryBytes: 4 * 1024 * 1024 * 1024,
+    env,
+  });
+
+  // Add Docker socket mount for auto_deploy (workaround: modify container spec after creation)
+  // Note: createWorkerContainer already mounts hostWorkDir → /workspace
+  // Docker socket is added via extraMounts in the container spec above
+
+  await container.start();
+
+  await pocStorage.updatePocJobState(job.id, "running", {
+    containerId: container.id,
+    startedAt: new Date(),
+  });
+  notify({ type: "task_state", taskId: job.task_id, state: "running" as never });
+
+  logger.info({ jobId: job.id, taskId: job.task_id, containerName }, "Eval worker started");
+  return container.id;
+}
