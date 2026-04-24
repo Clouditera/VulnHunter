@@ -160,8 +160,6 @@ export function OverviewTab() {
         display: "grid",
         gridTemplateColumns: "1fr 1fr",
         gap: "20px",
-        padding: "28px 40px 40px",
-        background: "var(--bg-page)",
       }}
     >
       {/* Project Profile */}

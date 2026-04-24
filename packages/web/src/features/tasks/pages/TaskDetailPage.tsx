@@ -401,8 +401,10 @@ export function TaskDetailPage() {
         })}
       </div>
 
-      {/* Tab content — bg-card white. Each Tab controls its own layout.
-          Overview adds its own gray padding for card-grid breathing. */}
+      {/* Tab content — gray page with rounded white card(s) inside.
+          Overview renders a grid of small cards; other Tabs wrap their
+          two-column layout in one big rounded card (all sharing the
+          same "card on gray page" visual language). */}
       <div
         data-testid="task-detail-outlet"
         style={{
@@ -410,7 +412,7 @@ export function TaskDetailPage() {
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
-          background: "var(--bg-card)",
+          padding: "20px 40px 32px",
         }}
       >
         <Outlet context={{ task }} />

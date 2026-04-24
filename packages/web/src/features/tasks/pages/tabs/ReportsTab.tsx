@@ -77,6 +77,11 @@ export function ReportsTab() {
         flex: 1,
         minHeight: 0,
         height: "100%",
+        overflow: "hidden",
+        background: "var(--bg-card)",
+        border: "1px solid var(--border)",
+        borderRadius: "10px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
       }}
     >
       {/* ──────────────────── Report list column ──────────────────── */}

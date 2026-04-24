@@ -343,7 +343,7 @@ export function FindingsTab() {
 
   return (
     <div data-testid="task-detail-panel-findings" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, height: "100%" }}>
-      {/* Two-column container */}
+      {/* Two-column container — rounded white card on gray page */}
       <div
         data-testid="findings-two-col"
         style={{
@@ -352,6 +352,9 @@ export function FindingsTab() {
           minHeight: 0,
           overflow: "hidden",
           background: "var(--bg-card)",
+          border: "1px solid var(--border)",
+          borderRadius: "10px",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
         }}
       >
         {/* Left: findings list */}

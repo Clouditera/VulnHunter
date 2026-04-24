@@ -36,10 +36,14 @@ export DEVEYE_TOKEN=${DEVEYE_TOKEN:-}
 ENVEOF
 fi
 
-echo "[eval] Running youngflow POC flow..." >&2
+echo "[eval] Running youngflow POC flow (target_mode=$TARGET_MODE)..." >&2
 youngflow "$FLOW_DIR" \
   --work-dir /workspace/subject \
   --output-dir /workspace/out \
+  --target-mode "${TARGET_MODE:-provided}" \
+  ${TARGET_URL:+--target-url "${TARGET_URL}"} \
+  ${BROWSER_TOOL:+--browser-tool "${BROWSER_TOOL}"} \
+  ${CUSTOM_INSTRUCTIONS:+--custom-instructions "${CUSTOM_INSTRUCTIONS}"} \
   --json-log \
   ${RESUME:+--resume} \
   2>/workspace/out/.youngflow/logs/youngflow.service.jsonl

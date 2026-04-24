@@ -96,7 +96,17 @@ export function PocTab() {
   return (
     <div
       data-testid="task-detail-panel-poc"
-      style={{ display: "flex", flex: 1, minHeight: 0, height: "100%" }}
+      style={{
+        display: "flex",
+        flex: 1,
+        minHeight: 0,
+        height: "100%",
+        overflow: "hidden",
+        background: "var(--bg-card)",
+        border: "1px solid var(--border)",
+        borderRadius: "10px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+      }}
     >
       {/* ── Left panel (300px) ── */}
       <div
