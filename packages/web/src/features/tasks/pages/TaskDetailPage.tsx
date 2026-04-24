@@ -401,7 +401,8 @@ export function TaskDetailPage() {
         })}
       </div>
 
-      {/* Tab content — tabs control their own padding/bg for edge-to-edge layout */}
+      {/* Tab content — bg-card white. Each Tab controls its own layout.
+          Overview adds its own gray padding for card-grid breathing. */}
       <div
         data-testid="task-detail-outlet"
         style={{
