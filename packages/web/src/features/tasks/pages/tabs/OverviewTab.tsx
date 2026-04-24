@@ -156,7 +156,13 @@ export function OverviewTab() {
   return (
     <div
       data-testid="task-detail-panel-overview"
-      style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: "20px",
+        padding: "28px 40px 40px",
+        background: "var(--bg-page)",
+      }}
     >
       {/* Project Profile */}
       <Card title={i18n.t("overview.projectProfile")}>

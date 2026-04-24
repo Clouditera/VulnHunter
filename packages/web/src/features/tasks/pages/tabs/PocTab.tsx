@@ -1,426 +1,1010 @@
-import { useEffect, useMemo, useState } from "react";
+/**
+ * POC/EXP Tab — two-column layout (Group B, 300px left).
+ * Left: finding list with checkbox selection + POC status + generate button.
+ * Right: 4-tab detail (Script / Output / Screenshots / Info).
+ */
+
+import { useState, useEffect, useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CSSProperties } from "react";
 import {
   api,
   type Task,
-  type PocFile,
+  type FindingMeta,
+  type PocResult,
+  type PocSummary,
 } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
-import { Icon, type IconName } from "../../../../shared/components/Icon.js";
+import { Icon } from "../../../../shared/components/Icon.js";
 
-/* -------------------------------------------------------------------------- */
-/*  Filename metadata                                                         */
-/* -------------------------------------------------------------------------- */
-
-interface ParsedName {
-  bugId: string | null;
-  title: string;
-  language: string;
-  extension: string;
-}
-
-/**
- * Parse a POC filename into displayable pieces.
- *
- * Examples:
- *   "BUG-001-heap-overread.py"  → bug="BUG-001", title="heap overread", lang="Python"
- *   "poc_integer_overflow.py"   → bug=null,     title="poc integer overflow", lang="Python"
- *   "exp_palette_crash.c"       → bug=null,     title="exp palette crash", lang="C"
- */
-function parseName(name: string): ParsedName {
-  const dotIdx = name.lastIndexOf(".");
-  const ext = dotIdx > 0 ? name.slice(dotIdx + 1).toLowerCase() : "";
-  const base = dotIdx > 0 ? name.slice(0, dotIdx) : name;
-
-  const bugMatch = base.match(/^(BUG-\d+)[-_ ]?/i);
-  const bugId = bugMatch ? bugMatch[1].toUpperCase() : null;
-  const remainder = bugId ? base.slice(bugMatch![0].length) : base;
-  const title = remainder.replace(/[-_]+/g, " ").trim() || base;
-
-  return { bugId, title, language: languageLabel(ext), extension: ext };
-}
-
-const LANG_LABELS: Record<string, string> = {
-  py: "Python",
-  c: "C",
-  h: "C",
-  cpp: "C++",
-  cc: "C++",
-  js: "JavaScript",
-  ts: "TypeScript",
-  sh: "Shell",
-  bash: "Shell",
-  rb: "Ruby",
-  go: "Go",
-  rs: "Rust",
-  java: "Java",
-  php: "PHP",
-  yaml: "YAML",
-  yml: "YAML",
-  json: "JSON",
-  md: "Markdown",
-  txt: "Text",
-};
-function languageLabel(ext: string): string {
-  return LANG_LABELS[ext] ?? (ext ? ext.toUpperCase() : "Plaintext");
-}
-
-function iconForFile(ext: string): IconName {
-  // Default to code for most executables; file-text for data/docs.
-  if (["md", "txt", "yaml", "yml", "json"].includes(ext)) return "file-text";
-  return "code";
-}
-
-function formatBytes(n: number): string {
-  if (n >= 1_048_576) return (n / 1_048_576).toFixed(2) + " MB";
-  if (n >= 1024) return (n / 1024).toFixed(1) + " KB";
-  return `${n} ${i18n.t("poc.bytes")}`;
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Shared styles                                                             */
-/* -------------------------------------------------------------------------- */
-
-const CARD: CSSProperties = {
-  background: "var(--bg-card)",
-  border: "1px solid var(--border)",
-  borderRadius: "12px",
-  overflow: "hidden",
+/* ── Severity colors ── */
+const SEV_COLORS: Record<string, string> = {
+  high: "#dc2626",
+  medium: "#f59e0b",
+  low: "#3b82f6",
+  info: "#6b7280",
 };
 
-const CARD_HEADER: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "12px",
-  padding: "14px 18px",
-  cursor: "pointer",
-  transition: "background 0.12s",
-  userSelect: "none",
+/* ── POC status badge config ── */
+const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
+  reproduced: { bg: "#dcfce7", color: "#166534", label: "已复现" },
+  partial: { bg: "#fef3c7", color: "#78350f", label: "部分" },
+  not_reproduced: { bg: "#fee2e2", color: "#991b1b", label: "未复现" },
+  skipped: { bg: "var(--divider)", color: "var(--text-secondary)", label: "跳过" },
+  error: { bg: "var(--bg-error, #fef2f2)", color: "var(--brand)", label: "错误" },
+  pending: { bg: "transparent", color: "var(--text-secondary)", label: "—" },
+  generating: { bg: "transparent", color: "var(--status-running)", label: "生成中" },
 };
 
-/* -------------------------------------------------------------------------- */
-/*  Component                                                                 */
-/* -------------------------------------------------------------------------- */
+/* ── Right panel tab keys ── */
+type RightTab = "script" | "output" | "screenshots" | "info";
+
+/* ══════════════════════════════════════════════════════════════════════════ */
 
 export function PocTab() {
   const { task } = useOutletContext<{ task: Task }>();
+  const qc = useQueryClient();
   const [, force] = useState(0);
   useEffect(() => i18n.onChange(() => force((n) => n + 1)), []);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["poc-files", task.id],
-    queryFn: () => api.tasks.poc(task.id),
-    staleTime: 60_000,
+  // ── Data queries ──
+  const { data: findingsData } = useQuery({
+    queryKey: ["findings", task.id],
+    queryFn: () => api.findings.list(task.id),
   });
+  const findings: FindingMeta[] = (findingsData as { findings?: FindingMeta[] })?.findings ?? [];
 
-  const files = (data?.poc_files ?? []) as PocFile[];
+  const { data: pocData } = useQuery({
+    queryKey: ["poc-summary", task.id],
+    queryFn: () => api.tasks.pocSummary(task.id),
+    refetchInterval: 5000,
+  });
+  const summary: PocSummary | null = pocData ?? null;
+  const resultsByKey = useMemo(() => {
+    const m = new Map<string, PocResult>();
+    for (const r of summary?.results ?? []) m.set(r.finding_key, r);
+    return m;
+  }, [summary]);
+
+  // ── State ──
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [activeFinding, setActiveFinding] = useState<string | null>(null);
+  const [rightTab, setRightTab] = useState<RightTab>("script");
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [showRunModal, setShowRunModal] = useState(false);
+
+  // Toggle selection
+  function toggleSelect(key: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+  function selectAll() {
+    setSelected(new Set(findings.map((f) => f.finding_key)));
+  }
+  function clearSelection() {
+    setSelected(new Set());
+  }
+
+  // Stats
+  const stats = summary?.summary ?? { total: findings.length, reproduced: 0, partial: 0, not_reproduced: 0, error: 0, skipped: 0, pending: 0 };
 
   return (
     <div
       data-testid="task-detail-panel-poc"
-      style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+      style={{ display: "flex", flex: 1, minHeight: 0, height: "100%" }}
     >
-      {isLoading ? (
-        <EmptyState text={i18n.t("poc.loading")} muted />
-      ) : error ? (
-        <EmptyState text={i18n.t("poc.errorFile")} variant="error" />
-      ) : files.length === 0 ? (
-        <EmptyState text={i18n.t("poc.empty")} muted />
-      ) : (
-        files.map((f) => <PocCard key={f.key} taskId={task.id} file={f} />)
+      {/* ── Left panel (300px) ── */}
+      <div
+        style={{
+          width: "300px",
+          flexShrink: 0,
+          background: "var(--bg-page)",
+          borderRight: "1px solid var(--border)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        {/* Stats bar */}
+        <div
+          style={{
+            padding: "10px 16px",
+            borderBottom: "1px solid var(--divider)",
+            fontSize: "11px",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "6px",
+            alignItems: "center",
+          }}
+        >
+          <StatItem n={stats.total} label="漏洞" />
+          <Sep />
+          <StatItem n={stats.reproduced} label="复现" />
+          <Sep />
+          <StatItem n={stats.partial} label="部分" />
+          <Sep />
+          <StatItem n={stats.not_reproduced} label="未复现" />
+        </div>
+
+        {/* Select all / clear */}
+        <div
+          style={{
+            padding: "6px 16px",
+            borderBottom: "1px solid var(--divider)",
+            display: "flex",
+            gap: "8px",
+            fontSize: "11px",
+          }}
+        >
+          <button onClick={selectAll} style={GHOST_SM}>全选</button>
+          <button onClick={clearSelection} style={GHOST_SM}>清除</button>
+          {selected.size > 0 && (
+            <span style={{ color: "var(--text-secondary)", marginLeft: "auto" }}>
+              已选 {selected.size}
+            </span>
+          )}
+        </div>
+
+        {/* Finding list */}
+        <div style={{ flex: 1, overflow: "auto" }}>
+          {findings.map((f) => {
+            const result = resultsByKey.get(f.finding_key);
+            const isActive = activeFinding === f.finding_key;
+            const isChecked = selected.has(f.finding_key);
+            const status = result?.status ?? "pending";
+
+            return (
+              <div
+                key={f.finding_key}
+                onClick={() => {
+                  setActiveFinding(f.finding_key);
+                  if (result?.poc_script_minio_key) setRightTab("script");
+                  else setRightTab("info");
+                }}
+                style={{
+                  padding: "10px 16px",
+                  borderLeft: `2px solid ${isActive ? "var(--brand)" : "transparent"}`,
+                  background: isActive ? "var(--bg-card)" : "transparent",
+                  cursor: "pointer",
+                  transition: "background 0.12s",
+                }}
+                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
+                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  {/* Checkbox */}
+                  <div
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(f.finding_key); }}
+                    style={{
+                      width: "16px",
+                      height: "16px",
+                      borderRadius: "3px",
+                      border: `1.5px solid ${isChecked ? "var(--brand)" : "var(--border)"}`,
+                      background: isChecked ? "var(--brand)" : "transparent",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {isChecked && <span style={{ color: "#fff", fontSize: "10px", fontWeight: 700 }}>✓</span>}
+                  </div>
+
+                  {/* Severity dot */}
+                  <span
+                    style={{
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "50%",
+                      background: SEV_COLORS[f.severity] ?? "#6b7280",
+                      flexShrink: 0,
+                    }}
+                  />
+
+                  {/* Bug ID */}
+                  <span
+                    style={{
+                      flex: 1,
+                      fontSize: "13px",
+                      fontWeight: isActive ? 600 : 500,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {f.finding_key}
+                  </span>
+
+                  {/* Status badge */}
+                  <PocStatusBadge status={status} />
+                </div>
+
+                {/* File path */}
+                {f.primary_file && (
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--text-secondary)",
+                      marginTop: "3px",
+                      marginLeft: "34px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {f.primary_file}{f.primary_line ? `:${f.primary_line}` : ""}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {findings.length === 0 && (
+            <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-secondary)", fontSize: "13px" }}>
+              暂无漏洞
+            </div>
+          )}
+        </div>
+
+        {/* Footer — Generate button */}
+        <div style={{ padding: "12px 16px", borderTop: "1px solid var(--divider)", flexShrink: 0 }}>
+          <button
+            onClick={() => setShowGenerateModal(true)}
+            disabled={selected.size === 0}
+            style={{
+              width: "100%",
+              padding: "9px 0",
+              borderRadius: "6px",
+              border: "none",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: selected.size > 0 ? "pointer" : "not-allowed",
+              background: selected.size > 0 ? "var(--brand)" : "var(--bg-disabled, #e5e7eb)",
+              color: selected.size > 0 ? "var(--btn-primary-text, #fff)" : "var(--text-secondary)",
+              opacity: selected.size > 0 ? 1 : 0.6,
+            }}
+          >
+            生成 POC{selected.size > 0 ? ` (已选 ${selected.size})` : ""}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Right panel ── */}
+      <div style={{ flex: 1, minWidth: 0, background: "var(--bg-card)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {activeFinding ? (
+          <PocDetail
+            taskId={task.id}
+            findingKey={activeFinding}
+            finding={findings.find((f) => f.finding_key === activeFinding)!}
+            result={resultsByKey.get(activeFinding) ?? null}
+            rightTab={rightTab}
+            setRightTab={setRightTab}
+            onRunAgain={() => setShowRunModal(true)}
+          />
+        ) : (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-secondary)", fontSize: "13px" }}>
+            <div style={{ textAlign: "center" }}>
+              <Icon name="shield" size={32} style={{ opacity: 0.3, marginBottom: "12px" }} />
+              <div>选择漏洞查看 POC 详情</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Modals */}
+      {showGenerateModal && (
+        <GenerateModal
+          taskId={task.id}
+          selectedKeys={Array.from(selected)}
+          onClose={() => setShowGenerateModal(false)}
+          onSuccess={() => {
+            setShowGenerateModal(false);
+            qc.invalidateQueries({ queryKey: ["poc-summary", task.id] });
+          }}
+        />
+      )}
+      {showRunModal && activeFinding && (
+        <RunAgainModal
+          taskId={task.id}
+          findingKey={activeFinding}
+          lastTargetUrl={resultsByKey.get(activeFinding)?.target_url ?? ""}
+          onClose={() => setShowRunModal(false)}
+          onSuccess={() => {
+            setShowRunModal(false);
+            qc.invalidateQueries({ queryKey: ["poc-summary", task.id] });
+          }}
+        />
       )}
     </div>
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Card                                                                      */
-/* -------------------------------------------------------------------------- */
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  Right panel detail                                                      */
+/* ══════════════════════════════════════════════════════════════════════════ */
 
-function PocCard({ taskId, file }: { taskId: string; file: PocFile }) {
-  const [expanded, setExpanded] = useState(false);
-  const parsed = useMemo(() => parseName(file.name), [file.name]);
+function PocDetail({
+  taskId,
+  findingKey,
+  finding,
+  result,
+  rightTab,
+  setRightTab,
+  onRunAgain,
+}: {
+  taskId: string;
+  findingKey: string;
+  finding: FindingMeta;
+  result: PocResult | null;
+  rightTab: RightTab;
+  setRightTab: (t: RightTab) => void;
+  onRunAgain: () => void;
+}) {
+  const tabs: { key: RightTab; label: string }[] = [
+    { key: "script", label: "脚本" },
+    { key: "output", label: "执行输出" },
+    { key: "screenshots", label: "截图" },
+    { key: "info", label: "信息" },
+  ];
 
-  const { data: fileData, isLoading, error } = useQuery({
-    queryKey: ["poc-file", taskId, file.key],
-    queryFn: () => api.tasks.pocContent(taskId, file.name, file.key),
-    enabled: expanded,
-    staleTime: 5 * 60_000,
+  return (
+    <>
+      {/* Tab bar */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          borderBottom: "1px solid var(--divider)",
+          padding: "0 16px",
+          gap: "0",
+          flexShrink: 0,
+        }}
+      >
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setRightTab(t.key)}
+            style={{
+              padding: "10px 16px",
+              border: "none",
+              background: "transparent",
+              fontSize: "13px",
+              fontWeight: rightTab === t.key ? 600 : 400,
+              color: rightTab === t.key ? "var(--text-primary)" : "var(--text-secondary)",
+              borderBottom: rightTab === t.key ? "2px solid var(--brand)" : "2px solid transparent",
+              cursor: "pointer",
+              transition: "color 0.12s",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+
+        {/* Run again button (in output tab context) */}
+        {result?.poc_script_minio_key && (
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
+            {result.status !== "pending" && (
+              <PocStatusBadge status={result.status} />
+            )}
+            <button onClick={onRunAgain} style={GHOST_SM}>
+              <Icon name="activity" size={12} /> 再次执行
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Tab content */}
+      <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+        {rightTab === "script" && <ScriptPanel taskId={taskId} findingKey={findingKey} result={result} />}
+        {rightTab === "output" && <OutputPanel taskId={taskId} findingKey={findingKey} result={result} />}
+        {rightTab === "screenshots" && <ScreenshotsPanel taskId={taskId} findingKey={findingKey} result={result} />}
+        {rightTab === "info" && <InfoPanel finding={finding} result={result} />}
+      </div>
+    </>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  Script panel                                                            */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+function ScriptPanel({ taskId, findingKey, result }: { taskId: string; findingKey: string; result: PocResult | null }) {
+  const [copied, setCopied] = useState(false);
+
+  const { data: script, isLoading } = useQuery({
+    queryKey: ["poc-script", taskId, findingKey],
+    queryFn: () => api.tasks.pocScript(taskId, findingKey),
+    enabled: !!result?.poc_script_minio_key,
   });
 
-  const [copied, setCopied] = useState(false);
+  if (!result?.poc_script_minio_key) {
+    return <EmptyCenter icon="file-code" text="尚未生成 POC 脚本" />;
+  }
+  if (isLoading) return <EmptyCenter icon="loader" text="加载中..." />;
+
   async function handleCopy() {
-    if (!fileData?.content) return;
-    try {
-      await navigator.clipboard.writeText(fileData.content);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // Clipboard API may be blocked — no-op, button stays "Copy"
-    }
+    if (!script) return;
+    await navigator.clipboard.writeText(script);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
   }
 
   function handleDownload() {
-    if (!fileData?.content) return;
-    const blob = new Blob([fileData.content], { type: "text/plain;charset=utf-8" });
+    if (!script) return;
+    const blob = new Blob([script], { type: "text/x-shellscript" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = file.name;
-    document.body.appendChild(a);
+    a.download = `${findingKey}-poc.sh`;
     a.click();
-    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
 
   return (
-    <section
-      data-testid="poc-card"
-      data-bug-id={parsed.bugId || undefined}
-      data-expanded={expanded || undefined}
-      style={CARD}
-    >
-      {/* Header (click to toggle) */}
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div
-        data-testid="poc-card-header"
-        role="button"
-        tabIndex={0}
-        onClick={() => setExpanded((v) => !v)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setExpanded((v) => !v);
-          }
+        style={{
+          padding: "10px 16px",
+          borderBottom: "1px solid var(--divider)",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-        style={CARD_HEADER}
       >
-        {/* File-type icon tile */}
-        <div
-          aria-hidden
-          style={{
-            width: "36px",
-            height: "36px",
-            flexShrink: 0,
-            borderRadius: "8px",
-            background: "var(--bg-page)",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--text-secondary)",
-          }}
-        >
-          <Icon name={iconForFile(parsed.extension)} size={18} />
-        </div>
-
-        {/* Filename + meta */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            data-testid="poc-card-name"
-            style={{
-              fontSize: "14px",
-              fontWeight: 600,
-              fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-              color: "var(--text-primary)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {file.name}
-          </div>
-          <div
-            style={{
-              fontSize: "12px",
-              color: "var(--text-secondary)",
-              opacity: 0.85,
-              marginTop: "2px",
-              display: "flex",
-              gap: "6px",
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            {parsed.bugId ? (
-              <span
-                style={{
-                  padding: "1px 6px",
-                  borderRadius: "3px",
-                  fontSize: "10px",
-                  fontWeight: 700,
-                  fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-                  background: "rgba(220,38,38,0.12)",
-                  color: "var(--brand)",
-                  lineHeight: 1.4,
-                }}
-              >
-                {parsed.bugId}
-              </span>
-            ) : null}
-            <span>{parsed.title}</span>
-            <span style={{ opacity: 0.5 }}>·</span>
-            <span>{parsed.language}</span>
-            <span style={{ opacity: 0.5 }}>·</span>
-            <span>{formatBytes(file.size)}</span>
-          </div>
-        </div>
-
-        {/* Status pill */}
-        <span
-          data-testid="poc-card-status"
-          style={{
-            padding: "3px 10px",
-            borderRadius: "10px",
-            fontSize: "11px",
-            fontWeight: 600,
-            background: "var(--bg-success)",
-            color: "var(--bg-success-text)",
-            lineHeight: 1.4,
-            flexShrink: 0,
-          }}
-        >
-          {i18n.t("poc.status.ready")}
+        <button onClick={handleCopy} style={GHOST_SM}>
+          <Icon name={copied ? "check" : "copy"} size={12} />
+          {copied ? "已复制" : "复制"}
+        </button>
+        <button onClick={handleDownload} style={GHOST_SM}>
+          <Icon name="upload" size={12} style={{ transform: "rotate(180deg)" }} />
+          下载
+        </button>
+        <span style={{ marginLeft: "auto", fontSize: "11px", color: "var(--text-secondary)" }}>
+          {findingKey}-poc.sh
         </span>
-
-        {/* Expand chevron */}
-        <Icon
-          name={expanded ? "chevron-up" : "chevron-down"}
-          size={16}
-          style={{ color: "var(--text-secondary)", flexShrink: 0 }}
-        />
       </div>
-
-      {/* Expanded body */}
-      {expanded ? (
-        <div
-          data-testid="poc-card-body"
-          style={{ borderTop: "1px solid var(--divider)" }}
-        >
-          {isLoading ? (
-            <div style={{ padding: "24px", color: "var(--text-secondary)", fontSize: 13 }}>
-              {i18n.t("poc.loadingFile")}
-            </div>
-          ) : error ? (
-            <div style={{ padding: "24px", color: "var(--brand)", fontSize: 13 }}>
-              {i18n.t("poc.errorFile")}: {(error as Error).message}
-            </div>
-          ) : (
-            <>
-              {/* Code block */}
-              <pre
-                data-testid="poc-card-code"
-                style={{
-                  margin: 0,
-                  padding: "18px 20px",
-                  background: "var(--code-bg)",
-                  color: "var(--code-text)",
-                  fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-                  fontSize: "12px",
-                  lineHeight: 1.7,
-                  maxHeight: "360px",
-                  overflow: "auto",
-                  whiteSpace: "pre",
-                }}
-              >
-                {fileData?.content ?? ""}
-              </pre>
-
-              {/* Action row */}
-              <div
-                style={{
-                  display: "flex",
-                  gap: "8px",
-                  padding: "12px 20px",
-                  borderTop: "1px solid var(--divider)",
-                  background: "var(--bg-card)",
-                }}
-              >
-                <button
-                  type="button"
-                  data-testid="poc-card-copy"
-                  onClick={handleCopy}
-                  style={BTN_BASE}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = "var(--bg-hover)")
-                  }
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                >
-                  <Icon name={copied ? "check" : "copy"} size={13} />
-                  <span>{copied ? i18n.t("poc.copied") : i18n.t("poc.copy")}</span>
-                </button>
-                <button
-                  type="button"
-                  data-testid="poc-card-download"
-                  onClick={handleDownload}
-                  style={BTN_BASE}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = "var(--bg-hover)")
-                  }
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                >
-                  <Icon name="upload" size={13} style={{ transform: "rotate(180deg)" }} />
-                  <span>{i18n.t("poc.download")}</span>
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      ) : null}
-    </section>
+      <pre
+        style={{
+          flex: 1,
+          margin: 0,
+          padding: "16px 20px",
+          background: "var(--code-bg)",
+          color: "var(--code-text)",
+          fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+          fontSize: "12px",
+          lineHeight: 1.6,
+          overflow: "auto",
+          whiteSpace: "pre",
+        }}
+      >
+        {script ?? ""}
+      </pre>
+    </div>
   );
 }
 
-const BTN_BASE: CSSProperties = {
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  Output panel (terminal style)                                           */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+function OutputPanel({ taskId, findingKey, result }: { taskId: string; findingKey: string; result: PocResult | null }) {
+  const { data: log, isLoading } = useQuery({
+    queryKey: ["poc-log", taskId, findingKey],
+    queryFn: () => api.tasks.pocLog(taskId, findingKey),
+    enabled: !!result?.run_log_minio_key,
+  });
+
+  if (!result?.run_log_minio_key) {
+    return <EmptyCenter icon="terminal" text="尚未执行 POC" />;
+  }
+  if (isLoading) return <EmptyCenter icon="loader" text="加载中..." />;
+
+  const lines = (log ?? "").split("\n");
+
+  return (
+    <div
+      style={{
+        flex: 1,
+        background: "var(--terminal-bg, #1e1e1e)",
+        color: "var(--code-text, #d4d4d4)",
+        fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+        fontSize: "12px",
+        lineHeight: 1.65,
+        padding: "14px 18px",
+        overflow: "auto",
+        height: "100%",
+      }}
+    >
+      {lines.map((line, i) => {
+        const isStderr = line.startsWith("[stderr]");
+        const display = isStderr ? line.slice(9) : line.startsWith("[stdout] ") ? line.slice(9) : line;
+        return (
+          <div key={i} style={{ color: isStderr ? "#d97706" : undefined }}>
+            {display}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  Screenshots panel                                                       */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+function ScreenshotsPanel({ taskId, findingKey, result }: { taskId: string; findingKey: string; result: PocResult | null }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  if (!result?.screenshots_prefix) {
+    return <EmptyCenter icon="image" text="暂无截图" />;
+  }
+
+  // We don't have a list API for screenshots — derive from evidence
+  const screenshots: string[] = [];
+  if (result.evidence) {
+    const ss = (result.evidence as { screenshot?: string }).screenshot;
+    if (ss) screenshots.push(ss);
+  }
+  // Fallback: try common names
+  if (screenshots.length === 0) {
+    screenshots.push("screenshot.png", "poc-result.png", "before.png", "after.png");
+  }
+
+  return (
+    <div style={{ padding: "16px 24px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "12px" }}>
+        {screenshots.map((name) => (
+          <div
+            key={name}
+            onClick={() => setExpanded(name)}
+            style={{
+              borderRadius: "8px",
+              border: "1px solid var(--border)",
+              overflow: "hidden",
+              cursor: "pointer",
+              transition: "border-color 0.12s, box-shadow 0.12s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "var(--brand)";
+              e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "var(--border)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
+            <img
+              src={`/api/tasks/${taskId}/poc/${findingKey}/screenshots/${name}`}
+              alt={name}
+              style={{ width: "100%", display: "block" }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+            <div style={{ padding: "6px 10px", fontSize: "11px", color: "var(--text-secondary)" }}>{name}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Lightbox */}
+      {expanded && (
+        <div
+          onClick={() => setExpanded(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.7)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            cursor: "pointer",
+          }}
+        >
+          <img
+            src={`/api/tasks/${taskId}/poc/${findingKey}/screenshots/${expanded}`}
+            alt={expanded}
+            style={{ maxWidth: "90vw", maxHeight: "90vh", borderRadius: "8px" }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  Info panel                                                              */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+function InfoPanel({ finding, result }: { finding: FindingMeta; result: PocResult | null }) {
+  const kvs: { label: string; value: string | JSX.Element }[] = [
+    { label: "复现状态", value: result ? <PocStatusBadge status={result.status} /> : <span style={{ color: "var(--text-secondary)" }}>待生成</span> },
+    { label: "漏洞 ID", value: finding.finding_key },
+    { label: "漏洞类型", value: finding.vuln_type ?? "—" },
+    { label: "严重等级", value: finding.severity.toUpperCase() },
+    { label: "文件", value: finding.primary_file ? `${finding.primary_file}:${finding.primary_line ?? ""}` : "—" },
+  ];
+
+  if (result) {
+    if (result.target_url) kvs.push({ label: "目标地址", value: result.target_url });
+    if (result.summary) kvs.push({ label: "复现摘要", value: result.summary });
+    if (result.exit_code != null) kvs.push({ label: "退出码", value: String(result.exit_code) });
+    if (result.updated_at) kvs.push({ label: "最后更新", value: new Date(result.updated_at).toLocaleString() });
+  }
+
+  return (
+    <div style={{ padding: "20px 24px" }}>
+      {kvs.map((kv, i) => (
+        <div
+          key={i}
+          style={{
+            display: "flex",
+            padding: "10px 0",
+            borderBottom: "1px solid var(--divider)",
+            fontSize: "13px",
+            gap: "16px",
+          }}
+        >
+          <span style={{ width: "100px", flexShrink: 0, color: "var(--text-secondary)", fontWeight: 500 }}>
+            {kv.label}
+          </span>
+          <span style={{ flex: 1, color: "var(--text-primary)" }}>{kv.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  Generate Modal                                                          */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+function GenerateModal({
+  taskId,
+  selectedKeys,
+  onClose,
+  onSuccess,
+}: {
+  taskId: string;
+  selectedKeys: string[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [targetMode, setTargetMode] = useState<"provided" | "auto_deploy">("provided");
+  const [targetUrl, setTargetUrl] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [browserTool, setBrowserTool] = useState("deveye");
+
+  // Credentials for future use (credential selector in modal)
+  // const { data: credsData } = useQuery({
+  //   queryKey: ["credentials"],
+  //   queryFn: () => api.settings.listCredentials(),
+  // });
+
+  const mut = useMutation({
+    mutationFn: () =>
+      api.tasks.pocGenerate(taskId, {
+        finding_keys: selectedKeys,
+        target_mode: targetMode,
+        target_url: targetMode === "provided" ? targetUrl : undefined,
+        custom_instructions: instructions || undefined,
+        browser_tool: browserTool,
+      }),
+    onSuccess,
+  });
+
+  const canSubmit = targetMode === "auto_deploy" || (targetMode === "provided" && targetUrl.trim());
+
+  return (
+    <ModalOverlay onClose={onClose}>
+      <div style={MODAL_CONTAINER}>
+        <div style={MODAL_HEADER}>
+          <span style={{ fontSize: "15px", fontWeight: 600 }}>生成 POC</span>
+          <button onClick={onClose} style={{ ...GHOST_SM, padding: "4px" }}><Icon name="x" size={16} /></button>
+        </div>
+
+        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+            已选择 {selectedKeys.length} 个漏洞
+          </div>
+
+          {/* Target mode */}
+          <div>
+            <label style={LABEL}>目标环境</label>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <RadioOption active={targetMode === "provided"} onClick={() => setTargetMode("provided")} label="已有环境（提供访问地址）" />
+              <RadioOption active={targetMode === "auto_deploy"} onClick={() => setTargetMode("auto_deploy")} label="自动部署（从源码构建）" />
+            </div>
+          </div>
+
+          {/* Target URL */}
+          {targetMode === "provided" && (
+            <div>
+              <label style={LABEL}>目标地址</label>
+              <input
+                value={targetUrl}
+                onChange={(e) => setTargetUrl(e.target.value)}
+                placeholder="http://192.168.1.100:8080"
+                style={INPUT}
+              />
+            </div>
+          )}
+
+          {/* Instructions */}
+          <div>
+            <label style={LABEL}>自定义指令（可选）</label>
+            <textarea
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="如：管理员账号 admin/admin123、需要先登录后访问 /admin..."
+              style={{ ...INPUT, minHeight: "72px", resize: "vertical" }}
+            />
+          </div>
+
+          {/* Browser tool */}
+          <div>
+            <label style={LABEL}>浏览器工具</label>
+            <select value={browserTool} onChange={(e) => setBrowserTool(e.target.value)} style={INPUT}>
+              <option value="deveye">DeVeye</option>
+              <option value="playwright">Playwright</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={MODAL_FOOTER}>
+          <button onClick={onClose} style={GHOST_SM}>取消</button>
+          <button
+            onClick={() => mut.mutate()}
+            disabled={!canSubmit || mut.isPending}
+            style={{
+              ...PRIMARY_BTN,
+              opacity: canSubmit && !mut.isPending ? 1 : 0.6,
+              cursor: canSubmit && !mut.isPending ? "pointer" : "not-allowed",
+            }}
+          >
+            {mut.isPending ? "提交中..." : "开始生成"}
+          </button>
+        </div>
+      </div>
+    </ModalOverlay>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  Run Again Modal                                                         */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+function RunAgainModal({
+  taskId,
+  findingKey,
+  lastTargetUrl,
+  onClose,
+  onSuccess,
+}: {
+  taskId: string;
+  findingKey: string;
+  lastTargetUrl: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [targetUrl, setTargetUrl] = useState(lastTargetUrl);
+  const [instructions, setInstructions] = useState("");
+
+  const mut = useMutation({
+    mutationFn: () =>
+      api.tasks.pocRun(taskId, findingKey, {
+        target_url: targetUrl || undefined,
+        custom_instructions: instructions || undefined,
+      }),
+    onSuccess,
+  });
+
+  return (
+    <ModalOverlay onClose={onClose}>
+      <div style={{ ...MODAL_CONTAINER, width: "400px" }}>
+        <div style={MODAL_HEADER}>
+          <span style={{ fontSize: "15px", fontWeight: 600 }}>再次执行 — {findingKey}</span>
+          <button onClick={onClose} style={{ ...GHOST_SM, padding: "4px" }}><Icon name="x" size={16} /></button>
+        </div>
+
+        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div>
+            <label style={LABEL}>目标地址</label>
+            <input
+              value={targetUrl}
+              onChange={(e) => setTargetUrl(e.target.value)}
+              placeholder="http://..."
+              style={INPUT}
+            />
+          </div>
+          <div>
+            <label style={LABEL}>自定义指令（可选）</label>
+            <textarea
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              style={{ ...INPUT, minHeight: "60px", resize: "vertical" }}
+            />
+          </div>
+        </div>
+
+        <div style={MODAL_FOOTER}>
+          <button onClick={onClose} style={GHOST_SM}>取消</button>
+          <button
+            onClick={() => mut.mutate()}
+            disabled={mut.isPending}
+            style={{ ...PRIMARY_BTN, opacity: mut.isPending ? 0.6 : 1 }}
+          >
+            {mut.isPending ? "执行中..." : "执行"}
+          </button>
+        </div>
+      </div>
+    </ModalOverlay>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  Shared UI primitives                                                    */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+function PocStatusBadge({ status }: { status: string }) {
+  const cfg = STATUS_BADGE[status] ?? STATUS_BADGE.pending;
+  if (status === "pending") return <span style={{ color: cfg.color, fontSize: "11px" }}>—</span>;
+  return (
+    <span
+      style={{
+        fontSize: "10px",
+        fontWeight: 600,
+        padding: "2px 7px",
+        borderRadius: "4px",
+        background: cfg.bg,
+        color: cfg.color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
+function StatItem({ n, label }: { n: number; label: string }) {
+  return (
+    <span>
+      <span style={{ fontWeight: 600, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>{n}</span>
+      <span style={{ color: "var(--text-secondary)", marginLeft: "3px" }}>{label}</span>
+    </span>
+  );
+}
+
+function Sep() {
+  return <span style={{ color: "var(--text-secondary)", opacity: 0.3 }}>·</span>;
+}
+
+function EmptyCenter({ icon, text }: { icon: string; text: string }) {
+  return (
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-secondary)", fontSize: "13px" }}>
+      <div style={{ textAlign: "center" }}>
+        <Icon name={icon as never} size={28} style={{ opacity: 0.3, marginBottom: "10px" }} />
+        <div>{text}</div>
+      </div>
+    </div>
+  );
+}
+
+function RadioOption({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1,
+        padding: "8px 12px",
+        border: `1px solid ${active ? "var(--brand)" : "var(--border)"}`,
+        borderRadius: "6px",
+        background: active ? "rgba(var(--brand-rgb, 220,38,38), 0.05)" : "transparent",
+        color: active ? "var(--brand)" : "var(--text-primary)",
+        fontSize: "12px",
+        fontWeight: active ? 600 : 400,
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.4)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+      }}
+    >
+      <div onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ── Shared styles ── */
+
+const GHOST_SM: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: "6px",
-  padding: "6px 12px",
-  border: "1px solid var(--border)",
-  borderRadius: "6px",
+  gap: "5px",
+  padding: "4px 10px",
+  border: "none",
+  borderRadius: "4px",
   background: "transparent",
   color: "var(--text-secondary)",
   fontSize: "12px",
   fontWeight: 500,
   cursor: "pointer",
-  transition: "background 0.12s, color 0.12s",
-  lineHeight: 1,
 };
 
-/* -------------------------------------------------------------------------- */
-/*  Empty / loading state                                                     */
-/* -------------------------------------------------------------------------- */
+const LABEL: CSSProperties = {
+  display: "block",
+  fontSize: "12px",
+  fontWeight: 600,
+  color: "var(--text-primary)",
+  marginBottom: "6px",
+};
 
-function EmptyState({
-  text,
-  muted,
-  variant,
-}: {
-  text: string;
-  muted?: boolean;
-  variant?: "error";
-}) {
-  return (
-    <div
-      data-testid="poc-empty"
-      style={{
-        padding: "48px 24px",
-        textAlign: "center",
-        fontSize: "13px",
-        color:
-          variant === "error"
-            ? "var(--brand)"
-            : muted
-              ? "var(--text-secondary)"
-              : "var(--text-primary)",
-        background: "var(--bg-card)",
-        border: "1px dashed var(--border)",
-        borderRadius: "12px",
-      }}
-    >
-      {text}
-    </div>
-  );
-}
+const INPUT: CSSProperties = {
+  width: "100%",
+  padding: "9px 12px",
+  border: "1px solid var(--border)",
+  borderRadius: "6px",
+  fontSize: "13px",
+  background: "var(--bg-card)",
+  color: "var(--text-primary)",
+  outline: "none",
+  fontFamily: "inherit",
+  boxSizing: "border-box",
+};
+
+const PRIMARY_BTN: CSSProperties = {
+  padding: "8px 20px",
+  border: "none",
+  borderRadius: "6px",
+  background: "var(--brand)",
+  color: "var(--btn-primary-text, #fff)",
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const MODAL_CONTAINER: CSSProperties = {
+  width: "480px",
+  maxHeight: "80vh",
+  borderRadius: "12px",
+  background: "var(--bg-card)",
+  boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
+  overflow: "hidden",
+};
+
+const MODAL_HEADER: CSSProperties = {
+  padding: "18px 24px",
+  borderBottom: "1px solid var(--divider)",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+};
+
+const MODAL_FOOTER: CSSProperties = {
+  padding: "16px 24px",
+  borderTop: "1px solid var(--divider)",
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "8px",
+};

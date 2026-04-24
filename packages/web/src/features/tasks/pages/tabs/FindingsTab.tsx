@@ -368,25 +368,26 @@ export function FindingsTab() {
             flexDirection: "column",
           }}
         >
-      {/* Filter bar — inside left panel header */}
+      {/* Filter bar — inside left panel header, one row */}
       <div
         style={{
           display: "flex",
-          gap: "6px",
-          padding: "10px 16px",
+          gap: "4px",
+          padding: "10px 12px",
           borderBottom: "1px solid var(--divider)",
           alignItems: "center",
-          flexWrap: "wrap",
+          flexWrap: "nowrap",
           flexShrink: 0,
+          overflow: "hidden",
         }}
       >
-        {["all", "critical", "high", "medium", "low", "info"].map((s) => (
+        {(["all", "high", "medium", "low", "info"] as const).map((s) => (
           <button
             key={s}
             data-testid={`findings-filter-${s}`}
             onClick={() => setSeverityFilter(s)}
             style={{
-              padding: "4px 10px",
+              padding: "3px 9px",
               border: `1px solid ${
                 severityFilter === s && s !== "all"
                   ? SEV_COLORS[s]
@@ -394,7 +395,7 @@ export function FindingsTab() {
                     ? "var(--brand)"
                     : "var(--border)"
               }`,
-              borderRadius: "6px",
+              borderRadius: "999px",
               background:
                 severityFilter === s ? "var(--bg-active-filter)" : "transparent",
               color:
@@ -405,49 +406,39 @@ export function FindingsTab() {
                   : severityFilter === s
                     ? SEV_COLORS[s]
                     : "var(--text-secondary)",
-              fontSize: "12px",
+              fontSize: "11px",
               fontWeight: 500,
               cursor: "pointer",
-              textTransform: "capitalize",
+              flexShrink: 0,
+              whiteSpace: "nowrap",
+              fontFamily: "inherit",
             }}
           >
             {s === "all"
               ? i18n.t("findings.filterAll")
-              : s === "critical"
-                ? "Critical"
-                : i18n.t(
-                    `findings.sev${s.charAt(0).toUpperCase()}${s.slice(1)}`,
-                  )}
+              : i18n.t(
+                  `findings.sev${s.charAt(0).toUpperCase()}${s.slice(1)}`,
+                )}
           </button>
         ))}
-        <span
-          style={{
-            marginLeft: "auto",
-            fontSize: "12px",
-            color: "var(--text-secondary)",
-          }}
-        >
-          {fileFilter
-            ? i18n
-                .t("findings.filteredBy")
-                .replace("{n}", String(filteredFindings.length))
-                .replace("{file}", fileFilter.split("/").pop() ?? fileFilter)
-            : `${allFindings.length} ${i18n.t("findings.count")}`}
-        </span>
         {fileFilter && (
           <button
             data-testid="findings-clear-filter"
             onClick={clearFilter}
+            title={fileFilter.split("/").pop() ?? fileFilter}
             style={{
+              marginLeft: "auto",
               border: "none",
               background: "transparent",
               color: "var(--brand)",
-              fontSize: "12px",
+              fontSize: "11px",
               cursor: "pointer",
               padding: "0 4px",
+              flexShrink: 0,
+              fontFamily: "inherit",
             }}
           >
-            {i18n.t("findings.clearFilter")}
+            ✕ {i18n.t("findings.clearFilter")}
           </button>
         )}
       </div>

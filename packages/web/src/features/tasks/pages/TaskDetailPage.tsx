@@ -130,7 +130,16 @@ export function TaskDetailPage() {
   };
 
   return (
-    <div data-testid="task-detail-page" style={{ minHeight: "100vh", background: "var(--bg-page)" }}>
+    <div
+      data-testid="task-detail-page"
+      style={{
+        minHeight: "100vh",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        background: "var(--bg-page)",
+      }}
+    >
       {/* Topbar */}
       <div
         data-testid="task-topbar"
@@ -392,8 +401,17 @@ export function TaskDetailPage() {
         })}
       </div>
 
-      {/* Tab content */}
-      <div style={{ padding: "28px 40px 40px" }}>
+      {/* Tab content — tabs control their own padding/bg for edge-to-edge layout */}
+      <div
+        data-testid="task-detail-outlet"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          background: "var(--bg-card)",
+        }}
+      >
         <Outlet context={{ task }} />
       </div>
     </div>
