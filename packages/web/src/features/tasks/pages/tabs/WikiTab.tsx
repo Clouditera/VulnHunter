@@ -16,20 +16,22 @@ import { Icon } from "../../../../shared/components/Icon.js";
 import { Markdown } from "../../../chat/components/Markdown.js";
 
 /**
- * Wiki Tab — project knowledge digest assembled from youngflow's scan
- * outputs (profiler + aggregator + analysis summaries).
+ * Wiki Tab — two-column layout:
+ *   Left sidebar (220px): section navigation list
+ *   Right content (flex): section content, one at a time
  *
  * Sections render only when their backing data exists, so an old/partial
- * scan doesn't show empty cards. Empty/loading/error states are fully
- * handled at the top level.
- *
- * Wire shape notes:
- *   - Backend wraps each feature in `{feature: {...}}` and each group in
- *     `{group: {...}}`. We unwrap once at the top so downstream code
- *     treats them as plain objects.
- *   - profiler shape is youngflow-source, NOT a flattened DTO. Renderer
- *     handles the nested objects directly.
+ * scan doesn't show empty cards.
  */
+
+type SectionKey = "profile" | "reports" | "features" | "summaries";
+
+const SECTION_META: Record<SectionKey, { icon: "cpu" | "file-text" | "database" | "shield"; i18nKey: string }> = {
+  profile:   { icon: "cpu",       i18nKey: "wiki.section.profile" },
+  reports:   { icon: "file-text", i18nKey: "wiki.section.reports" },
+  features:  { icon: "database",  i18nKey: "wiki.section.features" },
+  summaries: { icon: "shield",    i18nKey: "wiki.section.summaries" },
+};
 
 export function WikiTab() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -53,6 +55,20 @@ export function WikiTab() {
   const summaries = data?.analysisSummaries ?? [];
   const reports = data?.reports ?? [];
 
+  // Build available sections list (only sections with data).
+  const sections = useMemo<SectionKey[]>(() => {
+    const out: SectionKey[] = [];
+    if (data?.profiler) out.push("profile");
+    if (reports.length > 0) out.push("reports");
+    if (features.length > 0) out.push("features");
+    if (summaries.length > 0) out.push("summaries");
+    return out;
+  }, [data?.profiler, reports.length, features.length, summaries.length]);
+
+  const [activeSection, setActiveSection] = useState<SectionKey | null>(null);
+  // Resolve effective active section: default to first available.
+  const effective = activeSection && sections.includes(activeSection) ? activeSection : sections[0] ?? null;
+
   if (isLoading) {
     return <FullState>{i18n.t("wiki.loading")}</FullState>;
   }
@@ -64,11 +80,7 @@ export function WikiTab() {
     );
   }
 
-  const available =
-    !!data &&
-    (!!data.profiler || reports.length > 0 || features.length > 0 || summaries.length > 0);
-
-  if (!available) {
+  if (sections.length === 0) {
     return (
       <FullState>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}>
@@ -84,51 +96,144 @@ export function WikiTab() {
     );
   }
 
+  /** Count badge text for sections that have countable items */
+  const badge = (key: SectionKey): string | null => {
+    if (key === "features" && features.length > 0) return `${features.length}`;
+    if (key === "summaries" && summaries.length > 0) return `${summaries.length}`;
+    if (key === "reports" && reports.length > 0) return `${reports.length}`;
+    return null;
+  };
+
   return (
-    <div data-testid="wiki-tab" style={PAGE}>
-      {data!.profiler ? (
-        <SectionCard
-          title={i18n.t("wiki.section.profile")}
-          icon="cpu"
-          testid="wiki-section-profile"
-        >
-          <ProjectProfile profiler={data!.profiler} />
-        </SectionCard>
-      ) : null}
+    <div
+      data-testid="wiki-tab"
+      style={{
+        display: "flex",
+        flex: 1,
+        minHeight: 0,
+        height: "100%",
+      }}
+    >
+      {/* ---- Left sidebar: section navigation ---- */}
+      <nav
+        data-testid="wiki-sidebar"
+        style={{
+          width: "220px",
+          flexShrink: 0,
+          overflow: "auto",
+          borderRight: "1px solid var(--border)",
+          background: "var(--bg-page)",
+          padding: "8px 0",
+        }}
+      >
+        {sections.map((key) => {
+          const meta = SECTION_META[key];
+          const active = key === effective;
+          const b = badge(key);
+          return (
+            <button
+              key={key}
+              type="button"
+              data-testid={`wiki-nav-${key}`}
+              onClick={() => setActiveSection(key)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                width: "100%",
+                padding: "9px 16px",
+                border: "none",
+                borderLeft: active ? "2px solid var(--brand)" : "2px solid transparent",
+                background: active ? "var(--bg-card)" : "transparent",
+                color: active ? "var(--text-primary)" : "var(--text-secondary)",
+                fontSize: "13px",
+                fontWeight: active ? 600 : 400,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                textAlign: "left",
+                transition: "background 0.12s, color 0.12s, border-color 0.12s",
+              }}
+            >
+              <Icon name={meta.icon} size={14} style={{ flexShrink: 0, opacity: active ? 1 : 0.6 }} />
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {i18n.t(meta.i18nKey)}
+              </span>
+              {b && (
+                <span
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 600,
+                    color: "var(--text-secondary)",
+                    background: "var(--bg-page)",
+                    border: active ? "1px solid var(--border)" : "none",
+                    borderRadius: "8px",
+                    padding: "1px 6px",
+                    flexShrink: 0,
+                  }}
+                >
+                  {b}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
 
-      {reports.length > 0 ? (
-        <SectionCard
-          title={i18n.t("wiki.section.reports")}
-          icon="file-text"
-          testid="wiki-section-reports"
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
-            {reports.map((r) => (
-              <ReportBlock key={r.name} report={r} />
-            ))}
-          </div>
-        </SectionCard>
-      ) : null}
+      {/* ---- Right content area ---- */}
+      <div
+        data-testid="wiki-content"
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflow: "auto",
+        }}
+      >
+        <div style={CONTENT_INNER}>
+          {effective === "profile" && data!.profiler && (
+            <SectionCard
+              title={i18n.t("wiki.section.profile")}
+              icon="cpu"
+              testid="wiki-section-profile"
+            >
+              <ProjectProfile profiler={data!.profiler} />
+            </SectionCard>
+          )}
 
-      {features.length > 0 ? (
-        <SectionCard
-          title={`${i18n.t("wiki.section.features")} · ${features.length}`}
-          icon="database"
-          testid="wiki-section-features"
-        >
-          <FeatureList features={features} groups={groups} />
-        </SectionCard>
-      ) : null}
+          {effective === "reports" && reports.length > 0 && (
+            <SectionCard
+              title={i18n.t("wiki.section.reports")}
+              icon="file-text"
+              testid="wiki-section-reports"
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
+                {reports.map((r) => (
+                  <ReportBlock key={r.name} report={r} />
+                ))}
+              </div>
+            </SectionCard>
+          )}
 
-      {summaries.length > 0 ? (
-        <SectionCard
-          title={`${i18n.t("wiki.section.summaries")} · ${summaries.length}`}
-          icon="shield"
-          testid="wiki-section-summaries"
-        >
-          <SummaryList summaries={summaries} groups={groups} />
-        </SectionCard>
-      ) : null}
+          {effective === "features" && features.length > 0 && (
+            <SectionCard
+              title={`${i18n.t("wiki.section.features")} · ${features.length}`}
+              icon="database"
+              testid="wiki-section-features"
+            >
+              <FeatureList features={features} groups={groups} />
+            </SectionCard>
+          )}
+
+          {effective === "summaries" && summaries.length > 0 && (
+            <SectionCard
+              title={`${i18n.t("wiki.section.summaries")} · ${summaries.length}`}
+              icon="shield"
+              testid="wiki-section-summaries"
+            >
+              <SummaryList summaries={summaries} groups={groups} />
+            </SectionCard>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -137,7 +242,7 @@ export function WikiTab() {
 /*  Layout primitives                                                         */
 /* -------------------------------------------------------------------------- */
 
-const PAGE: CSSProperties = {
+const CONTENT_INNER: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "20px",
