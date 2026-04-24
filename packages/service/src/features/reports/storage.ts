@@ -83,19 +83,24 @@ export interface DbUserReport {
   duration_ms: number | null;
 }
 
-export async function listReports(taskId: string): Promise<DbUserReport[]> {
+export async function listReports(taskId: string): Promise<(DbUserReport & { skill_name?: string })[]> {
   const db = getDb();
-  return db<DbUserReport[]>`
-    SELECT * FROM user_reports
-    WHERE task_id = ${taskId}
-    ORDER BY created_at DESC
+  return db<(DbUserReport & { skill_name?: string })[]>`
+    SELECT r.*, s.name AS skill_name
+    FROM user_reports r
+    LEFT JOIN report_skills s ON r.skill_id = s.id
+    WHERE r.task_id = ${taskId}
+    ORDER BY r.created_at DESC
   `;
 }
 
-export async function getReport(id: string): Promise<DbUserReport | null> {
+export async function getReport(id: string): Promise<(DbUserReport & { skill_name?: string }) | null> {
   const db = getDb();
-  const rows = await db<DbUserReport[]>`
-    SELECT * FROM user_reports WHERE id = ${id}
+  const rows = await db<(DbUserReport & { skill_name?: string })[]>`
+    SELECT r.*, s.name AS skill_name
+    FROM user_reports r
+    LEFT JOIN report_skills s ON r.skill_id = s.id
+    WHERE r.id = ${id}
   `;
   return rows[0] ?? null;
 }

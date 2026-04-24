@@ -109,7 +109,7 @@ function flattenTree(
         if (!matches) continue;
         const vulnByPath = vulnCountsByPath.get(path);
         const vulnCount =
-          vulnByPath !== undefined ? vulnByPath : vulnLeafNames.get(node.name) ?? 0;
+          vulnByPath !== undefined ? vulnByPath : (findingPaths.some((fp) => path.endsWith("/" + fp) || fp.endsWith("/" + path)) ? 1 : 0);
         out.push({
           name: node.name,
           path,
@@ -177,7 +177,7 @@ function flattenTree(
         if (!matches) continue;
         const vulnByPath = vulnCountsByPath.get(path);
         const vulnCount =
-          vulnByPath !== undefined ? vulnByPath : vulnLeafNames.get(node.name) ?? 0;
+          vulnByPath !== undefined ? vulnByPath : (findingPaths.some((fp) => path.endsWith("/" + fp) || fp.endsWith("/" + path)) ? 1 : 0);
         target.push({
           name: node.name,
           path,
