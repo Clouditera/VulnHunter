@@ -550,19 +550,16 @@ function OutputPanel({ taskId, findingKey, result }: { taskId: string; findingKe
 function ScreenshotsPanel({ taskId, findingKey, result }: { taskId: string; findingKey: string; result: PocResult | null }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  if (!result?.screenshots_prefix) {
-    return <EmptyCenter icon="image" text="暂无截图" />;
-  }
+  // Fetch actual screenshot list from the detail API
+  const { data: detailData } = useQuery({
+    queryKey: ["poc-detail", taskId, findingKey],
+    queryFn: () => api.tasks.pocFindingDetail(taskId, findingKey),
+    enabled: !!result?.screenshots_prefix,
+  });
+  const screenshots: string[] = (detailData as { screenshots?: string[] })?.screenshots ?? [];
 
-  // We don't have a list API for screenshots — derive from evidence
-  const screenshots: string[] = [];
-  if (result.evidence) {
-    const ss = (result.evidence as { screenshot?: string }).screenshot;
-    if (ss) screenshots.push(ss);
-  }
-  // Fallback: try common names
-  if (screenshots.length === 0) {
-    screenshots.push("screenshot.png", "poc-result.png", "before.png", "after.png");
+  if (!result?.screenshots_prefix || screenshots.length === 0) {
+    return <EmptyCenter icon="shield" text="暂无截图" />;
   }
 
   return (
@@ -592,7 +589,7 @@ function ScreenshotsPanel({ taskId, findingKey, result }: { taskId: string; find
               src={`/api/tasks/${taskId}/poc/${findingKey}/screenshots/${name}`}
               alt={name}
               style={{ width: "100%", display: "block" }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
             />
             <div style={{ padding: "6px 10px", fontSize: "11px", color: "var(--text-secondary)" }}>{name}</div>
           </div>

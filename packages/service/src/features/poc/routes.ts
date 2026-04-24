@@ -124,7 +124,29 @@ pocRouter.get("/:taskId/poc/:findingKey", async (c) => {
 
   const runs = await pocStorage.listPocRuns(taskId, findingKey);
 
-  return c.json({ result, runs });
+  // List actual screenshot files from MinIO
+  let screenshots: string[] = [];
+  if (result.screenshots_prefix) {
+    try {
+      const config = loadConfig();
+      const minio = getMinio();
+      const stream = minio.listObjects(config.minio.bucket, result.screenshots_prefix, false);
+      await new Promise<void>((resolve, reject) => {
+        stream.on("data", (obj) => {
+          if (obj.name) {
+            const name = obj.name.split("/").pop();
+            if (name && (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg"))) {
+              screenshots.push(name);
+            }
+          }
+        });
+        stream.on("end", resolve);
+        stream.on("error", reject);
+      });
+    } catch { /* no screenshots */ }
+  }
+
+  return c.json({ result, runs, screenshots });
 });
 
 // ─── Download POC Script ───
