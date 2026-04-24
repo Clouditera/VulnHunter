@@ -73,23 +73,22 @@ export function ReportsTab() {
     <div
       data-testid="task-detail-panel-reports"
       style={{
-        display: "grid",
-        gridTemplateColumns: selectedReport ? "340px 1fr" : "1fr",
-        gap: "16px",
+        display: "flex",
+        flex: 1,
+        minHeight: 0,
         height: "100%",
-        minHeight: "400px",
       }}
     >
       {/* ──────────────────── Report list column ──────────────────── */}
       <div
         style={{
-          background: "var(--bg-card)",
-          borderRadius: "10px",
-          border: "1px solid var(--border)",
+          width: "280px",
+          flexShrink: 0,
           overflow: "hidden",
+          borderRight: "1px solid var(--border)",
+          background: "var(--bg-page)",
           display: "flex",
           flexDirection: "column",
-          minHeight: "400px",
         }}
       >
         {/* Header */}
@@ -193,13 +192,40 @@ export function ReportsTab() {
       </div>
 
       {/* ──────────────────── Preview column ──────────────────── */}
-      {selectedReport && (
-        <ReportPreview
-          report={selectedReport}
-          taskId={task.id}
-          onClose={() => setSelectedReportId(null)}
-        />
-      )}
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflow: "auto",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {selectedReport ? (
+          <ReportPreview
+            report={selectedReport}
+            taskId={task.id}
+            onClose={() => setSelectedReportId(null)}
+          />
+        ) : (
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <Icon name="file-text" size={32} style={{ opacity: 0.35 }} />
+            <span style={{ fontSize: "13px" }}>
+              {i18n.t("reports.selectPrompt")}
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Skill picker modal */}
       {showSkillPicker && (
@@ -388,13 +414,10 @@ function ReportPreview({
     <div
       data-testid="report-preview"
       style={{
-        background: "var(--bg-card)",
-        borderRadius: "10px",
-        border: "1px solid var(--border)",
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        minHeight: "400px",
+        flex: 1,
       }}
     >
       <div

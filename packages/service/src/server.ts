@@ -14,6 +14,8 @@ import { chatRouter } from "./features/chat/index.js";
 import { reportsRouter } from "./features/reports/routes.js";
 import { wikiRouter } from "./features/wiki/routes.js";
 import { notificationRouter } from "./features/notifications/index.js";
+import { pocRouter } from "./features/poc/routes.js";
+import { pocSettingsRouter } from "./features/poc/settings-routes.js";
 import { setupWsRouter } from "./ws-router.js";
 import { mcpRouter } from "./mcp/index.js";
 import { injectUser } from "./middleware/index.js";
@@ -47,8 +49,14 @@ export function createApp(): Hono {
   app.route("/api", reportsRouter); // skills + reports
   app.route("/api", filesRouter); // includes POST /api/tasks (upload)
 
+  // POC/EXP generation
+  app.route("/api/tasks", pocRouter); // /:taskId/poc/*
+
   // SSE notifications (task state changes, findings indexed, etc.)
   app.route("/api", notificationRouter);
+
+  // POC settings
+  app.route("/api/settings", pocSettingsRouter);
 
   // MCP server for Chat agent tools (no license/auth middleware — has own auth)
   app.route("/mcp", mcpRouter);

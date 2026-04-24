@@ -360,16 +360,14 @@ export function WorkspaceTab() {
   return (
     <div
       data-testid="task-detail-panel-workspace"
-      style={{ position: "relative" }}
+      style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, height: "100%" }}
     >
       <div
         data-testid="workspace-container"
         style={{
           display: "flex",
-          height: "calc(100vh - 360px)",
-          minHeight: "420px",
-          border: "1px solid var(--border)",
-          borderRadius: "10px",
+          flex: 1,
+          minHeight: 0,
           overflow: "hidden",
           background: "var(--bg-card)",
         }}
