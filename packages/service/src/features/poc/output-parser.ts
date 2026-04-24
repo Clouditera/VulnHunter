@@ -36,11 +36,22 @@ export async function syncAndParsePocOutputs(
   let parsedCount = 0;
 
   // Iterate over BUG-* directories
+  // The flow may name dirs by short bug_id (e.g. "BUG-003") but DB finding_key
+  // is the full name (e.g. "BUG-003-rce-python-code-structured-tool").
+  // Resolve using the job's finding_keys list.
   const entries = readdirSync(findingsDir, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const findingKey = entry.name;
-    const findingDir = join(findingsDir, findingKey);
+    const dirName = entry.name;
+    const findingDir = join(findingsDir, dirName);
+
+    // Resolve dirName to full finding_key: exact match first, then prefix match
+    let findingKey = job.finding_keys.find((k) => k === dirName)
+      ?? job.finding_keys.find((k) => k.startsWith(dirName + "-") || k.startsWith(dirName + "_"));
+    if (!findingKey) {
+      logger.warn({ jobId, dirName }, "Cannot resolve directory to finding_key — skipping");
+      continue;
+    }
 
     try {
       const resultPath = join(findingDir, "result.json");
