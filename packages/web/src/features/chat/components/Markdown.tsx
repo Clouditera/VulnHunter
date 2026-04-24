@@ -132,11 +132,20 @@ const components: Components = {
   h2: ({ children }) => <h2 style={H2}>{children}</h2>,
   h3: ({ children }) => <h3 style={H3}>{children}</h3>,
   h4: ({ children }) => <h4 style={H4}>{children}</h4>,
-  a: ({ href, children }) => (
-    <a href={href} style={LINK} target="_blank" rel="noopener noreferrer">
-      {children}
-    </a>
-  ),
+  a: ({ href, children }) => {
+    // Detect autolinked URLs inside code blocks: if the link text IS the URL,
+    // render as plain code text to avoid breaking code block styling.
+    const text = typeof children === "string" ? children : "";
+    const isAutolink = text === href;
+    if (isAutolink) {
+      return <span>{children}</span>;
+    }
+    return (
+      <a href={href} style={LINK} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    );
+  },
   blockquote: ({ children }) => (
     <blockquote style={BLOCKQUOTE}>{children}</blockquote>
   ),
@@ -165,7 +174,10 @@ const components: Components = {
 
 export function Markdown({ content }: { content: string }) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+    <ReactMarkdown
+      remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
+      components={components}
+    >
       {content}
     </ReactMarkdown>
   );
