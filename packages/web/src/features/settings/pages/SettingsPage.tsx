@@ -7,6 +7,8 @@ import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential, type SystemConfig } from "../../../shared/api/client.js";
 import { SkillsSection } from "../components/SkillsSection.js";
 import { PocSettingsSection } from "../components/PocSettingsSection.js";
+import { UsersSection } from "../components/UsersSection.js";
+import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Design tokens mirroring the prototype.                                    */
@@ -608,15 +610,24 @@ export function SettingsPage() {
     }
   }
 
-  // Sub-nav sections. `id` becomes the anchor target; clicking scrolls.
-  const SUB_NAV_SECTIONS: Array<{ id: string; labelKey: string }> = [
-    { id: "license", labelKey: "settings.nav.license" },
-    { id: "credentials", labelKey: "settings.nav.credentials" },
-    { id: "poc", labelKey: "settings.nav.poc" },
-    { id: "skills", labelKey: "settings.nav.skills" },
-    { id: "appearance", labelKey: "settings.nav.appearance" },
-    { id: "engine", labelKey: "settings.nav.engine" },
-  ];
+  // Role-aware sub-nav
+  const { data: sysStatus } = useSystemStatus();
+  const isAdmin = sysStatus?.user?.role === "admin";
+
+  const SUB_NAV_SECTIONS: Array<{ id: string; labelKey: string }> = isAdmin
+    ? [
+        { id: "license", labelKey: "settings.nav.license" },
+        { id: "credentials", labelKey: "settings.nav.credentials" },
+        { id: "poc", labelKey: "settings.nav.poc" },
+        { id: "users", labelKey: "settings.nav.users" },
+        { id: "skills", labelKey: "settings.nav.skills" },
+        { id: "appearance", labelKey: "settings.nav.appearance" },
+        { id: "engine", labelKey: "settings.nav.engine" },
+      ]
+    : [
+        { id: "profile", labelKey: "settings.nav.profile" },
+        { id: "appearance", labelKey: "settings.nav.appearance" },
+      ];
 
   return (
     <div
@@ -1534,11 +1545,18 @@ export function SettingsPage() {
           {/* ============================================================= */}
           {/*  Language & Appearance                                          */}
           {/* ============================================================= */}
-          <div id="poc" style={{ scrollMarginTop: "20px" }} />
-          <PocSettingsSection />
+          {isAdmin && (
+            <>
+              <div id="poc" style={{ scrollMarginTop: "20px" }} />
+              <PocSettingsSection />
 
-          <div id="skills" style={{ scrollMarginTop: "20px" }} />
-          <SkillsSection />
+              <div id="users" style={{ scrollMarginTop: "20px" }} />
+              <UsersSection />
+
+              <div id="skills" style={{ scrollMarginTop: "20px" }} />
+              <SkillsSection />
+            </>
+          )}
 
           <div id="appearance" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
