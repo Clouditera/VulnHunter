@@ -245,8 +245,6 @@ export function WikiTab() {
 const CONTENT_INNER: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: "20px",
-  padding: "20px 24px 32px",
   width: "100%",
 };
 
@@ -287,10 +285,6 @@ function SectionCard({
     <section
       data-testid={testid}
       style={{
-        background: "var(--bg-card)",
-        border: "1px solid var(--border)",
-        borderRadius: "10px",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
         overflow: "hidden",
       }}
     >
@@ -301,7 +295,6 @@ function SectionCard({
           gap: "8px",
           padding: "14px 18px",
           borderBottom: "1px solid var(--divider)",
-          background: "var(--bg-page)",
         }}
       >
         <Icon name={icon} size={15} style={{ color: "var(--text-secondary)" }} />
