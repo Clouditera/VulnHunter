@@ -206,8 +206,8 @@ export function WikiTab() {
               testid="wiki-section-reports"
             >
               <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
-                {reports.map((r) => (
-                  <ReportBlock key={r.name} report={r} />
+                {reports.map((r, idx) => (
+                  <ReportBlock key={`${r.name}-${idx}`} report={r} />
                 ))}
               </div>
             </SectionCard>
@@ -802,7 +802,7 @@ function SummaryList({
   return (
     <div style={{ display: "grid", gap: "10px" }}>
       {summaries.map((s, idx) => (
-        <SummaryCard key={s.group_id ?? idx} summary={s} groupName={groupName(s.group_id)} />
+        <SummaryCard key={`${s.group_id}-${idx}`} summary={s} groupName={groupName(s.group_id)} />
       ))}
     </div>
   );
