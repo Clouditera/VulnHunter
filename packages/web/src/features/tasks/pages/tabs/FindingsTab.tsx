@@ -177,8 +177,8 @@ export function FindingsTab() {
 
   const [leftWidth, setLeftWidth] = useState(28); // percent
   const [draggingLeft, setDraggingLeft] = useState(false);
-  /** Right-side view: detail (7-section YAML), code viewer, or file tree. */
-  const [rightView, setRightView] = useState<"detail" | "code" | "files">("detail");
+  /** Right-side view: detail (7-section YAML) or code+files (inline split). */
+  const [rightView, setRightView] = useState<"detail" | "code">("detail");
 
   /* -------- Data queries -------- */
 
@@ -532,14 +532,12 @@ export function FindingsTab() {
               flexShrink: 0,
             }}
           >
-            {(["detail", "code", "files"] as const).map((tab) => {
+            {(["detail", "code"] as const).map((tab) => {
               const active = rightView === tab;
               const label =
                 tab === "detail"
                   ? i18n.t("findings.tab.detail")
-                  : tab === "code"
-                    ? i18n.t("findings.tab.code")
-                    : i18n.t("findings.tab.files");
+                  : i18n.t("findings.tab.code");
               return (
                 <button
                   key={tab}
@@ -618,56 +616,64 @@ export function FindingsTab() {
             )}
 
             {rightView === "code" && (
-              viewPath ? (
-                <CodeViewer
-                  path={viewPath}
-                  file={fileData}
-                  loading={fileLoading}
-                  vulnLines={vulnLineSet}
-                  activeLine={activeLine}
-                />
-              ) : (
-                <EmptyCodePlaceholder />
-              )
-            )}
-
-            {rightView === "files" && (
               <div
-                data-testid="findings-file-tree"
                 style={{
-                  background: "var(--bg-page)",
-                  minHeight: "100%",
-                  padding: "6px 0",
+                  display: "flex",
+                  flex: 1,
+                  minHeight: 0,
                 }}
               >
-                {!treeData || (treeData.tree ?? []).length === 0 ? (
-                  allFindings.length === 0 ? (
-                    <EmptyState
-                      icon="shield"
-                      text={i18n.t("findings.noVulnFiles")}
+                {/* Inline file tree (left side of code tab) */}
+                <div
+                  data-testid="findings-file-tree"
+                  style={{
+                    width: "220px",
+                    flexShrink: 0,
+                    overflow: "auto",
+                    borderRight: "1px solid var(--border)",
+                    background: "var(--bg-page)",
+                    padding: "6px 0",
+                  }}
+                >
+                  {!treeData || (treeData.tree ?? []).length === 0 ? (
+                    allFindings.length === 0 ? (
+                      <EmptyState
+                        icon="shield"
+                        text={i18n.t("findings.noVulnFiles")}
+                      />
+                    ) : (
+                      <div style={MSG_STYLE}>
+                        {i18n.t("findings.filesEmpty")}
+                      </div>
+                    )
+                  ) : (
+                    flatTree.map((n) => (
+                      <FileTreeRow
+                        key={n.path}
+                        node={n}
+                        selected={
+                          (viewPath ?? "") === n.path ||
+                          (fileFilter ?? "") === n.path
+                        }
+                        onClick={() => handlePickTreeNode(n)}
+                      />
+                    ))
+                  )}
+                </div>
+                {/* Code viewer (right side of code tab) */}
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                  {viewPath ? (
+                    <CodeViewer
+                      path={viewPath}
+                      file={fileData}
+                      loading={fileLoading}
+                      vulnLines={vulnLineSet}
+                      activeLine={activeLine}
                     />
                   ) : (
-                    <div style={MSG_STYLE}>
-                      {i18n.t("findings.filesEmpty")}
-                    </div>
-                  )
-                ) : (
-                  flatTree.map((n) => (
-                    <FileTreeRow
-                      key={n.path}
-                      node={n}
-                      selected={
-                        (viewPath ?? "") === n.path ||
-                        (fileFilter ?? "") === n.path
-                      }
-                      onClick={() => {
-                        handlePickTreeNode(n);
-                        // After picking a file, switch to code view.
-                        if (!n.isDir) setRightView("code");
-                      }}
-                    />
-                  ))
-                )}
+                    <EmptyCodePlaceholder />
+                  )}
+                </div>
               </div>
             )}
           </div>
