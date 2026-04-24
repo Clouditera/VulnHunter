@@ -146,7 +146,7 @@ export function TaskDetailPage() {
         style={{
           background: "var(--bg-card)",
           borderBottom: "1px solid var(--border)",
-          padding: "20px 40px",
+          padding: "22px 40px 24px",
         }}
       >
         {/* Back link */}
@@ -164,7 +164,7 @@ export function TaskDetailPage() {
             fontWeight: 500,
             lineHeight: 1,
             padding: 0,
-            marginBottom: "14px",
+            marginBottom: "18px",
             display: "inline-flex",
             alignItems: "center",
             gap: "6px",
@@ -213,8 +213,8 @@ export function TaskDetailPage() {
             <div
               style={{
                 display: "flex",
-                gap: "20px",
-                marginTop: "10px",
+                gap: "22px",
+                marginTop: "14px",
                 fontSize: "13px",
                 color: "var(--text-secondary)",
                 flexWrap: "wrap",

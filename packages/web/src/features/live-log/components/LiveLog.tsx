@@ -240,7 +240,7 @@ export function LiveLog({ taskId, taskState }: Props) {
       data-testid="live-log-bar"
       data-expanded={expanded || undefined}
       style={{
-        marginTop: "14px",
+        marginTop: "20px",
         // Unified card — header + expanded body live inside the same
         // border, so they read as one block instead of two separate
         // widgets (fish feedback on the prototype split).
