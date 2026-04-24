@@ -5,7 +5,9 @@
 import { Hono } from "hono";
 import { requireAdmin } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
+import { WebSocket } from "ws";
 import * as pocStorage from "./storage.js";
+import { logger } from "../../infra/logger.js";
 
 export const pocSettingsRouter = new Hono();
 pocSettingsRouter.use("*", licenseGuard);
@@ -47,4 +49,54 @@ pocSettingsRouter.patch("/poc", async (c) => {
   });
 
   return c.json({ settings });
+});
+
+// POST /api/settings/poc/test — test DeVeye connection
+pocSettingsRouter.post("/poc/test", async (c) => {
+  const body = await c.req.json<{ server_url?: string; token?: string }>().catch(() => ({} as { server_url?: string; token?: string }));
+
+  // Use provided values or fall back to saved settings
+  const saved = await pocStorage.getPocSettings();
+  const serverUrl = body.server_url || saved?.deveye_server_url;
+  const token = body.token || saved?.deveye_token;
+
+  if (!serverUrl) {
+    return c.json({ ok: false, error: "DeVeye Server URL not configured" });
+  }
+
+  // Test connection via WebSocket ping
+  try {
+    const result = await new Promise<{ ok: boolean; server_version?: string; error?: string }>(
+      (resolve) => {
+        const timeout = setTimeout(() => {
+          ws.close();
+          resolve({ ok: false, error: `Connection timeout (5s) at ${serverUrl}` });
+        }, 5000);
+
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+
+        const ws = new WebSocket(serverUrl, { headers });
+
+        ws.on("open", () => {
+          // Send a ping/handshake message
+          ws.send(JSON.stringify({ type: "ping" }));
+          // If connection opens, server is reachable
+          clearTimeout(timeout);
+          ws.close();
+          resolve({ ok: true, server_version: "connected" });
+        });
+
+        ws.on("error", (err) => {
+          clearTimeout(timeout);
+          resolve({ ok: false, error: `${err.message} at ${serverUrl}` });
+        });
+      },
+    );
+
+    logger.info({ serverUrl, ok: result.ok }, "DeVeye connection test");
+    return c.json(result);
+  } catch (err) {
+    return c.json({ ok: false, error: String(err) });
+  }
 });

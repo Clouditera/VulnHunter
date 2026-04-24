@@ -685,11 +685,13 @@ function GenerateModal({
   const [instructions, setInstructions] = useState("");
   const [browserTool, setBrowserTool] = useState("deveye");
 
-  // Credentials for future use (credential selector in modal)
-  // const { data: credsData } = useQuery({
-  //   queryKey: ["credentials"],
-  //   queryFn: () => api.settings.listCredentials(),
-  // });
+  // Check DeVeye config
+  const { data: pocSettingsData } = useQuery({
+    queryKey: ["poc-settings"],
+    queryFn: () => api.settings.getPocSettings(),
+  });
+  const deveyeConfigured = !!pocSettingsData?.settings?.deveye_server_url?.trim();
+  const deveyeUrl = pocSettingsData?.settings?.deveye_server_url ?? "";
 
   const mut = useMutation({
     mutationFn: () =>
@@ -760,6 +762,31 @@ function GenerateModal({
                 Playwright（即将推出）
               </option>
             </select>
+            {browserTool === "deveye" && !deveyeConfigured && (
+              <div style={{
+                marginTop: "8px",
+                padding: "10px 14px",
+                borderRadius: "6px",
+                background: "#fff7ed",
+                border: "1px solid #fed7aa",
+                fontSize: "12px",
+                color: "#9a3412",
+                lineHeight: 1.55,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Icon name="alert-triangle" size={14} />
+                  <span style={{ fontWeight: 600 }}>DeVeye Server 未配置</span>
+                </div>
+                <div style={{ marginTop: "4px" }}>
+                  请先在 Settings → POC/EXP 设置中填写 Server URL 和 Token。
+                </div>
+              </div>
+            )}
+            {browserTool === "deveye" && deveyeConfigured && (
+              <div style={{ fontSize: "11px", color: "#16a34a", marginTop: "4px" }}>
+                ✓ 已连接到 {deveyeUrl}
+              </div>
+            )}
           </div>
         </div>
 

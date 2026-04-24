@@ -315,6 +315,18 @@ export const api = {
         method: "POST",
         body: JSON.stringify(params),
       }),
+    getPocSettings: () =>
+      request<{ settings: PocSettingsApi }>("/api/settings/poc"),
+    updatePocSettings: (body: Partial<PocSettingsApi>) =>
+      request<{ settings: PocSettingsApi }>("/api/settings/poc", {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    testPocConnection: (body?: { server_url?: string; token?: string }) =>
+      request<{ ok: boolean; server_version?: string; error?: string }>(
+        "/api/settings/poc/test",
+        { method: "POST", body: JSON.stringify(body ?? {}) },
+      ),
   },
   dashboard: {
     get: (range?: string) =>
@@ -564,6 +576,15 @@ export interface PocRun {
   started_at: string | null;
   completed_at: string | null;
   duration_ms: number | null;
+}
+
+export interface PocSettingsApi {
+  default_target_mode: string;
+  default_browser_tool: string;
+  deveye_server_url: string | null;
+  deveye_token: string | null;
+  default_concurrency: number;
+  poc_timeout_s: number;
 }
 
 export interface PocSummary {
