@@ -75,7 +75,13 @@ export async function spawnReportWorker(params: {
     ...credentialToWorkerEnv(cred),
     SERVICE_URL: `http://vulnhunt-service:${config.port}`,
     CHAT_WORKER_TOKEN: reportId, // MCP auth token
-    REPORT_SYSTEM_PROMPT: `You are a security report generator. Use the provided skill instructions and MCP tools to generate a report for task ${taskId}. Write output files to /workspace/reports/.`,
+    REPORT_SYSTEM_PROMPT: [
+      "你是安全报告生成助手。",
+      "你已被加载了一个 Report Skill（通过 --skill 参数），它定义了报告的格式、语言、内容结构和评估标准。",
+      "严格按照 Skill 的指引生成报告。不要发明 Skill 未要求的内容格式。",
+      `使用 MCP 工具（list-findings, read-finding, read-task-metadata）获取任务 ${taskId} 的数据。`,
+      "将报告文件写入 /workspace/reports/，完成后调用 submit-report 提交。",
+    ].join("\n"),
   };
 
   const container = await createWorkerContainer({

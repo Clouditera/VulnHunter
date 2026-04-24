@@ -326,10 +326,12 @@ function main(): void {
   // Report mode: auto-inject the generation prompt after a short delay
   if (MODE === "report" && TASK_ID) {
     setTimeout(() => {
-      const prompt = `Generate a comprehensive security report for task ${TASK_ID}. ` +
-        `Use the MCP tools (list-findings, read-finding, read-task-metadata) to gather data. ` +
-        `Write the report files to /workspace/reports/. ` +
-        `When done, call submit-report with the appropriate parameters.`;
+      const prompt = [
+        `请为任务 ${TASK_ID} 生成安全报告。`,
+        `严格遵循已加载的 Skill 指引（报告格式、语言、评估标准）。`,
+        `使用 MCP 工具获取 findings 数据，然后按 Skill 要求输出报告文件到 /workspace/reports/。`,
+        `完成后调用 submit-report 提交报告。`,
+      ].join("\n");
       console.log("[bridge] Injecting report generation prompt");
       sendToPi({ type: "prompt", message: prompt });
     }, 3000);
