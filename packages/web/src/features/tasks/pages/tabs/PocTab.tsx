@@ -751,12 +751,14 @@ function GenerateModal({
             />
           </div>
 
-          {/* Browser tool */}
+          {/* Browser tool — DeVeye only for now, Playwright deferred to v1.2 */}
           <div>
             <label style={LABEL}>浏览器工具</label>
             <select value={browserTool} onChange={(e) => setBrowserTool(e.target.value)} style={INPUT}>
               <option value="deveye">DeVeye</option>
-              <option value="playwright">Playwright</option>
+              <option value="playwright" disabled>
+                Playwright（即将推出）
+              </option>
             </select>
           </div>
         </div>

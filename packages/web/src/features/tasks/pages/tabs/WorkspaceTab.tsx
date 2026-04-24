@@ -42,13 +42,13 @@ function flattenTree(
   // Map from workspace-path → vuln count. We normalize:
   //   /workspace/src/foo/bar.c  → src/foo/bar.c  → bar.c last-segment match
   const vulnCountsByPath = new Map<string, number>();
-  const vulnLeafNames = new Map<string, number>();
+  // Collect all finding paths for suffix matching
+  const findingPaths: string[] = [];
   for (const f of findings) {
     const raw = (f.primary_file ?? "").replace(/^\/+workspace\/+/, "").replace(/^\/+/, "");
     if (!raw) continue;
     vulnCountsByPath.set(raw, (vulnCountsByPath.get(raw) ?? 0) + 1);
-    const leaf = raw.split("/").pop() ?? raw;
-    vulnLeafNames.set(leaf, (vulnLeafNames.get(leaf) ?? 0) + 1);
+    findingPaths.push(raw);
   }
 
   const q = query.trim().toLowerCase();
