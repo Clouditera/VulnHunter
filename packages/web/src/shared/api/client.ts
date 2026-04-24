@@ -328,6 +328,33 @@ export const api = {
         { method: "POST", body: JSON.stringify(body ?? {}) },
       ),
   },
+  users: {
+    list: () => request<{ users: UserApi[] }>("/api/users"),
+    create: (data: { email: string; password: string; display_name?: string; role?: string }) =>
+      request<{ user: UserApi }>("/api/users", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: { display_name?: string; role?: string; status?: string; reset_password?: string }) =>
+      request<{ ok: boolean }>(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<{ ok: boolean }>(`/api/users/${id}`, { method: "DELETE" }),
+  },
+  auth: {
+    login: (email: string, password: string) =>
+      request<{ ok: boolean; user: { id: string; email: string; displayName: string; role: string; mustChangePassword: boolean } }>(
+        "/api/auth/login",
+        { method: "POST", body: JSON.stringify({ email, password }) },
+      ),
+    logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
+    changePassword: (old_password: string, new_password: string) =>
+      request<{ ok: boolean }>("/api/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ old_password, new_password }),
+      }),
+    forceChangePassword: (new_password: string) =>
+      request<{ ok: boolean }>("/api/auth/force-change-password", {
+        method: "POST",
+        body: JSON.stringify({ new_password }),
+      }),
+  },
   dashboard: {
     get: (range?: string) =>
       request<DashboardData>(`/api/dashboard${range ? `?range=${range}` : ""}`),
@@ -576,6 +603,17 @@ export interface PocRun {
   started_at: string | null;
   completed_at: string | null;
   duration_ms: number | null;
+}
+
+export interface UserApi {
+  id: string;
+  email: string;
+  display_name: string;
+  role: string;
+  status: string;
+  must_change_password: boolean;
+  last_login_at: string | null;
+  created_at: string;
 }
 
 export interface PocSettingsApi {
