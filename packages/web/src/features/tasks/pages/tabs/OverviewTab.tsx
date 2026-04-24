@@ -148,11 +148,10 @@ export function OverviewTab() {
     (Number(exec.total_tokens_out ?? task.total_tokens_out ?? 0) || 0);
   const toolCalls = Number(exec.tool_call_count ?? task.tool_call_count ?? 0);
 
-  // Top 3 findings sorted by severity weight desc
+  // All findings sorted by severity weight desc
   const sevWeight: Record<string, number> = { high: 4, medium: 3, low: 2, info: 1 };
-  const topFindings = [...findings]
-    .sort((a, b) => (sevWeight[b.severity] ?? 0) - (sevWeight[a.severity] ?? 0))
-    .slice(0, 3);
+  const sortedFindings = [...findings]
+    .sort((a, b) => (sevWeight[b.severity] ?? 0) - (sevWeight[a.severity] ?? 0));
 
   return (
     <div
@@ -187,9 +186,6 @@ export function OverviewTab() {
                       rel="noreferrer"
                       style={{
                         color: "var(--text-primary)",
-                        fontFamily:
-                          "'SF Mono', Menlo, Consolas, monospace",
-                        fontSize: "12px",
                         wordBreak: "break-all",
                       }}
                     >
@@ -201,31 +197,14 @@ export function OverviewTab() {
               {sm.git_branch && (
                 <KV
                   label={i18n.t("overview.gitBranch")}
-                  value={
-                    <code
-                      style={{
-                        fontFamily:
-                          "'SF Mono', Menlo, Consolas, monospace",
-                        fontSize: "12px",
-                      }}
-                    >
-                      {sm.git_branch}
-                    </code>
-                  }
+                  value={sm.git_branch}
                 />
               )}
               {sm.filename && (
                 <KV
                   label={i18n.t("overview.filename")}
                   value={
-                    <span
-                      style={{
-                        fontFamily:
-                          "'SF Mono', Menlo, Consolas, monospace",
-                        fontSize: "12px",
-                        wordBreak: "break-all",
-                      }}
-                    >
+                    <span style={{ wordBreak: "break-all" }}>
                       {sm.filename}
                     </span>
                   }
@@ -263,53 +242,65 @@ export function OverviewTab() {
 
       {/* Risk Assessment — large number + segmented severity bar + legend */}
       <Card title={i18n.t("overview.riskAssessment")} icon="shield" align="center">
-        {risk != null ? (
-          <>
+        {(() => {
+          // Use backend score if available; otherwise derive from severity counts
+          const total = counts.high + counts.medium + counts.low + counts.info;
+          const derivedScore = total > 0
+            ? Math.min(10, (counts.high * 2.5 + counts.medium * 1.2 + counts.low * 0.3 + counts.info * 0.05))
+            : null;
+          const displayScore = risk ?? derivedScore;
+          const isRunning = task.state !== "completed" && task.state !== "failed";
+
+          if (displayScore != null) {
+            return (
+              <>
+                <div
+                  style={{
+                    fontSize: "48px",
+                    fontWeight: 800,
+                    color: riskScoreColor(displayScore),
+                    lineHeight: 1,
+                    fontVariantNumeric: "tabular-nums",
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  {displayScore.toFixed(1)}
+                  <span
+                    style={{
+                      fontSize: "20px",
+                      color: "var(--text-secondary)",
+                      fontWeight: 500,
+                      marginLeft: "4px",
+                    }}
+                  >
+                    / 10
+                  </span>
+                </div>
+                <div
+                  style={{
+                    fontSize: "14px",
+                    color: "var(--text-secondary)",
+                    marginTop: "6px",
+                  }}
+                >
+                  {i18n.t("overview.overallRiskScore")}
+                </div>
+              </>
+            );
+          }
+
+          return (
             <div
               style={{
-                fontSize: "48px",
-                fontWeight: 800,
-                color: riskScoreColor(risk),
-                lineHeight: 1,
-                fontVariantNumeric: "tabular-nums",
-                letterSpacing: "-0.02em",
-              }}
-            >
-              {risk.toFixed(1)}
-              <span
-                style={{
-                  fontSize: "20px",
-                  color: "var(--text-secondary)",
-                  fontWeight: 500,
-                  marginLeft: "4px",
-                }}
-              >
-                / 10
-              </span>
-            </div>
-            <div
-              style={{
-                fontSize: "14px",
                 color: "var(--text-secondary)",
-                marginTop: "6px",
+                fontSize: "13px",
+                padding: "12px 0 6px",
               }}
             >
-              {i18n.t("overview.overallRiskScore")}
+              {isRunning ? i18n.t("overview.analyzing") : i18n.t("overview.riskNotAvailable")}
             </div>
-          </>
-        ) : (
-          <div
-            style={{
-              color: "var(--text-secondary)",
-              fontSize: "13px",
-              padding: "28px 0 6px",
-            }}
-          >
-            {task.state === "completed" || task.state === "failed"
-              ? i18n.t("overview.riskNotAvailable")
-              : i18n.t("overview.analyzing")}
-          </div>
-        )}
+          );
+        })()}
 
         {/* Segmented severity bar — flex weights reflect counts (min 1 to stay visible) */}
         <SevBar counts={counts} />
@@ -367,7 +358,7 @@ export function OverviewTab() {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {topFindings.map((f) => (
+            {sortedFindings.map((f) => (
               <div
                 key={f.id}
                 data-testid="overview-key-finding"
