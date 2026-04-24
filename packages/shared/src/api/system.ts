@@ -10,4 +10,9 @@ export interface SystemStatus {
   has_admin: boolean;
   is_authenticated: boolean;
   installation_id: string;
+  user?: {
+    id: string;
+    email: string;
+    role: "admin" | "member";
+  } | null;
 }
