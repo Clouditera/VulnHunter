@@ -157,7 +157,7 @@ export function ReportsTab() {
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "6px" }}>
+        <div style={{ flex: 1, overflowY: "auto" }}>
           {isLoading ? (
             <Empty text={i18n.t("reports.loading")} />
           ) : reports.length === 0 ? (
@@ -275,17 +275,15 @@ function ReportRow({
       data-status={report.status}
       onClick={onClick}
       style={{
-        padding: "10px 12px",
-        borderRadius: "6px",
+        padding: "10px 16px",
         cursor: "pointer",
-        background: active ? "var(--bg-active-filter)" : "transparent",
-        border: `1px solid ${active ? "var(--brand)" : "transparent"}`,
-        marginBottom: "2px",
+        background: active ? "var(--bg-card)" : "transparent",
+        borderLeft: active ? "2px solid var(--brand)" : "2px solid transparent",
+        transition: "background 0.12s, border-color 0.12s",
       }}
       onMouseEnter={(e) => {
         if (!active)
-          (e.currentTarget as HTMLDivElement).style.background =
-            "var(--bg-hover)";
+          (e.currentTarget as HTMLDivElement).style.background = "var(--bg-hover)";
       }}
       onMouseLeave={(e) => {
         if (!active)

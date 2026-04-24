@@ -365,14 +365,42 @@ export function FindingsTab() {
   /* -------- Render -------- */
 
   return (
-    <div data-testid="task-detail-panel-findings" style={{ position: "relative" }}>
-      {/* Filter bar */}
+    <div data-testid="task-detail-panel-findings" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, height: "100%" }}>
+      {/* Two-column container */}
+      <div
+        data-testid="findings-two-col"
+        style={{
+          display: "flex",
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
+          background: "var(--bg-card)",
+        }}
+      >
+        {/* Left: findings list */}
+        <div
+          data-testid="findings-list-panel"
+          style={{
+            width: `${leftWidth}%`,
+            flexShrink: 0,
+            overflow: "auto",
+            borderRight: "1px solid var(--border)",
+            background: "var(--bg-page)",
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+      {/* Filter bar — inside left panel header */}
       <div
         style={{
           display: "flex",
-          gap: "8px",
-          marginBottom: "16px",
+          gap: "6px",
+          padding: "10px 16px",
+          borderBottom: "1px solid var(--divider)",
           alignItems: "center",
+          flexWrap: "wrap",
+          flexShrink: 0,
         }}
       >
         {["all", "critical", "high", "medium", "low", "info"].map((s) => (
@@ -447,33 +475,8 @@ export function FindingsTab() {
         )}
       </div>
 
-      {/* Two-column container (refactored from three-col for breathing room) */}
-      <div
-        data-testid="findings-two-col"
-        style={{
-          display: "flex",
-          height: "calc(100vh - 360px)",
-          minHeight: "420px",
-          border: "1px solid var(--border)",
-          borderRadius: "10px",
-          overflow: "hidden",
-          background: "var(--bg-card)",
-        }}
-      >
-        {/* ================================================================ */}
-        {/*  Left: findings list                                             */}
-        {/* ================================================================ */}
-        <div
-          data-testid="findings-list-panel"
-          style={{
-            width: `${leftWidth}%`,
-            flexShrink: 0,
-            overflow: "auto",
-            borderRight: "1px solid var(--border)",
-            background: "var(--bg-card)",
-            minWidth: 0,
-          }}
-        >
+          {/* Findings list body */}
+          <div style={{ flex: 1, overflow: "auto" }}>
           {findingsLoading ? (
             <div style={MSG_STYLE}>{i18n.t("findings.loading")}</div>
           ) : filteredFindings.length === 0 ? (
@@ -492,6 +495,7 @@ export function FindingsTab() {
             ))
           )}
         </div>
+        </div>{/* end left panel */}
 
         {/* Splitter */}
         <div
@@ -711,14 +715,13 @@ function FindingRow({
       data-selected={selected || undefined}
       onClick={onClick}
       style={{
-        padding: "12px 16px",
-        borderBottom: "1px solid var(--divider)",
+        padding: "10px 16px",
         cursor: "pointer",
-        background: selected ? "var(--bg-page)" : "transparent",
+        background: selected ? "var(--bg-card)" : "transparent",
         borderLeft: selected
-          ? "3px solid var(--brand)"
-          : "3px solid transparent",
-        transition: "all 0.1s",
+          ? "2px solid var(--brand)"
+          : "2px solid transparent",
+        transition: "background 0.12s, border-color 0.12s",
       }}
     >
       <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
