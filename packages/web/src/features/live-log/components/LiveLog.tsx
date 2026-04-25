@@ -343,7 +343,7 @@ export function LiveLog({ taskId, taskState }: Props) {
             fontVariantNumeric: "tabular-nums",
           }}
         >
-          {events.length} {i18n.t("liveLog.events")}
+          {events.length >= 1000 ? `${i18n.t("liveLog.recent")} ${events.length}` : events.length} {i18n.t("liveLog.events")}
         </span>
         <span
           style={{
@@ -498,9 +498,10 @@ export function LiveLog({ taskId, taskState }: Props) {
                 {i18n.t("liveLog.noEvents")}
               </div>
             ) : (
-              filteredEvents.map((ev, i) => (
+              /* Only render visible events when expanded — avoids 1000+ DOM nodes when collapsed */
+              expanded ? filteredEvents.slice(-200).map((ev, i) => (
                 <LogLine key={`${ev.seq}-${i}`} ev={ev} />
-              ))
+              )) : null
             )}
           </div>
 

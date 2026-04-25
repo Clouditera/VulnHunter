@@ -522,6 +522,7 @@ const ZH: Record<string, string> = {
   "liveLog.autoscroll": "自动滚动",
   "liveLog.resumeScroll": "有新事件 — 点击恢复自动滚动",
   "liveLog.events": "个事件",
+  "liveLog.recent": "最近",
   "liveLog.waiting": "等待事件…",
   "liveLog.allSources": "全部",
 
@@ -1074,6 +1075,7 @@ const EN: Record<string, string> = {
   "liveLog.autoscroll": "Auto-scroll",
   "liveLog.resumeScroll": "New events — click to resume auto-scroll",
   "liveLog.events": "events",
+  "liveLog.recent": "latest",
   "liveLog.waiting": "Waiting for events…",
   "liveLog.allSources": "All",
 
