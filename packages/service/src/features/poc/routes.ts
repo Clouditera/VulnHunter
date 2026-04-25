@@ -8,6 +8,7 @@ import { licenseGuard } from "../../middleware/license-guard.js";
 import { loadConfig } from "../../infra/config.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
+import { assertNoActiveOperation } from "../tasks/operation-lock.js";
 import * as pocStorage from "./storage.js";
 import * as taskStorage from "../tasks/storage.js";
 
@@ -50,6 +51,11 @@ pocRouter.post("/:taskId/poc/generate", async (c) => {
   const user = c.get("user");
   const task = await taskStorage.getTaskById(taskId);
   if (!task) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+
+  try { await assertNoActiveOperation(taskId, "poc"); } catch (err: any) {
+    if (err.code === "ERR_TASK_BUSY") return c.json({ error: { code: "ERR_TASK_BUSY", message: err.message, active: err.active } }, 409);
+    throw err;
+  }
 
   const body = await c.req.json<{
     finding_keys: string[];
@@ -228,6 +234,11 @@ pocRouter.post("/:taskId/poc/:findingKey/run", async (c) => {
   const taskId = c.req.param("taskId");
   const findingKey = c.req.param("findingKey");
   const user = c.get("user");
+
+  try { await assertNoActiveOperation(taskId, "poc"); } catch (err: any) {
+    if (err.code === "ERR_TASK_BUSY") return c.json({ error: { code: "ERR_TASK_BUSY", message: err.message, active: err.active } }, 409);
+    throw err;
+  }
 
   const result = await pocStorage.getPocResult(taskId, findingKey);
   if (!result) {

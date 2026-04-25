@@ -28,7 +28,7 @@ export async function tickPocScheduler(config: ServiceConfig): Promise<void> {
       // Start tailing event files
       const hostWorkDir = getEvalHostWorkDir(config.dataDir, job.id);
       const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
-      startTailing(job.id, [], [{ path: eventsDir, source: `poc:${job.id}` }]);
+      startTailing(job.task_id, [], [{ path: eventsDir, source: "poc" }]);
     } catch (err) {
       logger.error({ err, jobId: job.id }, "Failed to spawn eval worker");
       await pocStorage.updatePocJobState(job.id, "failed", {
@@ -48,7 +48,7 @@ export async function tickPocScheduler(config: ServiceConfig): Promise<void> {
       // Start tailing event files
       const hostWorkDir = getRunHostWorkDir(config.dataDir, run.id);
       const eventsDir = join(hostWorkDir, "events");
-      startTailing(run.id, [], [{ path: eventsDir, source: `poc:${run.id}` }]);
+      startTailing(run.task_id, [], [{ path: eventsDir, source: "poc" }]);
     } catch (err) {
       logger.error({ err, runId: run.id }, "Failed to spawn POC runner");
       await pocStorage.updatePocRunState(run.id, "failed", {

@@ -96,6 +96,15 @@ reportsRouter.get("/tasks/:taskId/reports", async (c) => {
 reportsRouter.post("/tasks/:taskId/reports/generate", async (c) => {
   const { taskId } = c.req.param();
   const user = c.get("user");
+
+  try {
+    const { assertNoActiveOperation } = await import("../tasks/operation-lock.js");
+    await assertNoActiveOperation(taskId, "report");
+  } catch (err: any) {
+    if (err.code === "ERR_TASK_BUSY") return c.json({ error: { code: "ERR_TASK_BUSY", message: err.message, active: err.active } }, 409);
+    throw err;
+  }
+
   const body = await c.req.json<{ skill_id: string; credential_id?: string }>();
 
   if (!body.skill_id) {

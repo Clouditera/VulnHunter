@@ -111,6 +111,14 @@ tasksRouter.post("/:id/restart", async (c) => {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "Cannot restart in current state" } }, 409);
   }
 
+  try {
+    const { assertNoActiveOperation } = await import("./operation-lock.js");
+    await assertNoActiveOperation(task.id, "scan");
+  } catch (err: any) {
+    if (err.code === "ERR_TASK_BUSY") return c.json({ error: { code: "ERR_TASK_BUSY", message: err.message, active: err.active } }, 409);
+    throw err;
+  }
+
   const config = loadConfig();
   const minio = getMinio();
 
