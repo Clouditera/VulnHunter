@@ -204,13 +204,16 @@ tasksRouter.get("/:id/events", async (c) => {
   const task = await taskStorage.getTaskById(c.req.param("id"));
   if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
 
-  // Try in-memory buffer first (running/recently active tasks)
+  // In-memory events (from active tailing — may contain poc/report/scan events)
   const memEvents = getAllEvents(task.id);
-  if (memEvents.length > 0) {
+
+  // For completed/terminal tasks, also load archived events from MinIO
+  // For running tasks with in-memory events, return those directly
+  if (memEvents.length > 0 && ["running", "paused"].includes(task.state)) {
     return c.json({ events: memEvents });
   }
 
-  // Fallback: read archived events from MinIO (completed/failed/cancelled tasks)
+  // Read archived events from MinIO + merge with in-memory
   const config = loadConfig();
   const minio = getMinio();
   const prefix = `scan-outputs/${task.id}/.youngflow/logs/`;
@@ -285,9 +288,12 @@ tasksRouter.get("/:id/events", async (c) => {
       } catch { /* skip unreadable files */ }
     }
 
-    return c.json({ events });
+    // Merge archived events with in-memory events (dedup by checking if memEvents exist)
+    const allEvents = [...events, ...memEvents];
+    return c.json({ events: allEvents });
   } catch (err) {
     logger.warn({ err, taskId: task.id }, "Failed to load archived events");
-    return c.json({ events: [] });
+    // Fall back to in-memory only
+    return c.json({ events: memEvents });
   }
 });
