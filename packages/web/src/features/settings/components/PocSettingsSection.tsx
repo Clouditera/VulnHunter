@@ -136,16 +136,7 @@ Expand-Archive deveye-toolkit-*.zip; cd deveye-toolkit
               <p style={STEP_DESC}>{i18n.t("settings.poc.help.step3Desc")}</p>
             </div>
 
-            <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px dashed #bfdbfe" }}>
-              <a
-                href="/docs/deveye-server-setup.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: "#2563eb", fontSize: "12px", textDecoration: "none" }}
-              >
-                {i18n.t("settings.poc.help.fullDocs")}
-              </a>
-            </div>
+
           </div>
         )}
       </div>
