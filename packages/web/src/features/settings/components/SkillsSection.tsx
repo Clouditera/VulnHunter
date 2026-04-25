@@ -65,10 +65,10 @@ export function SkillsSection() {
       data-testid="settings-card-skills"
       style={{
         background: "var(--bg-card)",
-        borderRadius: "10px",
-        padding: "22px 24px",
+        borderRadius: "12px",
+        padding: "24px",
         border: "1px solid var(--border)",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        marginBottom: "16px",
       }}
     >
       <div

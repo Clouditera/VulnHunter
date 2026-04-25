@@ -278,12 +278,12 @@ const PATHS: Record<IconName, JSX.Element> = {
       <path d="M16.24 7.76l2.83-2.83" />
     </>
   ),
-  // License — key (Feather)
+  // License — key (visually centered, optical y≈12)
   key: (
     <>
-      <circle cx="7.5" cy="15.5" r="3.5" />
-      <path d="M21 2l-9.6 9.6" />
-      <path d="M15.5 7.5l3 3L22 7l-3-3" />
+      <circle cx="8" cy="16" r="5" />
+      <path d="M21 3l-9.5 9.5" />
+      <path d="M15.5 8.5l3 3L22 8l-3-3" />
     </>
   ),
   // Users management — multi-user (Feather)
