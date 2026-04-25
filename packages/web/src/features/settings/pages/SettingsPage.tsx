@@ -8,6 +8,7 @@ import { api, type LlmCredential, type SystemConfig } from "../../../shared/api/
 import { SkillsSection } from "../components/SkillsSection.js";
 import { PocSettingsSection } from "../components/PocSettingsSection.js";
 import { UsersSection } from "../components/UsersSection.js";
+import { ProfileSection } from "../components/ProfileSection.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 
 /* -------------------------------------------------------------------------- */
@@ -734,9 +735,18 @@ export function SettingsPage() {
         </div>
       ) : (
         <>
+          {/* Profile section (non-admin) */}
+          {!isAdmin && (
+            <>
+              <div id="profile" style={{ scrollMarginTop: "20px" }} />
+              <ProfileSection />
+            </>
+          )}
+
           {/* ============================================================= */}
-          {/*  License Information                                           */}
+          {/*  License Information (admin only)                              */}
           {/* ============================================================= */}
+          {isAdmin && <>
           <div id="license" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
             icon="shield"
@@ -1541,6 +1551,7 @@ export function SettingsPage() {
               );
             })()}
           </SettingsCard>
+          </>}
 
           {/* ============================================================= */}
           {/*  Language & Appearance                                          */}

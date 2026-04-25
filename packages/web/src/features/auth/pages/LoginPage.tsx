@@ -20,9 +20,13 @@ export function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await api.auth.login(email, password);
+      const res = await api.auth.login(email, password);
       qc.invalidateQueries({ queryKey: ["system-status"] });
-      navigate("/dashboard");
+      if (res.user?.mustChangePassword) {
+        navigate("/change-password");
+      } else {
+        navigate("/dashboard");
+      }
     } catch (err) {
       const code = (err as Error & { code?: string }).code;
       if (code === "ERR_AUTH_LOCKED") setError(i18n.t("login.errorLocked"));

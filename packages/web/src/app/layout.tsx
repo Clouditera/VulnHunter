@@ -7,6 +7,7 @@ import { i18n } from "../shared/i18n/index.js";
 import { theme } from "../shared/theme/index.js";
 import { Icon, type IconName } from "../shared/components/Icon.js";
 import { useNotifications } from "../shared/hooks/useNotifications.js";
+import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
 
 const TOP_NAV_ITEMS: Array<{ to: string; icon: IconName; labelKey: string; testid: string }> = [
   { to: "/dashboard", icon: "dashboard", labelKey: "nav.dashboard", testid: "nav-dashboard" },
@@ -173,29 +174,8 @@ export function AppLayout() {
             <Icon name={currentTheme === "dark" ? "moon" : "sun"} size={18} />
           </IconToggle>
 
-          {/* User avatar — click to logout */}
-          <button
-            data-testid="nav-logout"
-            onClick={handleLogout}
-            title={i18n.t("nav.logout")}
-            style={{
-              width: "32px",
-              height: "32px",
-              borderRadius: "50%",
-              background: "#333",
-              color: "#ccc",
-              border: "none",
-              cursor: "pointer",
-              fontSize: "13px",
-              fontWeight: 600,
-              marginTop: "8px",
-              transition: "background 0.15s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#444")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "#333")}
-          >
-            A
-          </button>
+          {/* User avatar with popover */}
+          <UserAvatarPopover onLogout={handleLogout} onNavigateSettings={() => navigate("/settings")} />
         </div>
       </nav>
 
@@ -278,3 +258,101 @@ function IconToggle({
     </button>
   );
 }
+
+/**
+ * User avatar circle with click-to-open popover (profile info + settings link + logout).
+ */
+function UserAvatarPopover({ onLogout, onNavigateSettings }: { onLogout: () => void; onNavigateSettings: () => void }) {
+  const { data: status } = useSystemStatus();
+  const user = status?.user;
+  const [open, setOpen] = useState(false);
+
+  const initial = (user?.email?.split("@")[0]?.[0] ?? "U").toUpperCase();
+  const displayName = user?.email?.split("@")[0] ?? "User";
+
+  return (
+    <div style={{ position: "relative", marginTop: "8px" }}>
+      <button
+        data-testid="nav-avatar"
+        onClick={() => setOpen(!open)}
+        style={{
+          width: "32px",
+          height: "32px",
+          borderRadius: "50%",
+          background: "var(--brand)",
+          color: "#fff",
+          border: "none",
+          cursor: "pointer",
+          fontSize: "13px",
+          fontWeight: 600,
+          transition: "opacity 0.15s",
+        }}
+      >
+        {initial}
+      </button>
+
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 998 }} />
+          <div
+            style={{
+              position: "absolute",
+              left: "calc(100% + 8px)",
+              bottom: 0,
+              width: "220px",
+              background: "var(--bg-card)",
+              border: "1px solid var(--border)",
+              borderRadius: "10px",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
+              padding: "6px",
+              zIndex: 999,
+            }}
+          >
+            {/* User header */}
+            <div style={{ padding: "10px 12px" }}>
+              <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>{displayName}</div>
+              <div style={{ fontSize: "11px", color: "var(--text-secondary)", fontFamily: "monospace" }}>{user?.email}</div>
+              {user?.role === "admin" && (
+                <span style={{
+                  display: "inline-block", marginTop: "4px", padding: "2px 8px", borderRadius: "4px",
+                  fontSize: "10px", fontWeight: 600, border: "1px solid var(--brand)", color: "var(--brand)",
+                }}>Admin</span>
+              )}
+            </div>
+
+            <div style={{ borderTop: "1px solid var(--divider)", margin: "4px 0" }} />
+
+            {/* Menu items */}
+            <button
+              onClick={() => { setOpen(false); onNavigateSettings(); }}
+              style={popoverItem}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              <Icon name="settings" size={14} />
+              <span>{i18n.t("nav.user.settings")}</span>
+            </button>
+            <button
+              onClick={() => { setOpen(false); onLogout(); }}
+              style={{ ...popoverItem, color: "var(--brand)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              <Icon name="logout" size={14} />
+              <span>{i18n.t("nav.user.logout")}</span>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const popoverItem: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: "8px",
+  width: "100%", padding: "8px 12px", border: "none",
+  borderRadius: "6px", background: "transparent",
+  fontSize: "13px", color: "var(--text-primary)",
+  cursor: "pointer", textAlign: "left", fontFamily: "inherit",
+  transition: "background 0.12s",
+};

@@ -4,6 +4,7 @@ import { ActivatePage } from "../features/auth/pages/ActivatePage.js";
 import { BootstrapPage } from "../features/auth/pages/BootstrapPage.js";
 import { LoginPage } from "../features/auth/pages/LoginPage.js";
 import { ExpiredPage } from "../features/auth/pages/ExpiredPage.js";
+import { ChangePasswordPage } from "../features/auth/pages/ChangePasswordPage.js";
 import { AppLayout } from "./layout.js";
 import { DashboardPage } from "../features/dashboard/pages/DashboardPage.js";
 import { TasksListPage } from "../features/tasks/pages/TasksListPage.js";
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
   { path: "/expired", element: <ExpiredPage /> },
   { path: "/bootstrap", element: <BootstrapPage /> },
   { path: "/login", element: <LoginPage /> },
+  { path: "/change-password", element: <ChangePasswordPage /> },
   {
     element: <AuthGuard />,
     children: [
