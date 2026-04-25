@@ -701,6 +701,7 @@ function CodeViewer({
       <div
         ref={streamRef}
         data-testid="workspace-code-body"
+        translate="no"
         style={{
           flex: 1,
           overflow: "auto",

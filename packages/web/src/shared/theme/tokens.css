@@ -98,6 +98,16 @@
   box-sizing: border-box;
 }
 
+/* Selection — global, brand-tinted, readable on both light and dark backgrounds */
+::selection {
+  background: rgba(220, 38, 38, 0.18); /* brand red, low alpha */
+  color: inherit;
+}
+:root[data-theme="dark"] ::selection {
+  background: rgba(220, 38, 38, 0.32); /* slightly stronger on dark */
+  color: inherit;
+}
+
 body {
   margin: 0;
   background: var(--bg-page);

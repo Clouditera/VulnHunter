@@ -531,10 +531,11 @@ function OutputPanel({ taskId, findingKey, result }: { taskId: string; findingKe
 
   return (
     <div
+      translate="no"
       style={{
         flex: 1,
-        background: "var(--terminal-bg, #1e1e1e)",
-        color: "var(--code-text, #d4d4d4)",
+        background: "var(--code-bg)",
+        color: "var(--code-text)",
         fontFamily: "'SF Mono', Menlo, Consolas, monospace",
         fontSize: "12px",
         lineHeight: 1.65,
@@ -547,7 +548,7 @@ function OutputPanel({ taskId, findingKey, result }: { taskId: string; findingKe
         const isStderr = line.startsWith("[stderr]");
         const display = isStderr ? line.slice(9) : line.startsWith("[stdout] ") ? line.slice(9) : line;
         return (
-          <div key={i} style={{ color: isStderr ? "#d97706" : undefined }}>
+          <div key={i} style={{ color: isStderr ? "var(--status-paused)" : undefined }}>
             {display}
           </div>
         );

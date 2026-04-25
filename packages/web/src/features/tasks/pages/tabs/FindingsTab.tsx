@@ -1563,10 +1563,10 @@ function CodeBlock({
 }) {
   const bg =
     tone === "bad"
-      ? "rgba(220,38,38,0.08)"
+      ? "var(--bg-error)"
       : tone === "good"
-        ? "rgba(34,197,94,0.08)"
-        : "var(--terminal-bg, #0a0a0a)";
+        ? "var(--bg-success)"
+        : "var(--code-bg)";
   const border =
     tone === "bad"
       ? "1px solid rgba(220,38,38,0.3)"
