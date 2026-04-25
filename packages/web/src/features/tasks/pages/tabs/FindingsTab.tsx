@@ -12,6 +12,7 @@ import {
 } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon } from "../../../../shared/components/Icon.js";
+import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Severity helpers                                                          */
@@ -175,7 +176,8 @@ export function FindingsTab() {
   const [nonVulnFile, setNonVulnFile] = useState<string | null>(null);
   const [treeCollapsed, setTreeCollapsed] = useState<Set<string>>(new Set());
 
-  const LEFT_PANEL_WIDTH = 260; // px — Group A (content-right Tabs)
+  const [LEFT_PANEL_WIDTH, setLeftPanelWidth] = useResizableWidth("findings-left-width", 260, { min: 200, max: 600 });
+  const splitContainerRef = useRef<HTMLDivElement>(null);
 
   /** Right-side view: detail (7-section YAML) or code+files (inline split). */
   const [rightView, setRightView] = useState<"detail" | "code">("detail");
@@ -345,6 +347,7 @@ export function FindingsTab() {
     <div data-testid="task-detail-panel-findings" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, height: "100%" }}>
       {/* Two-column container — rounded white card on gray page */}
       <div
+        ref={splitContainerRef}
         data-testid="findings-two-col"
         style={{
           display: "flex",
@@ -364,7 +367,6 @@ export function FindingsTab() {
             width: `${LEFT_PANEL_WIDTH}px`,
             flexShrink: 0,
             overflow: "auto",
-            borderRight: "1px solid var(--border)",
             background: "var(--bg-page)",
             minWidth: 0,
             display: "flex",
@@ -468,6 +470,14 @@ export function FindingsTab() {
         </div>
         </div>{/* end left panel */}
 
+        {/* Resizable splitter */}
+        <Splitter
+          value={LEFT_PANEL_WIDTH}
+          onResize={setLeftPanelWidth}
+          min={200}
+          max={600}
+          containerRef={splitContainerRef}
+        />
 
         {/* ================================================================ */}
         {/*  Right: Tab-switched panel — Detail / Code / Files               */}

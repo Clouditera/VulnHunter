@@ -14,10 +14,15 @@
   --sev-low: #2563eb;
   --sev-info: #9ca3af;
 
-  --code-bg: #1e1e1e;
+  /* Code viewer: theme-aware (light by default, dark in dark mode) */
+  /* Terminal-bg stays always dark (LiveLog has terminal aesthetic) */
+  --code-bg: #f8fafc;
+  --code-text: #0f172a;
+  --code-comment: #94a3b8;
+  --code-line-number: #cbd5e1;
+  --code-vuln-bg: #fef2f2;
+  --code-vuln-border: #fca5a5;
   --terminal-bg: #0a0a0a;
-  --code-text: #d4d4d4;
-  --code-comment: #555555;
 
   /* Semantic status */
   --status-running: #2563eb;
@@ -78,7 +83,15 @@
   --bg-active-filter: rgba(220,38,38,0.15);
 
   --btn-primary-text: #ffffff;
-  /* code-bg and terminal-bg stay the same in dark mode — always darker than card */
+
+  /* Code viewer: dark in dark mode */
+  --code-bg: #1e1e1e;
+  --code-text: #d4d4d4;
+  --code-comment: #6b7280;
+  --code-line-number: #525252;
+  --code-vuln-bg: rgba(220,38,38,0.12);
+  --code-vuln-border: rgba(220,38,38,0.4);
+  /* terminal-bg stays the same in dark mode — LiveLog terminal aesthetic */
 }
 
 * {

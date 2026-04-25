@@ -4,7 +4,7 @@
  * Right: 4-tab detail (Script / Output / Screenshots / Info).
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CSSProperties } from "react";
@@ -17,6 +17,7 @@ import {
 } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon } from "../../../../shared/components/Icon.js";
+import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
 
 /* ── Severity colors ── */
 const SEV_COLORS: Record<string, string> = {
@@ -93,8 +94,12 @@ export function PocTab() {
   // Stats
   const stats = summary?.summary ?? { total: findings.length, reproduced: 0, partial: 0, not_reproduced: 0, error: 0, skipped: 0, pending: 0 };
 
+  const [leftWidth, setLeftWidth] = useResizableWidth("poc-left-width", 300, { min: 240, max: 600 });
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+
   return (
     <div
+      ref={splitContainerRef}
       data-testid="task-detail-panel-poc"
       style={{
         display: "flex",
@@ -108,13 +113,12 @@ export function PocTab() {
         boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
       }}
     >
-      {/* ── Left panel (300px) ── */}
+      {/* ── Left panel (resizable) ── */}
       <div
         style={{
-          width: "300px",
+          width: `${leftWidth}px`,
           flexShrink: 0,
           background: "var(--bg-page)",
-          borderRight: "1px solid var(--border)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -283,6 +287,15 @@ export function PocTab() {
           </button>
         </div>
       </div>
+
+      {/* Resizable splitter */}
+      <Splitter
+        value={leftWidth}
+        onResize={setLeftWidth}
+        min={240}
+        max={600}
+        containerRef={splitContainerRef}
+      />
 
       {/* ── Right panel ── */}
       <div style={{ flex: 1, minWidth: 0, background: "var(--bg-card)", display: "flex", flexDirection: "column", overflow: "hidden" }}>

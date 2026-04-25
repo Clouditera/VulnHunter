@@ -14,7 +14,7 @@
  *   5. Failed: show failure_reason + retry.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -27,6 +27,7 @@ import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon } from "../../../../shared/components/Icon.js";
 import { Markdown } from "../../../chat/components/Markdown.js";
 import { formatDateTime } from "../../../../shared/utils/format.js";
+import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
 
 export function ReportsTab() {
   const { task } = useOutletContext<{ task: Task }>();
@@ -69,8 +70,12 @@ export function ReportsTab() {
   const canGenerate =
     task.state === "completed" || task.state === "failed"; // allow regen on failed
 
+  const [leftWidth, setLeftWidth] = useResizableWidth("reports-left-width", 260, { min: 200, max: 600 });
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+
   return (
     <div
+      ref={splitContainerRef}
       data-testid="task-detail-panel-reports"
       style={{
         display: "flex",
@@ -87,10 +92,9 @@ export function ReportsTab() {
       {/* ──────────────────── Report list column ──────────────────── */}
       <div
         style={{
-          width: "260px",
+          width: `${leftWidth}px`,
           flexShrink: 0,
           overflow: "hidden",
-          borderRight: "1px solid var(--border)",
           background: "var(--bg-page)",
           display: "flex",
           flexDirection: "column",
@@ -210,6 +214,15 @@ export function ReportsTab() {
           </button>
         </div>
       </div>
+
+      {/* Resizable splitter */}
+      <Splitter
+        value={leftWidth}
+        onResize={setLeftWidth}
+        min={200}
+        max={600}
+        containerRef={splitContainerRef}
+      />
 
       {/* ──────────────────── Preview column ──────────────────── */}
       <div

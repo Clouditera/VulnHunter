@@ -10,6 +10,7 @@ import {
 } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon } from "../../../../shared/components/Icon.js";
+import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                   */
@@ -224,9 +225,10 @@ export function WorkspaceTab() {
   /** First-load init flag so we collapse-all once but don't undo user edits. */
   const [collapseInitDone, setCollapseInitDone] = useState(false);
   const [query, setQuery] = useState("");
-  // Group B Tabs (code-oriented right panel): fixed 300px left width,
-  // matching POC Tab for visual consistency.
-  const LEFT_PANEL_WIDTH = 300; // px
+  // Group B Tabs (code-oriented right panel): resizable left width,
+  // defaulting to 300px (matches POC Tab).
+  const [LEFT_PANEL_WIDTH, setLeftPanelWidth] = useResizableWidth("workspace-left-width", 300, { min: 240, max: 700 });
+  const splitContainerRef = useRef<HTMLDivElement>(null);
 
   // Collect all directory paths from the tree once it loads, then collapse
   // them by default. Users see only the root level on entry and click to
@@ -341,6 +343,7 @@ export function WorkspaceTab() {
       style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, height: "100%" }}
     >
       <div
+        ref={splitContainerRef}
         data-testid="workspace-container"
         style={{
           display: "flex",
@@ -361,7 +364,6 @@ export function WorkspaceTab() {
           style={{
             width: `${LEFT_PANEL_WIDTH}px`,
             flexShrink: 0,
-            borderRight: "1px solid var(--border)",
             background: "var(--bg-page)",
             display: "flex",
             flexDirection: "column",
@@ -467,6 +469,15 @@ export function WorkspaceTab() {
           </div>
         </div>
 
+
+        {/* Resizable splitter */}
+        <Splitter
+          value={LEFT_PANEL_WIDTH}
+          onResize={setLeftPanelWidth}
+          min={240}
+          max={700}
+          containerRef={splitContainerRef}
+        />
 
         {/* ================================================================= */}
         {/*  Right: code viewer                                               */}
@@ -702,14 +713,14 @@ function CodeViewer({
         }}
       >
         {loading ? (
-          <div style={{ padding: "24px", color: "#737373", fontSize: "12px" }}>
+          <div style={{ padding: "24px", color: "var(--text-secondary)", fontSize: "12px" }}>
             {i18n.t("workspace.loading.file")}
           </div>
         ) : error ? (
           <div
             style={{
               padding: "24px",
-              color: "#f87171",
+              color: "var(--brand)",
               fontSize: "12px",
               whiteSpace: "pre-wrap",
             }}
@@ -717,7 +728,7 @@ function CodeViewer({
             {i18n.t("workspace.error.file")}: {(error as Error).message}
           </div>
         ) : file?.type === "binary" ? (
-          <div style={{ padding: "24px", color: "#737373", fontSize: "12px" }}>
+          <div style={{ padding: "24px", color: "var(--text-secondary)", fontSize: "12px" }}>
             {i18n.t("workspace.binary")}
           </div>
         ) : (
@@ -732,7 +743,7 @@ function CodeViewer({
                 style={{
                   display: "flex",
                   padding: "0 14px",
-                  background: isVuln ? "rgba(220,38,38,0.14)" : "transparent",
+                  background: isVuln ? "var(--code-vuln-bg)" : "transparent",
                   borderLeft: isVuln
                     ? "3px solid var(--brand)"
                     : "3px solid transparent",
@@ -741,7 +752,7 @@ function CodeViewer({
               >
                 <span
                   style={{
-                    color: "#555",
+                    color: "var(--code-line-number)",
                     userSelect: "none",
                     display: "inline-block",
                     width: "48px",

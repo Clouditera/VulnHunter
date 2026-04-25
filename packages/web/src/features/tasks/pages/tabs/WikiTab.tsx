@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -14,6 +14,7 @@ import {
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon } from "../../../../shared/components/Icon.js";
 import { Markdown } from "../../../chat/components/Markdown.js";
+import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
 
 /**
  * Wiki Tab — two-column layout:
@@ -36,6 +37,8 @@ const SECTION_META: Record<SectionKey, { icon: "cpu" | "file-text" | "database" 
 export function WikiTab() {
   const { taskId } = useParams<{ taskId: string }>();
   const id = taskId!;
+  const [leftWidth, setLeftWidth] = useResizableWidth("wiki-left-width", 260, { min: 200, max: 600 });
+  const splitContainerRef = useRef<HTMLDivElement>(null);
   const { data, isLoading, error } = useQuery({
     queryKey: ["task-wiki", id],
     queryFn: () => api.tasks.wiki(id),
@@ -106,6 +109,7 @@ export function WikiTab() {
 
   return (
     <div
+      ref={splitContainerRef}
       data-testid="wiki-tab"
       style={{
         display: "flex",
@@ -123,10 +127,9 @@ export function WikiTab() {
       <nav
         data-testid="wiki-sidebar"
         style={{
-          width: "260px",
+          width: `${leftWidth}px`,
           flexShrink: 0,
           overflow: "auto",
-          borderRight: "1px solid var(--border)",
           background: "var(--bg-page)",
           padding: "12px 0",
         }}
@@ -183,6 +186,15 @@ export function WikiTab() {
           );
         })}
       </nav>
+
+      {/* Resizable splitter */}
+      <Splitter
+        value={leftWidth}
+        onResize={setLeftWidth}
+        min={200}
+        max={600}
+        containerRef={splitContainerRef}
+      />
 
       {/* ---- Right content area ---- */}
       <div
