@@ -27,7 +27,7 @@ COPY submodules/youngflow/node_modules /opt/youngflow/node_modules
 RUN chmod +x /opt/youngflow/bin/youngflow.js \
     && ln -s /opt/youngflow/bin/youngflow.js /usr/local/bin/youngflow
 
-# DeVeye CLI — prebuilt binary for browser automation in POC flows
+# DeVeye CLI — self-contained pkg binary for browser automation in POC flows
 COPY submodules/DevEye/packages/cli/binaries/index-linux /usr/local/bin/deveye
 RUN chmod +x /usr/local/bin/deveye
 

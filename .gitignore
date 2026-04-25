@@ -6,3 +6,4 @@ dist/
 .turbo/
 coverage/
 .data/
+submodules/DevEye/
