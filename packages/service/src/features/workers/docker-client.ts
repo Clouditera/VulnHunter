@@ -31,6 +31,7 @@ export interface WorkerContainerSpec {
   hostWorkDir?: string; // bind mount host path → /workspace
   network?: string;
   autoRemove?: boolean; // auto-remove container on exit (chat/report)
+  extraMounts?: Array<{ Type: "bind"; Source: string; Target: string }>;
 }
 
 export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<Dockerode.Container> {
@@ -52,6 +53,13 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
       Source: spec.volumeName,
       Target: "/workspace",
     });
+  }
+
+  // Append extra mounts (e.g. Docker socket for auto_deploy)
+  if (spec.extraMounts) {
+    for (const m of spec.extraMounts) {
+      mounts.push({ Type: m.Type, Source: m.Source, Target: m.Target });
+    }
   }
 
   const container = await docker.createContainer({

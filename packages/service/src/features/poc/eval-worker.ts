@@ -28,14 +28,13 @@ export function getEvalHostWorkDir(dataDir: string, jobId: string): string {
 export async function spawnEvalWorker(
   job: pocStorage.DbPocJob,
   config: ServiceConfig,
-  credentialId?: string,
 ): Promise<string> {
   const task = await getTaskById(job.task_id);
   if (!task) throw new Error(`Task ${job.task_id} not found`);
 
-  // Get credentials
-  const cred = credentialId
-    ? await getCredentialById(credentialId)
+  // Get credentials — job-level > default
+  const cred = job.credential_id
+    ? await getCredentialById(job.credential_id)
     : await getDefaultCredential();
   if (!cred) throw new Error("No LLM credentials configured");
 
@@ -83,8 +82,8 @@ export async function spawnEvalWorker(
   // Get POC settings for DeVeye config
   const pocSettings = await pocStorage.getPocSettings();
 
-  // Remove stale container
-  const containerName = `vh-eval-${job.id.slice(0, 12)}`;
+  // Remove stale container (name matches createWorkerContainer format)
+  const containerName = `vh-eval-${job.id}`;
   try {
     const docker = getDocker();
     await docker.getContainer(containerName).remove({ force: true });
@@ -124,11 +123,8 @@ export async function spawnEvalWorker(
     cpuQuota: 200000,
     memoryBytes: 4 * 1024 * 1024 * 1024,
     env,
+    extraMounts,
   });
-
-  // Add Docker socket mount for auto_deploy (workaround: modify container spec after creation)
-  // Note: createWorkerContainer already mounts hostWorkDir → /workspace
-  // Docker socket is added via extraMounts in the container spec above
 
   await container.start();
 

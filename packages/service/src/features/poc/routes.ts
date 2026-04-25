@@ -90,6 +90,7 @@ pocRouter.post("/:taskId/poc/generate", async (c) => {
     createdBy: user.userId,
     deveyeServer: body.deveye_server,
     deveyeToken: body.deveye_token,
+    credentialId: body.credential_id,
   });
 
   // Create pending results for each finding (will be upserted on completion)
