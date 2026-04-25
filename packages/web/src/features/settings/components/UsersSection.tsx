@@ -49,7 +49,7 @@ export function UsersSection() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
         <div>
           <h3 style={TITLE}>
-            <Icon name="shield" size={18} style={{ color: "var(--text-secondary)" }} />
+            <Icon name="users" size={18} style={{ color: "var(--text-secondary)" }} />
             <span>{i18n.t("settings.users.title")}</span>
           </h3>
           <p style={DESC}>{i18n.t("settings.users.desc")}</p>
@@ -59,9 +59,9 @@ export function UsersSection() {
         </button>
       </div>
 
-      {/* Table */}
-      <div style={{ border: "1px solid var(--divider)", borderRadius: "8px", overflow: "hidden" }}>
-        <div style={{ ...ROW, background: "var(--bg-page)", fontWeight: 600, fontSize: "11px", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+      {/* Table — no overflow:hidden so action menu can escape */}
+      <div style={{ border: "1px solid var(--divider)", borderRadius: "8px" }}>
+        <div style={{ ...ROW, background: "var(--bg-page)", fontWeight: 600, fontSize: "11px", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", borderTopLeftRadius: "8px", borderTopRightRadius: "8px" }}>
           <div style={{ width: "24px" }} />
           <div style={{ flex: 1 }}>{i18n.t("settings.users.col.email")}</div>
           <div style={{ width: "120px" }}>{i18n.t("settings.users.col.name")}</div>
@@ -70,10 +70,16 @@ export function UsersSection() {
           <div style={{ width: "40px" }} />
         </div>
 
-        {users.map((u) => (
+        {users.map((u, idx) => {
+          const isLast = idx === users.length - 1;
+          return (
           <div
             key={u.id}
-            style={{ ...ROW, opacity: u.status === "suspended" ? 0.55 : 1 }}
+            style={{
+              ...ROW,
+              opacity: u.status === "suspended" ? 0.55 : 1,
+              ...(isLast ? { borderBottom: "none", borderBottomLeftRadius: "8px", borderBottomRightRadius: "8px" } : {}),
+            }}
             onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
           >
@@ -108,7 +114,8 @@ export function UsersSection() {
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {showCreate && <CreateUserModal onClose={() => setShowCreate(false)} onSuccess={() => { setShowCreate(false); qc.invalidateQueries({ queryKey: ["users"] }); }} />}

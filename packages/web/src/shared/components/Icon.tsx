@@ -47,7 +47,11 @@ export type IconName =
   | "trash"
   | "paperclip"
   | "file"
-  | "loader";
+  | "loader"
+  | "key"
+  | "users"
+  | "user"
+  | "info";
 
 interface IconProps {
   name: IconName;
@@ -272,6 +276,38 @@ const PATHS: Record<IconName, JSX.Element> = {
       <path d="M18 12h4" />
       <path d="M4.93 19.07l2.83-2.83" />
       <path d="M16.24 7.76l2.83-2.83" />
+    </>
+  ),
+  // License — key (Feather)
+  key: (
+    <>
+      <circle cx="7.5" cy="15.5" r="3.5" />
+      <path d="M21 2l-9.6 9.6" />
+      <path d="M15.5 7.5l3 3L22 7l-3-3" />
+    </>
+  ),
+  // Users management — multi-user (Feather)
+  users: (
+    <>
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </>
+  ),
+  // Personal settings — single user (Feather)
+  user: (
+    <>
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </>
+  ),
+  // Info banner — circle with i
+  info: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" />
+      <path d="M12 8h.01" />
     </>
   ),
 };

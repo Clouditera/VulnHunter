@@ -762,7 +762,7 @@ export function SettingsPage() {
           {isAdmin && <>
           <div id="license" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
-            icon="shield"
+            icon="key"
             title={i18n.t("settings.license.title")}
             desc={i18n.t("settings.license.desc")}
             testid="settings-card-license"
@@ -832,7 +832,7 @@ export function SettingsPage() {
           {/* ============================================================= */}
           <div id="credentials" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
-            icon="shield"
+            icon="lock"
             title={i18n.t("settings.credentials.title")}
             desc={i18n.t("settings.credentials.desc")}
             testid="settings-card-credentials"

@@ -67,7 +67,7 @@ export function PocSettingsSection() {
       {/* Header — matches SettingsCard pattern */}
       <div style={{ marginBottom: "20px" }}>
         <h3 style={HEADER_TITLE}>
-          <Icon name="shield" size={18} style={{ color: "var(--text-secondary)" }} />
+          <Icon name="code" size={18} style={{ color: "var(--text-secondary)" }} />
           <span>{i18n.t("settings.poc.title")}</span>
         </h3>
         <p style={HEADER_DESC}>{i18n.t("settings.poc.desc")}</p>
@@ -76,7 +76,7 @@ export function PocSettingsSection() {
       {/* Help banner */}
       <div style={HELP_BANNER}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <Icon name="file-text" size={14} style={{ color: "#2563eb", flexShrink: 0 }} />
+          <Icon name="info" size={14} style={{ color: "#2563eb", flexShrink: 0 }} />
           <span style={{ fontSize: "13px", color: "#1e40af" }}>
             {i18n.t("settings.poc.help.title")}。{i18n.t("settings.poc.help.desc")}
           </span>

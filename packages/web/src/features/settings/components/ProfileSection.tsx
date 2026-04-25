@@ -73,7 +73,7 @@ export function ProfileSection() {
   return (
     <section style={CARD} data-testid="settings-card-profile">
       <h3 style={TITLE}>
-        <Icon name="settings" size={18} style={{ color: "var(--text-secondary)" }} />
+        <Icon name="user" size={18} style={{ color: "var(--text-secondary)" }} />
         <span>{i18n.t("profile.title")}</span>
       </h3>
       <p style={DESC}>{i18n.t("profile.desc")}</p>
