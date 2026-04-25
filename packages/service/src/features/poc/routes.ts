@@ -58,6 +58,8 @@ pocRouter.post("/:taskId/poc/generate", async (c) => {
     custom_instructions?: string;
     browser_tool?: string;
     credential_id?: string;
+    deveye_server?: string;
+    deveye_token?: string;
   }>();
 
   if (!body.finding_keys || body.finding_keys.length === 0) {
@@ -80,6 +82,8 @@ pocRouter.post("/:taskId/poc/generate", async (c) => {
     browserTool: body.browser_tool,
     findingKeys: body.finding_keys,
     createdBy: user.userId,
+    deveyeServer: body.deveye_server,
+    deveyeToken: body.deveye_token,
   });
 
   // Create pending results for each finding (will be upserted on completion)

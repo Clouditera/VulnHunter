@@ -21,6 +21,8 @@ export interface DbPocJob {
   finding_keys: string[];
   container_id: string | null;
   failure_reason: string | null;
+  deveye_server_url: string | null;
+  deveye_token: string | null;
   created_by: string;
   created_at: Date;
   started_at: Date | null;
@@ -89,10 +91,12 @@ export async function createPocJob(opts: {
   browserTool?: string;
   findingKeys: string[];
   createdBy: string;
+  deveyeServer?: string;
+  deveyeToken?: string;
 }): Promise<DbPocJob> {
   const db = getDb();
   const rows = await db<DbPocJob[]>`
-    INSERT INTO poc_jobs (tenant_id, task_id, target_mode, target_url, custom_instructions, browser_tool, finding_keys, created_by)
+    INSERT INTO poc_jobs (tenant_id, task_id, target_mode, target_url, custom_instructions, browser_tool, finding_keys, created_by, deveye_server_url, deveye_token)
     VALUES (
       ${DEFAULT_TENANT_ID},
       ${opts.taskId},
@@ -101,7 +105,9 @@ export async function createPocJob(opts: {
       ${opts.customInstructions ?? null},
       ${opts.browserTool ?? "deveye"},
       ${opts.findingKeys},
-      ${opts.createdBy}
+      ${opts.createdBy},
+      ${opts.deveyeServer ?? null},
+      ${opts.deveyeToken ?? null}
     )
     RETURNING *
   `;

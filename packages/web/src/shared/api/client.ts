@@ -208,6 +208,8 @@ export const api = {
       target_url?: string;
       custom_instructions?: string;
       browser_tool?: string;
+      deveye_server?: string;
+      deveye_token?: string;
     }) => request<{ job: PocJob }>(`/api/tasks/${id}/poc/generate`, {
       method: "POST",
       body: JSON.stringify(opts),

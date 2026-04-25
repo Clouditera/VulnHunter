@@ -100,8 +100,8 @@ export async function spawnEvalWorker(
     TARGET_URL: job.target_url ?? "",
     BROWSER_TOOL: job.browser_tool,
     CUSTOM_INSTRUCTIONS: job.custom_instructions ?? "",
-    DEVEYE_SERVER: pocSettings?.deveye_server_url ?? "",
-    DEVEYE_TOKEN: pocSettings?.deveye_token ?? "",
+    DEVEYE_SERVER: job.deveye_server_url || pocSettings?.deveye_server_url || "",
+    DEVEYE_TOKEN: job.deveye_token || pocSettings?.deveye_token || "",
     ...llmEnv,
   };
 

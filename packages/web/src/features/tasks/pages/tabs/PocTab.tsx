@@ -690,8 +690,15 @@ function GenerateModal({
     queryKey: ["poc-settings"],
     queryFn: () => api.settings.getPocSettings(),
   });
-  const deveyeConfigured = !!pocSettingsData?.settings?.deveye_server_url?.trim();
-  const deveyeUrl = pocSettingsData?.settings?.deveye_server_url ?? "";
+  const defaultDeveyeServer = pocSettingsData?.settings?.deveye_server_url ?? "";
+  const defaultDeveyeToken = pocSettingsData?.settings?.deveye_token ?? "";
+  const [deveyeServer, setDeveyeServer] = useState("");
+  const [deveyeToken, setDeveyeToken] = useState("");
+  const [showDeveyeOverride, setShowDeveyeOverride] = useState(false);
+
+  // Effective DeVeye config: override > global default
+  const effectiveDeveyeServer = (showDeveyeOverride && deveyeServer.trim()) || defaultDeveyeServer.trim();
+  const deveyeConfigured = !!effectiveDeveyeServer;
 
   const mut = useMutation({
     mutationFn: () =>
@@ -701,6 +708,8 @@ function GenerateModal({
         target_url: targetMode === "provided" ? targetUrl : undefined,
         custom_instructions: instructions || undefined,
         browser_tool: browserTool,
+        deveye_server: showDeveyeOverride && deveyeServer.trim() ? deveyeServer.trim() : undefined,
+        deveye_token: showDeveyeOverride && deveyeToken.trim() ? deveyeToken.trim() : undefined,
       }),
     onSuccess,
   });
@@ -765,29 +774,61 @@ function GenerateModal({
                 Playwright（即将推出）
               </option>
             </select>
-            {browserTool === "deveye" && !deveyeConfigured && (
+            {browserTool === "deveye" && deveyeConfigured && (
+              <div style={{ fontSize: "11px", color: "var(--status-completed, #16a34a)", marginTop: "4px" }}>
+                ✓ 已连接到 {effectiveDeveyeServer}
+              </div>
+            )}
+            {browserTool === "deveye" && !deveyeConfigured && !showDeveyeOverride && (
               <div style={{
-                marginTop: "8px",
-                padding: "10px 14px",
-                borderRadius: "6px",
-                background: "#fff7ed",
-                border: "1px solid #fed7aa",
-                fontSize: "12px",
-                color: "#9a3412",
-                lineHeight: 1.55,
+                marginTop: "8px", padding: "10px 14px", borderRadius: "6px",
+                background: "#fff7ed", border: "1px solid #fed7aa",
+                fontSize: "12px", color: "#9a3412", lineHeight: 1.55,
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                   <Icon name="alert-triangle" size={14} />
                   <span style={{ fontWeight: 600 }}>DeVeye Server 未配置</span>
                 </div>
                 <div style={{ marginTop: "4px" }}>
-                  请先在 Settings → POC/EXP 设置中填写 Server URL 和 Token。
+                  请在下方填写 Server URL 和 Token，或在 Settings → POC/EXP 设置中配置默认值。
                 </div>
               </div>
             )}
-            {browserTool === "deveye" && deveyeConfigured && (
-              <div style={{ fontSize: "11px", color: "var(--status-completed, #16a34a)", marginTop: "4px" }}>
-                ✓ 已连接到 {deveyeUrl}
+            {browserTool === "deveye" && (
+              <div style={{ marginTop: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowDeveyeOverride(!showDeveyeOverride)}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "12px", color: "var(--text-secondary)", padding: 0, fontFamily: "inherit" }}
+                >
+                  {showDeveyeOverride ? "▾" : "▸"} 自定义 DeVeye Server
+                </button>
+                {showDeveyeOverride && (
+                  <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <div>
+                      <label style={{ ...LABEL, fontSize: "11px" }}>Server URL</label>
+                      <input
+                        value={deveyeServer}
+                        onChange={(e) => setDeveyeServer(e.target.value)}
+                        placeholder={defaultDeveyeServer || "ws://192.168.1.100:9222"}
+                        style={INPUT}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ ...LABEL, fontSize: "11px" }}>Token</label>
+                      <input
+                        type="password"
+                        value={deveyeToken}
+                        onChange={(e) => setDeveyeToken(e.target.value)}
+                        placeholder={defaultDeveyeToken ? "•••••••• (默认值)" : "可选"}
+                        style={INPUT}
+                      />
+                    </div>
+                    <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                      留空使用 Settings 中的默认值
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
