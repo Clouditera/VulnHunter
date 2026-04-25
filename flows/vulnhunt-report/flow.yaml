@@ -42,6 +42,8 @@ stages:
       任务 ID: ${flow_inputs.task_id}
       报告 ID: ${flow_inputs.report_id}
     timeout: 300
+    routes:
+      - to: generate-report
 
   # ====================================================================
   # Stage 2: 生成报告
@@ -58,6 +60,8 @@ stages:
       报告输出目录: ${flow_inputs.reports_dir}
       任务 ID: ${flow_inputs.task_id}
     timeout: 900
+    routes:
+      - to: package-report
 
   # ====================================================================
   # Stage 3: 打包报告 manifest
