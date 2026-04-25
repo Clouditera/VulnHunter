@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CSSProperties } from "react";
 import { api } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
@@ -14,8 +14,30 @@ import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 export function ProfileSection() {
   const [, force] = useState(0);
   useEffect(() => i18n.onChange(() => force((n) => n + 1)), []);
+  const qc = useQueryClient();
   const { data: status } = useSystemStatus();
   const user = status?.user;
+
+  const [displayName, setDisplayName] = useState("");
+  const [nameLoaded, setNameLoaded] = useState(false);
+  const [nameSaved, setNameSaved] = useState(false);
+
+  // Sync displayName from server once
+  useEffect(() => {
+    if (user?.displayName && !nameLoaded) {
+      setDisplayName(user.displayName);
+      setNameLoaded(true);
+    }
+  }, [user?.displayName, nameLoaded]);
+
+  const saveNameMut = useMutation({
+    mutationFn: () => api.auth.updateMe({ display_name: displayName }),
+    onSuccess: () => {
+      setNameSaved(true);
+      qc.invalidateQueries({ queryKey: ["system-status"] });
+      setTimeout(() => setNameSaved(false), 2000);
+    },
+  });
 
   const [currentPwd, setCurrentPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
@@ -60,6 +82,26 @@ export function ProfileSection() {
       <div style={{ marginTop: "16px" }}>
         <label style={LABEL}>{i18n.t("userModal.email")}</label>
         <input value={user?.email ?? ""} readOnly style={{ ...INPUT, background: "var(--bg-page)" }} />
+      </div>
+
+      {/* Display name (editable) */}
+      <div style={{ marginTop: "12px" }}>
+        <label style={LABEL}>{i18n.t("userModal.displayName")}</label>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", maxWidth: "360px" }}>
+          <input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            maxLength={64}
+            style={{ ...INPUT, flex: 1 }}
+          />
+          <button
+            onClick={() => saveNameMut.mutate()}
+            disabled={saveNameMut.isPending}
+            style={{ ...PRIMARY_BTN, whiteSpace: "nowrap" }}
+          >
+            {saveNameMut.isPending ? "..." : nameSaved ? i18n.t("profile.saved") : i18n.t("profile.saveName")}
+          </button>
+        </div>
       </div>
 
       <div style={{ borderTop: "1px solid var(--divider)", margin: "20px 0" }} />

@@ -330,7 +330,7 @@ export const api = {
   },
   users: {
     list: () => request<{ users: UserApi[] }>("/api/users"),
-    create: (data: { email: string; password: string; display_name?: string; role?: string }) =>
+    create: (data: { email: string; password: string; display_name?: string; role?: string; must_change_password?: boolean }) =>
       request<{ user: UserApi }>("/api/users", { method: "POST", body: JSON.stringify(data) }),
     update: (id: string, data: { display_name?: string; role?: string; status?: string; reset_password?: string }) =>
       request<{ ok: boolean }>(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
@@ -353,6 +353,11 @@ export const api = {
       request<{ ok: boolean }>("/api/auth/force-change-password", {
         method: "POST",
         body: JSON.stringify({ new_password }),
+      }),
+    updateMe: (data: { display_name?: string }) =>
+      request<{ ok: boolean }>("/api/auth/me", {
+        method: "PATCH",
+        body: JSON.stringify(data),
       }),
   },
   dashboard: {

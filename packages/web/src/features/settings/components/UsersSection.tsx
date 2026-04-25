@@ -22,6 +22,7 @@ export function UsersSection() {
   const [editUser, setEditUser] = useState<UserApi | null>(null);
   const [resetPwdUser, setResetPwdUser] = useState<UserApi | null>(null);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserApi | null>(null);
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.users.delete(id),
@@ -79,11 +80,11 @@ export function UsersSection() {
             <div style={{ width: "24px", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <span style={{
                 width: "8px", height: "8px", borderRadius: "50%",
-                background: u.status === "active" ? "#16a34a" : "transparent",
+                background: u.status === "active" ? "var(--status-completed, #16a34a)" : "transparent",
                 border: u.status === "active" ? "none" : "1.5px solid var(--text-secondary)",
               }} />
             </div>
-            <div style={{ flex: 1, fontSize: "13px", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis" }}>{u.email}</div>
+            <div style={{ flex: 1, fontSize: "13px", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, whiteSpace: "nowrap" }}>{u.email}</div>
             <div style={{ width: "120px", fontSize: "13px", color: u.display_name ? "var(--text-primary)" : "var(--text-secondary)" }}>{u.display_name || "—"}</div>
             <div style={{ width: "100px" }}>
               <RoleBadge role={u.role} />
@@ -100,8 +101,9 @@ export function UsersSection() {
                   onEdit={() => { setEditUser(u); setMenuOpen(null); }}
                   onResetPwd={() => { setResetPwdUser(u); setMenuOpen(null); }}
                   onToggle={() => { toggleMut.mutate({ id: u.id, status: u.status === "active" ? "suspended" : "active" }); setMenuOpen(null); }}
-                  onDelete={() => { if (window.confirm(`删除用户 ${u.email}？`)) deleteMut.mutate(u.id); setMenuOpen(null); }}
+                  onDelete={() => { setDeleteTarget(u); setMenuOpen(null); }}
                   onClose={() => setMenuOpen(null)}
+                  users={users}
                 />
               )}
             </div>
@@ -112,6 +114,7 @@ export function UsersSection() {
       {showCreate && <CreateUserModal onClose={() => setShowCreate(false)} onSuccess={() => { setShowCreate(false); qc.invalidateQueries({ queryKey: ["users"] }); }} />}
       {editUser && <EditUserModal user={editUser} onClose={() => setEditUser(null)} onSuccess={() => { setEditUser(null); qc.invalidateQueries({ queryKey: ["users"] }); }} />}
       {resetPwdUser && <ResetPasswordModal user={resetPwdUser} onClose={() => setResetPwdUser(null)} onSuccess={() => { setResetPwdUser(null); qc.invalidateQueries({ queryKey: ["users"] }); }} />}
+      {deleteTarget && <ConfirmDeleteModal user={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { deleteMut.mutate(deleteTarget.id); setDeleteTarget(null); }} />}
     </section>
   );
 }
@@ -130,9 +133,10 @@ function RoleBadge({ role }: { role: string }) {
   );
 }
 
-function ActionMenu({ user, onEdit, onResetPwd, onToggle, onDelete, onClose }: {
-  user: UserApi; onEdit: () => void; onResetPwd: () => void; onToggle: () => void; onDelete: () => void; onClose: () => void;
+function ActionMenu({ user, users, onEdit, onResetPwd, onToggle, onDelete, onClose }: {
+  user: UserApi; users: UserApi[]; onEdit: () => void; onResetPwd: () => void; onToggle: () => void; onDelete: () => void; onClose: () => void;
 }) {
+  const isLastAdmin = user.role === "admin" && users.filter((x) => x.role === "admin" && x.status === "active").length <= 1;
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 999 }} />
@@ -143,7 +147,12 @@ function ActionMenu({ user, onEdit, onResetPwd, onToggle, onDelete, onClose }: {
         <button onClick={onToggle} style={MENU_ITEM}>
           {user.status === "active" ? i18n.t("settings.users.menu.disable") : i18n.t("settings.users.menu.enable")}
         </button>
-        <button onClick={onDelete} style={{ ...MENU_ITEM, color: "var(--brand)" }}>{i18n.t("settings.users.menu.delete")}</button>
+        <button
+          onClick={isLastAdmin ? undefined : onDelete}
+          disabled={isLastAdmin}
+          title={isLastAdmin ? i18n.t("userModal.err.lastAdmin") : ""}
+          style={{ ...MENU_ITEM, color: isLastAdmin ? "var(--text-secondary)" : "var(--brand)", opacity: isLastAdmin ? 0.5 : 1, cursor: isLastAdmin ? "not-allowed" : "pointer" }}
+        >{i18n.t("settings.users.menu.delete")}</button>
       </div>
     </>
   );
@@ -156,10 +165,11 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   const [role, setRole] = useState<"admin" | "member">("member");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
+  const [forceChange, setForceChange] = useState(true);
   const [error, setError] = useState("");
 
   const mut = useMutation({
-    mutationFn: () => api.users.create({ email, password, display_name: displayName || undefined, role }),
+    mutationFn: () => api.users.create({ email, password, display_name: displayName || undefined, role, must_change_password: forceChange }),
     onSuccess,
     onError: (err: Error) => setError(err.message),
   });
@@ -181,6 +191,10 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
             <PwdInput value={password} onChange={setPassword} show={showPwd} onToggle={() => setShowPwd(!showPwd)} />
             <div style={HINT}>{i18n.t("userModal.passwordHint")}</div>
           </Field>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-primary)" }}>
+            <input type="checkbox" checked={forceChange} onChange={(e) => setForceChange(e.target.checked)} />
+            {i18n.t("userModal.forceChangePassword")}
+          </label>
           {error && <div style={{ color: "var(--brand)", fontSize: "12px" }}>{error}</div>}
         </div>
         <div style={MODAL_FOOTER}>
@@ -198,10 +212,11 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
 function EditUserModal({ user, onClose, onSuccess }: { user: UserApi; onClose: () => void; onSuccess: () => void }) {
   const [displayName, setDisplayName] = useState(user.display_name);
   const [role, setRole] = useState(user.role);
+  const [disabled, setDisabled] = useState(user.status === "suspended");
   const [error, setError] = useState("");
 
   const mut = useMutation({
-    mutationFn: () => api.users.update(user.id, { display_name: displayName, role }),
+    mutationFn: () => api.users.update(user.id, { display_name: displayName, role, status: disabled ? "suspended" : "active" }),
     onSuccess,
     onError: (err: Error) => setError(err.message),
   });
@@ -211,14 +226,18 @@ function EditUserModal({ user, onClose, onSuccess }: { user: UserApi; onClose: (
       <div style={MODAL}>
         <div style={MODAL_HEADER}><span style={{ fontSize: "15px", fontWeight: 600 }}>{i18n.t("userModal.edit.title")}</span><CloseBtn onClick={onClose} /></div>
         <div style={MODAL_BODY}>
-          <Field label={i18n.t("userModal.email")}><input value={user.email} readOnly style={{ ...INPUT, background: "var(--bg-page)" }} /></Field>
-          <Field label={i18n.t("userModal.displayName")}><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={INPUT} /></Field>
+          <Field label={i18n.t("userModal.email")}><input value={user.email} readOnly title={i18n.t("userModal.emailReadonly")} style={{ ...INPUT, background: "var(--bg-page)", cursor: "not-allowed" }} /></Field>
+          <Field label={i18n.t("userModal.displayName")}><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={INPUT} maxLength={64} /></Field>
           <Field label={i18n.t("userModal.role")}>
             <div style={{ display: "flex", gap: "12px" }}>
               <RadioBtn active={role === "admin"} onClick={() => setRole("admin")} label={i18n.t("userModal.role.admin")} />
               <RadioBtn active={role === "member"} onClick={() => setRole("member")} label={i18n.t("userModal.role.user")} />
             </div>
           </Field>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-primary)" }}>
+            <ToggleSwitch checked={disabled} onChange={setDisabled} />
+            {i18n.t("userModal.disable")}
+          </label>
           {error && <div style={{ color: "var(--brand)", fontSize: "12px" }}>{error}</div>}
         </div>
         <div style={MODAL_FOOTER}>
@@ -320,3 +339,41 @@ const MODAL_FOOTER: CSSProperties = { padding: "14px 24px", borderTop: "1px soli
 const INPUT: CSSProperties = { width: "100%", padding: "9px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", background: "var(--bg-card)", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", boxSizing: "border-box" };
 const LABEL: CSSProperties = { display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "6px" };
 const HINT: CSSProperties = { fontSize: "11px", color: "var(--text-secondary)", marginTop: "4px" };
+
+function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      style={{
+        width: "36px", height: "20px", borderRadius: "10px", border: "none", cursor: "pointer",
+        background: checked ? "var(--brand)" : "var(--border)", position: "relative", transition: "background 0.2s",
+      }}
+    >
+      <span style={{
+        position: "absolute", top: "2px", left: checked ? "18px" : "2px",
+        width: "16px", height: "16px", borderRadius: "50%", background: "#fff",
+        transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+      }} />
+    </button>
+  );
+}
+
+function ConfirmDeleteModal({ user, onClose, onConfirm }: { user: UserApi; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <ModalOverlay onClose={onClose}>
+      <div style={{ ...MODAL, width: "380px" }}>
+        <div style={MODAL_HEADER}><span style={{ fontSize: "15px", fontWeight: 600 }}>{i18n.t("settings.users.menu.delete")}</span><CloseBtn onClick={onClose} /></div>
+        <div style={MODAL_BODY}>
+          <p style={{ margin: 0, fontSize: "13px", color: "var(--text-primary)" }}>
+            {i18n.t("settings.users.confirmDelete") || `确认删除用户 ${user.email}？此操作不可撤销。`}
+          </p>
+        </div>
+        <div style={MODAL_FOOTER}>
+          <button onClick={onClose} style={GHOST_BTN_STYLED}>{i18n.t("userModal.cancel")}</button>
+          <button onClick={onConfirm} style={{ ...PRIMARY_BTN }}>{i18n.t("settings.users.menu.delete")}</button>
+        </div>
+      </div>
+    </ModalOverlay>
+  );
+}

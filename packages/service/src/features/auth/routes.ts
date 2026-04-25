@@ -78,6 +78,16 @@ authRouter.post("/force-change-password", requireAuth, async (c) => {
   return c.json({ ok: true });
 });
 
+// PATCH /api/auth/me — self-update display_name
+authRouter.patch("/me", requireAuth, async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json<{ display_name?: string }>();
+  if (body.display_name !== undefined) {
+    await authStorage.updateUser(user.userId, { displayName: body.display_name });
+  }
+  return c.json({ ok: true });
+});
+
 // POST /api/auth/logout
 authRouter.post("/logout", async (c) => {
   const sessionId = getCookie(c, SESSION_COOKIE);
@@ -133,7 +143,7 @@ userRouter.get("/", async (c) => {
 });
 
 userRouter.post("/", async (c) => {
-  const body = await c.req.json<{ email: string; password: string; display_name?: string; role?: "admin" | "member" }>();
+  const body = await c.req.json<{ email: string; password: string; display_name?: string; role?: "admin" | "member"; must_change_password?: boolean }>();
   if (!body.email || !body.password || body.password.length < 8) {
     return c.json({ error: { code: "ERR_VALIDATION", message: "Email and password (min 8 chars) required" } }, 400);
   }
@@ -145,6 +155,7 @@ userRouter.post("/", async (c) => {
     password: body.password,
     displayName: body.display_name,
     role: body.role ?? "member",
+    mustChangePassword: body.must_change_password ?? true,
   });
   return c.json({ user: { id: user.id, email: user.email, display_name: user.display_name, role: user.role } }, 201);
 });
