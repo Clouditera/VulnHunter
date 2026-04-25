@@ -12,6 +12,10 @@ import {
 } from "./docker-client.js";
 import { getTaskById, updateTaskState } from "../tasks/storage.js";
 import { getDb } from "../../infra/db/client.js";
+import { loadConfig } from "../../infra/config.js";
+import { getHostWorkDir } from "./scan-worker.js";
+import { startTailing } from "../events/event-tail.js";
+import { join } from "node:path";
 
 export async function reconcileWorkers(): Promise<void> {
   logger.info("Starting worker reconciliation...");
@@ -39,8 +43,14 @@ export async function reconcileWorkers(): Promise<void> {
     const dbRunning = task.state === "running";
 
     if (dbRunning && containerRunning) {
-      // Good: DB says running, container is running → re-attach event subscription
-      logger.info({ taskId, taskType }, "Re-attached to running worker");
+      // Good: DB says running, container is running → re-attach event tailing
+      const config = loadConfig();
+      if (taskType === "scan") {
+        const hostWorkDir = getHostWorkDir(config.dataDir, taskId);
+        const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
+        startTailing(taskId, [], [{ path: eventsDir, source: "scan" }]);
+      }
+      logger.info({ taskId, taskType }, "Re-attached to running worker (event tailing started)");
     } else if (dbRunning && !containerRunning) {
       // DB says running, container is dead → mark as failed
       logger.warn({ taskId, exitCode: c.Status }, "Orphaned task (container dead, DB running) → failed");
