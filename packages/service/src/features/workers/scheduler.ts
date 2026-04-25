@@ -10,7 +10,7 @@ import { load as yamlLoad } from "js-yaml";
 import { execSync } from "node:child_process";
 import { logger } from "../../infra/logger.js";
 import { getDb } from "../../infra/db/client.js";
-import { countTasksByState, getQueuedTasks, updateTaskState, type DbTask } from "../tasks/storage.js";
+import { countTasksByState, getQueuedTasks, getTaskById, updateTaskState, type DbTask } from "../tasks/storage.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir } from "./scan-worker.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
@@ -81,36 +81,50 @@ export class TaskScheduler {
       if (action === "die") {
         stopTailing(taskId);
 
-        const ok = exitCode === 0;
-        if (ok) {
-          try {
-            await syncOutputsToMinio(taskId, this.config);
-          } catch (err) {
-            logger.error({ err, taskId }, "Failed to sync outputs to MinIO");
+        // Check current DB state — if already cancelled/paused, don't overwrite
+        const currentTask = await getTaskById(taskId);
+        if (currentTask && ["cancelled", "paused"].includes(currentTask.state)) {
+          logger.info({ taskId, dbState: currentTask.state, exitCode }, "Container died but task already cancelled/paused, skipping state update");
+          // Still sync outputs for cancelled tasks (may have partial results)
+          if (currentTask.state === "cancelled") {
+            try {
+              await syncOutputsToMinio(taskId, this.config);
+            } catch (err) {
+              logger.warn({ err, taskId }, "Failed to sync outputs on cancel");
+            }
           }
-          try {
-            const count = await indexFindings(taskId, this.config.minio.bucket);
-            logger.info({ taskId, count }, "Findings indexed after scan completion");
-            notify({ type: "findings_indexed", taskId, count });
-          } catch (err) {
-            logger.error({ err, taskId }, "Failed to index findings");
+        } else {
+          const ok = exitCode === 0;
+          if (ok) {
+            try {
+              await syncOutputsToMinio(taskId, this.config);
+            } catch (err) {
+              logger.error({ err, taskId }, "Failed to sync outputs to MinIO");
+            }
+            try {
+              const count = await indexFindings(taskId, this.config.minio.bucket);
+              logger.info({ taskId, count }, "Findings indexed after scan completion");
+              notify({ type: "findings_indexed", taskId, count });
+            } catch (err) {
+              logger.error({ err, taskId }, "Failed to index findings");
+            }
+            // Extract profiler + execution metadata
+            try {
+              await this.extractMetadata(taskId);
+            } catch (err) {
+              logger.warn({ err, taskId }, "Failed to extract task metadata");
+            }
           }
-          // Extract profiler + execution metadata
-          try {
-            await this.extractMetadata(taskId);
-          } catch (err) {
-            logger.warn({ err, taskId }, "Failed to extract task metadata");
-          }
-        }
 
-        const durationMs = await this.computeDuration(taskId);
-        const newState = ok ? "completed" : "failed";
-        await updateTaskState(taskId, newState, {
-          completedAt: new Date(),
-          durationMs,
-          failureReason: ok ? undefined : `Worker exited with code ${exitCode}`,
-        }).catch((err) => logger.error({ err, taskId }, "Failed to update task on die"));
-        notify({ type: "task_state", taskId, state: newState as import("@vulnhunt/shared").TaskState });
+          const durationMs = await this.computeDuration(taskId);
+          const newState = ok ? "completed" : "failed";
+          await updateTaskState(taskId, newState, {
+            completedAt: new Date(),
+            durationMs,
+            failureReason: ok ? undefined : `Worker exited with code ${exitCode}`,
+          }).catch((err) => logger.error({ err, taskId }, "Failed to update task on die"));
+          notify({ type: "task_state", taskId, state: newState as import("@vulnhunt/shared").TaskState });
+        }
       }
     });
 

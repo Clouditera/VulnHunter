@@ -9,6 +9,7 @@ import {
   removeWorkDir,
   getDocker,
   LABEL_TASK_ID,
+  LABEL_TASK_TYPE,
 } from "./docker-client.js";
 
 import type { DbTask } from "../tasks/storage.js";
@@ -69,7 +70,7 @@ export async function stopScanWorker(taskId: string): Promise<void> {
   const docker = getDocker();
   const containers = await docker.listContainers({
     all: false,
-    filters: JSON.stringify({ label: [`${LABEL_TASK_ID}=${taskId}`] }),
+    filters: JSON.stringify({ label: [`${LABEL_TASK_ID}=${taskId}`, `${LABEL_TASK_TYPE}=scan`] }),
   });
 
   for (const info of containers) {

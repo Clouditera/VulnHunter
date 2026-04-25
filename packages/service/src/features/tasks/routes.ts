@@ -63,13 +63,13 @@ tasksRouter.post("/:id/cancel", async (c) => {
   if (!["running", "paused", "queued"].includes(task.state)) {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "Cannot cancel in current state" } }, 409);
   }
+  // Set DB state BEFORE stopping container to prevent die handler race
+  await taskStorage.updateTaskState(task.id, "cancelled", { completedAt: new Date() });
   if (task.state === "running") {
     await stopScanWorker(task.id).catch((err) => {
-      // Log but don't fail — container may already be gone
-      console.warn("Failed to stop container:", err);
+      logger.warn({ err, taskId: task.id }, "Failed to stop container on cancel");
     });
   }
-  await taskStorage.updateTaskState(task.id, "cancelled");
   notify({ type: "task_state", taskId: task.id, state: "cancelled" });
   return c.json({ ok: true });
 });
@@ -81,11 +81,11 @@ tasksRouter.post("/:id/pause", async (c) => {
   if (task.state !== "running") {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "Task is not running" } }, 409);
   }
-  // Stop the worker container (youngflow checkpoint is preserved in workspace)
+  // Set DB state BEFORE stopping container to prevent die handler race
+  await taskStorage.updateTaskState(task.id, "paused");
   await stopScanWorker(task.id).catch((err) => {
     logger.warn({ err, taskId: task.id }, "Failed to stop worker on pause");
   });
-  await taskStorage.updateTaskState(task.id, "paused");
   notify({ type: "task_state", taskId: task.id, state: "paused" });
   return c.json({ ok: true });
 });
@@ -97,8 +97,16 @@ tasksRouter.post("/:id/resume", async (c) => {
   if (task.state !== "paused") {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "Task is not paused" } }, 409);
   }
-  // Set to queued — scheduler picks it up with resume=true
-  await taskStorage.updateTaskState(task.id, "queued");
+  // Clear stale fields from pause and set to queued
+  const db = (await import("../../infra/db/client.js")).getDb();
+  await db`
+    UPDATE tasks
+    SET state = 'queued',
+        completed_at = NULL,
+        failure_reason = NULL,
+        duration_ms = NULL
+    WHERE id = ${task.id}
+  `;
   notify({ type: "task_state", taskId: task.id, state: "queued" });
   return c.json({ ok: true });
 });

@@ -45,7 +45,7 @@ youngflow "$FLOW_DIR" \
   ${BROWSER_TOOL:+--browser-tool "${BROWSER_TOOL}"} \
   ${CUSTOM_INSTRUCTIONS:+--custom-instructions "${CUSTOM_INSTRUCTIONS}"} \
   --json-log \
-  ${RESUME:+--resume} \
+  $([ "$RESUME" = "1" ] && echo "--resume") \
   2>/workspace/out/.youngflow/logs/youngflow.service.jsonl
 
 EXIT=$?
