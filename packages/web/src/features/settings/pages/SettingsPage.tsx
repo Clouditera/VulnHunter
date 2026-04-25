@@ -334,39 +334,50 @@ export function SettingsPage() {
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([
+    const adminRole = sysStatus?.user?.role === "admin";
+    const fetches: Promise<unknown>[] = [
       api.system.status().catch(() => null),
-      api.settings.getCredential().catch(() => ({ credential: null as LlmCredential | null })),
-      api.settings.getSystemConfig().catch(() => null as { config: SystemConfig } | null),
-      api.settings.listCredentials().catch(() => ({ credentials: [] as LlmCredential[] })),
-    ]).then(([s, credResp, cfg, credList]) => {
+    ];
+    if (adminRole) {
+      fetches.push(
+        api.settings.getCredential().catch(() => ({ credential: null as LlmCredential | null })),
+        api.settings.getSystemConfig().catch(() => null as { config: SystemConfig } | null),
+        api.settings.listCredentials().catch(() => ({ credentials: [] as LlmCredential[] })),
+      );
+    }
+    Promise.all(fetches).then(([s, credResp, cfg, credList]) => {
       if (!mounted) return;
-      if (s) setStatus(s);
-      if (credResp?.credential) {
-        const c = credResp.credential;
-        setCred(c);
-        setProtoType(normalizeProtoType(c.proto_type));
-        setBaseUrl(c.base_url ?? "");
-        setModelId(c.model_id);
-        setThinking((c.thinking_effort as ThinkingValue) ?? "medium");
-        setLabel(c.label ?? "");
-        setEditingCredentialId(c.id);
-      } else {
-        setModelId(PROTOCOLS[0].defaultModel);
-      }
-      if (cfg?.config) {
-        setConfig(cfg.config);
-        setMaxParallel(cfg.config.max_parallel_scan);
-      }
-      if (credList?.credentials) {
-        setCredentials(credList.credentials);
+      if (s) setStatus(s as typeof status);
+      if (adminRole) {
+        const cr = credResp as { credential: LlmCredential | null } | undefined;
+        if (cr?.credential) {
+          const c = cr.credential;
+          setCred(c);
+          setProtoType(normalizeProtoType(c.proto_type));
+          setBaseUrl(c.base_url ?? "");
+          setModelId(c.model_id);
+          setThinking((c.thinking_effort as ThinkingValue) ?? "medium");
+          setLabel(c.label ?? "");
+          setEditingCredentialId(c.id);
+        } else {
+          setModelId(PROTOCOLS[0].defaultModel);
+        }
+        const cfgResp = cfg as { config: SystemConfig } | null | undefined;
+        if (cfgResp?.config) {
+          setConfig(cfgResp.config);
+          setMaxParallel(cfgResp.config.max_parallel_scan);
+        }
+        const cl = credList as { credentials: LlmCredential[] } | undefined;
+        if (cl?.credentials) {
+          setCredentials(cl.credentials);
+        }
       }
       setLoading(false);
     });
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [sysStatus?.user?.role]);
 
   /** Load a credential's values into the form for editing. */
   function editCredential(c: LlmCredential) {
