@@ -226,6 +226,36 @@ tasksRouter.get("/:id/events", async (c) => {
     }
 
     if (keys.length === 0) {
+      // Fallback: read from local workspace (cancelled/failed tasks may not have synced to MinIO)
+      const { existsSync, readFileSync, readdirSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      const localLogsDir = join(config.dataDir, "workspaces", task.id, "out", ".youngflow", "logs");
+      if (existsSync(localLogsDir)) {
+        const localFiles = readdirSync(localLogsDir).filter(f => f.endsWith(".service.jsonl"));
+        const localEvents: { seq: number; event: LiveLogEvent }[] = [];
+        let localSeq = 0;
+        for (const file of localFiles) {
+          try {
+            const text = readFileSync(join(localLogsDir, file), "utf-8");
+            for (const line of text.split("\n")) {
+              if (!line.trim()) continue;
+              try {
+                const raw = JSON.parse(line);
+                if (!raw.event) continue;
+                const translated = translateYoungflowEvent(raw, "scan");
+                if (translated) {
+                  localSeq++;
+                  translated.seq = localSeq;
+                  localEvents.push({ seq: localSeq, event: translated });
+                }
+              } catch { /* skip */ }
+            }
+          } catch { /* skip */ }
+        }
+        if (localEvents.length > 0) {
+          return c.json({ events: localEvents });
+        }
+      }
       return c.json({ events: [] });
     }
 
