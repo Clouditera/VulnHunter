@@ -37,6 +37,7 @@ pocSettingsRouter.patch("/poc", async (c) => {
     deveye_token?: string;
     default_concurrency?: number;
     poc_timeout_s?: number;
+    container_network_mode?: string;
   }>();
 
   const settings = await pocStorage.upsertPocSettings({
@@ -46,6 +47,7 @@ pocSettingsRouter.patch("/poc", async (c) => {
     deveyeToken: body.deveye_token,
     defaultConcurrency: body.default_concurrency,
     pocTimeoutS: body.poc_timeout_s,
+    containerNetworkMode: body.container_network_mode,
   });
 
   return c.json({ settings });

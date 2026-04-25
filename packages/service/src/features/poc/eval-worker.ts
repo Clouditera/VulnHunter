@@ -119,7 +119,7 @@ export async function spawnEvalWorker(
     taskId: job.id,
     taskType: "eval",
     image: config.docker.workerImage.replace("vulnhunt-worker", "vulnhunt-eval-worker"),
-    network: config.docker.network,
+    network: pocSettings?.container_network_mode === "host" ? "host" : config.docker.network,
     hostWorkDir,
     cpuQuota: 200000,
     memoryBytes: 4 * 1024 * 1024 * 1024,

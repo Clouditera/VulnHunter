@@ -78,6 +78,7 @@ export interface DbPocSettings {
   deveye_token: string | null;
   default_concurrency: number;
   poc_timeout_s: number;
+  container_network_mode: string;
   updated_at: Date;
 }
 
@@ -334,6 +335,7 @@ export async function upsertPocSettings(opts: {
   deveyeToken?: string;
   defaultConcurrency?: number;
   pocTimeoutS?: number;
+  containerNetworkMode?: string;
 }): Promise<DbPocSettings> {
   const db = getDb();
   const rows = await db<DbPocSettings[]>`
@@ -346,6 +348,7 @@ export async function upsertPocSettings(opts: {
       deveye_token = COALESCE(${opts.deveyeToken ?? null}, poc_settings.deveye_token),
       default_concurrency = COALESCE(${opts.defaultConcurrency ?? null}, poc_settings.default_concurrency),
       poc_timeout_s = COALESCE(${opts.pocTimeoutS ?? null}, poc_settings.poc_timeout_s),
+      container_network_mode = COALESCE(${opts.containerNetworkMode ?? null}, poc_settings.container_network_mode),
       updated_at = now()
     RETURNING *
   `;

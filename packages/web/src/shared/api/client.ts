@@ -630,6 +630,7 @@ export interface PocSettingsApi {
   deveye_token: string | null;
   default_concurrency: number;
   poc_timeout_s: number;
+  container_network_mode: string;
 }
 
 export interface PocSummary {

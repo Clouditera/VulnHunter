@@ -24,6 +24,7 @@ export function PocSettingsSection() {
   const [token, setToken] = useState("");
   const [timeout, setTimeout_] = useState("1800");
   const [concurrency, setConcurrency] = useState("1");
+  const [networkMode, setNetworkMode] = useState("bridge");
   const [showToken, setShowToken] = useState(false);
   const [helpExpanded, setHelpExpanded] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; server_version?: string; error?: string } | null>(null);
@@ -35,6 +36,7 @@ export function PocSettingsSection() {
       setToken(settings.deveye_token ?? "");
       setTimeout_(String(settings.poc_timeout_s ?? 1800));
       setConcurrency(String(settings.default_concurrency ?? 1));
+      setNetworkMode(settings.container_network_mode ?? "bridge");
     }
   }, [settings]);
 
@@ -45,6 +47,7 @@ export function PocSettingsSection() {
         deveye_token: token || undefined,
         poc_timeout_s: Number(timeout) || 1800,
         default_concurrency: Number(concurrency) || 1,
+        container_network_mode: networkMode,
       }),
     onSuccess: () => {
       setSaveLabel("saved");
@@ -183,6 +186,20 @@ Expand-Archive deveye-toolkit-*.zip; cd deveye-toolkit
             <label style={LABEL}>{i18n.t("settings.poc.concurrency")}</label>
             <input type="number" value={concurrency} onChange={(e) => setConcurrency(e.target.value)} min={1} max={5} style={INPUT} />
           </div>
+        </div>
+
+        {/* Container network mode */}
+        <div>
+          <label style={LABEL}>{i18n.t("settings.poc.networkMode")}</label>
+          <select value={networkMode} onChange={(e) => setNetworkMode(e.target.value)} style={INPUT}>
+            <option value="bridge">Bridge ({i18n.t("settings.poc.networkBridge")})</option>
+            <option value="host">Host ({i18n.t("settings.poc.networkHost")})</option>
+          </select>
+          {networkMode === "host" && (
+            <div style={{ marginTop: "6px", padding: "8px 12px", borderRadius: "6px", background: "#fff7ed", border: "1px solid #fed7aa", fontSize: "11px", color: "#9a3412", lineHeight: 1.5 }}>
+              ⚠ {i18n.t("settings.poc.networkHostWarning")}
+            </div>
+          )}
         </div>
 
         {/* Test result */}
