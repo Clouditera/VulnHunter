@@ -16,6 +16,7 @@ import { wikiRouter } from "./features/wiki/routes.js";
 import { notificationRouter } from "./features/notifications/index.js";
 import { pocRouter } from "./features/poc/routes.js";
 import { pocSettingsRouter } from "./features/poc/settings-routes.js";
+import { downloadsRouter } from "./features/downloads/routes.js";
 import { setupWsRouter } from "./ws-router.js";
 import { mcpRouter } from "./mcp/index.js";
 import { injectUser } from "./middleware/index.js";
@@ -58,6 +59,7 @@ export function createApp(): Hono {
 
   // POC settings
   app.route("/api/settings", pocSettingsRouter);
+  app.route("/api/downloads", downloadsRouter);
 
   // MCP server for Chat agent tools (no license/auth middleware — has own auth)
   app.route("/mcp", mcpRouter);
