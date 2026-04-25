@@ -41,8 +41,10 @@ fi
 
 如果 `browser create` 失败，说明 DeVeye Server 未配置或不可达，回退为 curl 复现。
 
-### 3. 编写 poc.sh
-参考 `skills/poc-reproducer/SKILL.md` 中的模板和指引，在输出目录创建 `poc.sh`。
+### 3. 编写 PoC 脚本
+参考 `skills/poc-reproducer/SKILL.md` 中的模板和指引，在输出目录创建 `poc.sh`（简单 curl/deveye 场景）或 `poc.py`（复杂多步 API 调用场景）。
+
+**重要**：所有注释和输出信息必须使用中文。
 
 脚本要求：
 - 自包含，目标地址通过参数传入（`$1`），默认值为当前目标

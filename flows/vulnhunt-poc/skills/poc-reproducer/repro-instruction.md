@@ -4,7 +4,7 @@
 
 ## 核心原则
 
-- 每个漏洞应产出一个**可独立运行的 PoC 脚本**（`poc.sh`）
+- 每个漏洞应产出一个**可独立运行的 PoC 脚本**（`poc.sh` 或 `poc.py`）
 - PoC 脚本面向最终用户，要求一键运行、输出清晰
 - 在 poc 脚本中优先使用 DevEye CLI 进行浏览器操作，使脚本可复现浏览器交互类漏洞
 - 复现过程中截图留证，截图内容中尽量提供用户能直观理解的内容
@@ -134,7 +134,7 @@ echo "=========================================="
 
 | 文件 | 说明 |
 |------|------|
-| `poc.sh` | 可执行的 PoC 脚本，`chmod +x` |
+| `poc.sh` 或 `poc.py` | 可执行的 PoC 脚本，`chmod +x` |
 | `screenshot.png` | 复现成功的关键截图（浏览器类） |
 | `result.json` | 结构化复现结果 |
 
@@ -173,6 +173,72 @@ echo "=========================================="
 - DevEye 浏览器运行在远端机器（地址见 Stage Instructions 的 `DEVEYE_SERVER`）
 - Docker 部署的服务通过 `-p` 端口映射后，浏览器通过 `http://$HOST_IP:<映射端口>` 访问
 - 使用 `--network $DOCKER_NETWORK` 将容器加入平台网络
+
+## 语言要求
+
+- PoC 脚本的所有注释和输出信息（echo/print）**必须使用中文**
+- result.json 的 evidence 和 reproduction_steps **必须使用中文**
+- 技术术语（如 XSS、RCE、SQL 注入等）保持英文原文，不翻译
+
+## 脚本格式选择
+
+- **Bash 脚本**（`poc.sh`）：适合简单的 curl/deveye 操作
+- **Python 脚本**（`poc.py`）：适合需要复杂逻辑、JSON 解析、多步驊 API 调用的场景
+
+根据漏洞复杂度自行选择。两种格式都支持，执行器会自动检测扩展名并选择解释器。
+
+### Python PoC 模板
+
+```python
+#!/usr/bin/env python3
+"""
+PoC: <漏洞类型> - <BUG_ID>
+影响端点: <endpoint>
+风险等级: <severity>
+
+使用方式:
+  python3 poc.py [目标地址]
+  例: python3 poc.py http://localhost:8080
+"""
+import sys
+import requests
+import time
+import subprocess
+
+TARGET = sys.argv[1] if len(sys.argv) > 1 else "http://<HOST_IP>:<port>"
+
+print("="*50)
+print(f" 漏洞 PoC: <BUG_ID>")
+print(f" 类型: <漏洞类型>")
+print(f" 目标: {TARGET}")
+print("="*50)
+print()
+
+# --- 步骤 1: 说明漏洞原理 ---
+print("[*] 漏洞原理:")
+print("    <用 2-3 句话解释漏洞成因和危害>")
+print()
+time.sleep(2)
+
+# --- 步骤 2: 发送攻击请求 ---
+print("[*] 正在发送攻击 payload...")
+resp = requests.get(f"{TARGET}/<endpoint>", params={"param": "<payload>"})
+print(f"    响应状态码: {resp.status_code}")
+print(f"    响应内容: {resp.text[:200]}")
+time.sleep(2)
+
+# --- 步骤 3: 验证结果 ---
+print("[*] 验证攻击结果...")
+# 检查响应中是否包含预期的漏洞证据
+time.sleep(2)
+
+# --- 步骤 4: 输出结论 ---
+print()
+print("="*50)
+print(" [!] 漏洞复现成功")
+print(" 影响: <具体影响说明>")
+print("="*50)
+```
 
 ## 注意事项
 

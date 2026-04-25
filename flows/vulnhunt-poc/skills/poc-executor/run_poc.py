@@ -55,8 +55,14 @@ def main():
     })
 
     try:
+        # Select interpreter based on file extension
+        if args.script.endswith(".py"):
+            cmd = ["python3", args.script, args.target_url]
+        else:
+            cmd = ["bash", args.script, args.target_url]
+
         proc = subprocess.Popen(
-            ["bash", args.script, args.target_url],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

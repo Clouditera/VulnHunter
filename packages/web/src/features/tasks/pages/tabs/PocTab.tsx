@@ -542,7 +542,24 @@ function OutputPanel({ taskId, findingKey, result }: { taskId: string; findingKe
 
   if (isRunning) {
     return (
-      <EmptyCenter icon="loader" text={`执行中… (${latestRun?.state})`} />
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <div style={{
+          padding: "8px 18px", borderBottom: "1px solid var(--divider)",
+          fontSize: "12px", color: "var(--status-running, #f59e0b)",
+          display: "flex", alignItems: "center", gap: "6px",
+        }}>
+          <Icon name="loader" size={14} style={{ animation: "spin 1s linear infinite" }} />
+          执行中… 实时日志请查看下方 LiveLog 的 poc 标签页
+        </div>
+        <div style={{
+          flex: 1, background: "var(--code-bg)", color: "var(--code-text)",
+          fontFamily: "'SF Mono', Menlo, Consolas, monospace", fontSize: "12px",
+          padding: "14px 18px", overflow: "auto", opacity: 0.6,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          POC 脚本正在执行，完成后自动显示日志
+        </div>
+      </div>
     );
   }
 

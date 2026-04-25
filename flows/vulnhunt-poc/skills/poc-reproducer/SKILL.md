@@ -7,7 +7,9 @@ description: 漏洞复现指引 — 分析漏洞报告、编写可独立运行�
 
 ## 目标
 
-针对单个漏洞，生成可独立运行的 PoC 脚本（`poc.sh`），并执行验证。
+针对单个漏洞，生成可独立运行的 PoC 脚本（`poc.sh` 或 `poc.py`），并执行验证。
+
+**语言要求**：脚本注释、输出信息、result.json 的 evidence 和 reproduction_steps 全部使用中文。
 
 ## 复现流程
 
