@@ -328,6 +328,7 @@ export function PocTab() {
           onSuccess={() => {
             setShowGenerateModal(false);
             qc.invalidateQueries({ queryKey: ["poc-summary", task.id] });
+            if (activeFinding) qc.invalidateQueries({ queryKey: ["poc-detail", task.id, activeFinding] });
           }}
         />
       )}
@@ -340,6 +341,8 @@ export function PocTab() {
           onSuccess={() => {
             setShowRunModal(false);
             qc.invalidateQueries({ queryKey: ["poc-summary", task.id] });
+            qc.invalidateQueries({ queryKey: ["poc-detail", task.id, activeFinding] });
+            setActiveTab("output");
           }}
         />
       )}
@@ -941,6 +944,7 @@ function RunAgainModal({
 }) {
   const [targetUrl, setTargetUrl] = useState(lastTargetUrl);
   const [instructions, setInstructions] = useState("");
+  const [error, setError] = useState("");
 
   const mut = useMutation({
     mutationFn: () =>
@@ -949,6 +953,13 @@ function RunAgainModal({
         custom_instructions: instructions || undefined,
       }),
     onSuccess,
+    onError: (err: Error & { code?: string }) => {
+      if (err.code === "ERR_TASK_BUSY" || err.message?.includes("TASK_BUSY")) {
+        setError("当前任务有正在执行的操作，请稍后再试");
+      } else {
+        setError(err.message || "执行失败");
+      }
+    },
   });
 
   return (
@@ -977,12 +988,13 @@ function RunAgainModal({
               style={{ ...INPUT, minHeight: "60px", resize: "vertical" }}
             />
           </div>
+          {error && <div style={{ color: "var(--brand)", fontSize: "12px", padding: "0 0 4px" }}>{error}</div>}
         </div>
 
         <div style={MODAL_FOOTER}>
           <button onClick={onClose} style={GHOST_SM}>取消</button>
           <button
-            onClick={() => mut.mutate()}
+            onClick={() => { setError(""); mut.mutate(); }}
             disabled={mut.isPending}
             style={{ ...PRIMARY_BTN, opacity: mut.isPending ? 0.6 : 1 }}
           >
