@@ -498,10 +498,7 @@ export function LiveLog({ taskId, taskState }: Props) {
                 {i18n.t("liveLog.noEvents")}
               </div>
             ) : (
-              /* Only render visible events when expanded — avoids 1000+ DOM nodes when collapsed */
-              expanded ? filteredEvents.slice(-200).map((ev, i) => (
-                <LogLine key={`${ev.seq}-${i}`} ev={ev} />
-              )) : null
+              expanded ? <VirtualEventList events={filteredEvents} containerRef={streamRef} /> : null
             )}
           </div>
 
@@ -741,4 +738,50 @@ function formatDuration(ms: number | undefined | null): string | null {
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   const s = Math.round(ms / 1000);
   return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+/**
+ * Virtual scrolling list for LiveLog events.
+ * Fixed row height (26px), only renders visible rows + overscan.
+ * Handles 1000+ events with ~50-80 DOM nodes.
+ */
+function VirtualEventList({ events, containerRef }: {
+  events: Array<{ seq: number; source: string; [k: string]: unknown }>;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const ROW_HEIGHT = 26;
+  const OVERSCAN = 15;
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(400);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onScroll = () => setScrollTop(el.scrollTop);
+    const onResize = () => setViewportHeight(el.clientHeight);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    onResize();
+    const ro = new ResizeObserver(onResize);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      ro.disconnect();
+    };
+  }, [containerRef]);
+
+  const totalHeight = events.length * ROW_HEIGHT;
+  const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIdx = Math.min(events.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN);
+  const visible = events.slice(startIdx, endIdx);
+  const offsetTop = startIdx * ROW_HEIGHT;
+
+  return (
+    <div style={{ height: totalHeight, position: "relative" }}>
+      <div style={{ transform: `translateY(${offsetTop}px)` }}>
+        {visible.map((ev, i) => (
+          <LogLine key={`${ev.seq}-${startIdx + i}`} ev={ev} />
+        ))}
+      </div>
+    </div>
+  );
 }

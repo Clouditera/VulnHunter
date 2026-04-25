@@ -16,29 +16,32 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { CSSProperties } from "react";
 
 interface SplitterProps {
-  /** Current left-panel width in px */
+  /** Current panel size in px (width for axis="x", height for axis="y") */
   value: number;
-  /** Called with the new width while dragging */
+  /** Called with the new size while dragging */
   onResize: (next: number) => void;
   min?: number;
   max?: number;
-  /** Optional ref to the wrapping flex container — if provided, width is computed
-      relative to its left edge so the splitter works inside scrollable parents. */
+  /** "x" = vertical splitter line dividing left/right (default).
+      "y" = horizontal splitter line dividing top/bottom. */
+  axis?: "x" | "y";
+  /** Optional ref to the wrapping flex container — if provided, size is computed
+      relative to its top-left edge (handles scrollable parents correctly). */
   containerRef?: React.RefObject<HTMLElement | null>;
 }
 
-export function Splitter({ value, onResize, min = 200, max = 600, containerRef }: SplitterProps) {
+export function Splitter({ value, onResize, min = 200, max = 600, axis = "x", containerRef }: SplitterProps) {
   const [dragging, setDragging] = useState(false);
   const [hover, setHover] = useState(false);
-  const startRef = useRef<{ x: number; w: number } | null>(null);
+  const startRef = useRef<{ pos: number; size: number } | null>(null);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
-      startRef.current = { x: e.clientX, w: value };
+      startRef.current = { pos: axis === "x" ? e.clientX : e.clientY, size: value };
       setDragging(true);
     },
-    [value],
+    [value, axis],
   );
 
   useEffect(() => {
@@ -49,10 +52,10 @@ export function Splitter({ value, onResize, min = 200, max = 600, containerRef }
       let next: number;
       if (containerRef?.current) {
         const rect = containerRef.current.getBoundingClientRect();
-        next = e.clientX - rect.left;
+        next = axis === "x" ? e.clientX - rect.left : e.clientY - rect.top;
       } else {
-        const dx = e.clientX - startRef.current.x;
-        next = startRef.current.w + dx;
+        const delta = (axis === "x" ? e.clientX : e.clientY) - startRef.current.pos;
+        next = startRef.current.size + delta;
       }
       next = Math.max(min, Math.min(max, next));
       onResize(next);
@@ -63,7 +66,7 @@ export function Splitter({ value, onResize, min = 200, max = 600, containerRef }
       setDragging(false);
     };
 
-    document.body.style.cursor = "col-resize";
+    document.body.style.cursor = axis === "x" ? "col-resize" : "row-resize";
     document.body.style.userSelect = "none";
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -74,30 +77,40 @@ export function Splitter({ value, onResize, min = 200, max = 600, containerRef }
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [dragging, min, max, onResize, containerRef]);
+  }, [dragging, axis, min, max, onResize, containerRef]);
 
   const active = dragging || hover;
+  const isX = axis === "x";
 
   return (
     <div
       role="separator"
-      aria-orientation="vertical"
+      aria-orientation={isX ? "vertical" : "horizontal"}
       aria-valuenow={value}
       aria-valuemin={min}
       aria-valuemax={max}
       onMouseDown={handleMouseDown}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      title="拖动调整宽度"
-      style={SPLITTER_STYLE}
+      title="拖动调整尺寸"
+      style={{
+        flexShrink: 0,
+        cursor: isX ? "col-resize" : "row-resize",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative",
+        background: "transparent",
+        zIndex: 2,
+        ...(isX ? { width: "7px" } : { height: "7px" }),
+      }}
     >
-      {/* Visible center bar */}
+      {/* Visible center line */}
       <div
         style={{
-          width: "1px",
-          height: "100%",
           background: active ? "var(--brand)" : "var(--divider)",
           transition: "background 0.12s",
+          ...(isX ? { width: "1px", height: "100%" } : { height: "1px", width: "100%" }),
         }}
       />
       {/* Grip dots — only show on hover/drag */}
@@ -109,7 +122,7 @@ export function Splitter({ value, onResize, min = 200, max = 600, containerRef }
             left: "50%",
             transform: "translate(-50%, -50%)",
             display: "flex",
-            flexDirection: "column",
+            flexDirection: isX ? "column" : "row",
             gap: "2px",
             pointerEvents: "none",
           }}
@@ -122,18 +135,6 @@ export function Splitter({ value, onResize, min = 200, max = 600, containerRef }
     </div>
   );
 }
-
-const SPLITTER_STYLE: CSSProperties = {
-  flexShrink: 0,
-  width: "7px",
-  cursor: "col-resize",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  position: "relative",
-  background: "transparent",
-  zIndex: 2,
-};
 
 const GRIP_DOT: CSSProperties = {
   width: "3px",

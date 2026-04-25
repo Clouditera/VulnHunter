@@ -39,7 +39,8 @@ const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }>
 };
 
 /* ── Right panel tab keys ── */
-type RightTab = "script" | "output" | "screenshots" | "info";
+/* v1.2 (2026-04-25, fish): 脚本与输出合并为单一 Tab，上下分屏 */
+type RightTab = "scriptAndOutput" | "screenshots" | "info";
 
 /* ══════════════════════════════════════════════════════════════════════════ */
 
@@ -71,7 +72,7 @@ export function PocTab() {
   // ── State ──
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeFinding, setActiveFinding] = useState<string | null>(null);
-  const [rightTab, setRightTab] = useState<RightTab>("script");
+  const [rightTab, setRightTab] = useState<RightTab>("scriptAndOutput");
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showRunModal, setShowRunModal] = useState(false);
 
@@ -177,7 +178,7 @@ export function PocTab() {
                 key={f.finding_key}
                 onClick={() => {
                   setActiveFinding(f.finding_key);
-                  if (result?.poc_script_minio_key) setRightTab("script");
+                  if (result?.poc_script_minio_key) setRightTab("scriptAndOutput");
                   else setRightTab("info");
                 }}
                 style={{
@@ -342,7 +343,7 @@ export function PocTab() {
             setShowRunModal(false);
             qc.invalidateQueries({ queryKey: ["poc-summary", task.id] });
             qc.invalidateQueries({ queryKey: ["poc-detail", task.id, activeFinding] });
-            setRightTab("output");
+            setRightTab("scriptAndOutput");
           }}
         />
       )}
@@ -372,8 +373,7 @@ function PocDetail({
   onRunAgain: () => void;
 }) {
   const tabs: { key: RightTab; label: string }[] = [
-    { key: "script", label: "脚本" },
-    { key: "output", label: "执行输出" },
+    { key: "scriptAndOutput", label: "脚本与输出" },
     { key: "screenshots", label: "截图" },
     { key: "info", label: "信息" },
   ];
