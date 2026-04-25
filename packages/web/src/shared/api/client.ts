@@ -259,14 +259,6 @@ export const api = {
         `/api/tasks/${taskId}/findings/${encodeURIComponent(key)}`,
       ),
   },
-  auth: {
-    login: (email: string, password: string) =>
-      request<{ ok: boolean }>("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      }),
-    logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
-  },
   settings: {
     getCredential: () => request<{ credential: LlmCredential | null }>("/api/settings/credential"),
     /** List all credentials (multi-credential support). */
