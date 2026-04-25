@@ -597,10 +597,13 @@ export interface PocRun {
   state: string;
   target_url: string | null;
   exit_code: number | null;
+  run_log_minio_key: string | null;
+  events_minio_key: string | null;
   failure_reason: string | null;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  duration_ms: number | null;
   duration_ms: number | null;
 }
 

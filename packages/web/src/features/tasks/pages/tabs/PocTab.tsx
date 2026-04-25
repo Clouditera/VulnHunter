@@ -342,7 +342,7 @@ export function PocTab() {
             setShowRunModal(false);
             qc.invalidateQueries({ queryKey: ["poc-summary", task.id] });
             qc.invalidateQueries({ queryKey: ["poc-detail", task.id, activeFinding] });
-            setActiveTab("output");
+            setRightTab("output");
           }}
         />
       )}

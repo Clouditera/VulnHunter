@@ -7,7 +7,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, createWriteStream } from "node:fs";
 import { join } from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
 
@@ -166,13 +166,47 @@ function spawnPi(): ChildProcess {
     },
   });
 
-  // Parse stdout JSONL → broadcast to WS clients
+  // Report mode: write events to a JSONL file for service event tailing
+  let reportEventsStream: import("fs").WriteStream | null = null;
+  if (MODE === "report") {
+    const eventsDir = join("/workspace", ".report", "events");
+    mkdirSync(eventsDir, { recursive: true });
+    reportEventsStream = createWriteStream(join(eventsDir, "report.service.jsonl"), { flags: "a" });
+  }
+
+  // Parse stdout JSONL → broadcast to WS clients + write report events
   const rl = createInterface({ input: child.stdout! });
   rl.on("line", (line) => {
     if (!line.trim()) return;
     lastActivity = Date.now();
     console.log(`[pi stdout] ${line.substring(0, 120)}`);
     broadcastToClients(line);
+
+    // Write to report events file for LiveLog
+    if (reportEventsStream) {
+      try {
+        const parsed = JSON.parse(line);
+        // Translate pi RPC events to service event format
+        if (parsed.type === "tool_execution_start" || parsed.type === "tool_execution_end") {
+          const evt = {
+            timestamp: new Date().toISOString(),
+            event: "tool_call",
+            tool: parsed.tool_name ?? parsed.name ?? "unknown",
+            status: parsed.type === "tool_execution_end" ? (parsed.error ? "error" : "success") : "running",
+            source: "report",
+          };
+          reportEventsStream.write(JSON.stringify(evt) + "\n");
+        } else if (parsed.type === "message_start" || parsed.type === "turn_start") {
+          const evt = {
+            timestamp: new Date().toISOString(),
+            event: "task_status",
+            message: "Report generation in progress...",
+            source: "report",
+          };
+          reportEventsStream.write(JSON.stringify(evt) + "\n");
+        }
+      } catch { /* not valid JSON or unrecognized event */ }
+    }
   });
 
   // Log stderr

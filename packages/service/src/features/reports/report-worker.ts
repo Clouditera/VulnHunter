@@ -97,6 +97,13 @@ export async function spawnReportWorker(params: {
   });
 
   await container.start();
+
+  // Start tailing report events under parent taskId for LiveLog
+  const { startTailing } = await import("../events/event-tail.js");
+  const eventsDir = join(hostWorkDir, ".report", "events");
+  try { mkdirSync(eventsDir, { recursive: true }); } catch { /* ok */ }
+  startTailing(taskId, [], [{ path: eventsDir, source: "report" }]);
+
   logger.info({ reportId, taskId, containerName }, "Report worker started");
   return container.id;
 }
