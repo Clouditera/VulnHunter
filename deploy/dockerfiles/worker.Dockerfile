@@ -20,6 +20,7 @@ RUN chmod +x /opt/youngflow/bin/youngflow.js \
 
 # vulnhunt flow assets (separate from youngflow submodule)
 COPY flows/vulnhunt /opt/vulnhunt/flows/vulnhunt
+COPY flows/vulnhunt-report /opt/vulnhunt/flows/vulnhunt-report
 
 # Worker bridge (for chat/report modes)
 COPY packages/worker-bridge/dist/bundle.js /opt/bridge/bundle.js

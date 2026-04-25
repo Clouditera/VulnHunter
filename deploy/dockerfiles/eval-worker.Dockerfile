@@ -31,8 +31,9 @@ RUN chmod +x /opt/youngflow/bin/youngflow.js \
 COPY submodules/DevEye/packages/cli/binaries/index-linux /usr/local/bin/deveye
 RUN chmod +x /usr/local/bin/deveye
 
-# POC flow assets
+# Flow assets
 COPY flows/vulnhunt-poc /opt/vulnhunt/flows/vulnhunt-poc
+COPY flows/vulnhunt-report /opt/vulnhunt/flows/vulnhunt-report
 
 # Worker bridge (for chat fallback — not primary for eval)
 COPY packages/worker-bridge/dist/bundle.js /opt/bridge/bundle.js

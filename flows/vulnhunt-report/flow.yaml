@@ -1,0 +1,38 @@
+name: vulnhunt-report
+description: 安全审计报告生成 — 基于扫描结果和上传的 Report Skill 生成结构化报告
+
+inputs:
+  task_id:
+    description: VulnHunt 任务 ID
+    required: true
+  report_id:
+    description: 报告记录 ID
+    required: true
+  context_file:
+    description: 报告上下文 JSON 文件路径
+    default: /workspace/context/report-context.json
+  reports_dir:
+    description: 报告输出目录
+    default: /workspace/reports
+
+agents:
+  report-writer:
+    provider: pi
+    model: ${LLM_MODEL}
+    instructions: agents/report-writer.md
+    skills:
+      - report-runtime
+      - uploaded-report-skill
+
+stages:
+  - id: prepare-report-context
+    task: tasks/prepare-report-context.md
+    agent: report-writer
+
+  - id: generate-report
+    task: tasks/generate-report.md
+    agent: report-writer
+
+  - id: package-report
+    task: tasks/package-report.md
+    agent: report-writer

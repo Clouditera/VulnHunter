@@ -1,29 +1,51 @@
 #!/bin/bash
 set -e
-# Report mode: same as chat mode but role=report
+# Report mode: runs YoungFlow report flow
 
 REPORT_ID="${REPORT_ID:?REPORT_ID is required}"
 TASK_ID="${TASK_ID:?TASK_ID is required}"
-MINIO_BUCKET="${MINIO_BUCKET:-vulnhunt}"
 
 echo "[report] Starting report worker: task=$TASK_ID report=$REPORT_ID"
 
-mkdir -p /workspace/reports
+FLOW_DIR="/opt/vulnhunt/flows/vulnhunt-report"
+WORK_DIR="/workspace"
+OUT_DIR="/workspace/out"
 
-# Generate MCP config for pi
-mkdir -p /root/.pi/agent
-cat > /root/.pi/agent/mcp.json << EOF
-{
-  "mcpServers": {
-    "platform": {
-      "url": "${SERVICE_URL:-http://vulnhunt-service:8080}/mcp",
-      "headers": {
-        "Authorization": "Bearer ${CHAT_WORKER_TOKEN}"
-      }
-    }
-  }
-}
-EOF
+mkdir -p /workspace/reports /workspace/context "$OUT_DIR"
 
-echo "[report] Starting bridge (report mode)..."
-exec node /opt/bridge/bundle.js
+# Copy flow to workspace so we can inject uploaded skill
+cp -r "$FLOW_DIR" /workspace/flow
+
+# If uploaded skill exists, copy into flow skills directory
+if [ -d "/workspace/skill" ] && [ -f "/workspace/skill/SKILL.md" ]; then
+  echo "[report] Injecting uploaded Report Skill"
+  cp -r /workspace/skill /workspace/flow/skills/uploaded-report-skill
+elif [ -d "/workspace/skill" ]; then
+  # Check one level deeper (zip may have a subdirectory)
+  SKILL_DIR=$(find /workspace/skill -maxdepth 2 -name "SKILL.md" -exec dirname {} \; | head -1)
+  if [ -n "$SKILL_DIR" ]; then
+    echo "[report] Injecting uploaded Report Skill from $SKILL_DIR"
+    cp -r "$SKILL_DIR" /workspace/flow/skills/uploaded-report-skill
+  fi
+fi
+
+# Persist env vars for youngflow subprocesses
+cat >> ~/.bashrc << ENVEOF
+export LLM_MODEL_NAME=${LLM_MODEL_NAME:-}
+export LLM_BASE_URL=${LLM_BASE_URL:-}
+export LLM_API_KEY=${LLM_API_KEY:-}
+export MODEL_PROTO_TYPE=${MODEL_PROTO_TYPE:-openai}
+ENVEOF
+
+echo "[report] Running youngflow report flow..." >&2
+youngflow /workspace/flow \
+  --work-dir "$WORK_DIR" \
+  --output-dir "$OUT_DIR" \
+  --input task_id="$TASK_ID" \
+  --input report_id="$REPORT_ID" \
+  --input context_file="/workspace/context/report-context.json" \
+  --input reports_dir="/workspace/reports" \
+  --json-log \
+  2>&1
+
+echo "[report] YoungFlow report flow completed" >&2

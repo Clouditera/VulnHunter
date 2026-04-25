@@ -1,12 +1,14 @@
 /**
- * Report Worker — spawns one-shot container to generate a report.
+ * Report Worker — spawns YoungFlow report flow in container.
  *
- * Same Docker image as scan/chat, MODE=report. Pi runs with --skill
- * and exits after generating report files.
+ * Service generates context JSON with findings data, injects uploaded
+ * Report Skill, runs YoungFlow. On completion, reads manifest and
+ * uploads report files to MinIO.
  */
 
 import { join } from "node:path";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
+import { execSync } from "node:child_process";
 import {
   createWorkerContainer,
   ensureWorkDir,
@@ -18,6 +20,8 @@ import { getSkill, updateReportStatus, getReport } from "./storage.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { notify } from "../notifications/index.js";
 import { logger } from "../../infra/logger.js";
+import { getTaskById } from "../tasks/storage.js";
+import { getDb } from "../../infra/db/client.js";
 import type { ServiceConfig } from "../../infra/config.js";
 
 export async function spawnReportWorker(params: {
@@ -30,11 +34,9 @@ export async function spawnReportWorker(params: {
 }): Promise<string> {
   const { taskId, reportId, skillId, config } = params;
 
-  // Get skill
   const skill = await getSkill(skillId);
   if (!skill) throw new Error("Skill not found");
 
-  // Get credentials
   const cred = params.credentialId
     ? await getCredentialById(params.credentialId)
     : await getDefaultCredential();
@@ -43,24 +45,62 @@ export async function spawnReportWorker(params: {
   // Prepare workspace
   const hostWorkDir = join(config.dataDir, "report-workspaces", reportId);
   ensureWorkDir(hostWorkDir);
+
   const skillDir = join(hostWorkDir, "skill");
   mkdirSync(skillDir, { recursive: true });
   const reportsDir = join(hostWorkDir, "reports");
   mkdirSync(reportsDir, { recursive: true });
+  const contextDir = join(hostWorkDir, "context");
+  mkdirSync(contextDir, { recursive: true });
+  const outDir = join(hostWorkDir, "out");
+  mkdirSync(outDir, { recursive: true });
 
-  // Download skill zip from MinIO to host
+  // Download and extract skill zip
   const minio = getMinio();
   const skillZipPath = join(hostWorkDir, "skill.zip");
   await minio.fGetObject(config.minio.bucket, skill.minio_key, skillZipPath);
-
-  // Extract skill zip
-  const { execSync } = await import("node:child_process");
   execSync(`cd "${skillDir}" && unzip -o -q "${skillZipPath}"`, { timeout: 30_000, stdio: "pipe" });
   logger.info({ reportId, skillId, skillDir }, "Report skill extracted");
 
-  const containerName = `vh-report-${reportId.slice(0, 12)}`;
+  // Generate report context JSON with findings data
+  const task = await getTaskById(taskId);
+  const db = getDb();
+  const findings = await db<{ finding_key: string; severity: string; title: string; description: string; file_path: string; line_start: number | null }[]>`
+    SELECT finding_key, severity, title, description, file_path, line_start
+    FROM findings WHERE task_id = ${taskId}
+    ORDER BY
+      CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
+      finding_key
+  `;
 
-  // Remove stale container
+  const context = {
+    task_id: taskId,
+    report_id: reportId,
+    project_name: task?.project_name ?? "unknown",
+    scan_completed_at: task?.completed_at?.toISOString() ?? null,
+    finding_count: findings.length,
+    findings_by_severity: {
+      critical: findings.filter(f => f.severity === "critical").length,
+      high: findings.filter(f => f.severity === "high").length,
+      medium: findings.filter(f => f.severity === "medium").length,
+      low: findings.filter(f => f.severity === "low").length,
+      info: findings.filter(f => f.severity === "info").length,
+    },
+    findings: findings.map(f => ({
+      finding_key: f.finding_key,
+      severity: f.severity,
+      title: f.title,
+      description: f.description,
+      file_path: f.file_path,
+      line_start: f.line_start,
+    })),
+    skill_name: skill.name,
+  };
+  writeFileSync(join(contextDir, "report-context.json"), JSON.stringify(context, null, 2));
+  logger.info({ reportId, findingCount: findings.length }, "Report context generated");
+
+  // Container
+  const containerName = `vh-report-${reportId}`;
   try {
     const docker = getDocker();
     await docker.getContainer(containerName).remove({ force: true });
@@ -70,18 +110,7 @@ export async function spawnReportWorker(params: {
     MODE: "report",
     TASK_ID: taskId,
     REPORT_ID: reportId,
-    SKILL_PATH: "/workspace/skill",
-    REPORTS_DIR: "/workspace/reports",
     ...credentialToWorkerEnv(cred),
-    SERVICE_URL: `http://vulnhunt-service:${config.port}`,
-    CHAT_WORKER_TOKEN: reportId, // MCP auth token
-    REPORT_SYSTEM_PROMPT: [
-      "你是安全报告生成助手。",
-      "你已被加载了一个 Report Skill（通过 --skill 参数），它定义了报告的格式、语言、内容结构和评估标准。",
-      "严格按照 Skill 的指引生成报告。不要发明 Skill 未要求的内容格式。",
-      `使用 MCP 工具（list-findings, read-finding, read-task-metadata）获取任务 ${taskId} 的数据。`,
-      "将报告文件写入 /workspace/reports/，完成后调用 submit-report 提交。",
-    ].join("\n"),
   };
 
   const container = await createWorkerContainer({
@@ -92,26 +121,24 @@ export async function spawnReportWorker(params: {
     hostWorkDir,
     cpuQuota: 100000,
     memoryBytes: 2 * 1024 * 1024 * 1024,
-    autoRemove: true,
     env,
   });
 
   await container.start();
 
-  // Start tailing report events under parent taskId for LiveLog
+  // Start tailing YoungFlow events under parent taskId
   const { startTailing } = await import("../events/event-tail.js");
-  const eventsDir = join(hostWorkDir, ".report", "events");
+  const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
   try { mkdirSync(eventsDir, { recursive: true }); } catch { /* ok */ }
   startTailing(taskId, [], [{ path: eventsDir, source: "report" }]);
 
-  logger.info({ reportId, taskId, containerName }, "Report worker started");
+  logger.info({ reportId, taskId, containerName }, "Report worker started (YoungFlow mode)");
   return container.id;
 }
 
 /**
  * Handle report worker container die event.
- * If submit_report was called (status already completed), nothing to do.
- * Otherwise mark as failed.
+ * Reads manifest, uploads report files to MinIO, updates DB.
  */
 export async function onReportContainerDie(
   reportId: string,
@@ -120,19 +147,84 @@ export async function onReportContainerDie(
   const report = await getReport(reportId);
   if (!report) return;
 
-  // If already completed by submit_report MCP call, skip
+  // If already completed (e.g. by legacy submit_report MCP), skip
   if (report.status === "completed") {
-    logger.info({ reportId }, "Report already completed (submit_report called)");
+    logger.info({ reportId }, "Report already completed");
     return;
   }
 
-  if (exitCode === 0) {
-    // Pi exited cleanly but didn't call submit_report — try to salvage
-    // by checking if files exist in workspace
-    logger.warn({ reportId }, "Report worker exited 0 but submit_report not called");
-    await updateReportStatus(reportId, "failed", {
-      failureReason: "Worker exited without submitting report",
-    });
+  const config = (await import("../../infra/config.js")).loadConfig();
+  const hostWorkDir = join(config.dataDir, "report-workspaces", reportId);
+  const manifestPath = join(hostWorkDir, "out", "report-manifest.json");
+  const reportsDir = join(hostWorkDir, "reports");
+
+  if (exitCode === 0 && existsSync(manifestPath)) {
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+      const primaryFile = manifest.primary_file ?? "security-report.md";
+      const primaryPath = join(reportsDir, primaryFile);
+
+      if (!existsSync(primaryPath)) {
+        throw new Error(`Primary report file not found: ${primaryFile}`);
+      }
+
+      // Upload to MinIO (same structure as submit-report MCP)
+      const minio = getMinio();
+      const bucket = config.minio.bucket;
+      const fmt = manifest.format ?? "md";
+      const primaryKey = `user-reports/${report.task_id}/${reportId}/primary.${fmt}`;
+      await minio.fPutObject(bucket, primaryKey, primaryPath);
+
+      // Create bundle tar
+      execSync(`tar -cf "${join(hostWorkDir, "bundle.tar")}" -C "${reportsDir}" .`, { timeout: 30_000, stdio: "pipe" });
+      const bundleKey = `user-reports/${report.task_id}/${reportId}/bundle.tar`;
+      await minio.fPutObject(bucket, bundleKey, join(hostWorkDir, "bundle.tar"));
+
+      // Update DB
+      await updateReportStatus(reportId, "completed", {
+        format: fmt,
+        primaryMinioKey: primaryKey,
+        bundleMinioKey: bundleKey,
+      });
+
+      logger.info({ reportId, primaryFile }, "Report completed via manifest");
+    } catch (err) {
+      logger.error({ err, reportId }, "Failed to process report manifest");
+      await updateReportStatus(reportId, "failed", {
+        failureReason: `Manifest processing failed: ${err}`,
+      });
+    }
+  } else if (exitCode === 0) {
+    // Exit 0 but no manifest — try to find report files directly
+    try {
+      const reportFiles = readdirSync(reportsDir).filter(f => f.endsWith(".md"));
+      if (reportFiles.length > 0) {
+        const primaryFile = reportFiles[0];
+        const minio = getMinio();
+        const bucket = config.minio.bucket;
+        const primaryKey = `user-reports/${report.task_id}/${reportId}/primary.md`;
+        await minio.fPutObject(bucket, primaryKey, join(reportsDir, primaryFile));
+
+        execSync(`tar -cf "${join(hostWorkDir, "bundle.tar")}" -C "${reportsDir}" .`, { timeout: 30_000, stdio: "pipe" });
+        const bundleKey = `user-reports/${report.task_id}/${reportId}/bundle.tar`;
+        await minio.fPutObject(bucket, bundleKey, join(hostWorkDir, "bundle.tar"));
+
+        await updateReportStatus(reportId, "completed", {
+          format: "md",
+          primaryMinioKey: primaryKey,
+          bundleMinioKey: bundleKey,
+        });
+        logger.info({ reportId, primaryFile }, "Report completed (no manifest, found .md file)");
+      } else {
+        await updateReportStatus(reportId, "failed", {
+          failureReason: "Worker exited without producing report files",
+        });
+      }
+    } catch (err) {
+      await updateReportStatus(reportId, "failed", {
+        failureReason: `Report salvage failed: ${err}`,
+      });
+    }
   } else {
     await updateReportStatus(reportId, "failed", {
       failureReason: `Worker exited with code ${exitCode}`,
