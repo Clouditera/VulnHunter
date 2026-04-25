@@ -65,39 +65,65 @@ export async function spawnReportWorker(params: {
   // Generate report context JSON with findings data
   const task = await getTaskById(taskId);
   const db = getDb();
-  const findings = await db<{ finding_key: string; severity: string; title: string; description: string; file_path: string; line_start: number | null }[]>`
-    SELECT finding_key, severity, title, description, file_path, line_start
-    FROM findings WHERE task_id = ${taskId}
-    ORDER BY
-      CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
-      finding_key
+  const findingsMeta = await db<{
+    finding_key: string; severity: string; vuln_type: string | null;
+    primary_file: string | null; primary_line: number | null;
+    yaml_minio_key: string;
+  }[]>`
+    SELECT finding_key, severity, vuln_type, primary_file, primary_line, yaml_minio_key
+    FROM findings_meta WHERE task_id = ${taskId}
+    ORDER BY severity_numeric DESC, finding_key
   `;
+
+  // Read YAML details for each finding from MinIO
+  const findingsDetail: Array<{
+    finding_key: string; severity: string; vuln_type: string | null;
+    primary_file: string | null; primary_line: number | null;
+    title: string; description: string;
+  }> = [];
+  for (const f of findingsMeta) {
+    let title = f.finding_key;
+    let description = "";
+    try {
+      const minio = getMinio();
+      const stream = await minio.getObject(config.minio.bucket, f.yaml_minio_key);
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+      const yamlText = Buffer.concat(chunks).toString("utf-8");
+      const { load } = await import("js-yaml");
+      const doc = load(yamlText) as Record<string, unknown>;
+      title = (doc.title as string) ?? f.finding_key;
+      description = (doc.description as string) ?? (doc.summary as string) ?? "";
+    } catch { /* use defaults */ }
+    findingsDetail.push({
+      finding_key: f.finding_key,
+      severity: f.severity,
+      vuln_type: f.vuln_type,
+      primary_file: f.primary_file,
+      primary_line: f.primary_line,
+      title,
+      description,
+    });
+  }
 
   const context = {
     task_id: taskId,
     report_id: reportId,
     project_name: task?.project_name ?? "unknown",
     scan_completed_at: task?.completed_at?.toISOString() ?? null,
-    finding_count: findings.length,
+    finding_count: findingsDetail.length,
     findings_by_severity: {
-      critical: findings.filter(f => f.severity === "critical").length,
-      high: findings.filter(f => f.severity === "high").length,
-      medium: findings.filter(f => f.severity === "medium").length,
-      low: findings.filter(f => f.severity === "low").length,
-      info: findings.filter(f => f.severity === "info").length,
+      critical: findingsDetail.filter(f => f.severity === "critical").length,
+      high: findingsDetail.filter(f => f.severity === "high").length,
+      medium: findingsDetail.filter(f => f.severity === "medium").length,
+      low: findingsDetail.filter(f => f.severity === "low").length,
+      info: findingsDetail.filter(f => f.severity === "info").length,
     },
-    findings: findings.map(f => ({
-      finding_key: f.finding_key,
-      severity: f.severity,
-      title: f.title,
-      description: f.description,
-      file_path: f.file_path,
-      line_start: f.line_start,
-    })),
+    findings: findingsDetail,
     skill_name: skill.name,
   };
   writeFileSync(join(contextDir, "report-context.json"), JSON.stringify(context, null, 2));
-  logger.info({ reportId, findingCount: findings.length }, "Report context generated");
+  logger.info({ reportId, findingCount: findingsDetail.length }, "Report context generated");
 
   // Container
   const containerName = `vh-report-${reportId}`;
@@ -162,7 +188,15 @@ export async function onReportContainerDie(
     try {
       const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
       const primaryFile = manifest.primary_file ?? "security-report.md";
-      const primaryPath = join(reportsDir, primaryFile);
+
+      // Path traversal protection — reject dangerous file paths from LLM output
+      const { resolve, relative } = await import("node:path");
+      const resolvedPath = resolve(reportsDir, primaryFile);
+      const rel = relative(reportsDir, resolvedPath);
+      if (rel.startsWith("..") || resolve(reportsDir, rel) !== resolvedPath || !primaryFile || primaryFile.startsWith("/")) {
+        throw new Error(`Unsafe file path in manifest: ${primaryFile}`);
+      }
+      const primaryPath = resolvedPath;
 
       if (!existsSync(primaryPath)) {
         throw new Error(`Primary report file not found: ${primaryFile}`);
