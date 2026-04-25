@@ -98,13 +98,12 @@
   box-sizing: border-box;
 }
 
-/* Selection — global, brand-tinted, readable on both light and dark backgrounds */
-::selection {
-  background: rgba(220, 38, 38, 0.18); /* brand red, low alpha */
-  color: inherit;
-}
-:root[data-theme="dark"] ::selection {
-  background: rgba(220, 38, 38, 0.32); /* slightly stronger on dark */
+/* Selection — only customized inside code/output blocks (translate="no")
+   so dark code+log areas get readable red-tinted selection while normal
+   page text keeps the browser-default blue (avoids LiveLog looking muddy). */
+[translate="no"]::selection,
+[translate="no"] *::selection {
+  background: rgba(220, 38, 38, 0.32);
   color: inherit;
 }
 
