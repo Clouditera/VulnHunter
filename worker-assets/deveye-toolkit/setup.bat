@@ -1,5 +1,5 @@
 @echo off
-REM DeVeye Server Setup Script — VulnHunt v1.0
+REM DeVeye Server Setup Script - VulnHunt v1.0
 REM Run this on a Windows machine with Chrome
 
 echo === DeVeye Server Setup ===
@@ -39,15 +39,10 @@ echo === Setup Complete ===
 echo.
 echo Start the server with:
 echo.
-echo   deveye.exe server start ^
-echo     --host 0.0.0.0 ^
-echo     --port 9888 ^
-echo     --token ^<your-token^> ^
-echo     --extension-path "%SCRIPT_DIR%extension-dist" ^
-echo     --daemon
+echo   deveye.exe server start --host 0.0.0.0 --port 9888 --token YOUR_TOKEN --extension-path "%SCRIPT_DIR%extension-dist" --daemon
 echo.
-echo Then in VulnHunt Settings ^> POC/EXP:
-echo   Server URL: ws://^<this-machine-ip^>:9888
-echo   Token: ^<your-token^>
+echo Then in VulnHunt Settings - POC/EXP:
+echo   Server URL: ws://THIS_MACHINE_IP:9888
+echo   Token: YOUR_TOKEN
 echo.
 pause
