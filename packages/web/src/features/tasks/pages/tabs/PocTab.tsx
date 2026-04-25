@@ -695,6 +695,7 @@ function GenerateModal({
   const [deveyeServer, setDeveyeServer] = useState("");
   const [deveyeToken, setDeveyeToken] = useState("");
   const [showDeveyeOverride, setShowDeveyeOverride] = useState(false);
+  const [showSetupGuide, setShowSetupGuide] = useState(false);
 
   // Effective DeVeye config: override > global default
   const effectiveDeveyeServer = (showDeveyeOverride && deveyeServer.trim()) || defaultDeveyeServer.trim();
@@ -792,6 +793,60 @@ function GenerateModal({
                 <div style={{ marginTop: "4px" }}>
                   请在下方填写 Server URL 和 Token，或在 Settings → POC/EXP 设置中配置默认值。
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSetupGuide(!showSetupGuide)}
+                  style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    fontSize: "12px", color: "#c2410c", padding: "6px 0 0",
+                    fontWeight: 600, fontFamily: "inherit",
+                  }}
+                >
+                  {showSetupGuide ? "▾" : "▸"} 还未部署？5 分钟快速部署
+                </button>
+                {showSetupGuide && (
+                  <div style={{
+                    marginTop: "10px",
+                    padding: "10px 12px",
+                    background: "#fff",
+                    border: "1px dashed #fdba74",
+                    borderRadius: "6px",
+                    color: "#374151",
+                  }}>
+                    <div style={{ fontSize: "11px", color: "#6b7280", marginBottom: "6px" }}>
+                      在有桌面 + Chrome 的机器上：
+                    </div>
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "8px" }}>
+                      <SetupDownloadBtn platform="linux" label="Linux" />
+                      <SetupDownloadBtn platform="windows" label="Windows" />
+                      <SetupDownloadBtn platform="macos" label="macOS" />
+                    </div>
+                    <pre style={{
+                      margin: 0, padding: "8px 10px",
+                      background: "#f8fafc", border: "1px solid #e2e8f0",
+                      borderRadius: "4px", fontFamily: "'SF Mono', Menlo, monospace",
+                      fontSize: "11px", lineHeight: 1.55, color: "#0f172a",
+                      whiteSpace: "pre", overflow: "auto",
+                    }}>
+{`# 解压后启动 Server
+bash setup.sh   # Linux/macOS
+setup.bat       # Windows
+deveye server start --host 0.0.0.0 --port 9888 \\
+  --token <your-token> --extension-path ./extension-dist --daemon`}
+                    </pre>
+                    <div style={{ marginTop: "8px", fontSize: "11px", color: "#6b7280" }}>
+                      启动后返回下方填入 Server URL + Token，或
+                      <a
+                        href="/settings#poc"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ marginLeft: "4px", color: "#2563eb", textDecoration: "none" }}
+                      >
+                        前往 Settings 设置默认值 →
+                      </a>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {browserTool === "deveye" && (
@@ -1088,3 +1143,33 @@ const MODAL_FOOTER: CSSProperties = {
   justifyContent: "flex-end",
   gap: "8px",
 };
+
+/* ── Compact toolkit download button for in-modal "5-min setup" guide ── */
+function SetupDownloadBtn({ platform, label }: { platform: "linux" | "windows" | "macos"; label: string }) {
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent.toLowerCase() : "";
+  const detected: typeof platform =
+    ua.includes("win") ? "windows" : ua.includes("mac") ? "macos" : "linux";
+  const highlight = detected === platform;
+  return (
+    <a
+      href={`/api/downloads/deveye/toolkit?platform=${platform}`}
+      download
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "4px",
+        padding: "4px 10px",
+        borderRadius: "4px",
+        fontSize: "11px",
+        fontWeight: 600,
+        textDecoration: "none",
+        background: highlight ? "#c2410c" : "#fff",
+        color: highlight ? "#fff" : "#c2410c",
+        border: `1px solid ${highlight ? "#c2410c" : "#fdba74"}`,
+        cursor: "pointer",
+      }}
+    >
+      ⬇ {label}
+    </a>
+  );
+}
