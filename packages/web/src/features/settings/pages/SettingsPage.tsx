@@ -298,6 +298,10 @@ export function SettingsPage() {
   useEffect(() => themeStore.onChange(() => force((n) => n + 1)), []);
   useEffect(() => ensureSpinKeyframes(), []);
 
+  // Must be declared before any useEffect that references sysStatus
+  const { data: sysStatus } = useSystemStatus();
+  const isAdmin = sysStatus?.user?.role === "admin";
+
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [cred, setCred] = useState<LlmCredential | null>(null);
   const [config, setConfig] = useState<SystemConfig | null>(null);
@@ -622,9 +626,7 @@ export function SettingsPage() {
     }
   }
 
-  // Role-aware sub-nav
-  const { data: sysStatus } = useSystemStatus();
-  const isAdmin = sysStatus?.user?.role === "admin";
+  // Role-aware sub-nav (sysStatus/isAdmin declared at top of component)
 
   const SUB_NAV_SECTIONS: Array<{ id: string; labelKey: string }> = isAdmin
     ? [
