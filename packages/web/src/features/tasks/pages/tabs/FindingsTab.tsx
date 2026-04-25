@@ -582,7 +582,7 @@ export function FindingsTab() {
                   onViewCode={() => setRightView("code")}
                 />
               ) : (
-                <EmptyState icon="shield" text={i18n.t("findings.detail.placeholder")} />
+                <EmptyState icon="chevron-left" text={i18n.t("findings.detail.placeholder")} />
               )
             )}
 
@@ -609,7 +609,7 @@ export function FindingsTab() {
                   {!treeData || (treeData.tree ?? []).length === 0 ? (
                     allFindings.length === 0 ? (
                       <EmptyState
-                        icon="shield"
+                        icon="check"
                         text={i18n.t("findings.noVulnFiles")}
                       />
                     ) : (
@@ -1026,7 +1026,7 @@ function EmptyState({
   icon,
   text,
 }: {
-  icon: "shield";
+  icon: "shield" | "chevron-left" | "check";
   text: string;
 }) {
   return (

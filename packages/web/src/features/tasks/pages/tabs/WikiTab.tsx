@@ -27,11 +27,11 @@ import { Splitter, useResizableWidth } from "../../../../shared/components/Split
 
 type SectionKey = "profile" | "reports" | "features" | "summaries";
 
-const SECTION_META: Record<SectionKey, { icon: "cpu" | "file-text" | "database" | "shield"; i18nKey: string }> = {
+const SECTION_META: Record<SectionKey, { icon: "cpu" | "file-text" | "database" | "activity"; i18nKey: string }> = {
   profile:   { icon: "cpu",       i18nKey: "wiki.section.profile" },
   reports:   { icon: "file-text", i18nKey: "wiki.section.reports" },
   features:  { icon: "database",  i18nKey: "wiki.section.features" },
-  summaries: { icon: "shield",    i18nKey: "wiki.section.summaries" },
+  summaries: { icon: "activity",  i18nKey: "wiki.section.summaries" },
 };
 
 export function WikiTab() {
@@ -243,7 +243,7 @@ export function WikiTab() {
           {effective === "summaries" && summaries.length > 0 && (
             <SectionCard
               title={`${i18n.t("wiki.section.summaries")} · ${summaries.length}`}
-              icon="shield"
+              icon="activity"
               testid="wiki-section-summaries"
             >
               <SummaryList summaries={summaries} groups={groups} />
@@ -294,7 +294,7 @@ function SectionCard({
   children,
 }: {
   title: string;
-  icon: "cpu" | "file-text" | "database" | "shield";
+  icon: "cpu" | "file-text" | "database" | "activity";
   testid?: string;
   children: ReactNode;
 }) {
@@ -858,11 +858,8 @@ function SummaryCard({
           cursor: "pointer",
         }}
       >
-        <Icon
-          name="shield"
-          size={14}
-          style={{ color: "var(--text-secondary)", flexShrink: 0 }}
-        />
+        {/* No leading icon — prevents shield-icon overload (3x in summaries view).
+            The section's activity icon already denotes 'analysis' category. */}
         <div
           style={{
             flex: 1,

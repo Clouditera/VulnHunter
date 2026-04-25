@@ -107,6 +107,57 @@
   color: inherit;
 }
 
+/* Scrollbars — theme-aware. Default browser scrollbars don't auto-adapt to
+   dark mode (they stay white-grey), which looks broken on dark backgrounds. */
+:root {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* Webkit/Chromium custom scrollbars — subtle, theme-tinted */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(115, 115, 115, 0.35);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(115, 115, 115, 0.55);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(180, 180, 180, 0.18);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(180, 180, 180, 0.32);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox: thin scrollbar with theme-aware thumb color */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(115, 115, 115, 0.4) transparent;
+}
+:root[data-theme="dark"] * {
+  scrollbar-color: rgba(180, 180, 180, 0.22) transparent;
+}
+
 body {
   margin: 0;
   background: var(--bg-page);

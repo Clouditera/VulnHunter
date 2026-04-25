@@ -312,7 +312,7 @@ export function PocTab() {
         ) : (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-secondary)", fontSize: "13px" }}>
             <div style={{ textAlign: "center" }}>
-              <Icon name="shield" size={32} style={{ opacity: 0.3, marginBottom: "12px" }} />
+              <Icon name="chevron-left" size={32} style={{ opacity: 0.3, marginBottom: "12px" }} />
               <div>选择漏洞查看 POC 详情</div>
             </div>
           </div>
@@ -623,7 +623,7 @@ function ScreenshotsPanel({ taskId, findingKey, result }: { taskId: string; find
   const screenshots: string[] = (detailData as { screenshots?: string[] })?.screenshots ?? [];
 
   if (!result?.screenshots_prefix || screenshots.length === 0) {
-    return <EmptyCenter icon="shield" text="暂无截图" />;
+    return <EmptyCenter icon="image" text="暂无截图" />;
   }
 
   return (
