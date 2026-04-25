@@ -28,6 +28,7 @@ systemRouter.get("/status", async (c) => {
           id: sessionUser.userId,
           email: sessionUser.email,
           role: sessionUser.role,
+          displayName: sessionUser.displayName,
         }
       : null,
   });

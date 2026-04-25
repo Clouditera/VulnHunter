@@ -267,8 +267,8 @@ function UserAvatarPopover({ onLogout, onNavigateSettings }: { onLogout: () => v
   const user = status?.user;
   const [open, setOpen] = useState(false);
 
-  const initial = (user?.email?.split("@")[0]?.[0] ?? "U").toUpperCase();
-  const displayName = user?.email?.split("@")[0] ?? "User";
+  const displayName = user?.displayName || user?.email?.split("@")[0] || "User";
+  const initial = (user?.displayName?.[0] || user?.email?.[0] || "U").toUpperCase();
 
   return (
     <div style={{ position: "relative", marginTop: "8px" }}>

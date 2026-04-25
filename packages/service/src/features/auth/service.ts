@@ -88,6 +88,7 @@ export async function resolveSession(sessionId: string) {
     tenantId: user.tenant_id,
     email: user.email,
     role: user.role as "admin" | "member",
+    displayName: user.display_name,
     sessionId: session.id,
   };
 }

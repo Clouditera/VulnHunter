@@ -14,5 +14,6 @@ export interface SystemStatus {
     id: string;
     email: string;
     role: "admin" | "member";
+    displayName: string;
   } | null;
 }

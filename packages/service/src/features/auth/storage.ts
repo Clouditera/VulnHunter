@@ -23,12 +23,10 @@ export interface DbSession {
   expires_at: Date;
 }
 
-const USER_COLS = "id, tenant_id, email, password_hash, role, status, display_name, must_change_password, last_login_at, created_at, updated_at";
-
 export async function findUserByEmail(email: string): Promise<DbUser | null> {
   const db = getDb();
   const rows = await db<DbUser[]>`
-    SELECT ${db(USER_COLS)}
+    SELECT *
     FROM users
     WHERE tenant_id = ${DEFAULT_TENANT_ID} AND email = ${email}
     LIMIT 1

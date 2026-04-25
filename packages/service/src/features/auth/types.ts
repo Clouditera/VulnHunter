@@ -3,6 +3,7 @@ export interface SessionUser {
   tenantId: string;
   email: string;
   role: "admin" | "member";
+  displayName: string;
   sessionId: string;
 }
 
