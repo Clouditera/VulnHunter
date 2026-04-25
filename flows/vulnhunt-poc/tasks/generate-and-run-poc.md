@@ -15,6 +15,32 @@
 - **HTTP 复现**（SQLi、SSRF、路径遍历等）→ 使用 curl
 - **无法复现** → 标记 SKIPPED 并说明原因
 
+### 2.5 初始化远程浏览器（如需 DevEye）
+
+你在容器中运行，没有本地 Chrome。使用 DevEye 前**必须**创建远程浏览器实例：
+
+```bash
+# 创建浏览器实例（DEVEYE_SERVER 和 DEVEYE_TOKEN 已通过环境变量配置）
+BROWSER_ID=$(deveye browser create --json 2>/dev/null | jq -r '.browserId // empty')
+if [ -n "$BROWSER_ID" ]; then
+  export DEVEYE_BROWSER_ID=$BROWSER_ID
+  echo "[deveye] Remote browser created: $BROWSER_ID"
+else
+  echo "[deveye] WARNING: browser create failed, falling back to curl-only reproduction"
+fi
+```
+
+之后所有 `deveye` 命令（navigate/click/type/screenshot 等）自动使用该实例。
+
+**任务完成后必须销毁**：
+```bash
+if [ -n "$DEVEYE_BROWSER_ID" ]; then
+  deveye browser destroy --browser-id $DEVEYE_BROWSER_ID 2>/dev/null
+fi
+```
+
+如果 `browser create` 失败，说明 DeVeye Server 未配置或不可达，回退为 curl 复现。
+
 ### 3. 编写 poc.sh
 参考 `skills/poc-reproducer/SKILL.md` 中的模板和指引，在输出目录创建 `poc.sh`。
 
@@ -38,6 +64,14 @@ python3 /opt/vulnhunt/flows/vulnhunt-poc/skills/poc-executor/run_poc.py \
 
 ### 5. 截图留证
 使用 DevEye 截图（浏览器类漏洞）或保存 HTTP 响应截图。
+
+### 5.5 清理浏览器实例
+```bash
+if [ -n "$DEVEYE_BROWSER_ID" ]; then
+  deveye browser destroy --browser-id $DEVEYE_BROWSER_ID 2>/dev/null
+  echo "[deveye] Browser $DEVEYE_BROWSER_ID destroyed"
+fi
+```
 
 ### 6. 写入 result.json
 

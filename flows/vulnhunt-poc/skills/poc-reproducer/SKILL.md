@@ -30,6 +30,22 @@ description: 漏洞复现指引 — 分析漏洞报告、编写可独立运行�
 - 过程可视：每步操作前打印说明，阶段间短暂停顿
 - 结果明确：最终输出复现成功/失败
 - 依赖最少：优先用 curl / deveye
+- **DevEye 远程浏览器**：你在容器中运行，没有本地 Chrome。poc.sh 中使用 DevEye 时必须先创建远程浏览器：
+
+```bash
+# poc.sh 中的 DevEye 初始化模板
+BROWSER_ID=$(deveye browser create --json 2>/dev/null | jq -r '.browserId // empty')
+if [ -z "$BROWSER_ID" ]; then
+  echo "ERROR: Failed to create remote browser. Is DeVeye Server running?"
+  exit 1
+fi
+export DEVEYE_BROWSER_ID=$BROWSER_ID
+trap 'deveye browser destroy --browser-id $BROWSER_ID 2>/dev/null' EXIT
+
+# 现在可以使用 deveye 命令
+deveye navigate goto "$TARGET_URL"
+deveye screenshot screenshot.png
+```
 
 参考 `repro-instruction.md` 中的详细模板和各漏洞类型的 PoC 要点。
 
