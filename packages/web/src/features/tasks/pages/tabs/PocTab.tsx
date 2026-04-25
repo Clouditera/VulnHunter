@@ -519,13 +519,34 @@ function ScriptPanel({ taskId, findingKey, result }: { taskId: string; findingKe
 /* ══════════════════════════════════════════════════════════════════════════ */
 
 function OutputPanel({ taskId, findingKey, result }: { taskId: string; findingKey: string; result: PocResult | null }) {
-  const { data: log, isLoading } = useQuery({
-    queryKey: ["poc-log", taskId, findingKey],
-    queryFn: () => api.tasks.pocLog(taskId, findingKey),
-    enabled: !!result?.run_log_minio_key,
+  // Fetch detail to get runs list
+  const { data: detail } = useQuery({
+    queryKey: ["poc-detail", taskId, findingKey],
+    queryFn: () => api.tasks.pocFindingDetail(taskId, findingKey),
+    refetchInterval: (query) => {
+      const runs = query.state.data?.runs ?? [];
+      const hasActive = runs.some((r: { state: string }) => ["queued", "running"].includes(r.state));
+      return hasActive ? 3000 : false;
+    },
   });
 
-  if (!result?.run_log_minio_key) {
+  const latestRun = detail?.runs?.[0];
+  const hasLog = !!result?.run_log_minio_key || !!latestRun?.run_log_minio_key;
+  const isRunning = latestRun?.state === "running" || latestRun?.state === "queued";
+
+  const { data: log, isLoading } = useQuery({
+    queryKey: ["poc-log", taskId, findingKey, latestRun?.id],
+    queryFn: () => api.tasks.pocLog(taskId, findingKey),
+    enabled: hasLog && !isRunning,
+  });
+
+  if (isRunning) {
+    return (
+      <EmptyCenter icon="loader" text={`执行中… (${latestRun?.state})`} />
+    );
+  }
+
+  if (!hasLog) {
     return <EmptyCenter icon="terminal" text="尚未执行 POC" />;
   }
   if (isLoading) return <EmptyCenter icon="loader" text="加载中..." />;
@@ -533,29 +554,55 @@ function OutputPanel({ taskId, findingKey, result }: { taskId: string; findingKe
   const lines = (log ?? "").split("\n");
 
   return (
-    <div
-      translate="no"
-      style={{
-        flex: 1,
-        background: "var(--code-bg)",
-        color: "var(--code-text)",
-        fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-        fontSize: "12px",
-        lineHeight: 1.65,
-        padding: "14px 18px",
-        overflow: "auto",
-        height: "100%",
-      }}
-    >
-      {lines.map((line, i) => {
-        const isStderr = line.startsWith("[stderr]");
-        const display = isStderr ? line.slice(9) : line.startsWith("[stdout] ") ? line.slice(9) : line;
-        return (
-          <div key={i} style={{ color: isStderr ? "var(--status-paused)" : undefined }}>
-            {display}
-          </div>
-        );
-      })}
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Run status header */}
+      {latestRun && (
+        <div style={{
+          padding: "8px 18px",
+          borderBottom: "1px solid var(--divider)",
+          fontSize: "11px",
+          color: "var(--text-secondary)",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          flexShrink: 0,
+        }}>
+          <span style={{
+            width: "6px", height: "6px", borderRadius: "50%",
+            background: latestRun.state === "completed" ? "var(--status-completed, #16a34a)"
+              : latestRun.state === "failed" ? "var(--brand)"
+              : "var(--status-running, #f59e0b)",
+          }} />
+          <span>最近执行: {latestRun.state}</span>
+          {latestRun.exit_code != null && <span>· exit {latestRun.exit_code}</span>}
+          {latestRun.duration_ms != null && <span>· {(latestRun.duration_ms / 1000).toFixed(1)}s</span>}
+          {latestRun.created_at && <span>· {new Date(latestRun.created_at).toLocaleTimeString()}</span>}
+          {detail?.runs && detail.runs.length > 1 && <span style={{ marginLeft: "auto" }}>共 {detail.runs.length} 次执行</span>}
+        </div>
+      )}
+      <div
+        translate="no"
+        style={{
+          flex: 1,
+          background: "var(--code-bg)",
+          color: "var(--code-text)",
+          fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+          fontSize: "12px",
+          lineHeight: 1.65,
+          padding: "14px 18px",
+          overflow: "auto",
+        }}
+      >
+        {lines.map((line, i) => {
+          const isStderr = line.startsWith("[stderr]");
+          const display = isStderr ? line.slice(9) : line.startsWith("[stdout] ") ? line.slice(9) : line;
+          return (
+            <div key={i} style={{ color: isStderr ? "var(--status-paused)" : undefined }}>
+              {display}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

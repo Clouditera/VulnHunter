@@ -185,20 +185,36 @@ pocRouter.get("/:taskId/poc/:findingKey/script", async (c) => {
 // ─── Download Run Log ───
 
 // GET /api/tasks/:taskId/poc/:findingKey/log
+// Returns the latest run log (poc_runs first, then poc_results fallback)
 pocRouter.get("/:taskId/poc/:findingKey/log", async (c) => {
-  const result = await pocStorage.getPocResult(c.req.param("taskId"), c.req.param("findingKey"));
-  if (!result?.run_log_minio_key) {
+  const taskId = c.req.param("taskId");
+  const findingKey = c.req.param("findingKey");
+
+  // Check latest run first
+  const runs = await pocStorage.listPocRuns(taskId, findingKey);
+  const latestRun = runs[0]; // sorted by created_at DESC
+  let logKey: string | null = latestRun?.run_log_minio_key ?? null;
+
+  // Fallback to poc_results log
+  if (!logKey) {
+    const result = await pocStorage.getPocResult(taskId, findingKey);
+    logKey = result?.run_log_minio_key ?? null;
+  }
+
+  if (!logKey) {
     return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   }
 
   const config = loadConfig();
   const minio = getMinio();
-  const stream = await minio.getObject(config.minio.bucket, result.run_log_minio_key);
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream) chunks.push(chunk as Buffer);
-  const content = Buffer.concat(chunks).toString("utf-8");
-
-  return c.text(content);
+  try {
+    const stream = await minio.getObject(config.minio.bucket, logKey);
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) chunks.push(chunk as Buffer);
+    return c.text(Buffer.concat(chunks).toString("utf-8"));
+  } catch {
+    return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  }
 });
 
 // ─── Screenshots ───
