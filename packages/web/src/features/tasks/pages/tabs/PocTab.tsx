@@ -411,23 +411,24 @@ function PocDetail({
           </button>
         ))}
 
-        {/* Run again button (in output tab context) */}
-        {result?.poc_script_minio_key && (
+        {/* Right-side status badge only — actions moved into ScriptOutputPanel header */}
+        {result?.poc_script_minio_key && result.status !== "pending" && (
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
-            {result.status !== "pending" && (
-              <PocStatusBadge status={result.status} />
-            )}
-            <button onClick={onRunAgain} style={GHOST_SM}>
-              <Icon name="activity" size={12} /> 再次执行
-            </button>
+            <PocStatusBadge status={result.status} />
           </div>
         )}
       </div>
 
       {/* Tab content */}
-      <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-        {rightTab === "script" && <ScriptPanel taskId={taskId} findingKey={findingKey} result={result} />}
-        {rightTab === "output" && <OutputPanel taskId={taskId} findingKey={findingKey} result={result} />}
+      <div style={{ flex: 1, overflow: "hidden", minHeight: 0, display: "flex", flexDirection: "column" }}>
+        {rightTab === "scriptAndOutput" && (
+          <ScriptOutputPanel
+            taskId={taskId}
+            findingKey={findingKey}
+            result={result}
+            onRunAgain={onRunAgain}
+          />
+        )}
         {rightTab === "screenshots" && <ScreenshotsPanel taskId={taskId} findingKey={findingKey} result={result} />}
         {rightTab === "info" && <InfoPanel finding={finding} result={result} />}
       </div>
@@ -436,22 +437,58 @@ function PocDetail({
 }
 
 /* ══════════════════════════════════════════════════════════════════════════ */
-/*  Script panel                                                            */
+/*  Script + Output combined panel (v1.2 — fish 2026-04-25)                  */
+/*    Top: code viewer | Splitter (axis=y) | Bottom: status row + run log   */
+/*    Unified action bar: Copy / Download / Run Again                        */
 /* ══════════════════════════════════════════════════════════════════════════ */
 
-function ScriptPanel({ taskId, findingKey, result }: { taskId: string; findingKey: string; result: PocResult | null }) {
+function ScriptOutputPanel({
+  taskId,
+  findingKey,
+  result,
+  onRunAgain,
+}: {
+  taskId: string;
+  findingKey: string;
+  result: PocResult | null;
+  onRunAgain: () => void;
+}) {
+  const hasScript = !!result?.poc_script_minio_key;
   const [copied, setCopied] = useState(false);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const [topHeight, setTopHeight] = useResizableWidth(
+    "poc-script-output-split",
+    280,
+    { min: 80, max: 800 },
+  );
 
-  const { data: script, isLoading } = useQuery({
+  /* ── Script content ── */
+  const { data: script, isLoading: scriptLoading } = useQuery({
     queryKey: ["poc-script", taskId, findingKey],
     queryFn: () => api.tasks.pocScript(taskId, findingKey),
-    enabled: !!result?.poc_script_minio_key,
+    enabled: hasScript,
   });
 
-  if (!result?.poc_script_minio_key) {
-    return <EmptyCenter icon="file-code" text="尚未生成 POC 脚本" />;
-  }
-  if (isLoading) return <EmptyCenter icon="loader" text="加载中..." />;
+  /* ── Run detail (status header + log routing) ── */
+  const { data: detail } = useQuery({
+    queryKey: ["poc-detail", taskId, findingKey],
+    queryFn: () => api.tasks.pocFindingDetail(taskId, findingKey),
+    refetchInterval: (query) => {
+      const runs = query.state.data?.runs ?? [];
+      const hasActive = runs.some((r: { state: string }) => ["queued", "running"].includes(r.state));
+      return hasActive ? 3000 : false;
+    },
+  });
+
+  const latestRun = detail?.runs?.[0];
+  const hasLog = !!result?.run_log_minio_key || !!latestRun?.run_log_minio_key;
+  const isRunning = latestRun?.state === "running" || latestRun?.state === "queued";
+
+  const { data: log } = useQuery({
+    queryKey: ["poc-log", taskId, findingKey, latestRun?.id],
+    queryFn: () => api.tasks.pocLog(taskId, findingKey),
+    enabled: hasLog && !isRunning,
+  });
 
   async function handleCopy() {
     if (!script) return;
@@ -472,7 +509,8 @@ function ScriptPanel({ taskId, findingKey, result }: { taskId: string; findingKe
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      {/* Unified action header */}
       <div
         style={{
           padding: "10px 16px",
@@ -480,145 +518,207 @@ function ScriptPanel({ taskId, findingKey, result }: { taskId: string; findingKe
           display: "flex",
           alignItems: "center",
           gap: "8px",
-        }}
-      >
-        <button onClick={handleCopy} style={GHOST_SM}>
-          <Icon name={copied ? "check" : "copy"} size={12} />
-          {copied ? "已复制" : "复制"}
-        </button>
-        <button onClick={handleDownload} style={GHOST_SM}>
-          <Icon name="upload" size={12} style={{ transform: "rotate(180deg)" }} />
-          下载
-        </button>
-        <span style={{ marginLeft: "auto", fontSize: "11px", color: "var(--text-secondary)" }}>
-          {findingKey}-poc.sh
-        </span>
-      </div>
-      <pre
-        style={{
-          flex: 1,
-          margin: 0,
-          padding: "16px 20px",
-          background: "var(--code-bg)",
-          color: "var(--code-text)",
-          fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-          fontSize: "12px",
-          lineHeight: 1.6,
-          overflow: "auto",
-          whiteSpace: "pre",
-        }}
-      >
-        {script ?? ""}
-      </pre>
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════════════════ */
-/*  Output panel (terminal style)                                           */
-/* ══════════════════════════════════════════════════════════════════════════ */
-
-function OutputPanel({ taskId, findingKey, result }: { taskId: string; findingKey: string; result: PocResult | null }) {
-  // Fetch detail to get runs list
-  const { data: detail } = useQuery({
-    queryKey: ["poc-detail", taskId, findingKey],
-    queryFn: () => api.tasks.pocFindingDetail(taskId, findingKey),
-    refetchInterval: (query) => {
-      const runs = query.state.data?.runs ?? [];
-      const hasActive = runs.some((r: { state: string }) => ["queued", "running"].includes(r.state));
-      return hasActive ? 3000 : false;
-    },
-  });
-
-  const latestRun = detail?.runs?.[0];
-  const hasLog = !!result?.run_log_minio_key || !!latestRun?.run_log_minio_key;
-  const isRunning = latestRun?.state === "running" || latestRun?.state === "queued";
-
-  const { data: log, isLoading } = useQuery({
-    queryKey: ["poc-log", taskId, findingKey, latestRun?.id],
-    queryFn: () => api.tasks.pocLog(taskId, findingKey),
-    enabled: hasLog && !isRunning,
-  });
-
-  if (isRunning) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-        <div style={{
-          padding: "8px 18px", borderBottom: "1px solid var(--divider)",
-          fontSize: "12px", color: "var(--status-running, #f59e0b)",
-          display: "flex", alignItems: "center", gap: "6px",
-        }}>
-          <Icon name="loader" size={14} style={{ animation: "spin 1s linear infinite" }} />
-          执行中… 实时日志请查看下方 LiveLog 的 poc 标签页
-        </div>
-        <div style={{
-          flex: 1, background: "var(--code-bg)", color: "var(--code-text)",
-          fontFamily: "'SF Mono', Menlo, Consolas, monospace", fontSize: "12px",
-          padding: "14px 18px", overflow: "auto", opacity: 0.6,
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-          POC 脚本正在执行，完成后自动显示日志
-        </div>
-      </div>
-    );
-  }
-
-  if (!hasLog) {
-    return <EmptyCenter icon="terminal" text="尚未执行 POC" />;
-  }
-  if (isLoading) return <EmptyCenter icon="loader" text="加载中..." />;
-
-  const lines = (log ?? "").split("\n");
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Run status header */}
-      {latestRun && (
-        <div style={{
-          padding: "8px 18px",
-          borderBottom: "1px solid var(--divider)",
-          fontSize: "11px",
-          color: "var(--text-secondary)",
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
           flexShrink: 0,
-        }}>
-          <span style={{
-            width: "6px", height: "6px", borderRadius: "50%",
-            background: latestRun.state === "completed" ? "var(--status-completed, #16a34a)"
-              : latestRun.state === "failed" ? "var(--brand)"
-              : "var(--status-running, #f59e0b)",
-          }} />
-          <span>最近执行: {latestRun.state}</span>
-          {latestRun.exit_code != null && <span>· exit {latestRun.exit_code}</span>}
-          {latestRun.duration_ms != null && <span>· {(latestRun.duration_ms / 1000).toFixed(1)}s</span>}
-          {latestRun.created_at && <span>· {new Date(latestRun.created_at).toLocaleTimeString()}</span>}
-          {detail?.runs && detail.runs.length > 1 && <span style={{ marginLeft: "auto" }}>共 {detail.runs.length} 次执行</span>}
-        </div>
-      )}
-      <div
-        translate="no"
-        style={{
-          flex: 1,
-          background: "var(--code-bg)",
-          color: "var(--code-text)",
-          fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-          fontSize: "12px",
-          lineHeight: 1.65,
-          padding: "14px 18px",
-          overflow: "auto",
+          background: "var(--bg-card)",
         }}
       >
-        {lines.map((line, i) => {
-          const isStderr = line.startsWith("[stderr]");
-          const display = isStderr ? line.slice(9) : line.startsWith("[stdout] ") ? line.slice(9) : line;
-          return (
-            <div key={i} style={{ color: isStderr ? "var(--status-paused)" : undefined }}>
-              {display}
+        <span
+          style={{
+            fontSize: "12px",
+            color: "var(--text-secondary)",
+            fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+          }}
+        >
+          {hasScript ? `${findingKey}-poc.sh` : "—"}
+          {script && (
+            <span style={{ marginLeft: "6px", opacity: 0.7 }}>
+              · {(new Blob([script]).size / 1024).toFixed(1)}KB
+            </span>
+          )}
+        </span>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px" }}>
+          <button
+            onClick={handleCopy}
+            disabled={!hasScript || !script}
+            style={{ ...GHOST_SM, opacity: hasScript && script ? 1 : 0.4 }}
+          >
+            <Icon name={copied ? "check" : "copy"} size={12} />
+            {copied ? "已复制" : "复制"}
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={!hasScript || !script}
+            style={{ ...GHOST_SM, opacity: hasScript && script ? 1 : 0.4 }}
+          >
+            <Icon name="upload" size={12} style={{ transform: "rotate(180deg)" }} />
+            下载
+          </button>
+          <button
+            onClick={onRunAgain}
+            disabled={!hasScript || isRunning}
+            style={{
+              padding: "5px 12px",
+              border: "none",
+              borderRadius: "5px",
+              background: hasScript && !isRunning ? "var(--brand)" : "var(--bg-disabled)",
+              color: hasScript && !isRunning ? "var(--btn-primary-text, #fff)" : "var(--text-secondary)",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: hasScript && !isRunning ? "pointer" : "not-allowed",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              fontFamily: "inherit",
+            }}
+          >
+            {isRunning ? (
+              <Icon name="loader" size={12} style={{ animation: "spin 1s linear infinite" }} />
+            ) : (
+              <Icon name="activity" size={12} />
+            )}
+            {isRunning ? "执行中…" : "再次执行"}
+          </button>
+        </div>
+      </div>
+
+      {/* Splittable region: top script | y-splitter | bottom output */}
+      <div ref={splitContainerRef} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        {/* TOP: script viewer */}
+        <div style={{ height: `${topHeight}px`, flexShrink: 0, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+          {!hasScript ? (
+            <EmptyCenter icon="file" text="尚未生成 POC 脚本" />
+          ) : scriptLoading ? (
+            <EmptyCenter icon="loader" text="加载中..." />
+          ) : (
+            <pre
+              translate="no"
+              style={{
+                flex: 1,
+                margin: 0,
+                padding: "14px 18px",
+                background: "var(--code-bg)",
+                color: "var(--code-text)",
+                fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+                fontSize: "12px",
+                lineHeight: 1.6,
+                overflow: "auto",
+                whiteSpace: "pre",
+              }}
+            >
+              {script ?? ""}
+            </pre>
+          )}
+        </div>
+
+        {/* Splitter (horizontal divider line, drag vertically) */}
+        <Splitter
+          axis="y"
+          value={topHeight}
+          onResize={setTopHeight}
+          min={80}
+          max={800}
+          containerRef={splitContainerRef}
+        />
+
+        {/* BOTTOM: status row + run log */}
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          {/* Status row — compact one-liner */}
+          {latestRun && (
+            <div
+              style={{
+                padding: "6px 18px",
+                borderBottom: "1px solid var(--divider)",
+                fontSize: "11px",
+                color: "var(--text-secondary)",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                flexShrink: 0,
+                background: "var(--bg-page)",
+              }}
+            >
+              <span
+                style={{
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  background:
+                    latestRun.state === "completed" ? "var(--status-completed)"
+                    : latestRun.state === "failed" ? "var(--brand)"
+                    : "var(--status-running)",
+                }}
+              />
+              <span>执行 · {latestRun.state}</span>
+              {latestRun.exit_code != null && <span>· exit {latestRun.exit_code}</span>}
+              {latestRun.duration_ms != null && <span>· {(latestRun.duration_ms / 1000).toFixed(1)}s</span>}
+              {latestRun.created_at && <span>· {new Date(latestRun.created_at).toLocaleTimeString()}</span>}
+              {detail?.runs && detail.runs.length > 1 && <span style={{ marginLeft: "auto" }}>#{detail.runs.length}</span>}
             </div>
-          );
-        })}
+          )}
+
+          {/* Log content */}
+          <div
+            translate="no"
+            style={{
+              flex: 1,
+              background: "var(--code-bg)",
+              color: "var(--code-text)",
+              fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+              fontSize: "12px",
+              lineHeight: 1.65,
+              padding: isRunning || !hasLog ? "0" : "14px 18px",
+              overflow: "auto",
+              minHeight: 0,
+              display: isRunning || !hasLog ? "flex" : "block",
+              alignItems: isRunning || !hasLog ? "center" : "stretch",
+              justifyContent: isRunning || !hasLog ? "center" : "flex-start",
+            }}
+          >
+            {isRunning ? (
+              <div style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: "12px", lineHeight: 1.7, padding: "24px" }}>
+                <Icon name="loader" size={20} style={{ animation: "spin 1s linear infinite", marginBottom: "8px", display: "block", margin: "0 auto 8px" }} />
+                执行中…实时日志请查看下方 LiveLog 的 poc 标签页
+              </div>
+            ) : !hasLog ? (
+              <div style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: "12px", lineHeight: 1.7, padding: "24px" }}>
+                尚未执行 POC
+                {hasScript && (
+                  <div style={{ marginTop: "12px" }}>
+                    <button
+                      onClick={onRunAgain}
+                      style={{
+                        padding: "6px 14px",
+                        border: "none",
+                        borderRadius: "5px",
+                        background: "var(--brand)",
+                        color: "#fff",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      <Icon name="activity" size={12} /> 立即执行
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              (log ?? "").split("\n").map((line, i) => {
+                const isStderr = line.startsWith("[stderr]");
+                const display = isStderr ? line.slice(9) : line.startsWith("[stdout] ") ? line.slice(9) : line;
+                return (
+                  <div key={i} style={{ color: isStderr ? "var(--status-paused)" : undefined }}>
+                    {display}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
