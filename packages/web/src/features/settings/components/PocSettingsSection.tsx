@@ -73,7 +73,7 @@ export function PocSettingsSection() {
         <p style={HEADER_DESC}>{i18n.t("settings.poc.desc")}</p>
       </div>
 
-      {/* Help banner */}
+      {/* Help banner — platform-bundled DeVeye toolkit + 3-step guide */}
       <div style={HELP_BANNER}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <Icon name="info" size={14} style={{ color: "#2563eb", flexShrink: 0 }} />
@@ -88,14 +88,64 @@ export function PocSettingsSection() {
           {helpExpanded ? "▾" : "▸"} {i18n.t("settings.poc.help.install")}
         </button>
         {helpExpanded && (
-          <div style={{ marginTop: "10px", fontSize: "12px", lineHeight: 1.7, color: "#374151" }}>
-            <p style={{ margin: "0 0 8px" }}>1. {i18n.t("settings.poc.help.step1")}</p>
-            <p style={{ margin: "0 0 8px" }}>2. {i18n.t("settings.poc.help.step2")}</p>
-            <pre style={CODE_BLOCK}>
-              deveye server start --host 0.0.0.0 --port 9888 --token &lt;your-token&gt;
-            </pre>
-            <p style={{ margin: "8px 0" }}>3. {i18n.t("settings.poc.help.step3")}</p>
-            <p style={{ margin: "0" }}>4. {i18n.t("settings.poc.help.step4")}</p>
+          <div style={{ marginTop: "12px", fontSize: "12px", lineHeight: 1.65, color: "#374151" }}>
+            {/* Step 1 — Download */}
+            <div style={STEP_BLOCK}>
+              <div style={STEP_HEADER}>
+                <span style={STEP_NUM}>1</span>
+                <span style={STEP_TITLE}>{i18n.t("settings.poc.help.step1Title")}</span>
+              </div>
+              <p style={STEP_DESC}>{i18n.t("settings.poc.help.step1Desc")}</p>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "8px" }}>
+                <DownloadButton platform="linux" highlight={detectPlatform() === "linux"} />
+                <DownloadButton platform="windows" highlight={detectPlatform() === "windows"} />
+                <DownloadButton platform="macos" highlight={detectPlatform() === "macos"} />
+              </div>
+            </div>
+
+            {/* Step 2 — Install & start */}
+            <div style={STEP_BLOCK}>
+              <div style={STEP_HEADER}>
+                <span style={STEP_NUM}>2</span>
+                <span style={STEP_TITLE}>{i18n.t("settings.poc.help.step2Title")}</span>
+              </div>
+              <p style={STEP_DESC}>{i18n.t("settings.poc.help.step2Desc")}</p>
+              <pre style={CODE_BLOCK}>
+{`# Linux / macOS
+tar xzf deveye-toolkit-*.tar.gz && cd deveye-toolkit
+bash setup.sh
+deveye server start --host 0.0.0.0 --port 9888 \\
+  --token <your-token> \\
+  --extension-path ./extension-dist --daemon
+
+# Windows (PowerShell)
+Expand-Archive deveye-toolkit-*.zip; cd deveye-toolkit
+.\\setup.bat
+.\\deveye.exe server start --host 0.0.0.0 --port 9888 \`
+  --token <your-token> \`
+  --extension-path .\\extension-dist --daemon`}
+              </pre>
+            </div>
+
+            {/* Step 3 — Verify */}
+            <div style={STEP_BLOCK}>
+              <div style={STEP_HEADER}>
+                <span style={STEP_NUM}>3</span>
+                <span style={STEP_TITLE}>{i18n.t("settings.poc.help.step3Title")}</span>
+              </div>
+              <p style={STEP_DESC}>{i18n.t("settings.poc.help.step3Desc")}</p>
+            </div>
+
+            <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px dashed #bfdbfe" }}>
+              <a
+                href="/docs/deveye-server-setup.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#2563eb", fontSize: "12px", textDecoration: "none" }}
+              >
+                {i18n.t("settings.poc.help.fullDocs")}
+              </a>
+            </div>
           </div>
         )}
       </div>
@@ -288,11 +338,97 @@ const HELP_BANNER: CSSProperties = {
 };
 
 const CODE_BLOCK: CSSProperties = {
-  margin: "4px 0",
-  padding: "8px 12px",
-  background: "var(--bg-page)",
-  borderRadius: "4px",
+  margin: "6px 0",
+  padding: "10px 12px",
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  borderRadius: "6px",
   fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-  fontSize: "12px",
+  fontSize: "11.5px",
+  lineHeight: 1.55,
+  color: "#0f172a",
   overflow: "auto",
+  whiteSpace: "pre",
 };
+
+const STEP_BLOCK: CSSProperties = {
+  marginTop: "12px",
+  paddingBottom: "4px",
+};
+
+const STEP_HEADER: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  marginBottom: "4px",
+};
+
+const STEP_NUM: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "18px",
+  height: "18px",
+  borderRadius: "50%",
+  background: "#2563eb",
+  color: "#fff",
+  fontSize: "11px",
+  fontWeight: 600,
+  flexShrink: 0,
+};
+
+const STEP_TITLE: CSSProperties = {
+  fontSize: "13px",
+  fontWeight: 600,
+  color: "#1e3a8a",
+};
+
+const STEP_DESC: CSSProperties = {
+  margin: "2px 0 0 26px",
+  fontSize: "12px",
+  color: "#475569",
+};
+
+/* ---------------------------------------------------------------------------- */
+/*  Platform detection + download button                                         */
+/* ---------------------------------------------------------------------------- */
+
+type Platform = "linux" | "windows" | "macos";
+
+function detectPlatform(): Platform {
+  if (typeof navigator === "undefined") return "linux";
+  const ua = navigator.userAgent.toLowerCase();
+  if (ua.includes("win")) return "windows";
+  if (ua.includes("mac")) return "macos";
+  return "linux";
+}
+
+function DownloadButton({ platform, highlight }: { platform: Platform; highlight: boolean }) {
+  const labelKey = `settings.poc.help.platform${platform[0].toUpperCase() + platform.slice(1)}` as const;
+  const href = `/api/downloads/deveye/toolkit?platform=${platform}`;
+  return (
+    <a
+      href={href}
+      download
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
+        padding: "6px 12px",
+        borderRadius: "6px",
+        fontSize: "12px",
+        fontWeight: 600,
+        textDecoration: "none",
+        background: highlight ? "#2563eb" : "#fff",
+        color: highlight ? "#fff" : "#2563eb",
+        border: `1px solid ${highlight ? "#2563eb" : "#bfdbfe"}`,
+        cursor: "pointer",
+        transition: "transform 0.1s",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-1px)")}
+      onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0)")}
+    >
+      ⬇ {i18n.t(labelKey)}
+    </a>
+  );
+}
