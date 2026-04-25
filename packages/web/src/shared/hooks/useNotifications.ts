@@ -59,6 +59,7 @@ function handleEvent(qc: QueryClient, evt: NotificationEvent) {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       if ("taskId" in evt && typeof evt.taskId === "string") {
         qc.invalidateQueries({ queryKey: ["task", evt.taskId] });
+        qc.invalidateQueries({ queryKey: ["task-wiki", evt.taskId] });
       }
       return;
     }
