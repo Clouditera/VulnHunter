@@ -26,6 +26,8 @@ export interface LiveLogEvent {
   job_id?: string;
   stream?: "stdout" | "stderr";
   exit_code?: number;
+  /** Index signature — producers may emit additional fields not modeled here. */
+  [k: string]: unknown;
 }
 
 interface Props {
@@ -753,7 +755,7 @@ function formatDuration(ms: number | undefined | null): string | null {
  * Handles 1000+ events with ~50-80 DOM nodes.
  */
 function VirtualEventList({ events, containerRef }: {
-  events: Array<{ seq: number; source: string; [k: string]: unknown }>;
+  events: LiveLogEvent[];
   containerRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const ROW_HEIGHT = 26;

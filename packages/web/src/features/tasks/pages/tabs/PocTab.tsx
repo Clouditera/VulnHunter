@@ -18,6 +18,7 @@ import {
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon } from "../../../../shared/components/Icon.js";
 import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
+import type { LiveLogEvent } from "../../../live-log/components/LiveLog.js";
 
 /* ── Severity colors ── */
 const SEV_COLORS: Record<string, string> = {
@@ -490,6 +491,70 @@ function ScriptOutputPanel({
     enabled: hasLog && !isRunning,
   });
 
+  /* ── Live POC output stream (WS) — VS Code-style terminal feel ── */
+  const [liveLines, setLiveLines] = useState<{ message: string; stream?: "stdout" | "stderr" }[]>([]);
+  const liveLogRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+
+  // Reset live buffer when run identity changes (new Run Again)
+  useEffect(() => {
+    setLiveLines([]);
+  }, [latestRun?.id]);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${proto}//${window.location.host}/ws/live-log`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "subscribe", task_id: taskId, since_seq: -1 }));
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data) as LiveLogEvent;
+        if (ev.source !== "poc") return;
+        if (ev.type !== "poc_output" && ev.type !== "poc_exit") return;
+
+        // Filter to events for THIS finding (stage fallback works today;
+        // explicit finding_key preferred once backend ships it).
+        const matchesFinding =
+          ev.finding_key === findingKey ||
+          ev.stage?.endsWith(`/${findingKey}`) ||
+          ev.stage === findingKey;
+        if (!matchesFinding) return;
+
+        if (ev.type === "poc_output") {
+          const msg = ev.message ?? ev.text ?? "";
+          if (!msg) return;
+          setLiveLines((prev) => {
+            // Cap at 2000 lines to avoid runaway memory on chatty POCs.
+            const next = [...prev, { message: msg, stream: ev.stream }];
+            return next.length > 2000 ? next.slice(-2000) : next;
+          });
+        } else if (ev.type === "poc_exit") {
+          const code = ev.exit_code;
+          const tag = code === 0 ? "✓ completed" : `✗ exit ${code ?? "?"}`;
+          setLiveLines((prev) => [...prev, { message: `\n[poc-runner] ${tag}` }]);
+        }
+      } catch {
+        /* ignore parse errors */
+      }
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [isRunning, taskId, findingKey]);
+
+  // Auto-scroll to bottom on new lines
+  useEffect(() => {
+    if (autoScroll && liveLogRef.current) {
+      liveLogRef.current.scrollTop = liveLogRef.current.scrollHeight;
+    }
+  }, [liveLines, autoScroll]);
+
   async function handleCopy() {
     if (!script) return;
     await navigator.clipboard.writeText(script);
@@ -657,6 +722,102 @@ function ScriptOutputPanel({
           )}
 
           {/* Log content */}
+          {isRunning ? (
+            /* Live streaming via WebSocket — VS Code-style terminal */
+            <div
+              ref={liveLogRef}
+              translate="no"
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+                if (atBottom !== autoScroll) setAutoScroll(atBottom);
+              }}
+              style={{
+                flex: 1,
+                background: "var(--code-bg)",
+                color: "var(--code-text)",
+                fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+                fontSize: "12px",
+                lineHeight: 1.65,
+                padding: "14px 18px",
+                overflow: "auto",
+                minHeight: 0,
+                position: "relative",
+              }}
+            >
+              {liveLines.length === 0 ? (
+                <div
+                  style={{
+                    color: "var(--text-secondary)",
+                    fontSize: "12px",
+                    fontStyle: "italic",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <Icon name="loader" size={12} style={{ animation: "spin 1s linear infinite" }} />
+                  正在启动 POC 执行、连接输出流…
+                </div>
+              ) : (
+                <>
+                  {liveLines.map((line, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        color: line.stream === "stderr" ? "var(--status-paused)" : undefined,
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {line.message}
+                    </div>
+                  ))}
+                  {/* Blinking cursor when no scroll-pause */}
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: "7px",
+                      height: "14px",
+                      background: "var(--code-text)",
+                      verticalAlign: "middle",
+                      animation: "poc-cursor-blink 1s step-end infinite",
+                      opacity: 0.7,
+                    }}
+                  />
+                </>
+              )}
+              {/* Inline keyframes (one-shot) */}
+              <style>{`@keyframes poc-cursor-blink{50%{opacity:0}}`}</style>
+              {!autoScroll && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAutoScroll(true);
+                    if (liveLogRef.current) {
+                      liveLogRef.current.scrollTop = liveLogRef.current.scrollHeight;
+                    }
+                  }}
+                  style={{
+                    position: "sticky",
+                    bottom: "8px",
+                    float: "right",
+                    marginRight: "4px",
+                    padding: "4px 10px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "4px",
+                    background: "var(--bg-card)",
+                    color: "var(--text-primary)",
+                    fontSize: "11px",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  ⇩ 跳到底部
+                </button>
+              )}
+            </div>
+          ) : (
           <div
             translate="no"
             style={{
@@ -666,20 +827,15 @@ function ScriptOutputPanel({
               fontFamily: "'SF Mono', Menlo, Consolas, monospace",
               fontSize: "12px",
               lineHeight: 1.65,
-              padding: isRunning || !hasLog ? "0" : "14px 18px",
+              padding: !hasLog ? "0" : "14px 18px",
               overflow: "auto",
               minHeight: 0,
-              display: isRunning || !hasLog ? "flex" : "block",
-              alignItems: isRunning || !hasLog ? "center" : "stretch",
-              justifyContent: isRunning || !hasLog ? "center" : "flex-start",
+              display: !hasLog ? "flex" : "block",
+              alignItems: !hasLog ? "center" : "stretch",
+              justifyContent: !hasLog ? "center" : "flex-start",
             }}
           >
-            {isRunning ? (
-              <div style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: "12px", lineHeight: 1.7, padding: "24px" }}>
-                <Icon name="loader" size={20} style={{ animation: "spin 1s linear infinite", marginBottom: "8px", display: "block", margin: "0 auto 8px" }} />
-                执行中…实时日志请查看下方 LiveLog 的 poc 标签页
-              </div>
-            ) : !hasLog ? (
+            {!hasLog ? (
               <div style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: "12px", lineHeight: 1.7, padding: "24px" }}>
                 尚未执行 POC
                 {hasScript && (
@@ -718,6 +874,7 @@ function ScriptOutputPanel({
               })
             )}
           </div>
+          )}
         </div>
       </div>
     </div>
