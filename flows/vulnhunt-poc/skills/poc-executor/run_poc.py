@@ -27,14 +27,30 @@ def emit_event(events_file, event: dict) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Execute POC script with event streaming")
     parser.add_argument("--bug-id", required=True, help="Bug ID (e.g. BUG-001)")
-    parser.add_argument("--script", required=True, help="Path to poc.sh")
+    parser.add_argument("--script", required=True, help="Path to poc.sh or poc.py")
     parser.add_argument("--target-url", required=True, help="Target URL passed as $1 to script")
     parser.add_argument("--log", required=True, help="Output log file path")
     parser.add_argument("--events", required=True, help="Events JSONL file path")
     parser.add_argument("--timeout", type=int, default=300, help="Timeout in seconds")
+    parser.add_argument("--run-id", default="", help="POC run ID (for Run Again)")
+    parser.add_argument("--job-id", default="", help="POC job ID (for generation)")
     args = parser.parse_args()
 
     stage = f"generate-and-run-poc/{args.bug_id}"
+
+    # Common fields for all events
+    common_fields = {
+        "finding_key": args.bug_id,
+    }
+    if args.run_id:
+        common_fields["run_id"] = args.run_id
+    if args.job_id:
+        common_fields["job_id"] = args.job_id
+
+    # Patch emit_event to always include common fields
+    _orig_emit = emit_event
+    def emit_event_with_context(events_file, event):
+        _orig_emit(events_file, {**event, **common_fields})
 
     # Ensure directories exist
     os.makedirs(os.path.dirname(args.log) or ".", exist_ok=True)
@@ -46,7 +62,7 @@ def main():
     start_time = time.time()
     log_file = open(args.log, "w")
 
-    emit_event(args.events, {
+    emit_event_with_context(args.events, {
         "type": "poc_output",
         "ts": utc_now(),
         "stage": stage,
@@ -80,7 +96,7 @@ def main():
             elapsed = time.time() - start_time
             if elapsed > args.timeout:
                 proc.kill()
-                emit_event(args.events, {
+                emit_event_with_context(args.events, {
                     "type": "poc_output",
                     "ts": utc_now(),
                     "stage": stage,
@@ -107,7 +123,7 @@ def main():
                 log_file.flush()
 
                 # Emit event
-                emit_event(args.events, {
+                emit_event_with_context(args.events, {
                     "type": "poc_output",
                     "ts": utc_now(),
                     "stage": stage,
@@ -121,7 +137,7 @@ def main():
 
     except Exception as e:
         exit_code = -1
-        emit_event(args.events, {
+        emit_event_with_context(args.events, {
             "type": "poc_output",
             "ts": utc_now(),
             "stage": stage,
@@ -133,7 +149,7 @@ def main():
     log_file.close()
 
     # Emit exit event
-    emit_event(args.events, {
+    emit_event_with_context(args.events, {
         "type": "poc_exit",
         "ts": utc_now(),
         "stage": stage,

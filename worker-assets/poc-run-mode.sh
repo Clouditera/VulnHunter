@@ -22,4 +22,5 @@ python3 /opt/vulnhunt/flows/vulnhunt-poc/skills/poc-executor/run_poc.py \
   --target-url "${TARGET_URL}" \
   --log "$LOG" \
   --events "$EVENTS" \
-  --timeout "${POC_TIMEOUT:-300}"
+  --timeout "${POC_TIMEOUT:-300}" \
+  --run-id "${POC_RUN_ID}"

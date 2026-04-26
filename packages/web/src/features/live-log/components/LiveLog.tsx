@@ -19,6 +19,13 @@ export interface LiveLogEvent {
   name?: string;
   message?: string;
   text?: string;
+  /** POC event correlation fields (poc_output, poc_exit). Stage-fallback also
+      works because stage is `generate-and-run-poc/<finding_key>`. */
+  finding_key?: string;
+  run_id?: string;
+  job_id?: string;
+  stream?: "stdout" | "stderr";
+  exit_code?: number;
 }
 
 interface Props {

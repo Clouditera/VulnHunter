@@ -82,6 +82,9 @@ export interface PocOutputEvent {
   stage: string;
   stream: "stdout" | "stderr";
   message: string;
+  finding_key?: string;
+  run_id?: string;
+  job_id?: string;
 }
 
 export interface PocExitEvent {
@@ -92,6 +95,9 @@ export interface PocExitEvent {
   stage: string;
   exit_code: number;
   duration_ms: number;
+  finding_key?: string;
+  run_id?: string;
+  job_id?: string;
 }
 
 export type LiveLogEvent =
