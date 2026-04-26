@@ -73,6 +73,7 @@ export interface Task {
    * deleted after the task was created.
    */
   credential_label?: string | null;
+  credential_id?: string | null;
   /**
    * Source archive metadata. For uploads: `{ filename, minio_key, size_bytes? }`.
    * For git clones: `{ git_url, git_branch?, minio_key? }`.
@@ -193,6 +194,8 @@ export const api = {
         xhr.onabort = () => reject(new Error("Upload aborted"));
         xhr.send(body);
       }),
+    update: (id: string, body: { credential_id?: string | null }) =>
+      request<Task>(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     cancel: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/cancel`, { method: "POST" }),
     pause: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/pause`, { method: "POST" }),
     resume: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/resume`, { method: "POST" }),

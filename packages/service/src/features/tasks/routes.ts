@@ -157,6 +157,31 @@ tasksRouter.post("/:id/restart", async (c) => {
   return c.json({ ok: true });
 });
 
+// PATCH /api/tasks/:id — update task properties (credential_id)
+const EDITABLE_STATES = new Set(["paused", "cancelled", "failed"]);
+tasksRouter.patch("/:id", async (c) => {
+  const task = await taskStorage.getTaskById(c.req.param("id"));
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+  if (!EDITABLE_STATES.has(task.state)) {
+    return c.json({ error: { code: "ERR_INVALID_STATE", detail: `Cannot edit task in '${task.state}' state` } }, 409);
+  }
+
+  const body = await c.req.json<{ credential_id?: string | null }>();
+  if (body.credential_id !== undefined) {
+    // Validate credential exists (unless null = clear)
+    if (body.credential_id !== null) {
+      const creds = await listCredentials();
+      if (!creds.find((cr) => cr.id === body.credential_id)) {
+        return c.json({ error: { code: "ERR_NOT_FOUND", detail: "Credential not found" } }, 404);
+      }
+    }
+    await taskStorage.updateTaskCredential(task.id, body.credential_id);
+  }
+
+  const updated = await taskStorage.getTaskById(task.id);
+  return c.json(updated);
+});
+
 // DELETE /api/tasks/:id
 tasksRouter.delete("/:id", async (c) => {
   const task = await taskStorage.getTaskById(c.req.param("id"));

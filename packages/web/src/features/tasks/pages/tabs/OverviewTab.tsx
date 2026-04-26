@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Task, type FindingMeta } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon, type IconName } from "../../../../shared/components/Icon.js";
@@ -223,12 +223,7 @@ export function OverviewTab() {
             </>
           );
         })()}
-        {task.credential_label && (
-          <KV
-            label={i18n.t("overview.credential")}
-            value={task.credential_label}
-          />
-        )}
+        <CredentialField task={task} />
         <KV label={i18n.t("overview.language")} value={profile.language ?? null} />
         <KV
           label={i18n.t("overview.buildSystem")}
@@ -516,6 +511,65 @@ function SevBar({ counts }: { counts: { high: number; medium: number; low: numbe
           <span key={s} style={{ flex: counts[s], background: SEV_COLORS[s] }} />
         ) : null,
       )}
+    </div>
+  );
+}
+
+/* ── Credential selector (editable for paused/cancelled/failed tasks) ── */
+const EDITABLE_STATES = new Set(["paused", "cancelled", "failed"]);
+
+function CredentialField({ task }: { task: Task }) {
+  const qc = useQueryClient();
+  const canEdit = EDITABLE_STATES.has(task.state);
+
+  const { data: credData } = useQuery({
+    queryKey: ["credentials"],
+    queryFn: () => api.settings.listCredentials(),
+    enabled: canEdit,
+  });
+
+  const mut = useMutation({
+    mutationFn: (credId: string | null) => api.tasks.update(task.id, { credential_id: credId || null }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["task", task.id] });
+    },
+  });
+
+  if (!canEdit) {
+    // Read-only display
+    if (!task.credential_label) return null;
+    return <KV label={i18n.t("overview.credential")} value={task.credential_label} />;
+  }
+
+  const credentials = credData?.credentials ?? [];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+      <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: 500 }}>
+        {i18n.t("overview.credential")}
+      </span>
+      <select
+        value={task.credential_id ?? ""}
+        onChange={(e) => mut.mutate(e.target.value || null)}
+        disabled={mut.isPending}
+        style={{
+          fontSize: "13px",
+          padding: "4px 8px",
+          borderRadius: "6px",
+          border: "1px solid var(--divider)",
+          background: "var(--bg-page)",
+          color: "var(--text-primary)",
+          cursor: "pointer",
+          maxWidth: "280px",
+        }}
+      >
+        <option value="">{i18n.t("overview.noCredential")}</option>
+        {credentials.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.label || c.provider} — {c.model_id}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

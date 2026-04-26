@@ -114,6 +114,14 @@ export async function updateTaskState(
 }
 
 /** Full reset for restart — clears timestamps, metadata, findings so scheduler treats it as fresh */
+export async function updateTaskCredential(
+  id: string,
+  credentialId: string | null,
+): Promise<void> {
+  const db = getDb();
+  await db`UPDATE tasks SET credential_id = ${credentialId} WHERE id = ${id}`;
+}
+
 export async function resetTaskForRestart(id: string): Promise<void> {
   const db = getDb();
   await db`
