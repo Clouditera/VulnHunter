@@ -76,7 +76,7 @@ export function PocTab() {
   const [rightTab, setRightTab] = useState<RightTab>("scriptAndOutput");
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showRunModal, setShowRunModal] = useState(false);
-  const [runSubmitSignal, setRunSubmitSignal] = useState(0); // increment to signal ScriptOutputPanel to clear
+  const [pendingClearForFinding, setPendingClearForFinding] = useState<string | null>(null);
 
   // Toggle selection
   function toggleSelect(key: string) {
@@ -311,7 +311,8 @@ export function PocTab() {
             rightTab={rightTab}
             setRightTab={setRightTab}
             onRunAgain={() => setShowRunModal(true)}
-            runSubmitSignal={runSubmitSignal}
+            isPendingClear={pendingClearForFinding === activeFinding}
+            onPendingClearProcessed={() => setPendingClearForFinding(null)}
           />
         ) : (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-secondary)", fontSize: "13px" }}>
@@ -343,7 +344,7 @@ export function PocTab() {
           lastTargetUrl={resultsByKey.get(activeFinding)?.target_url ?? ""}
           onClose={() => setShowRunModal(false)}
           onSubmitStart={() => {
-            setRunSubmitSignal((n) => n + 1);
+            setPendingClearForFinding(activeFinding);
             setRightTab("scriptAndOutput");
           }}
           onSuccess={() => {
@@ -369,7 +370,8 @@ function PocDetail({
   rightTab,
   setRightTab,
   onRunAgain,
-  runSubmitSignal,
+  isPendingClear,
+  onPendingClearProcessed,
 }: {
   taskId: string;
   findingKey: string;
@@ -378,7 +380,8 @@ function PocDetail({
   rightTab: RightTab;
   setRightTab: (t: RightTab) => void;
   onRunAgain: () => void;
-  runSubmitSignal: number;
+  isPendingClear: boolean;
+  onPendingClearProcessed: () => void;
 }) {
   const tabs: { key: RightTab; label: string }[] = [
     { key: "scriptAndOutput", label: "脚本与输出" },
@@ -435,7 +438,8 @@ function PocDetail({
             findingKey={findingKey}
             result={result}
             onRunAgain={onRunAgain}
-            runSubmitSignal={runSubmitSignal}
+            isPendingClear={isPendingClear}
+            onPendingClearProcessed={onPendingClearProcessed}
           />
         )}
         {rightTab === "screenshots" && <ScreenshotsPanel taskId={taskId} findingKey={findingKey} result={result} />}
@@ -456,13 +460,15 @@ function ScriptOutputPanel({
   findingKey,
   result,
   onRunAgain,
-  runSubmitSignal,
+  isPendingClear,
+  onPendingClearProcessed,
 }: {
   taskId: string;
   findingKey: string;
   result: PocResult | null;
   onRunAgain: () => void;
-  runSubmitSignal: number;
+  isPendingClear: boolean;
+  onPendingClearProcessed: () => void;
 }) {
   const hasScript = !!result?.poc_script_minio_key;
   const [copied, setCopied] = useState(false);
@@ -542,23 +548,27 @@ function ScriptOutputPanel({
     onRunAgain();
   }
 
-  // Respond to parent's submit signal — clear output when user clicks "执行" in modal
-  const prevSignalRef = useRef(runSubmitSignal);
+  // Respond to parent's pending-clear flag — fires on initial mount when
+  // user clicked Run Again from another tab AND on subsequent toggles when
+  // already on this tab. Parent ack'd back to null via onPendingClearProcessed.
   useEffect(() => {
-    if (runSubmitSignal !== prevSignalRef.current) {
-      prevSignalRef.current = runSubmitSignal;
-      setLiveLines([]);
-      setExecutionPending(true);
-      if (pendingTimerRef.current != null) clearTimeout(pendingTimerRef.current);
-      pendingTimerRef.current = window.setTimeout(() => {
-        setExecutionPending(false);
-        pendingTimerRef.current = null;
-      }, 30000);
-    }
-  }, [runSubmitSignal]);
+    if (!isPendingClear) return;
+    setLiveLines([]);
+    setExecutionPending(true);
+    if (pendingTimerRef.current != null) clearTimeout(pendingTimerRef.current);
+    pendingTimerRef.current = window.setTimeout(() => {
+      setExecutionPending(false);
+      pendingTimerRef.current = null;
+    }, 30000);
+    onPendingClearProcessed();
+  }, [isPendingClear, onPendingClearProcessed]);
 
   useEffect(() => {
-    if (!isRunning) return;
+    // Open WS as soon as we're either in the polling-gap window
+    // (executionPending) or actually running. This way no events between user
+    // click and first poll-update of latestRun.id are missed. since_seq:-1 also
+    // replays buffered events for redundancy.
+    if (!isRunning && !executionPending) return;
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${proto}//${window.location.host}/ws/live-log`;
     const ws = new WebSocket(wsUrl);
@@ -602,7 +612,7 @@ function ScriptOutputPanel({
     return () => {
       ws.close();
     };
-  }, [isRunning, taskId, findingKey]);
+  }, [isRunning, executionPending, taskId, findingKey]);
 
   // Auto-scroll to bottom on new lines
   useEffect(() => {
