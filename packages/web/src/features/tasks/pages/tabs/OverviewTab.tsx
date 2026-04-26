@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Task, type FindingMeta } from "../../../../shared/api/client.js";
@@ -521,6 +521,8 @@ const EDITABLE_STATES = new Set(["paused", "cancelled", "failed"]);
 function CredentialField({ task }: { task: Task }) {
   const qc = useQueryClient();
   const canEdit = EDITABLE_STATES.has(task.state);
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const { data: credData } = useQuery({
     queryKey: ["credentials"],
@@ -532,44 +534,172 @@ function CredentialField({ task }: { task: Task }) {
     mutationFn: (credId: string | null) => api.tasks.update(task.id, { credential_id: credId || null }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["task", task.id] });
+      setOpen(false);
     },
   });
 
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
   if (!canEdit) {
-    // Read-only display
     if (!task.credential_label) return null;
     return <KV label={i18n.t("overview.credential")} value={task.credential_label} />;
   }
 
   const credentials = credData?.credentials ?? [];
+  const currentLabel = task.credential_label ?? i18n.t("overview.noCredential");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-      <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontWeight: 500 }}>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "baseline",
+        gap: "12px",
+        padding: "9px 0",
+        borderBottom: "1px solid var(--divider)",
+        fontSize: "13px",
+        position: "relative",
+      }}
+    >
+      <span style={{ color: "var(--text-secondary)" }}>
         {i18n.t("overview.credential")}
       </span>
-      <select
-        value={task.credential_id ?? ""}
-        onChange={(e) => mut.mutate(e.target.value || null)}
-        disabled={mut.isPending}
-        style={{
-          fontSize: "13px",
-          padding: "4px 8px",
-          borderRadius: "6px",
-          border: "1px solid var(--divider)",
-          background: "var(--bg-page)",
-          color: "var(--text-primary)",
-          cursor: "pointer",
-          maxWidth: "280px",
-        }}
-      >
-        <option value="">{i18n.t("overview.noCredential")}</option>
-        {credentials.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.label || c.provider} — {c.model_id}
-          </option>
-        ))}
-      </select>
+
+      {/* Right side: clickable chip */}
+      <div ref={dropdownRef} style={{ position: "relative" }}>
+        <button
+          onClick={() => setOpen(!open)}
+          disabled={mut.isPending}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "3px 10px 3px 10px",
+            border: "1px solid var(--divider)",
+            borderRadius: "6px",
+            background: open ? "var(--bg-hover)" : "transparent",
+            color: "var(--text-primary)",
+            fontWeight: 600,
+            fontSize: "13px",
+            cursor: mut.isPending ? "wait" : "pointer",
+            fontFamily: "inherit",
+            transition: "background 0.12s, border-color 0.12s",
+            lineHeight: 1.5,
+          }}
+          onMouseEnter={(e) => {
+            if (!open) e.currentTarget.style.background = "var(--bg-hover)";
+          }}
+          onMouseLeave={(e) => {
+            if (!open) e.currentTarget.style.background = "transparent";
+          }}
+        >
+          {mut.isPending ? (
+            <Icon name="loader" size={12} style={{ animation: "spin 1s linear infinite" }} />
+          ) : null}
+          <span style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {currentLabel}
+          </span>
+          <Icon
+            name="chevron-down"
+            size={12}
+            style={{
+              opacity: 0.5,
+              transition: "transform 0.15s",
+              transform: open ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+          />
+        </button>
+
+        {/* Dropdown menu */}
+        {open && (
+          <div
+            style={{
+              position: "absolute",
+              right: 0,
+              top: "calc(100% + 4px)",
+              minWidth: "220px",
+              maxWidth: "320px",
+              background: "var(--bg-card)",
+              border: "1px solid var(--divider)",
+              borderRadius: "8px",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+              zIndex: 100,
+              padding: "4px 0",
+              maxHeight: "240px",
+              overflowY: "auto",
+            }}
+          >
+            {credentials.length === 0 ? (
+              <div style={{ padding: "12px 14px", color: "var(--text-secondary)", fontSize: "12px" }}>
+                {i18n.t("overview.noCredential")}
+              </div>
+            ) : (
+              credentials.map((c) => {
+                const isActive = c.id === task.credential_id;
+                const label = `${c.label || c.provider} — ${c.model_id}`;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => {
+                      if (!isActive) mut.mutate(c.id);
+                      else setOpen(false);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      width: "100%",
+                      padding: "8px 14px",
+                      border: "none",
+                      background: isActive ? "var(--bg-hover)" : "transparent",
+                      color: "var(--text-primary)",
+                      fontSize: "13px",
+                      fontWeight: isActive ? 600 : 400,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      fontFamily: "inherit",
+                      transition: "background 0.1s",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) e.currentTarget.style.background = "var(--bg-hover)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) e.currentTarget.style.background = isActive ? "var(--bg-hover)" : "transparent";
+                    }}
+                  >
+                    <Icon
+                      name="check"
+                      size={14}
+                      style={{
+                        opacity: isActive ? 1 : 0,
+                        color: "var(--brand)",
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}>
+                      {label}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
