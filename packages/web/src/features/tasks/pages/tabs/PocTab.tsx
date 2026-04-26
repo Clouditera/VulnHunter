@@ -76,6 +76,7 @@ export function PocTab() {
   const [rightTab, setRightTab] = useState<RightTab>("scriptAndOutput");
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showRunModal, setShowRunModal] = useState(false);
+  const [runSubmitSignal, setRunSubmitSignal] = useState(0); // increment to signal ScriptOutputPanel to clear
 
   // Toggle selection
   function toggleSelect(key: string) {
@@ -310,6 +311,7 @@ export function PocTab() {
             rightTab={rightTab}
             setRightTab={setRightTab}
             onRunAgain={() => setShowRunModal(true)}
+            runSubmitSignal={runSubmitSignal}
           />
         ) : (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-secondary)", fontSize: "13px" }}>
@@ -341,7 +343,7 @@ export function PocTab() {
           lastTargetUrl={resultsByKey.get(activeFinding)?.target_url ?? ""}
           onClose={() => setShowRunModal(false)}
           onSubmitStart={() => {
-            handleRunSubmitStart();
+            setRunSubmitSignal((n) => n + 1);
             setRightTab("scriptAndOutput");
           }}
           onSuccess={() => {
@@ -367,6 +369,7 @@ function PocDetail({
   rightTab,
   setRightTab,
   onRunAgain,
+  runSubmitSignal,
 }: {
   taskId: string;
   findingKey: string;
@@ -375,6 +378,7 @@ function PocDetail({
   rightTab: RightTab;
   setRightTab: (t: RightTab) => void;
   onRunAgain: () => void;
+  runSubmitSignal: number;
 }) {
   const tabs: { key: RightTab; label: string }[] = [
     { key: "scriptAndOutput", label: "脚本与输出" },
@@ -431,6 +435,7 @@ function PocDetail({
             findingKey={findingKey}
             result={result}
             onRunAgain={onRunAgain}
+            runSubmitSignal={runSubmitSignal}
           />
         )}
         {rightTab === "screenshots" && <ScreenshotsPanel taskId={taskId} findingKey={findingKey} result={result} />}
@@ -451,11 +456,13 @@ function ScriptOutputPanel({
   findingKey,
   result,
   onRunAgain,
+  runSubmitSignal,
 }: {
   taskId: string;
   findingKey: string;
   result: PocResult | null;
   onRunAgain: () => void;
+  runSubmitSignal: number;
 }) {
   const hasScript = !!result?.poc_script_minio_key;
   const [copied, setCopied] = useState(false);
@@ -530,22 +537,25 @@ function ScriptOutputPanel({
     };
   }, []);
 
-  // Handler for opening the run-again modal. Does NOT clear output yet.
+  // Handler for opening the run-again modal
   function handleRunAgainClick() {
-    // Just open the modal — clearing happens on actual submit
-  }
-
-  // Called when user clicks "执行" inside the modal (before API call)
-  function handleRunSubmitStart() {
-    setLiveLines([]);
-    setExecutionPending(true);
-    if (pendingTimerRef.current != null) clearTimeout(pendingTimerRef.current);
-    pendingTimerRef.current = window.setTimeout(() => {
-      setExecutionPending(false);
-      pendingTimerRef.current = null;
-    }, 30000);
     onRunAgain();
   }
+
+  // Respond to parent's submit signal — clear output when user clicks "执行" in modal
+  const prevSignalRef = useRef(runSubmitSignal);
+  useEffect(() => {
+    if (runSubmitSignal !== prevSignalRef.current) {
+      prevSignalRef.current = runSubmitSignal;
+      setLiveLines([]);
+      setExecutionPending(true);
+      if (pendingTimerRef.current != null) clearTimeout(pendingTimerRef.current);
+      pendingTimerRef.current = window.setTimeout(() => {
+        setExecutionPending(false);
+        pendingTimerRef.current = null;
+      }, 30000);
+    }
+  }, [runSubmitSignal]);
 
   useEffect(() => {
     if (!isRunning) return;
