@@ -340,11 +340,14 @@ export function PocTab() {
           findingKey={activeFinding}
           lastTargetUrl={resultsByKey.get(activeFinding)?.target_url ?? ""}
           onClose={() => setShowRunModal(false)}
+          onSubmitStart={() => {
+            handleRunSubmitStart();
+            setRightTab("scriptAndOutput");
+          }}
           onSuccess={() => {
             setShowRunModal(false);
             qc.invalidateQueries({ queryKey: ["poc-summary", task.id] });
             qc.invalidateQueries({ queryKey: ["poc-detail", task.id, activeFinding] });
-            setRightTab("scriptAndOutput");
           }}
         />
       )}
@@ -527,10 +530,13 @@ function ScriptOutputPanel({
     };
   }, []);
 
-  // Handler for the "再次执行" / "立即执行" buttons. Clears the buffer
-  // immediately so the user sees a fresh terminal area while the modal
-  // opens. 30s failsafe in case the user cancels the modal.
+  // Handler for opening the run-again modal. Does NOT clear output yet.
   function handleRunAgainClick() {
+    // Just open the modal — clearing happens on actual submit
+  }
+
+  // Called when user clicks "执行" inside the modal (before API call)
+  function handleRunSubmitStart() {
     setLiveLines([]);
     setExecutionPending(true);
     if (pendingTimerRef.current != null) clearTimeout(pendingTimerRef.current);
@@ -1295,12 +1301,14 @@ function RunAgainModal({
   findingKey,
   lastTargetUrl,
   onClose,
+  onSubmitStart,
   onSuccess,
 }: {
   taskId: string;
   findingKey: string;
   lastTargetUrl: string;
   onClose: () => void;
+  onSubmitStart?: () => void;
   onSuccess: () => void;
 }) {
   const [targetUrl, setTargetUrl] = useState(lastTargetUrl);
@@ -1355,7 +1363,7 @@ function RunAgainModal({
         <div style={MODAL_FOOTER}>
           <button onClick={onClose} style={GHOST_SM}>取消</button>
           <button
-            onClick={() => { setError(""); mut.mutate(); }}
+            onClick={() => { setError(""); onSubmitStart?.(); mut.mutate(); }}
             disabled={mut.isPending}
             style={{ ...PRIMARY_BTN, opacity: mut.isPending ? 0.6 : 1 }}
           >
