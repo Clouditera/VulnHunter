@@ -496,10 +496,50 @@ function ScriptOutputPanel({
   const liveLogRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
+  /* ── Execution pending: bridges the gap between user-click and server
+        acknowledging the new run id. Without this, the old run's static log
+        is still rendered for ~1-2s after "再次执行", confusing the user. */
+  const [executionPending, setExecutionPending] = useState(false);
+  const pendingTimerRef = useRef<number | null>(null);
+
   // Reset live buffer when run identity changes (new Run Again)
   useEffect(() => {
     setLiveLines([]);
   }, [latestRun?.id]);
+
+  // Clear executionPending once the new run actually picks up.
+  useEffect(() => {
+    if (isRunning) {
+      setExecutionPending(false);
+      if (pendingTimerRef.current != null) {
+        clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = null;
+      }
+    }
+  }, [isRunning]);
+
+  // Cleanup the failsafe timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (pendingTimerRef.current != null) {
+        clearTimeout(pendingTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Handler for the "再次执行" / "立即执行" buttons. Clears the buffer
+  // immediately so the user sees a fresh terminal area while the modal
+  // opens. 30s failsafe in case the user cancels the modal.
+  function handleRunAgainClick() {
+    setLiveLines([]);
+    setExecutionPending(true);
+    if (pendingTimerRef.current != null) clearTimeout(pendingTimerRef.current);
+    pendingTimerRef.current = window.setTimeout(() => {
+      setExecutionPending(false);
+      pendingTimerRef.current = null;
+    }, 30000);
+    onRunAgain();
+  }
 
   useEffect(() => {
     if (!isRunning) return;
@@ -619,29 +659,29 @@ function ScriptOutputPanel({
             下载
           </button>
           <button
-            onClick={onRunAgain}
-            disabled={!hasScript || isRunning}
+            onClick={handleRunAgainClick}
+            disabled={!hasScript || isRunning || executionPending}
             style={{
               padding: "5px 12px",
               border: "none",
               borderRadius: "5px",
-              background: hasScript && !isRunning ? "var(--brand)" : "var(--bg-disabled)",
-              color: hasScript && !isRunning ? "var(--btn-primary-text, #fff)" : "var(--text-secondary)",
+              background: hasScript && !isRunning && !executionPending ? "var(--brand)" : "var(--bg-disabled)",
+              color: hasScript && !isRunning && !executionPending ? "var(--btn-primary-text, #fff)" : "var(--text-secondary)",
               fontSize: "12px",
               fontWeight: 600,
-              cursor: hasScript && !isRunning ? "pointer" : "not-allowed",
+              cursor: hasScript && !isRunning && !executionPending ? "pointer" : "not-allowed",
               display: "inline-flex",
               alignItems: "center",
               gap: "4px",
               fontFamily: "inherit",
             }}
           >
-            {isRunning ? (
+            {(isRunning || executionPending) ? (
               <Icon name="loader" size={12} style={{ animation: "spin 1s linear infinite" }} />
             ) : (
               <Icon name="activity" size={12} />
             )}
-            {isRunning ? "执行中…" : "再次执行"}
+            {(isRunning || executionPending) ? "执行中…" : "再次执行"}
           </button>
         </div>
       </div>
@@ -722,7 +762,7 @@ function ScriptOutputPanel({
           )}
 
           {/* Log content */}
-          {isRunning ? (
+          {(isRunning || executionPending) ? (
             /* Live streaming via WebSocket — VS Code-style terminal */
             <div
               ref={liveLogRef}
@@ -757,7 +797,7 @@ function ScriptOutputPanel({
                   }}
                 >
                   <Icon name="loader" size={12} style={{ animation: "spin 1s linear infinite" }} />
-                  正在启动 POC 执行、连接输出流…
+                  {executionPending && !isRunning ? "正在提交执行请求…" : "正在启动 POC 执行、连接输出流…"}
                 </div>
               ) : (
                 <>
@@ -841,7 +881,7 @@ function ScriptOutputPanel({
                 {hasScript && (
                   <div style={{ marginTop: "12px" }}>
                     <button
-                      onClick={onRunAgain}
+                      onClick={handleRunAgainClick}
                       style={{
                         padding: "6px 14px",
                         border: "none",
