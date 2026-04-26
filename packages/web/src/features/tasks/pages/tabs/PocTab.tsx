@@ -566,12 +566,18 @@ function ScriptOutputPanel({
   useEffect(() => {
     // Open WS as soon as we're either in the polling-gap window
     // (executionPending) or actually running. This way no events between user
-    // click and first poll-update of latestRun.id are missed. since_seq:-1 also
-    // replays buffered events for redundancy.
+    // click and first poll-update of latestRun.id are missed.
     if (!isRunning && !executionPending) return;
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${proto}//${window.location.host}/ws/live-log`;
     const ws = new WebSocket(wsUrl);
+
+    /* During subscribe, the server replays ALL buffered events (since_seq:-1)
+       — including the PREVIOUS run's poc_output events. We must discard those
+       and only render LIVE events that arrive after the snapshot_end marker.
+       Otherwise the viewer fills up with stale completed-run output the moment
+       WS opens, defeating the whole "clear on click" UX. */
+    let inSnapshot = true;
 
     ws.onopen = () => {
       ws.send(JSON.stringify({ type: "subscribe", task_id: taskId, since_seq: -1 }));
@@ -580,6 +586,18 @@ function ScriptOutputPanel({
     ws.onmessage = (e) => {
       try {
         const ev = JSON.parse(e.data) as LiveLogEvent;
+
+        // Snapshot replay finished — from now on, accept live events.
+        if (ev.type === "snapshot_end") {
+          inSnapshot = false;
+          return;
+        }
+        if (ev.type === "ping") return;
+
+        // Drop everything during snapshot replay (these are historical events
+        // from past runs of this task).
+        if (inSnapshot) return;
+
         if (ev.source !== "poc") return;
         if (ev.type !== "poc_output" && ev.type !== "poc_exit") return;
 
