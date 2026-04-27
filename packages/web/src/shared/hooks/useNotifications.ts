@@ -71,6 +71,14 @@ function handleEvent(qc: QueryClient, evt: NotificationEvent) {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       return;
     }
+    case "finding_review_updated": {
+      if ("taskId" in evt && typeof evt.taskId === "string") {
+        qc.invalidateQueries({ queryKey: ["findings", evt.taskId] });
+        qc.invalidateQueries({ queryKey: ["finding-review-events", evt.taskId] });
+      }
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      return;
+    }
     case "chat_worker_state": {
       // Chat sessions list shows a worker-running badge; refresh it.
       qc.invalidateQueries({ queryKey: ["chat-sessions"] });

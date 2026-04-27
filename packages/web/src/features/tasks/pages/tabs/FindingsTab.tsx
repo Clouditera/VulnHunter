@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type * as React from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   api,
   type FindingDetail as FindingDetailData,
   type FindingMeta,
+  type FindingReviewStatus,
   type Task,
   type WorkspaceFile,
   type WorkspaceTreeNode,
@@ -13,6 +14,7 @@ import {
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon } from "../../../../shared/components/Icon.js";
 import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
+import { ReviewStatusBadge, ReviewStatusSelect, ReviewHistoryTimeline } from "../../components/FindingReviewControls.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Severity helpers                                                          */
@@ -187,10 +189,10 @@ export function FindingsTab() {
   const { data: findingsData, isLoading: findingsLoading } = useQuery({
     queryKey: ["findings", task.id, severityFilter],
     queryFn: () =>
-      api.findings.list(
-        task.id,
-        severityFilter === "all" ? undefined : severityFilter,
-      ),
+      api.findings.list(task.id, {
+        severity: severityFilter === "all" ? undefined : severityFilter,
+        limit: 1000,
+      }),
   });
 
   const { data: treeData } = useQuery({
@@ -703,16 +705,23 @@ function FindingRow({
           }}
         />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: "12px",
-              fontWeight: 600,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {f.finding_key}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span
+              style={{
+                fontSize: "12px",
+                fontWeight: 600,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                flex: 1,
+                minWidth: 0,
+              }}
+            >
+              {f.finding_key}
+            </span>
+            {f.review_status && f.review_status !== "pending" && (
+              <ReviewStatusBadge status={f.review_status} />
+            )}
           </div>
           <div
             style={{
@@ -1193,6 +1202,9 @@ function FindingDetailPanel({
         ) : null}
       </div>
 
+      {/* Review status section */}
+      <FindingReviewSection taskId={taskId} finding={finding} />
+
       {/* Metadata row (inline, always visible) */}
       <div
         data-testid="finding-section-metadata"
@@ -1592,5 +1604,62 @@ function CodeBlock({
     >
       {content}
     </pre>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Finding Review Section (inside detail panel)                              */
+/* -------------------------------------------------------------------------- */
+
+function FindingReviewSection({ taskId, finding }: { taskId: string; finding: FindingMeta }) {
+  const qc = useQueryClient();
+
+  // Review events query
+  const { data: eventsData } = useQuery({
+    queryKey: ["finding-review-events", taskId, finding.finding_key],
+    queryFn: () => api.findings.reviewEvents(taskId, finding.finding_key),
+  });
+
+  // Review mutation
+  const reviewMutation = useMutation({
+    mutationFn: (args: { status: FindingReviewStatus; note?: string }) =>
+      api.findings.updateReview(taskId, finding.finding_key, {
+        review_status: args.status,
+        note: args.note,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["findings", taskId] });
+      qc.invalidateQueries({ queryKey: ["finding-review-events", taskId, finding.finding_key] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+
+  return (
+    <div
+      style={{
+        paddingBottom: 12,
+        marginBottom: 12,
+        borderBottom: "1px solid var(--divider)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: "var(--text-secondary)",
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          marginBottom: 8,
+        }}
+      >
+        审核状态
+      </div>
+      <ReviewStatusSelect
+        value={finding.review_status ?? "pending"}
+        onChange={(status, note) => reviewMutation.mutate({ status, note })}
+        disabled={reviewMutation.isPending}
+      />
+      <ReviewHistoryTimeline events={eventsData?.events ?? []} />
+    </div>
   );
 }

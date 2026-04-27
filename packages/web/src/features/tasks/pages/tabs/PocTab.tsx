@@ -19,6 +19,7 @@ import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon } from "../../../../shared/components/Icon.js";
 import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
 import type { LiveLogEvent } from "../../../live-log/components/LiveLog.js";
+import { ReviewStatusBadge } from "../../components/FindingReviewControls.js";
 
 /* ── Severity colors ── */
 const SEV_COLORS: Record<string, string> = {
@@ -88,7 +89,11 @@ export function PocTab() {
     });
   }
   function selectAll() {
-    setSelected(new Set(findings.map((f) => f.finding_key)));
+    // Only select pending + confirmed findings
+    const activeKeys = findings
+      .filter((f) => !f.review_status || f.review_status === "pending" || f.review_status === "confirmed")
+      .map((f) => f.finding_key);
+    setSelected(new Set(activeKeys));
   }
   function clearSelection() {
     setSelected(new Set());
@@ -97,8 +102,76 @@ export function PocTab() {
   // Stats
   const stats = summary?.summary ?? { total: findings.length, reproduced: 0, partial: 0, not_reproduced: 0, error: 0, skipped: 0, pending: 0 };
 
+  // Sort: pending/confirmed first, false_positive/ignored last
+  const orderedFindings = useMemo(() => {
+    const active = findings.filter((f) => !f.review_status || f.review_status === "pending" || f.review_status === "confirmed");
+    const suppressed = findings.filter((f) => f.review_status === "false_positive" || f.review_status === "ignored");
+    return { active, suppressed };
+  }, [findings]);
+
   const [leftWidth, setLeftWidth] = useResizableWidth("poc-left-width", 300, { min: 240, max: 600 });
   const splitContainerRef = useRef<HTMLDivElement>(null);
+
+  function renderPocFindingRow(f: FindingMeta, isSuppressed: boolean) {
+    const result = resultsByKey.get(f.finding_key);
+    const isActive = activeFinding === f.finding_key;
+    const isChecked = selected.has(f.finding_key);
+    const status = result?.status ?? "pending";
+
+    return (
+      <div
+        key={f.finding_key}
+        onClick={() => {
+          setActiveFinding(f.finding_key);
+          if (result?.poc_script_minio_key) setRightTab("scriptAndOutput");
+          else setRightTab("info");
+        }}
+        style={{
+          padding: "10px 16px",
+          borderLeft: `2px solid ${isActive ? "var(--brand)" : "transparent"}`,
+          background: isActive ? "var(--bg-card)" : "transparent",
+          cursor: "pointer",
+          transition: "background 0.12s",
+          opacity: isSuppressed ? 0.5 : 1,
+        }}
+        onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
+        onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div
+            onClick={(e) => { e.stopPropagation(); toggleSelect(f.finding_key); }}
+            style={{
+              width: "16px", height: "16px", borderRadius: "3px",
+              border: `1.5px solid ${isChecked ? "var(--brand)" : "var(--border)"}`,
+              background: isChecked ? "var(--brand)" : "transparent",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0, cursor: "pointer",
+            }}
+          >
+            {isChecked && <span style={{ color: "#fff", fontSize: "10px", fontWeight: 700 }}>✓</span>}
+          </div>
+          <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: SEV_COLORS[f.severity] ?? "#6b7280", flexShrink: 0 }} />
+          <span style={{ flex: 1, fontSize: "13px", fontWeight: isActive ? 600 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {f.finding_key}
+          </span>
+          {isSuppressed && f.review_status && (
+            <ReviewStatusBadge status={f.review_status} muted />
+          )}
+          <PocStatusBadge status={status} />
+        </div>
+        {f.primary_file && (
+          <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "3px", marginLeft: "34px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {f.primary_file}{f.primary_line ? `:${f.primary_line}` : ""}
+          </div>
+        )}
+        {isSuppressed && (
+          <div style={{ fontSize: "10px", fontStyle: "italic", color: "var(--text-secondary)", marginTop: "2px", marginLeft: "34px" }}>
+            {f.review_status === "false_positive" ? i18n.t("review.poc.suppressed.false_positive") : i18n.t("review.poc.suppressed.ignored")}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -169,97 +242,16 @@ export function PocTab() {
 
         {/* Finding list */}
         <div style={{ flex: 1, overflow: "auto" }}>
-          {findings.map((f) => {
-            const result = resultsByKey.get(f.finding_key);
-            const isActive = activeFinding === f.finding_key;
-            const isChecked = selected.has(f.finding_key);
-            const status = result?.status ?? "pending";
-
-            return (
-              <div
-                key={f.finding_key}
-                onClick={() => {
-                  setActiveFinding(f.finding_key);
-                  if (result?.poc_script_minio_key) setRightTab("scriptAndOutput");
-                  else setRightTab("info");
-                }}
-                style={{
-                  padding: "10px 16px",
-                  borderLeft: `2px solid ${isActive ? "var(--brand)" : "transparent"}`,
-                  background: isActive ? "var(--bg-card)" : "transparent",
-                  cursor: "pointer",
-                  transition: "background 0.12s",
-                }}
-                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  {/* Checkbox */}
-                  <div
-                    onClick={(e) => { e.stopPropagation(); toggleSelect(f.finding_key); }}
-                    style={{
-                      width: "16px",
-                      height: "16px",
-                      borderRadius: "3px",
-                      border: `1.5px solid ${isChecked ? "var(--brand)" : "var(--border)"}`,
-                      background: isChecked ? "var(--brand)" : "transparent",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {isChecked && <span style={{ color: "#fff", fontSize: "10px", fontWeight: 700 }}>✓</span>}
-                  </div>
-
-                  {/* Severity dot */}
-                  <span
-                    style={{
-                      width: "8px",
-                      height: "8px",
-                      borderRadius: "50%",
-                      background: SEV_COLORS[f.severity] ?? "#6b7280",
-                      flexShrink: 0,
-                    }}
-                  />
-
-                  {/* Bug ID */}
-                  <span
-                    style={{
-                      flex: 1,
-                      fontSize: "13px",
-                      fontWeight: isActive ? 600 : 500,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {f.finding_key}
-                  </span>
-
-                  {/* Status badge */}
-                  <PocStatusBadge status={status} />
-                </div>
-
-                {/* File path */}
-                {f.primary_file && (
-                  <div
-                    style={{
-                      fontSize: "11px",
-                      color: "var(--text-secondary)",
-                      marginTop: "3px",
-                      marginLeft: "34px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {f.primary_file}{f.primary_line ? `:${f.primary_line}` : ""}
-                  </div>
-                )}
-              </div>
-            );
+          {orderedFindings.active.map((f) => {
+            return renderPocFindingRow(f, false);
+          })}
+          {orderedFindings.suppressed.length > 0 && (
+            <div style={{ borderTop: "1px dashed var(--divider)", padding: "6px 16px", textAlign: "center", fontSize: 10, color: "var(--text-secondary)" }}>
+              {i18n.t("review.poc.divider")} ({orderedFindings.suppressed.length})
+            </div>
+          )}
+          {orderedFindings.suppressed.map((f) => {
+            return renderPocFindingRow(f, true);
           })}
           {findings.length === 0 && (
             <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-secondary)", fontSize: "13px" }}>

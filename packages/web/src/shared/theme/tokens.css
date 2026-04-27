@@ -61,6 +61,16 @@
 
   /* Charts */
   --chart-bar: #6366f1;
+
+  /* Review Status */
+  --review-pending: #ca8a04;
+  --review-confirmed: #16a34a;
+  --review-false-positive: #737373;
+  --review-ignored: #a3a3a3;
+  --review-pending-bg: rgba(202,138,4,0.10);
+  --review-confirmed-bg: rgba(22,163,74,0.10);
+  --review-false-positive-bg: rgba(115,115,115,0.10);
+  --review-ignored-bg: rgba(163,163,163,0.08);
 }
 
 :root[data-theme="dark"] {
@@ -92,6 +102,16 @@
   --code-vuln-bg: rgba(220,38,38,0.12);
   --code-vuln-border: rgba(220,38,38,0.4);
   /* terminal-bg stays the same in dark mode — LiveLog terminal aesthetic */
+
+  /* Review Status (dark) */
+  --review-pending: #eab308;
+  --review-confirmed: #22c55e;
+  --review-false-positive: #a3a3a3;
+  --review-ignored: #737373;
+  --review-pending-bg: rgba(234,179,8,0.15);
+  --review-confirmed-bg: rgba(34,197,94,0.15);
+  --review-false-positive-bg: rgba(163,163,163,0.10);
+  --review-ignored-bg: rgba(115,115,115,0.10);
 }
 
 * {

@@ -556,6 +556,26 @@ const ZH: Record<string, string> = {
   "common.loading": "加载中…",
   "common.noData": "—",
   "common.min": "分钟",
+
+  // Review
+  "review.status.pending": "待审核",
+  "review.status.confirmed": "已确认",
+  "review.status.false_positive": "误报",
+  "review.status.ignored": "忽略",
+  "review.history.title": "审核记录",
+  "review.history.empty": "暂无审核记录",
+  "review.note.placeholder": "输入备注（可选）",
+  "review.action.confirm": "确认",
+  "review.action.cancel": "取消",
+  "review.action.batchMode": "批量审核",
+  "review.action.selectAll": "全选",
+  "review.filter.all": "全部",
+  "review.poc.divider": "已排除",
+  "review.poc.suppressed.false_positive": "已标为误报，默认不参与 POC",
+  "review.poc.suppressed.ignored": "已忽略，默认不参与 POC",
+  "review.report.includedFindings": "包含漏洞",
+  "review.report.generate": "生成报告",
+  "review.dashboard.title": "审核进度",
 };
 
 const EN: Record<string, string> = {
@@ -1110,6 +1130,26 @@ const EN: Record<string, string> = {
   "common.loading": "Loading…",
   "common.noData": "—",
   "common.min": "min",
+
+  // Review
+  "review.status.pending": "Pending",
+  "review.status.confirmed": "Confirmed",
+  "review.status.false_positive": "False Positive",
+  "review.status.ignored": "Ignored",
+  "review.history.title": "Review History",
+  "review.history.empty": "No review history",
+  "review.note.placeholder": "Add a note (optional)",
+  "review.action.confirm": "Confirm",
+  "review.action.cancel": "Cancel",
+  "review.action.batchMode": "Batch Review",
+  "review.action.selectAll": "Select All",
+  "review.filter.all": "All",
+  "review.poc.divider": "Excluded",
+  "review.poc.suppressed.false_positive": "Marked as false positive",
+  "review.poc.suppressed.ignored": "Ignored, excluded from POC",
+  "review.report.includedFindings": "Included Findings",
+  "review.report.generate": "Generate Report",
+  "review.dashboard.title": "Review Progress",
 };
 
 const CATALOGS: Record<string, Record<string, string>> = { zh: ZH, en: EN };

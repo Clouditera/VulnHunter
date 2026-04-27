@@ -117,6 +117,8 @@ export interface FindingDetail {
   [key: string]: unknown;
 }
 
+export type FindingReviewStatus = 'pending' | 'confirmed' | 'false_positive' | 'ignored';
+
 export interface FindingMeta {
   id: string;
   task_id: string;
@@ -129,6 +131,22 @@ export interface FindingMeta {
   primary_line: number | null;
   function_name: string | null;
   user_verdict: string;
+  review_status: FindingReviewStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+}
+
+export interface FindingReviewEvent {
+  id: string;
+  task_id: string;
+  finding_key: string;
+  user_id: string;
+  user_email: string;
+  user_display_name: string;
+  old_status: FindingReviewStatus;
+  new_status: FindingReviewStatus;
+  note: string | null;
+  created_at: string;
 }
 
 export const api = {
@@ -255,11 +273,33 @@ export const api = {
       ),
   },
   findings: {
-    list: (taskId: string, severity?: string) =>
-      request<{ findings: FindingMeta[] }>(`/api/tasks/${taskId}/findings${severity ? `?severity=${severity}` : ""}`),
+    list: (taskId: string, filters?: { severity?: string; reviewStatus?: FindingReviewStatus[]; limit?: number; offset?: number; search?: string }) => {
+      const params = new URLSearchParams();
+      if (filters?.severity) params.set("severity", filters.severity);
+      if (filters?.reviewStatus?.length) params.set("review_status", filters.reviewStatus.join(","));
+      if (filters?.limit) params.set("limit", String(filters.limit));
+      if (filters?.offset) params.set("offset", String(filters.offset));
+      if (filters?.search) params.set("search", filters.search);
+      const qs = params.toString();
+      return request<{ findings: FindingMeta[]; total: number }>(`/api/tasks/${taskId}/findings${qs ? `?${qs}` : ""}`);
+    },
     detail: (taskId: string, key: string) =>
       request<{ meta: FindingMeta; detail: FindingDetail }>(
         `/api/tasks/${taskId}/findings/${encodeURIComponent(key)}`,
+      ),
+    updateReview: (taskId: string, findingKey: string, body: { review_status: FindingReviewStatus; note?: string }) =>
+      request<{ finding: FindingMeta; event: FindingReviewEvent }>(
+        `/api/tasks/${taskId}/findings/${encodeURIComponent(findingKey)}/review`,
+        { method: "PATCH", body: JSON.stringify(body) },
+      ),
+    bulkUpdateReview: (taskId: string, body: { finding_keys: string[]; review_status: FindingReviewStatus; note?: string }) =>
+      request<{ updated: number; findings: FindingMeta[] }>(
+        `/api/tasks/${taskId}/findings/review/bulk`,
+        { method: "POST", body: JSON.stringify(body) },
+      ),
+    reviewEvents: (taskId: string, findingKey: string) =>
+      request<{ events: FindingReviewEvent[] }>(
+        `/api/tasks/${taskId}/findings/${encodeURIComponent(findingKey)}/review-events`,
       ),
   },
   settings: {
@@ -615,7 +655,6 @@ export interface PocRun {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
-  duration_ms: number | null;
   duration_ms: number | null;
 }
 
