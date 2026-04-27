@@ -14,7 +14,7 @@ import {
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon } from "../../../../shared/components/Icon.js";
 import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
-import { ReviewStatusBadge, ReviewStatusSelect, ReviewHistoryTimeline } from "../../components/FindingReviewControls.js";
+import { ReviewStatusBadge, ReviewStatusSelect, ReviewHistoryTimeline, ReviewNoteModal, REVIEW_STATUS_META } from "../../components/FindingReviewControls.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Severity helpers                                                          */
@@ -169,6 +169,9 @@ export function FindingsTab() {
   })();
 
   const [severityFilter, setSeverityFilter] = useState<string>("all");
+  const [reviewFilter, setReviewFilter] = useState<string>("all");
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set());
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(
     null,
   );
@@ -187,10 +190,11 @@ export function FindingsTab() {
   /* -------- Data queries -------- */
 
   const { data: findingsData, isLoading: findingsLoading } = useQuery({
-    queryKey: ["findings", task.id, severityFilter],
+    queryKey: ["findings", task.id, severityFilter, reviewFilter],
     queryFn: () =>
       api.findings.list(task.id, {
         severity: severityFilter === "all" ? undefined : severityFilter,
+        reviewStatus: reviewFilter === "all" ? undefined : [reviewFilter as FindingReviewStatus],
         limit: 1000,
       }),
   });
@@ -383,9 +387,8 @@ export function FindingsTab() {
           padding: "10px 12px",
           borderBottom: "1px solid var(--divider)",
           alignItems: "center",
-          flexWrap: "nowrap",
+          flexWrap: "wrap",
           flexShrink: 0,
-          overflow: "hidden",
         }}
       >
         {(["all", "high", "medium", "low", "info"] as const).map((s) => (
@@ -428,6 +431,34 @@ export function FindingsTab() {
                 )}
           </button>
         ))}
+        {/* Separator */}
+        <span style={{ width: 1, height: 16, background: "var(--divider)", flexShrink: 0, margin: "0 4px" }} />
+        {/* Review status pills */}
+        {(["all", "pending", "confirmed", "false_positive", "ignored"] as const).map((s) => {
+          const meta = s !== "all" ? REVIEW_STATUS_META[s] : null;
+          const active = reviewFilter === s;
+          return (
+            <button
+              key={`review-${s}`}
+              onClick={() => setReviewFilter(s)}
+              style={{
+                padding: "3px 9px",
+                border: `1px solid ${active && meta ? meta.color : active ? "var(--brand)" : "var(--border)"}`,
+                borderRadius: "999px",
+                background: active && meta ? meta.bg : active ? "var(--bg-active-filter)" : "transparent",
+                color: active && meta ? meta.color : active ? "var(--brand)" : "var(--text-secondary)",
+                fontSize: "11px",
+                fontWeight: 500,
+                cursor: "pointer",
+                flexShrink: 0,
+                whiteSpace: "nowrap",
+                fontFamily: "inherit",
+              }}
+            >
+              {s === "all" ? i18n.t("review.filter.all") : i18n.t(`review.status.${s}`)}
+            </button>
+          );
+        })}
         {fileFilter && (
           <button
             data-testid="findings-clear-filter"
@@ -450,6 +481,42 @@ export function FindingsTab() {
         )}
       </div>
 
+      {/* Batch review action bar */}
+      {batchMode && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", borderBottom: "1px solid var(--divider)", fontSize: 11 }}>
+          <button
+            onClick={() => { setBatchSelected(new Set(filteredFindings.map(f => f.id))); }}
+            style={{ padding: "2px 8px", border: "1px solid var(--border)", borderRadius: 4, background: "transparent", color: "var(--text-secondary)", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}
+          >
+            {i18n.t("review.action.selectAll")}
+          </button>
+          <span style={{ color: "var(--text-secondary)" }}>已选 {batchSelected.size}</span>
+          <span style={{ flex: 1 }} />
+          <BatchReviewDropdown
+            taskId={task.id}
+            findingKeys={filteredFindings.filter(f => batchSelected.has(f.id)).map(f => f.finding_key)}
+            disabled={batchSelected.size === 0}
+            onDone={() => { setBatchMode(false); setBatchSelected(new Set()); }}
+          />
+          <button
+            onClick={() => { setBatchMode(false); setBatchSelected(new Set()); }}
+            style={{ padding: "2px 8px", border: "1px solid var(--border)", borderRadius: 4, background: "transparent", color: "var(--text-secondary)", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}
+          >
+            {i18n.t("review.action.cancel")}
+          </button>
+        </div>
+      )}
+      {!batchMode && (
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 12px", borderBottom: "1px solid var(--divider)" }}>
+          <button
+            onClick={() => setBatchMode(true)}
+            style={{ padding: "2px 8px", border: "1px solid var(--border)", borderRadius: 4, background: "transparent", color: "var(--text-secondary)", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}
+          >
+            {i18n.t("review.action.batchMode")}
+          </button>
+        </div>
+      )}
+
           {/* Findings list body */}
           <div style={{ flex: 1, overflow: "auto" }}>
           {findingsLoading ? (
@@ -462,6 +529,16 @@ export function FindingsTab() {
                 key={f.id}
                 finding={f}
                 selected={selectedFindingId === f.id}
+                reviewFilter={reviewFilter}
+                batchMode={batchMode}
+                batchChecked={batchSelected.has(f.id)}
+                onBatchToggle={() => {
+                  setBatchSelected(prev => {
+                    const next = new Set(prev);
+                    if (next.has(f.id)) next.delete(f.id); else next.add(f.id);
+                    return next;
+                  });
+                }}
                 onClick={() => {
                   handlePickFinding(f);
                   setRightView("detail");
@@ -669,10 +746,18 @@ const MSG_STYLE: React.CSSProperties = {
 function FindingRow({
   finding: f,
   selected,
+  reviewFilter,
+  batchMode,
+  batchChecked,
+  onBatchToggle,
   onClick,
 }: {
   finding: FindingMeta;
   selected: boolean;
+  reviewFilter: string;
+  batchMode?: boolean;
+  batchChecked?: boolean;
+  onBatchToggle?: () => void;
   onClick: () => void;
 }) {
   const sev = (f.severity ?? "info").toLowerCase();
@@ -694,6 +779,19 @@ function FindingRow({
       }}
     >
       <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
+        {batchMode && (
+          <div
+            onClick={(e) => { e.stopPropagation(); onBatchToggle?.(); }}
+            style={{
+              width: 16, height: 16, borderRadius: 3, flexShrink: 0, marginTop: 1,
+              border: `1.5px solid ${batchChecked ? "var(--brand)" : "var(--border)"}`,
+              background: batchChecked ? "var(--brand)" : "transparent",
+              display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+            }}
+          >
+            {batchChecked && <span style={{ color: "#fff", fontSize: 10, fontWeight: 700 }}>✓</span>}
+          </div>
+        )}
         <span
           style={{
             width: "8px",
@@ -719,7 +817,7 @@ function FindingRow({
             >
               {f.finding_key}
             </span>
-            {f.review_status && f.review_status !== "pending" && (
+            {f.review_status && (f.review_status !== "pending" || reviewFilter !== "all") && (
               <ReviewStatusBadge status={f.review_status} />
             )}
           </div>
@@ -1661,5 +1759,112 @@ function FindingReviewSection({ taskId, finding }: { taskId: string; finding: Fi
       />
       <ReviewHistoryTimeline events={eventsData?.events ?? []} />
     </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Batch Review Dropdown                                                     */
+/* -------------------------------------------------------------------------- */
+
+function BatchReviewDropdown({
+  taskId,
+  findingKeys,
+  disabled,
+  onDone,
+}: {
+  taskId: string;
+  findingKeys: string[];
+  disabled: boolean;
+  onDone: () => void;
+}) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [noteTarget, setNoteTarget] = useState<FindingReviewStatus | null>(null);
+
+  const bulkMut = useMutation({
+    mutationFn: (args: { status: FindingReviewStatus; note?: string }) =>
+      api.findings.bulkUpdateReview(taskId, {
+        finding_keys: findingKeys,
+        review_status: args.status,
+        note: args.note,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["findings", taskId] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      setOpen(false);
+      onDone();
+    },
+  });
+
+  function handlePick(status: FindingReviewStatus) {
+    if (status === "false_positive" || status === "ignored") {
+      setNoteTarget(status);
+      setOpen(false);
+    } else {
+      bulkMut.mutate({ status });
+    }
+  }
+
+  const statuses: FindingReviewStatus[] = ["confirmed", "false_positive", "ignored", "pending"];
+
+  return (
+    <>
+      <div style={{ position: "relative" }}>
+        <button
+          disabled={disabled || bulkMut.isPending}
+          onClick={() => setOpen(!open)}
+          style={{
+            padding: "2px 8px",
+            border: "1px solid var(--brand)",
+            borderRadius: 4,
+            background: "var(--brand)",
+            color: "#fff",
+            fontSize: 11,
+            fontFamily: "inherit",
+            cursor: disabled ? "not-allowed" : "pointer",
+            opacity: disabled ? 0.5 : 1,
+          }}
+        >
+          标为… ▾
+        </button>
+        {open && (
+          <div style={{
+            position: "absolute", top: "100%", right: 0, marginTop: 4, zIndex: 100,
+            background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 6,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.15)", minWidth: 120, overflow: "hidden",
+          }}>
+            {statuses.map(s => {
+              const meta = REVIEW_STATUS_META[s];
+              return (
+                <div
+                  key={s}
+                  onClick={() => handlePick(s)}
+                  style={{
+                    padding: "6px 12px", cursor: "pointer", fontSize: 12,
+                    display: "flex", alignItems: "center", gap: 6,
+                    color: meta.color,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: meta.color }} />
+                  {i18n.t(meta.labelKey)}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {noteTarget && (
+        <ReviewNoteModal
+          targetStatus={noteTarget}
+          onConfirm={(note) => {
+            bulkMut.mutate({ status: noteTarget, note });
+            setNoteTarget(null);
+          }}
+          onCancel={() => setNoteTarget(null)}
+        />
+      )}
+    </>
   );
 }

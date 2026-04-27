@@ -28,6 +28,7 @@ import { Icon } from "../../../../shared/components/Icon.js";
 import { Markdown } from "../../../chat/components/Markdown.js";
 import { formatDateTime } from "../../../../shared/utils/format.js";
 import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
+import { ReportGenerateModal } from "./reports/ReportGenerateModal.js";
 
 export function ReportsTab() {
   const { task } = useOutletContext<{ task: Task }>();
@@ -262,9 +263,10 @@ export function ReportsTab() {
 
       {/* Skill picker modal */}
       {showSkillPicker && (
-        <SkillPickerModal
+        <ReportGenerateModal
+          taskId={task.id}
           skills={skills}
-          onPick={(skillId) => generateMut.mutate({ skillId })}
+          onGenerate={(skillId, findingKeys) => generateMut.mutate({ skillId, findingKeys })}
           onClose={() => setShowSkillPicker(false)}
           pending={generateMut.isPending}
         />
