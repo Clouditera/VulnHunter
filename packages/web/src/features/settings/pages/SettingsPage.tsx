@@ -891,7 +891,7 @@ export function SettingsPage() {
                 style={FIELD_INPUT}
               />
             </Field>
-            <div style={{ display: "flex", gap: "12px", marginBottom: "18px", alignItems: "flex-end" }}>
+            <div style={{ display: "flex", gap: "12px", marginBottom: "18px" }}>
               <div style={{ flex: 1 }}>
                 <label
                   style={{
@@ -899,6 +899,7 @@ export function SettingsPage() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "6px",
+                    minHeight: "16px",
                   }}
                 >
                   <span>{i18n.t("settings.model.protocol")}</span>
@@ -947,7 +948,7 @@ export function SettingsPage() {
                 />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <label style={FIELD_LABEL}>{i18n.t("settings.model.model")}</label>
+                <label style={{ ...FIELD_LABEL, display: "inline-flex", alignItems: "center", minHeight: "16px" }}>{i18n.t("settings.model.model")}</label>
                 <div style={{ display: "flex", gap: "8px" }}>
                   <input
                     data-testid="settings-model-input"
