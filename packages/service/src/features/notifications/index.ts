@@ -10,14 +10,15 @@ import { stream } from "hono/streaming";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { logger } from "../../infra/logger.js";
-import type { TaskState } from "@vulnhunt/shared";
+import type { TaskState, FindingReviewStatus } from "@vulnhunt/shared";
 
 // ─── Event types ───
 
 export type NotificationEvent =
   | { type: "task_state"; taskId: string; state: TaskState; prevState?: string }
   | { type: "findings_indexed"; taskId: string; count: number }
-  | { type: "chat_worker_state"; sessionId: string; state: string };
+  | { type: "chat_worker_state"; sessionId: string; state: string }
+  | { type: "finding_review_updated"; taskId: string; findingKeys: string[]; reviewStatus: FindingReviewStatus };
 
 // ─── In-memory subscriber list ───
 
