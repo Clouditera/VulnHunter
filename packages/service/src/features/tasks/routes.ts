@@ -158,7 +158,7 @@ tasksRouter.post("/:id/restart", async (c) => {
 });
 
 // PATCH /api/tasks/:id — update task properties (credential_id)
-const EDITABLE_STATES = new Set(["paused", "cancelled", "failed"]);
+const EDITABLE_STATES = new Set(["paused", "cancelled", "failed", "completed"]);
 tasksRouter.patch("/:id", async (c) => {
   const task = await taskStorage.getTaskById(c.req.param("id"));
   if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
