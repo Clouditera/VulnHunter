@@ -515,9 +515,18 @@ export function SettingsPage() {
             api_key: apiKey,
           }),
         );
-      } else if (credChangedNoKey) {
-        // Backend requires api_key on PUT; surface clearly.
-        throw new Error("NEEDS_API_KEY");
+      } else if (credChangedNoKey && cred) {
+        // PATCH: update metadata without re-entering API key
+        ops.push(
+          api.settings.patchCredential(editingCredentialId ?? cred.id, {
+            provider: protoType,
+            proto_type: protoType,
+            base_url: baseUrl || undefined,
+            model_id: modelId,
+            thinking_effort: thinking,
+            label: label || undefined,
+          }),
+        );
       }
 
       if (config && config.max_parallel_scan !== maxParallel) {
@@ -1419,13 +1428,13 @@ export function SettingsPage() {
                         <button
                           type="button"
                           data-testid="settings-credential-save"
-                          disabled={!apiKey || saving}
+                          disabled={(!apiKey && !dirty) || saving}
                           onClick={handleSave}
                           style={{
                             padding: "6px 16px",
                             border: "none",
                             borderRadius: "6px",
-                            background: !apiKey
+                            background: (!apiKey && !dirty)
                               ? "var(--bg-disabled)"
                               : "var(--brand)",
                             color: "var(--btn-primary-text)",

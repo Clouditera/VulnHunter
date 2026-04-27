@@ -132,6 +132,29 @@ function decryptRow(row: DbLlmCredential & {
   return { ...row, api_key: apiKey };
 }
 
+/** Update credential metadata without changing the API key */
+export async function updateCredentialMeta(params: {
+  id: string;
+  provider?: string;
+  protoType?: string;
+  baseUrl?: string;
+  modelId?: string;
+  thinkingEffort?: string;
+  label?: string;
+}): Promise<void> {
+  const db = getDb();
+  await db`
+    UPDATE llm_credentials
+    SET provider = COALESCE(${params.provider ?? null}, provider),
+        proto_type = COALESCE(${params.protoType ?? null}, proto_type),
+        base_url = COALESCE(${params.baseUrl ?? null}, base_url),
+        model_id = COALESCE(${params.modelId ?? null}, model_id),
+        thinking_effort = COALESCE(${params.thinkingEffort ?? null}, thinking_effort),
+        label = COALESCE(${params.label ?? null}, label)
+    WHERE id = ${params.id}
+  `;
+}
+
 export async function upsertCredential(params: {
   id?: string; // if provided, update existing; otherwise create new
   provider: string;

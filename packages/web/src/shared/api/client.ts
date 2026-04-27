@@ -282,6 +282,12 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(cred),
       }),
+    /** Update credential metadata without re-entering API key */
+    patchCredential: (id: string, meta: { provider?: string; proto_type?: string; base_url?: string; model_id?: string; thinking_effort?: string; label?: string }) =>
+      request<{ ok: boolean }>(`/api/settings/credential/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(meta),
+      }),
     getSystemConfig: () => request<{ config: SystemConfig }>("/api/settings/system"),
     updateSystemConfig: (patch: Partial<SystemConfig>) =>
       request<{ ok: boolean }>("/api/settings/system", {

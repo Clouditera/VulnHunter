@@ -83,6 +83,32 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
   return c.json({ id });
 });
 
+// PATCH /api/settings/credential/:id — update metadata without re-entering API key
+settingsRouter.patch("/credential/:id", requireAdmin, async (c) => {
+  const { id } = c.req.param();
+  const body = await c.req.json<{
+    provider?: string;
+    proto_type?: string;
+    base_url?: string;
+    model_id?: string;
+    thinking_effort?: string;
+    label?: string;
+  }>();
+
+  const { updateCredentialMeta } = await import("./storage.js");
+  await updateCredentialMeta({
+    id,
+    provider: body.provider,
+    protoType: body.proto_type,
+    baseUrl: body.base_url,
+    modelId: body.model_id,
+    thinkingEffort: body.thinking_effort,
+    label: body.label,
+  });
+
+  return c.json({ ok: true });
+});
+
 // POST /api/settings/credential/test — test LLM connection
 settingsRouter.post("/credential/test", requireAdmin, async (c) => {
   const body = await c.req.json<{
