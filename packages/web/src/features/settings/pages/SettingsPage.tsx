@@ -355,17 +355,11 @@ export function SettingsPage() {
       if (adminRole) {
         const cr = credResp as { credential: LlmCredential | null } | undefined;
         if (cr?.credential) {
-          const c = cr.credential;
-          setCred(c);
-          setProtoType(normalizeProtoType(c.proto_type));
-          setBaseUrl(c.base_url ?? "");
-          setModelId(c.model_id);
-          setThinking((c.thinking_effort as ThinkingValue) ?? "medium");
-          setLabel(c.label ?? "");
-          setEditingCredentialId(c.id);
-        } else {
-          setModelId(PROTOCOLS[0].defaultModel);
+          // Don't auto-expand — just store as reference for dirty checks
+          setCred(cr.credential);
         }
+        // Start with no credential expanded
+        setEditingCredentialId(null);
         const cfgResp = cfg as { config: SystemConfig } | null | undefined;
         if (cfgResp?.config) {
           setConfig(cfgResp.config);
