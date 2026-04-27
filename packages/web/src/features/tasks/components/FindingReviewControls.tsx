@@ -123,6 +123,7 @@ export function ReviewStatusSelect({
                 background: active ? meta.bg : "transparent",
                 color: active ? meta.color : "var(--text-secondary)",
                 fontSize: 12,
+                fontFamily: "inherit",
                 fontWeight: active ? 600 : 400,
                 cursor: disabled ? "wait" : "pointer",
                 opacity: disabled ? 0.5 : 1,
@@ -194,7 +195,7 @@ export function ReviewNoteModal({
         }}
       >
         <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
-          标记为{i18n.t(meta.labelKey)}
+          {i18n.t("review.note.markAs")}<span style={{ color: meta.color }}>{i18n.t(meta.labelKey)}</span>
         </div>
         <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 6 }}>
           {i18n.t("review.note.placeholder")}
@@ -209,7 +210,7 @@ export function ReviewNoteModal({
             padding: "8px 10px",
             borderRadius: 6,
             border: "1px solid var(--border)",
-            background: "var(--bg-input)",
+            background: "var(--bg-page)",
             color: "var(--text-primary)",
             fontSize: 12,
             resize: "vertical",
@@ -227,6 +228,7 @@ export function ReviewNoteModal({
               background: "transparent",
               color: "var(--text-primary)",
               fontSize: 12,
+              fontFamily: "inherit",
               cursor: "pointer",
             }}
           >
@@ -242,6 +244,7 @@ export function ReviewNoteModal({
               background: "var(--brand)",
               color: "#fff",
               fontSize: 12,
+              fontFamily: "inherit",
               fontWeight: 500,
               cursor: "pointer",
             }}

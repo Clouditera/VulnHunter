@@ -1652,7 +1652,7 @@ function FindingReviewSection({ taskId, finding }: { taskId: string; finding: Fi
           marginBottom: 8,
         }}
       >
-        审核状态
+        {i18n.t("review.section.title")}
       </div>
       <ReviewStatusSelect
         value={finding.review_status ?? "pending"}
