@@ -288,8 +288,11 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(patch),
       }),
-    listModels: () =>
-      request<{ models: Array<{ id: string; owned_by?: string }>; error?: string }>("/api/settings/models"),
+    listModels: (params?: { base_url?: string; api_key?: string; proto_type?: string }) =>
+      request<{ models: Array<{ id: string; owned_by?: string }>; error?: string }>(
+        "/api/settings/models",
+        { method: "POST", body: JSON.stringify(params ?? {}) },
+      ),
     /**
      * Test connection.
      *  - Pass `credential_id` to test against a stored credential using

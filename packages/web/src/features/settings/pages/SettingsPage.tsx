@@ -564,11 +564,17 @@ export function SettingsPage() {
   const isDark = themeStore.current() === "dark";
   const licColor = licenseStatusColor(status?.license?.status);
 
-  /** Pull `/v1/models` from the current provider + key. */
+  /** Pull `/v1/models` using current form values (or saved credential as fallback). */
   async function fetchModels() {
     setModelFetchState({ kind: "loading" });
     try {
-      const resp = await api.settings.listModels();
+      // Pass current form values so user can fetch models before saving
+      const formKey = apiKey || undefined;
+      const formUrl = baseUrl || undefined;
+      const formProto = protoType || undefined;
+      const resp = await api.settings.listModels(
+        formUrl || formKey ? { base_url: formUrl, api_key: formKey, proto_type: formProto } : undefined,
+      );
       const ids = (resp.models ?? []).map((m) => m.id);
       if (ids.length === 0) {
         setModelOptions([]);

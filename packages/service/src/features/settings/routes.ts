@@ -162,23 +162,37 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
   }
 });
 
-// GET /api/settings/models — list available models from configured endpoint
-settingsRouter.get("/models", requireAdmin, async (c) => {
-  const cred = await getDefaultCredential();
-  if (!cred) return c.json({ models: [], error: "No credential configured" });
+// POST /api/settings/models — list models using provided or saved credential
+settingsRouter.post("/models", requireAdmin, async (c) => {
+  const body = await c.req.json<{ base_url?: string; api_key?: string; proto_type?: string }>().catch(() => ({} as { base_url?: string; api_key?: string; proto_type?: string }));
 
-  const baseUrl = (cred.base_url ?? "").replace(/\/$/, "");
+  // Use form values if provided, otherwise fall back to default credential
+  let baseUrl: string;
+  let apiKey: string;
+  let protoType: string;
+
+  if (body.base_url && body.api_key) {
+    baseUrl = body.base_url.replace(/\/$/, "");
+    apiKey = body.api_key;
+    protoType = body.proto_type ?? "openai";
+  } else {
+    const cred = await getDefaultCredential();
+    if (!cred) return c.json({ models: [], error: "No credential configured" });
+    baseUrl = (cred.base_url ?? "").replace(/\/$/, "");
+    apiKey = cred.api_key;
+    protoType = cred.proto_type;
+  }
 
   try {
-    const base = baseUrl || (cred.proto_type === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1");
+    const base = baseUrl || (protoType === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1");
     const endpoint = base + "/models";
 
     const headers: Record<string, string> = {};
-    if (cred.proto_type === "anthropic") {
-      headers["x-api-key"] = cred.api_key;
+    if (protoType === "anthropic") {
+      headers["x-api-key"] = apiKey;
       headers["anthropic-version"] = "2023-06-01";
     } else {
-      headers["Authorization"] = `Bearer ${cred.api_key}`;
+      headers["Authorization"] = `Bearer ${apiKey}`;
     }
 
     const res = await fetch(endpoint, { headers, signal: AbortSignal.timeout(10000) });
