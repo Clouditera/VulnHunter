@@ -474,11 +474,12 @@ export function SettingsPage() {
         (normalizeProtoType(cred.proto_type) !== protoType ||
           (cred.base_url ?? "") !== baseUrl ||
           cred.model_id !== modelId ||
-          cred.thinking_effort !== thinking)) ||
+          cred.thinking_effort !== thinking ||
+          (cred.label ?? "") !== label)) ||
       (!cred && (apiKey.length > 0 || modelId.length > 0));
     const cfgChanged = config ? config.max_parallel_scan !== maxParallel : false;
     return Boolean(credChanged) || cfgChanged;
-  }, [apiKey, cred, protoType, baseUrl, modelId, thinking, config, maxParallel]);
+  }, [apiKey, cred, protoType, baseUrl, modelId, thinking, label, config, maxParallel]);
 
   const canSaveCred = apiKey.length > 0 || Boolean(cred);
 
@@ -495,7 +496,8 @@ export function SettingsPage() {
         (normalizeProtoType(cred.proto_type) !== protoType ||
           (cred.base_url ?? "") !== baseUrl ||
           cred.model_id !== modelId ||
-          cred.thinking_effort !== thinking);
+          cred.thinking_effort !== thinking ||
+          (cred.label ?? "") !== label);
 
       if (apiKey.length > 0) {
         ops.push(
@@ -581,8 +583,11 @@ export function SettingsPage() {
       const formKey = apiKey || undefined;
       const formUrl = baseUrl || undefined;
       const formProto = protoType || undefined;
+      const credId = editingCredentialId && !isNewDraft ? editingCredentialId : undefined;
       const resp = await api.settings.listModels(
-        formUrl || formKey ? { base_url: formUrl, api_key: formKey, proto_type: formProto } : undefined,
+        formUrl || formKey || credId
+          ? { base_url: formUrl, api_key: formKey, proto_type: formProto, credential_id: credId }
+          : undefined,
       );
       const ids = (resp.models ?? []).map((m) => m.id);
       if (ids.length === 0) {
@@ -1018,6 +1023,8 @@ export function SettingsPage() {
                       display: "flex",
                       flexWrap: "wrap",
                       gap: "4px",
+                      maxHeight: "160px",
+                      overflowY: "auto",
                     }}
                   >
                     {modelOptions.map((id) => {

@@ -190,17 +190,26 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
 
 // POST /api/settings/models — list models using provided or saved credential
 settingsRouter.post("/models", requireAdmin, async (c) => {
-  const body = await c.req.json<{ base_url?: string; api_key?: string; proto_type?: string }>().catch(() => ({} as { base_url?: string; api_key?: string; proto_type?: string }));
+  const body = await c.req.json<{ base_url?: string; api_key?: string; proto_type?: string; credential_id?: string }>().catch(() => ({} as { base_url?: string; api_key?: string; proto_type?: string; credential_id?: string }));
 
-  // Use form values if provided, otherwise fall back to default credential
+  // Use form values if provided, otherwise fall back to saved/default credential
   let baseUrl: string;
   let apiKey: string;
   let protoType: string;
 
   if (body.base_url && body.api_key) {
+    // Both provided from form (new credential)
     baseUrl = body.base_url.replace(/\/$/, "");
     apiKey = body.api_key;
     protoType = body.proto_type ?? "openai";
+  } else if (body.credential_id) {
+    // Editing existing credential: use saved api_key, override base_url if provided
+    const { getCredentialById } = await import("./storage.js");
+    const saved = await getCredentialById(body.credential_id);
+    if (!saved) return c.json({ models: [], error: "Credential not found" });
+    baseUrl = (body.base_url ?? saved.base_url ?? "").replace(/\/$/, "");
+    apiKey = saved.api_key;
+    protoType = body.proto_type ?? saved.proto_type;
   } else {
     const cred = await getDefaultCredential();
     if (!cred) return c.json({ models: [], error: "No credential configured" });

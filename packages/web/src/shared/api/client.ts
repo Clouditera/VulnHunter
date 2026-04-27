@@ -294,7 +294,7 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(patch),
       }),
-    listModels: (params?: { base_url?: string; api_key?: string; proto_type?: string }) =>
+    listModels: (params?: { base_url?: string; api_key?: string; proto_type?: string; credential_id?: string }) =>
       request<{ models: Array<{ id: string; owned_by?: string }>; error?: string }>(
         "/api/settings/models",
         { method: "POST", body: JSON.stringify(params ?? {}) },
