@@ -111,9 +111,14 @@ reportsRouter.post("/tasks/:taskId/reports/generate", async (c) => {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "skill_id required" } }, 400);
   }
 
+  // If finding_keys explicitly empty array → reject
+  if (body.finding_keys && body.finding_keys.length === 0) {
+    return c.json({ error: { code: "ERR_VALIDATION", detail: "finding_keys cannot be empty when provided" } }, 400);
+  }
+
   // If finding_keys not provided, default to pending + confirmed
   let findingKeys = body.finding_keys;
-  if (!findingKeys || findingKeys.length === 0) {
+  if (!findingKeys) {
     const { listFindings } = await import("../findings/storage.js");
     const allFindings = await listFindings({ taskId, reviewStatuses: ["pending", "confirmed"], limit: 1000 });
     findingKeys = allFindings.map((f) => f.finding_key);
