@@ -6,6 +6,17 @@ FLOW_DIR="/opt/vulnhunt/flows/vulnhunt"
 
 echo "[scan] Starting scan for task: $TASK_ID" >&2
 
+# Preflight: verify critical dependencies
+if ! command -v python3 &>/dev/null; then
+  echo "[scan] FATAL: python3 not found — feature-aggregator requires python3" >&2
+  exit 1
+fi
+if ! python3 -c "import yaml" 2>/dev/null; then
+  echo "[scan] FATAL: python3-yaml not installed — feature-aggregator requires pyyaml" >&2
+  exit 1
+fi
+echo "[scan] Preflight OK: python3 + yaml available" >&2
+
 # Code already extracted to /workspace/src/ by service (bind mount)
 
 # Write .env for youngflow model config (reads from flow dir .env, not process.env)

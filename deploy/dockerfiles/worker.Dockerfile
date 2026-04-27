@@ -1,9 +1,10 @@
 FROM node:20-slim AS base
 WORKDIR /opt/vulnhunt
 
-# System dependencies
+# System dependencies (python3 + pyyaml needed by feature-aggregator, project-profiler)
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git unzip zip curl ca-certificates jq \
+      python3 python3-yaml \
     && rm -rf /var/lib/apt/lists/*
 
 # pi CLI (youngflow spawns it for each stage)
