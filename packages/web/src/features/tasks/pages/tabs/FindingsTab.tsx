@@ -490,7 +490,7 @@ export function FindingsTab() {
           >
             {i18n.t("review.action.selectAll")}
           </button>
-          <span style={{ color: "var(--text-secondary)" }}>已选 {batchSelected.size}</span>
+          <span style={{ color: "var(--text-secondary)" }}>{i18n.t("review.action.selected").replace("{count}", String(batchSelected.size))}</span>
           <span style={{ flex: 1 }} />
           <BatchReviewDropdown
             taskId={task.id}
@@ -1780,6 +1780,16 @@ function BatchReviewDropdown({
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [noteTarget, setNoteTarget] = useState<FindingReviewStatus | null>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
 
   const bulkMut = useMutation({
     mutationFn: (args: { status: FindingReviewStatus; note?: string }) =>
@@ -1809,7 +1819,7 @@ function BatchReviewDropdown({
 
   return (
     <>
-      <div style={{ position: "relative" }}>
+      <div ref={dropRef} style={{ position: "relative" }}>
         <button
           disabled={disabled || bulkMut.isPending}
           onClick={() => setOpen(!open)}
@@ -1825,7 +1835,7 @@ function BatchReviewDropdown({
             opacity: disabled ? 0.5 : 1,
           }}
         >
-          标为… ▾
+          {i18n.t("review.action.batchMark")} ▾
         </button>
         {open && (
           <div style={{

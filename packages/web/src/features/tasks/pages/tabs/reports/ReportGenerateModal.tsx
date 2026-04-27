@@ -2,7 +2,7 @@
  * Report generation modal with skill selection + finding selection.
  * Default: pending + confirmed findings selected; false_positive + ignored unchecked.
  */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type FindingMeta, type FindingReviewStatus } from "../../../../../shared/api/client.js";
 import { i18n } from "../../../../../shared/i18n/index.js";
@@ -70,6 +70,16 @@ export function ReportGenerateModal({
   }
 
   const [showQuickMenu, setShowQuickMenu] = useState(false);
+  const quickMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showQuickMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (quickMenuRef.current && !quickMenuRef.current.contains(e.target as Node)) setShowQuickMenu(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showQuickMenu]);
 
   return (
     <div
@@ -85,7 +95,7 @@ export function ReportGenerateModal({
         <div style={{ flex: 1, overflow: "auto", padding: "16px 20px" }}>
           {/* Skill selection */}
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>报告模板</div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>{i18n.t("reports.template")}</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {skills.map((sk) => (
                 <button
@@ -114,19 +124,19 @@ export function ReportGenerateModal({
                   ({effectiveSelected.size}/{findings.length})
                 </span>
               </div>
-              <div style={{ position: "relative" }}>
+              <div ref={quickMenuRef} style={{ position: "relative" }}>
                 <button
                   onClick={() => setShowQuickMenu(!showQuickMenu)}
                   style={{ padding: "3px 8px", border: "1px solid var(--border)", borderRadius: 4, background: "transparent", color: "var(--text-secondary)", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}
                 >
-                  按状态选择 ▾
+                  {i18n.t("review.filter.byStatus")} ▾
                 </button>
                 {showQuickMenu && (
                   <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, zIndex: 10, background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 6, boxShadow: "0 4px 16px rgba(0,0,0,0.15)", minWidth: 160, overflow: "hidden" }}>
                     {[
-                      { label: "待审核 + 已确认（推荐）", statuses: ["pending", "confirmed"] as FindingReviewStatus[] },
-                      { label: "仅已确认", statuses: ["confirmed"] as FindingReviewStatus[] },
-                      { label: "全部", statuses: ["pending", "confirmed", "false_positive", "ignored"] as FindingReviewStatus[] },
+                      { label: i18n.t("review.filter.recommendedDefault"), statuses: ["pending", "confirmed"] as FindingReviewStatus[] },
+                      { label: i18n.t("review.filter.confirmedOnly"), statuses: ["confirmed"] as FindingReviewStatus[] },
+                      { label: i18n.t("review.filter.selectAll"), statuses: ["pending", "confirmed", "false_positive", "ignored"] as FindingReviewStatus[] },
                     ].map((opt) => (
                       <div
                         key={opt.label}
