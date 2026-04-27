@@ -882,7 +882,7 @@ export function SettingsPage() {
                 style={FIELD_INPUT}
               />
             </Field>
-            <div style={{ display: "flex", gap: "12px", marginBottom: "18px" }}>
+            <div style={{ display: "flex", gap: "12px", marginBottom: "18px", alignItems: "flex-end" }}>
               <div style={{ flex: 1 }}>
                 <label
                   style={{
