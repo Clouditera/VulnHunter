@@ -497,7 +497,7 @@ export const api = {
       ),
     generate: (
       taskId: string,
-      body: { skill_id: string; credential_id?: string },
+      body: { skill_id: string; credential_id?: string; finding_keys?: string[] },
     ) =>
       request<{ report: UserReport }>(
         `/api/tasks/${taskId}/reports/generate`,

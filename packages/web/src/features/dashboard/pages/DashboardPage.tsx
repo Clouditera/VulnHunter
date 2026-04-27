@@ -434,6 +434,9 @@ export function DashboardPage() {
         </div>
       </div>
 
+      {/* Review Progress */}
+      <ReviewProgressCard reviewDist={data.review_status_dist} />
+
       {/* Recent Scans */}
       <div
         id="dashboard-recent-scans"
@@ -581,5 +584,89 @@ function MiniSevChip({ count, sev }: { count: number; sev: keyof typeof SEV_COLO
       {count}
       {letter}
     </span>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Review Progress Card                                                      */
+/* -------------------------------------------------------------------------- */
+
+const REVIEW_ITEMS = [
+  { key: "pending", label: "待审核", color: "var(--review-pending)" },
+  { key: "confirmed", label: "已确认", color: "var(--review-confirmed)" },
+  { key: "false_positive", label: "误报", color: "var(--review-false-positive)" },
+  { key: "ignored", label: "忽略", color: "var(--review-ignored)" },
+] as const;
+
+function ReviewProgressCard({
+  reviewDist,
+}: {
+  reviewDist?: { pending: number; confirmed: number; false_positive: number; ignored: number };
+}) {
+  const navigate = useNavigate();
+  if (!reviewDist) return null;
+
+  const total = reviewDist.pending + reviewDist.confirmed + reviewDist.false_positive + reviewDist.ignored;
+  if (total === 0) return null;
+
+  const reviewed = reviewDist.confirmed + reviewDist.false_positive + reviewDist.ignored;
+  const pct = Math.round((reviewed / total) * 100);
+
+  return (
+    <div
+      data-testid="dashboard-review-progress"
+      style={{
+        background: "var(--bg-card)",
+        borderRadius: "10px",
+        padding: "16px 20px",
+        border: "1px solid var(--border)",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        marginBottom: "20px",
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
+        {i18n.t("review.dashboard.title")}
+      </div>
+      <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+        {REVIEW_ITEMS.map((item) => {
+          const count = reviewDist[item.key];
+          return (
+            <div
+              key={item.key}
+              onClick={() => navigate(`/tasks?review_status=${item.key}`)}
+              style={{
+                cursor: "pointer",
+                padding: "8px 12px",
+                borderRadius: 6,
+                textAlign: "center",
+                transition: "background 0.12s",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              <div style={{ fontSize: 20, fontWeight: 700, color: item.color }}>{count}</div>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>{item.label}</div>
+            </div>
+          );
+        })}
+      </div>
+      {/* Progress bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ flex: 1, height: 6, borderRadius: 3, background: "var(--divider)", overflow: "hidden" }}>
+          <div
+            style={{
+              height: "100%",
+              width: `${pct}%`,
+              background: "var(--review-confirmed)",
+              borderRadius: 3,
+              transition: "width 0.5s",
+            }}
+          />
+        </div>
+        <span style={{ fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+          {pct}% 已审核
+        </span>
+      </div>
+    </div>
   );
 }

@@ -105,10 +105,18 @@ reportsRouter.post("/tasks/:taskId/reports/generate", async (c) => {
     throw err;
   }
 
-  const body = await c.req.json<{ skill_id: string; credential_id?: string }>();
+  const body = await c.req.json<{ skill_id: string; credential_id?: string; finding_keys?: string[] }>();
 
   if (!body.skill_id) {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "skill_id required" } }, 400);
+  }
+
+  // If finding_keys not provided, default to pending + confirmed
+  let findingKeys = body.finding_keys;
+  if (!findingKeys || findingKeys.length === 0) {
+    const { listFindings } = await import("../findings/storage.js");
+    const allFindings = await listFindings({ taskId, reviewStatuses: ["pending", "confirmed"], limit: 1000 });
+    findingKeys = allFindings.map((f) => f.finding_key);
   }
 
   const config = loadConfig();

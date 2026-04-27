@@ -11,6 +11,7 @@ interface DashboardData {
     avg_duration_min: { value: number; delta: string };
   };
   severity_dist: { high: number; medium: number; low: number; info: number };
+  review_status_dist: { pending: number; confirmed: number; false_positive: number; ignored: number };
   cwe_top5: { cwe: string | null; count: number }[];
   recent_scans: {
     id: string;
@@ -108,6 +109,18 @@ async function computeDashboard(range: string): Promise<DashboardData> {
     }
   }
 
+  // Review status distribution
+  const reviewRows = await db<{ review_status: string; count: string }[]>`
+    SELECT review_status, COUNT(*) as count FROM findings_meta
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    GROUP BY review_status
+  `;
+  const reviewStatusDist = { pending: 0, confirmed: 0, false_positive: 0, ignored: 0 };
+  for (const r of reviewRows) {
+    const s = r.review_status as keyof typeof reviewStatusDist;
+    if (s in reviewStatusDist) reviewStatusDist[s] = Number(r.count);
+  }
+
   // Get severity counts per recent task
   const recentWithCounts = await Promise.all(
     recentRows.map(async (task) => {
@@ -137,6 +150,7 @@ async function computeDashboard(range: string): Promise<DashboardData> {
       avg_duration_min: { value: avgDurationMin, delta: deltas.duration },
     },
     severity_dist: severityDist,
+    review_status_dist: reviewStatusDist,
     cwe_top5: cweRows.map((r) => ({ cwe: r.cwe, count: Number(r.count) })),
     recent_scans: recentWithCounts,
   };

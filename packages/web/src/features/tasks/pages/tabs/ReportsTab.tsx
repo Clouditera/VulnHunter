@@ -46,8 +46,8 @@ export function ReportsTab() {
   });
 
   const generateMut = useMutation({
-    mutationFn: (skillId: string) =>
-      api.reports.generate(task.id, { skill_id: skillId }),
+    mutationFn: (params: { skillId: string; findingKeys?: string[] }) =>
+      api.reports.generate(task.id, { skill_id: params.skillId, finding_keys: params.findingKeys }),
     onSuccess: ({ report }) => {
       qc.invalidateQueries({ queryKey: ["reports", task.id] });
       setSelectedReportId(report.id);
@@ -264,7 +264,7 @@ export function ReportsTab() {
       {showSkillPicker && (
         <SkillPickerModal
           skills={skills}
-          onPick={(skillId) => generateMut.mutate(skillId)}
+          onPick={(skillId) => generateMut.mutate({ skillId })}
           onClose={() => setShowSkillPicker(false)}
           pending={generateMut.isPending}
         />
