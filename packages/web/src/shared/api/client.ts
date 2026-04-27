@@ -163,8 +163,17 @@ export const api = {
       }),
   },
   tasks: {
-    list: (state?: string) =>
-      request<{ tasks: Task[] }>(`/api/tasks${state ? `?state=${state}` : ""}`),
+    list: (filters?: string | { state?: string; reviewStatus?: string }) => {
+      const params = new URLSearchParams();
+      if (typeof filters === "string") {
+        params.set("state", filters);
+      } else if (filters) {
+        if (filters.state) params.set("state", filters.state);
+        if (filters.reviewStatus) params.set("review_status", filters.reviewStatus);
+      }
+      const qs = params.toString();
+      return request<{ tasks: Task[] }>(`/api/tasks${qs ? `?${qs}` : ""}`);
+    },
     get: (id: string) => request<{ task: Task }>(`/api/tasks/${id}`),
     create: (
       body:

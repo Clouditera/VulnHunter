@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Task } from "../../../shared/api/client.js";
+import { api, type Task, type FindingReviewStatus } from "../../../shared/api/client.js";
 import { NewTaskModal } from "../components/NewTaskModal.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
@@ -55,13 +55,18 @@ export function TasksListPage() {
   const [sortBy, setSortBy] = useState<SortMode>("newest");
   const [showModal, setShowModal] = useState(false);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const reviewStatusParam = searchParams.get("review_status") as FindingReviewStatus | null;
   const qc = useQueryClient();
   const [, forceUpdate] = useState(0);
   useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["tasks", stateFilter],
-    queryFn: () => api.tasks.list(stateFilter === "all" ? undefined : stateFilter),
+    queryKey: ["tasks", stateFilter, reviewStatusParam],
+    queryFn: () => api.tasks.list({
+      state: stateFilter === "all" ? undefined : stateFilter,
+      reviewStatus: reviewStatusParam ?? undefined,
+    }),
     // Server SSE (`task_state`) invalidates ["tasks"] on every state change.
   });
 
@@ -259,6 +264,35 @@ export function TasksListPage() {
         ))}
       </div>
 
+      {/* Review status filter pill */}
+      {reviewStatusParam && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <span
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "4px 10px 4px 12px", borderRadius: 999, fontSize: 12,
+              background: "var(--review-pending-bg)", border: "1px solid var(--border)",
+              color: "var(--text-primary)",
+            }}
+          >
+            {i18n.t("review.section.title")}：{i18n.t(`review.status.${reviewStatusParam}`)}
+            <button
+              onClick={() => {
+                const next = new URLSearchParams(searchParams);
+                next.delete("review_status");
+                setSearchParams(next);
+              }}
+              style={{
+                background: "transparent", border: "none", cursor: "pointer",
+                color: "var(--text-secondary)", fontSize: 12, padding: 0, fontFamily: "inherit",
+              }}
+            >
+              ✕
+            </button>
+          </span>
+        </div>
+      )}
+
       {/* Table */}
       <div
         style={{
@@ -327,7 +361,11 @@ export function TasksListPage() {
                     key={task.id}
                     data-testid="task-row"
                     data-status={task.state}
-                    onClick={() => navigate(`/tasks/${task.id}`)}
+                    onClick={() => navigate(
+                      reviewStatusParam
+                        ? `/tasks/${task.id}/findings?review=${reviewStatusParam}`
+                        : `/tasks/${task.id}`,
+                    )}
                     style={{
                       borderBottom: "1px solid var(--divider)",
                       cursor: "pointer",

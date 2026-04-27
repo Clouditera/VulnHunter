@@ -58,6 +58,7 @@ export async function getTaskById(id: string): Promise<DbTask | null> {
 
 export async function listTasks(params: {
   state?: TaskState;
+  reviewStatus?: string;
   limit?: number;
   offset?: number;
 }): Promise<DbTask[]> {
@@ -65,6 +66,24 @@ export async function listTasks(params: {
   const limit = params.limit ?? 50;
   const offset = params.offset ?? 0;
 
+  if (params.state && params.reviewStatus) {
+    return db<DbTask[]>`
+      SELECT t.* FROM tasks t
+      WHERE t.tenant_id = ${DEFAULT_TENANT_ID} AND t.state = ${params.state}
+        AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
+      ORDER BY t.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+  }
+  if (params.reviewStatus) {
+    return db<DbTask[]>`
+      SELECT t.* FROM tasks t
+      WHERE t.tenant_id = ${DEFAULT_TENANT_ID}
+        AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
+      ORDER BY t.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+  }
   if (params.state) {
     return db<DbTask[]>`
       SELECT * FROM tasks

@@ -167,9 +167,14 @@ export function FindingsTab() {
     const params = new URLSearchParams(window.location.search);
     return params.get("bug");
   })();
+  const initialReviewParam = (() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get("review");
+  })();
 
   const [severityFilter, setSeverityFilter] = useState<string>("all");
-  const [reviewFilter, setReviewFilter] = useState<string>("all");
+  const [reviewFilter, setReviewFilter] = useState<string>(initialReviewParam ?? "all");
   const [batchMode, setBatchMode] = useState(false);
   const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set());
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(

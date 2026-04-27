@@ -25,22 +25,14 @@ tasksRouter.get("/", async (c) => {
   const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
   const offset = Number(c.req.query("offset") ?? 0);
 
-  let tasks = await taskStorage.listTasks({ state: state as never, limit, offset });
-
-  // Filter tasks by review_status: only return tasks having at least one finding with that status
   if (reviewStatus) {
     const { isFindingReviewStatus } = await import("../findings/storage.js");
     if (!isFindingReviewStatus(reviewStatus)) {
       return c.json({ error: { code: "ERR_VALIDATION", message: "Invalid review_status" } }, 400);
     }
-    const db = (await import("../../infra/db/client.js")).getDb();
-    const taskIdsWithStatus = await db<{ task_id: string }[]>`
-      SELECT DISTINCT task_id FROM findings_meta
-      WHERE review_status = ${reviewStatus}
-    `;
-    const matchSet = new Set(taskIdsWithStatus.map((r) => r.task_id));
-    tasks = tasks.filter((t) => matchSet.has(t.id));
   }
+
+  const tasks = await taskStorage.listTasks({ state: state as never, reviewStatus, limit, offset });
 
   // Enrich with findings severity counts
   const taskIds = tasks.map((t) => t.id);
