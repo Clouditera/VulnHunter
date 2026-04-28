@@ -117,25 +117,50 @@ async function listMinioObjects(bucket: string, prefix: string): Promise<string[
 export async function indexFindings(taskId: string, bucket: string): Promise<number> {
   const db = getDb();
 
-  // Try paths in priority order: judged/tp (final) > findings (post-aggregator) > raw_findings (raw)
-  const prefixes = [
+  // Try paths in priority order:
+  //   1. judged/tp + judged/ptp (deep-judge confirmed + probable)
+  //   2. findings (post-aggregator, pre-judge)
+  //   3. raw_findings (raw scanner output)
+  // Within tier 1, merge tp and ptp into a single set.
+  const judgedPrefixes = [
     `scan-outputs/${taskId}/judged/tp/`,
+    `scan-outputs/${taskId}/judged/ptp/`,
+  ];
+  const fallbackPrefixes = [
     `scan-outputs/${taskId}/findings/`,
     `scan-outputs/${taskId}/raw_findings/`,
   ];
 
   let yamlKeys: string[] = [];
-  for (const prefix of prefixes) {
+
+  // Tier 1: merge tp + ptp
+  for (const prefix of judgedPrefixes) {
     try {
       const keys = await listMinioObjects(bucket, prefix);
       const filtered = keys.filter((k) => k.endsWith(".yaml") || k.endsWith(".yml"));
       if (filtered.length > 0) {
-        yamlKeys = filtered;
+        yamlKeys.push(...filtered);
         logger.info({ taskId, prefix, count: filtered.length }, "Found findings at prefix");
-        break;
       }
     } catch (err) {
       logger.debug({ err, taskId, prefix }, "Failed to list findings at prefix");
+    }
+  }
+
+  // Tier 2: fallback only if no judged findings
+  if (yamlKeys.length === 0) {
+    for (const prefix of fallbackPrefixes) {
+      try {
+        const keys = await listMinioObjects(bucket, prefix);
+        const filtered = keys.filter((k) => k.endsWith(".yaml") || k.endsWith(".yml"));
+        if (filtered.length > 0) {
+          yamlKeys = filtered;
+          logger.info({ taskId, prefix, count: filtered.length }, "Found findings at prefix");
+          break;
+        }
+      } catch (err) {
+        logger.debug({ err, taskId, prefix }, "Failed to list findings at prefix");
+      }
     }
   }
 
