@@ -193,8 +193,24 @@ export async function presentArtifact(args: {
     return text("Error: Either content or source_path is required.");
   }
 
-  // For now, return the content/info as formatted text
-  // Full artifact upload to MinIO + DB will be done when we have session context in tool calls
+  // Validate source_path: must be within /workspace and not contain traversal
+  if (args.source_path) {
+    const { resolve, normalize } = await import("node:path");
+    const normalized = normalize(args.source_path);
+    // Reject absolute paths outside /workspace and any path traversal
+    if (!normalized.startsWith("/workspace/") && !normalized.startsWith("/workspace")) {
+      return text("Error: source_path must be within /workspace/.");
+    }
+    if (normalized.includes("..")) {
+      return text("Error: Path traversal (..) is not allowed.");
+    }
+    // Resolve and re-check
+    const resolved = resolve("/workspace", normalized.replace(/^\/workspace\/?/, ""));
+    if (!resolved.startsWith("/workspace")) {
+      return text("Error: source_path resolves outside /workspace.");
+    }
+  }
+
   if (args.content) {
     return text([
       `📎 **${args.title}**`,
