@@ -92,30 +92,32 @@ export const getTaskEventsSchema = {
 };
 
 export async function getTaskEvents(args: { task_id: string; source?: string; limit?: number }): Promise<ToolResult> {
-  // Read events from in-memory event store (same as LiveLog)
   try {
-    const { getAllEvents } = await import("../../features/events/event-store.js");
-    let events: any[] = getAllEvents(args.task_id);
+    const task = await taskStorage.getTaskById(args.task_id);
+    if (!task) return text("Task not found.");
 
-    if (args.source && args.source !== "all") {
-      events = events.filter((e: any) => e.source === args.source);
-    }
-
+    const { loadTaskEvents } = await import("../../features/events/event-archive.js");
     const limit = Math.min(args.limit ?? 30, 100);
-    const recent = events.slice(-limit);
+    const events = await loadTaskEvents({
+      taskId: args.task_id,
+      taskState: task.state,
+      source: args.source,
+      limit,
+    });
 
-    if (recent.length === 0) {
+    if (events.length === 0) {
       return text("No events found for this task.");
     }
 
-    const lines = recent.map((e: any) => {
-      const ts = e.ts || e.timestamp || "";
-      const type = e.event || e.type || "unknown";
-      const msg = e.message || e.msg || e.stage || "";
+    const lines = events.map((e: any) => {
+      const ev = e.event || e;
+      const ts = ev.ts || ev.timestamp || "";
+      const type = ev.event || ev.type || "unknown";
+      const msg = ev.message || ev.msg || ev.stage || "";
       return `[${ts}] ${type}: ${msg}`;
     });
 
-    return text(`# Task Events (${recent.length}/${events.length} total)\n\n${lines.join("\n")}`);
+    return text(`# Task Events (showing ${events.length})\n\n${lines.join("\n")}`);
   } catch (err) {
     logger.warn({ err, taskId: args.task_id }, "Failed to load task events for MCP");
     return text("Unable to load events for this task.");

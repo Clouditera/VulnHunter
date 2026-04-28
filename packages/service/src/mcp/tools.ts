@@ -115,21 +115,56 @@ function formatFindingDetail(
     `**File**: ${meta.primary_file ?? "?"}:${meta.primary_line ?? "?"}`,
   ];
 
-  if (detail.description) sections.push(`\n### Description\n${detail.description}`);
-  if (detail.remediation) sections.push(`\n### Remediation\n${detail.remediation}`);
-  if (detail.data_flow) sections.push(`\n### Data Flow\n${formatValue(detail.data_flow)}`);
-  if (detail.taint_path) sections.push(`\n### Taint Path\n${formatValue(detail.taint_path)}`);
-  if (detail.attack) sections.push(`\n### Attack Scenario\n${formatValue(detail.attack)}`);
-  if (detail.code_diff) sections.push(`\n### Code Diff\n\`\`\`\n${detail.code_diff}\n\`\`\``);
-  if (detail.references) sections.push(`\n### References\n${formatValue(detail.references)}`);
+  // Handle both canonical schema (metadata/description/code/data_flow/attack/remediation)
+  // and older schema variants
+  const desc = detail.description as Record<string, unknown> | string | undefined;
+  const code = detail.code as Record<string, unknown> | undefined;
+  const dataFlow = detail.data_flow as Record<string, unknown> | undefined;
+  const attack = detail.attack as Record<string, unknown> | undefined;
+  const remediation = detail.remediation as Record<string, unknown> | string | undefined;
+  const refs = detail.references as unknown[] | undefined;
+
+  if (desc) sections.push(`\n### Description\n${formatValue(desc)}`);
+  if (code) sections.push(`\n### Code\n${formatValue(code)}`);
+  if (dataFlow) sections.push(`\n### Data Flow\n${formatValue(dataFlow)}`);
+  if (attack) sections.push(`\n### Attack Scenario\n${formatValue(attack)}`);
+  if (remediation) sections.push(`\n### Remediation\n${formatValue(remediation)}`);
+  if (refs) sections.push(`\n### References\n${formatValue(refs)}`);
 
   return sections.join("\n");
 }
 
 function formatValue(val: unknown): string {
   if (typeof val === "string") return val;
-  if (Array.isArray(val)) return val.map((v, i) => `${i + 1}. ${typeof v === "string" ? v : JSON.stringify(v)}`).join("\n");
-  return JSON.stringify(val, null, 2);
+  if (typeof val === "number" || typeof val === "boolean") return String(val);
+  if (Array.isArray(val)) {
+    return val.map((v, i) => {
+      if (typeof v === "string") return `${i + 1}. ${v}`;
+      if (typeof v === "object" && v !== null) return `${i + 1}. ${formatObject(v as Record<string, unknown>)}`;
+      return `${i + 1}. ${String(v)}`;
+    }).join("\n");
+  }
+  if (typeof val === "object" && val !== null) return formatObject(val as Record<string, unknown>);
+  return String(val);
+}
+
+function formatObject(obj: Record<string, unknown>): string {
+  const lines: string[] = [];
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === null || v === undefined) continue;
+    if (typeof v === "string") {
+      lines.push(`**${k}**: ${v}`);
+    } else if (typeof v === "number" || typeof v === "boolean") {
+      lines.push(`**${k}**: ${v}`);
+    } else if (Array.isArray(v)) {
+      lines.push(`**${k}**:`);
+      lines.push(formatValue(v));
+    } else if (typeof v === "object") {
+      lines.push(`**${k}**:`);
+      lines.push(formatObject(v as Record<string, unknown>));
+    }
+  }
+  return lines.join("\n");
 }
 
 // ─── read-task-metadata ───
