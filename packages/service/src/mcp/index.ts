@@ -1,97 +1,47 @@
 /**
- * MCP Server — Hono route exposing platform tools to Chat agents.
+ * MCP Server — Hono route exposing platform tools to Chat agents and Report workers.
  *
  * Uses WebStandardStreamableHTTPServerTransport (stateful, per-pi-session).
  * Mounted at /mcp on the main service.
  *
- * Auth: Bearer <sessionId> — validated against active chat sessions.
+ * Auth: Bearer <token> — resolved to McpContext (chat session or report).
+ * Tool registry is split by actor type: Chat Agent vs Report Worker.
  */
 
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import * as chatStorage from "../features/chat/storage.js";
-import * as reportStorage from "../features/reports/storage.js";
+import { resolveMcpContext, type McpContext } from "./context.js";
+import { registerChatTools, registerReportTools } from "./registry.js";
 import { logger } from "../infra/logger.js";
-import {
-  listFindingsSchema, listFindings,
-  readFindingSchema, readFinding,
-  readTaskMetadataSchema, readTaskMetadata,
-  listTasksSchema, listTasks,
-  cancelTaskSchema, cancelTask,
-  submitReportSchema, submitReport,
-  createTaskSchema, createMcpTask,
-} from "./tools.js";
 
-// Per-MCP-session state (each pi instance gets its own session)
+// Per-MCP-session state
 interface McpSession {
   transport: WebStandardStreamableHTTPServerTransport;
   server: McpServer;
+  context: McpContext;
 }
 const mcpSessions = new Map<string, McpSession>();
 
-function createToolServer(): McpServer {
+function createToolServer(ctx: McpContext): McpServer {
   const server = new McpServer(
     { name: "vulnhunt", version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
 
-  server.tool(
-    "list-findings",
-    "List security findings/vulnerabilities for a task. Returns finding keys, severities, types, and locations.",
-    listFindingsSchema,
-    async (args) => listFindings(args),
-  );
-
-  server.tool(
-    "read-finding",
-    "Read detailed information about a specific finding, including description, remediation, data flow, and code.",
-    readFindingSchema,
-    async (args) => readFinding(args),
-  );
-
-  server.tool(
-    "read-task-metadata",
-    "Read task metadata including project profile, execution summary, and findings count breakdown.",
-    readTaskMetadataSchema,
-    async (args) => readTaskMetadata(args),
-  );
-
-  server.tool(
-    "list-tasks",
-    "List scan tasks with their status, project name, and creation date. Optionally filter by state.",
-    listTasksSchema,
-    async (args) => listTasks(args),
-  );
-
-  server.tool(
-    "cancel-task",
-    "Cancel a running, paused, or queued scan task.",
-    cancelTaskSchema,
-    async (args) => cancelTask(args),
-  );
-
-  server.tool(
-    "submit-report",
-    "Submit a completed report. Called by the report agent after writing report files to /workspace/reports/.",
-    submitReportSchema,
-    async (args) => submitReport(args),
-  );
-
-  server.tool(
-    "create-task",
-    "Create a new scan task from a Git repository URL. The task will be queued and start scanning once the code is cloned.",
-    createTaskSchema,
-    async (args) => createMcpTask(args),
-  );
+  if (ctx.actorType === "chat") {
+    registerChatTools(server, ctx);
+  } else {
+    registerReportTools(server, ctx);
+  }
 
   return server;
 }
 
 export const mcpRouter = new Hono();
 
-// Auth middleware — Bearer token is the chat session ID
+// Auth middleware — Bearer token resolved to McpContext
 mcpRouter.use("*", async (c, next) => {
   const authHeader = c.req.header("authorization") ?? "";
   const token = authHeader.replace("Bearer ", "");
@@ -100,32 +50,33 @@ mcpRouter.use("*", async (c, next) => {
     return c.json({ error: "Missing Bearer token" }, 401);
   }
 
-  // Validate token is an active chat session OR report
-  const chatSession = await chatStorage.getSession(token);
-  const report = chatSession ? null : await reportStorage.getReport(token);
-  if (!chatSession && !report) {
+  const ctx = await resolveMcpContext(token);
+  if (!ctx) {
     return c.json({ error: "Invalid session token" }, 401);
   }
 
+  c.set("mcpContext" as never, ctx as never);
   return next();
 });
 
 // Handle all MCP requests (POST for RPC, GET for SSE, DELETE for session close)
 mcpRouter.all("*", async (c) => {
-  const sessionId = c.req.header("mcp-session-id");
+  const mcpSessionId = c.req.header("mcp-session-id");
 
   // Existing session — route to its transport
-  if (sessionId && mcpSessions.has(sessionId)) {
-    const session = mcpSessions.get(sessionId)!;
+  if (mcpSessionId && mcpSessions.has(mcpSessionId)) {
+    const session = mcpSessions.get(mcpSessionId)!;
     return session.transport.handleRequest(c.req.raw);
   }
 
-  // New session — initialize request
+  // New session — initialize with context-aware tool registry
+  const ctx = c.get("mcpContext" as never) as McpContext;
+
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
     onsessioninitialized: (sid) => {
-      mcpSessions.set(sid, { transport, server });
-      logger.info({ mcpSessionId: sid }, "MCP session initialized");
+      mcpSessions.set(sid, { transport, server, context: ctx });
+      logger.info({ mcpSessionId: sid, actorType: ctx.actorType, userId: ctx.userId }, "MCP session initialized");
     },
     onsessionclosed: (sid) => {
       mcpSessions.delete(sid);
@@ -133,7 +84,7 @@ mcpRouter.all("*", async (c) => {
     },
   });
 
-  const server = createToolServer();
+  const server = createToolServer(ctx);
   await server.connect(transport);
 
   return transport.handleRequest(c.req.raw);
