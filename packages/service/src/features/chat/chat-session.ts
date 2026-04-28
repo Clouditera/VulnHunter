@@ -243,8 +243,10 @@ export class ChatSession {
 
       // Get container IP
       const info = await container.inspect();
+      // Find container IP from any attached network
+      const networks = info.NetworkSettings?.Networks ?? {};
       const ip =
-        info.NetworkSettings?.Networks?.bridge?.IPAddress ??
+        Object.values(networks).find((n: any) => n?.IPAddress)?.IPAddress ??
         info.NetworkSettings?.IPAddress ??
         containerName;
       this.bridgeUrl = `http://${ip}:8080`;
