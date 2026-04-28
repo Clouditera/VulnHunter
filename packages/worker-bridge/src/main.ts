@@ -146,6 +146,12 @@ function spawnPi(): ChildProcess {
     args.push("--skill", SKILL_PATH);
   }
 
+  // Chat mode: inject platform assistant skill
+  const CHAT_SKILL_PATH = process.env.CHAT_SKILL_PATH ?? "/opt/vulnhunt/flows/vulnhunt-chat/skills/platform-assistant";
+  if (MODE === "chat") {
+    args.push("--skill", CHAT_SKILL_PATH);
+  }
+
   if (MODE === "report" && REPORT_SYSTEM_PROMPT) {
     args.push("--system-prompt", REPORT_SYSTEM_PROMPT);
   }
