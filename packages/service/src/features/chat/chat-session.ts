@@ -414,6 +414,12 @@ export class ChatSession {
 
   /** Forward set-model command to bridge → pi */
   async setModel(credentialId: string): Promise<void> {
+    // Auto-start if container is not running
+    if (this.state === "idle" || this.state === "recovering") {
+      await this.start();
+    } else if (this.state === "starting") {
+      await this.waitForReady();
+    }
     if (!this.bridgeUrl) throw new Error("Bridge not available");
 
     const res = await fetch(`${this.bridgeUrl}/chat/set-model`, {
