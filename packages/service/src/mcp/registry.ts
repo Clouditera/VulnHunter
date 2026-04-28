@@ -18,7 +18,16 @@ import {
   getPlatformOverviewSchema, getPlatformOverview,
   getTaskDetailSchema, getTaskDetail,
   getTaskEventsSchema, getTaskEvents,
+  readWikiSchema, readWiki,
+  readReportSchema, readReport,
+  getPocResultsSchema, getPocResults,
 } from "./tools/query-tools.js";
+import {
+  controlTaskSchema, controlTask,
+  generateReportSchema, generateReport,
+  generatePocSchema, generatePoc,
+  presentArtifactSchema, presentArtifact,
+} from "./tools/action-tools.js";
 
 /**
  * Register Chat Agent tools (excludes report-worker-only tools).
@@ -36,8 +45,18 @@ export function registerChatTools(server: McpServer, _ctx: McpContext): void {
   server.tool("get-task-detail", getTaskDetailSchema, async (args) => getTaskDetail(args as any));
   server.tool("get-task-events", getTaskEventsSchema, async (args) => getTaskEvents(args as any));
 
-  // TODO P1: read-wiki, read-report, get-poc-results, prepare-source-context
-  // TODO P1: control-task, generate-report, generate-poc, present-artifact
+  // P1 query tools
+  server.tool("read-wiki", readWikiSchema, async (args) => readWiki(args as any));
+  server.tool("read-report", readReportSchema, async (args) => readReport(args as any));
+  server.tool("get-poc-results", getPocResultsSchema, async (args) => getPocResults(args as any));
+
+  // P1 action tools
+  server.tool("control-task", controlTaskSchema, async (args) => controlTask(args as any));
+  server.tool("generate-report", generateReportSchema, async (args) => generateReport(args as any));
+  server.tool("generate-poc", generatePocSchema, async (args) => generatePoc(args as any));
+  server.tool("present-artifact", presentArtifactSchema, async (args) => presentArtifact(args as any));
+
+  // TODO P1: prepare-source-context
   // TODO P2: review-finding
 }
 
