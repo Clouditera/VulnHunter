@@ -116,7 +116,7 @@ chatRouter.post("/sessions/:id/set-model", async (c) => {
   }
 });
 
-// POST /api/chat/sessions/:id/upload — file attachment upload
+// POST /api/chat/sessions/:id/upload — file attachment upload (any file type, up to 500MB)
 chatRouter.post("/sessions/:id/upload", async (c) => {
   const sessionId = c.req.param("id");
   const session = await chatStorage.getSession(sessionId);
@@ -132,8 +132,8 @@ chatRouter.post("/sessions/:id/upload", async (c) => {
   if (buffer.length === 0) {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "Empty file" } }, 400);
   }
-  if (buffer.length > 10 * 1024 * 1024) {
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "File too large (max 10MB)" } }, 413);
+  if (buffer.length > 500 * 1024 * 1024) {
+    return c.json({ error: { code: "ERR_INTERNAL", detail: "File too large (max 500MB)" } }, 413);
   }
 
   // Hash-based filename to avoid collisions
@@ -147,14 +147,31 @@ chatRouter.post("/sessions/:id/upload", async (c) => {
   mkdirSync(attachDir, { recursive: true });
   writeFileSync(join(attachDir, storedName), buffer);
 
-  // Return container-relative path (workspace is mounted at /workspace)
+  // Also upload to MinIO for durable reference
+  const { getMinio } = await import("../../infra/minio/client.js");
+  const minio = getMinio();
+  const minioKey = `chat-artifacts/${sessionId}/${storedName}`;
+  await minio.putObject(config.minio.bucket, minioKey, buffer);
+
+  // Create artifact record
+  const { getDb } = await import("../../infra/db/client.js");
+  const db = getDb();
+  const [artifact] = await db<{ id: string }[]>`
+    INSERT INTO chat_artifacts (tenant_id, session_id, user_id, kind, original_name, filename, mime_type, size_bytes, minio_key, workspace_path)
+    VALUES (${session.tenant_id}, ${sessionId}, ${session.user_id}, 'upload', ${file.name || storedName}, ${storedName}, ${file.type || "application/octet-stream"}, ${buffer.length}, ${minioKey}, ${`/workspace/attachments/${storedName}`})
+    RETURNING id
+  `;
+
   const containerPath = `/workspace/attachments/${storedName}`;
 
-  logger.info({ sessionId, originalName: file.name, storedName, size: buffer.length }, "Chat attachment uploaded");
+  logger.info({ sessionId, artifactId: artifact.id, originalName: file.name, storedName, size: buffer.length }, "Chat attachment uploaded");
 
   return c.json({
+    artifact_id: artifact.id,
     path: containerPath,
     originalName: file.name || storedName,
+    filename: storedName,
+    mimeType: file.type || "application/octet-stream",
     size: buffer.length,
   });
 });
