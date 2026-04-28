@@ -240,11 +240,8 @@ tasksRouter.get("/:id/events", async (c) => {
   // In-memory events (from active tailing — may contain poc/report/scan events)
   const memEvents = getAllEvents(task.id);
 
-  // For completed/terminal tasks, also load archived events from MinIO
-  // For running tasks with in-memory events, return those directly
-  if (memEvents.length > 0 && ["running", "paused"].includes(task.state)) {
-    return c.json({ events: memEvents });
-  }
+  // If in-memory has events for running tasks, return them directly (fast path).
+  // Otherwise fall through to load from MinIO/local files (handles service restart).
 
   // Read archived events from MinIO + merge with in-memory
   const config = loadConfig();
