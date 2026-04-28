@@ -316,37 +316,95 @@ export async function submitReport(args: {
 // ─── create-task ───
 
 export const createTaskSchema = {
-  git_url: z.string().describe("Git repository URL to scan"),
+  project_name: z.string().optional().describe("Project name"),
+  credential_id: z.string().optional().describe("LLM credential ID to use"),
+  git_url: z.string().optional().describe("Git repository URL (use this OR attachment_id)"),
   git_branch: z.string().optional().default("main").describe("Git branch (default: main)"),
-  project_name: z.string().optional().describe("Project name (defaults to repo name from URL)"),
+  attachment_id: z.string().optional().describe("Chat artifact ID of an uploaded zip file (use this OR git_url)"),
 };
 
 export async function createMcpTask(args: {
-  git_url: string;
-  git_branch?: string;
   project_name?: string;
+  credential_id?: string;
+  git_url?: string;
+  git_branch?: string;
+  attachment_id?: string;
 }): Promise<ToolResult> {
-  const { cloneAndUpload } = await import("../features/files/git-clone.js");
-  const { getDefaultCredential } = await import("../features/settings/storage.js");
   const config = loadConfig();
 
-  const projectName = args.project_name ??
-    new URL(args.git_url).pathname.split("/").pop()?.replace(/\.git$/, "") ?? "project";
+  if (!args.git_url && !args.attachment_id) {
+    return { content: [{ type: "text", text: "Error: Either git_url or attachment_id is required." }] };
+  }
 
-  const cred = await getDefaultCredential();
+  // Resolve credential
+  const { getDefaultCredential, getCredentialById } = await import("../features/settings/storage.js");
+  const cred = args.credential_id
+    ? await getCredentialById(args.credential_id)
+    : await getDefaultCredential();
+
+  if (args.attachment_id) {
+    // Attachment-based task creation
+    const db = (await import("../infra/db/client.js")).getDb();
+    const [artifact] = await db<{ id: string; original_name: string; minio_key: string; size_bytes: number; session_id: string; user_id: string }[]>`
+      SELECT id, original_name, minio_key, size_bytes, session_id, user_id FROM chat_artifacts
+      WHERE id = ${args.attachment_id} AND kind = 'upload'
+      LIMIT 1
+    `;
+    if (!artifact) {
+      return { content: [{ type: "text", text: "Error: Attachment not found or not an upload." }] };
+    }
+
+    const projectName = args.project_name ?? artifact.original_name.replace(/\.(zip|tar\.gz|tgz)$/i, "");
+
+    const task = await taskStorage.createTask({
+      createdBy: artifact.user_id,
+      projectName,
+      sourceType: "upload",
+      sourceMeta: { filename: artifact.original_name, minio_key: artifact.minio_key, size_bytes: artifact.size_bytes, chat_artifact_id: artifact.id },
+      credentialId: cred?.id,
+    });
+
+    // Copy artifact from chat-artifacts to code-packages
+    const minio = getMinio();
+    const targetKey = `code-packages/${task.id}.zip`;
+    await minio.copyObject(config.minio.bucket, targetKey, `/${config.minio.bucket}/${artifact.minio_key}`);
+
+    // Update task with code package key
+    await db`UPDATE tasks SET source_meta = source_meta || ${JSON.stringify({ code_package_key: targetKey })}::jsonb WHERE id = ${task.id}`;
+
+    notify({ type: "task_state", taskId: task.id, state: "queued" });
+
+    return {
+      content: [{
+        type: "text",
+        text: [
+          `Task created from uploaded file.`,
+          `- **Task ID**: ${task.id}`,
+          `- **Project**: ${projectName}`,
+          `- **Source**: ${artifact.original_name} (${Math.round(artifact.size_bytes / 1024)}KB)`,
+          `- **State**: queued`,
+          `- **Credential**: ${cred?.label ?? "default"}`,
+        ].join("\n"),
+      }],
+    };
+  }
+
+  // Git-based task creation
+  const { cloneAndUpload } = await import("../features/files/git-clone.js");
+  const projectName = args.project_name ??
+    new URL(args.git_url!).pathname.split("/").pop()?.replace(/\.git$/, "") ?? "project";
 
   const task = await taskStorage.createTask({
-    createdBy: "mcp-agent",
+    createdBy: cred?.id ? "mcp-user" : "mcp-agent",
     projectName,
     sourceType: "git",
-    sourceMeta: { git_url: args.git_url, git_branch: args.git_branch ?? "main" },
+    sourceMeta: { git_url: args.git_url!, git_branch: args.git_branch ?? "main" },
     credentialId: cred?.id,
   });
 
-  // Trigger async git clone
   cloneAndUpload(
     task.id,
-    args.git_url,
+    args.git_url!,
     args.git_branch ?? "main",
     config.minio.bucket,
   ).catch((err) => logger.error({ err, taskId: task.id }, "MCP create-task: git clone failed"));
