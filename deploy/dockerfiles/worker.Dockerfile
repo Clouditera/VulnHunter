@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN npm install -g @mariozechner/pi-coding-agent \
     && pi install npm:pi-mcp-adapter
 
-# youngflow — self-contained release binary (v0.2.2)
+# youngflow — self-contained release binary (v0.2.3)
 COPY submodules/youngflow/release/youngflow-linux-x64 /usr/local/bin/youngflow
 RUN chmod +x /usr/local/bin/youngflow \
     && youngflow --version
