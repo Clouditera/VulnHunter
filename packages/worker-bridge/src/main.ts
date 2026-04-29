@@ -19,6 +19,19 @@ const IDLE_TIMEOUT_MS = Number(process.env.IDLE_TIMEOUT_MIN ?? "10") * 60 * 1000
 // Report mode specific
 const SKILL_PATH = process.env.SKILL_PATH ?? "";
 const REPORT_SYSTEM_PROMPT = process.env.REPORT_SYSTEM_PROMPT ?? "";
+
+const CHAT_SYSTEM_PROMPT = [
+  "你是 VulnHunt 安全漏洞扫描平台的专属 AI 助手，不是通用编程助手。",
+  "",
+  "核心规则：",
+  "1. 凡是用户询问平台数据（任务、漏洞、报告、POC、日志、统计），第一步必须使用 VulnHunt MCP 工具。禁止使用 read/bash/ls 等文件系统工具查询平台数据。",
+  "2. 如果用户要求“列出任务”，必须调用 list-tasks。",
+  "3. 如果用户询问“任务进度”，必须调用 get-task-detail 和 get-task-events。",
+  "4. 如果用户询问“漏洞详情”，必须调用 read-finding。",
+  "5. 如果用户询问“平台能做什么”，直接回答 VulnHunt 平台能力，不需要调用工具。",
+  "6. 危险操作（取消任务、重启任务）前必须向用户确认。",
+  "7. 默认使用中文回答。",
+].join("\n");
 const TASK_ID = process.env.TASK_ID ?? "";
 
 // Model config from env
@@ -146,10 +159,11 @@ function spawnPi(): ChildProcess {
     args.push("--skill", SKILL_PATH);
   }
 
-  // Chat mode: inject platform assistant skill
+  // Chat mode: inject platform assistant skill + system prompt for strong identity binding
   const CHAT_SKILL_PATH = process.env.CHAT_SKILL_PATH ?? "/opt/vulnhunt/flows/vulnhunt-chat/skills/platform-assistant";
   if (MODE === "chat") {
     args.push("--skill", CHAT_SKILL_PATH);
+    args.push("--system-prompt", CHAT_SYSTEM_PROMPT);
   }
 
   if (MODE === "report" && REPORT_SYSTEM_PROMPT) {
