@@ -283,6 +283,9 @@ export class TaskScheduler {
       let totalTokensOut = 0;
       let toolCallCount = 0;
       let stageCount = 0;
+      let flowStagesTotal = 0;
+      let flowStagesCompleted = 0;
+      let flowStagesFailed = 0;
 
       for (const line of lines) {
         try {
@@ -293,12 +296,20 @@ export class TaskScheduler {
             totalTokensOut += ev.tokens_out ?? 0;
             toolCallCount += ev.tools ?? 0;
           }
+          if (ev.event === "flow_end") {
+            flowStagesTotal = Number(ev.stages_total ?? 0);
+            flowStagesCompleted = Number(ev.stages_completed ?? 0);
+            flowStagesFailed = Number(ev.stages_failed ?? 0);
+          }
         } catch { /* skip bad lines */ }
       }
 
       metadata.execution = {
         model: undefined, // filled from cred below
-        stages_completed: stageCount,
+        stages_completed: flowStagesCompleted || stageCount,
+        stages_total: flowStagesTotal || stageCount,
+        stages_failed: flowStagesFailed,
+        warning: flowStagesFailed > 0 ? `${flowStagesFailed} agent/stage failures` : undefined,
         total_tokens_in: totalTokensIn,
         total_tokens_out: totalTokensOut,
         tool_call_count: toolCallCount,

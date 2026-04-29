@@ -53,6 +53,10 @@ export interface TaskStatusEvent {
   ts: string;
   status: TaskStatus;
   reason?: string;
+  severity?: "info" | "warning" | "error";
+  stages_total?: number;
+  stages_completed?: number;
+  stages_failed?: number;
 }
 
 export interface SourceLifecycleEvent {

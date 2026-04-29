@@ -38,6 +38,9 @@ export interface TaskProfile {
 export interface TaskExecution {
   model?: string | null;
   stages_completed?: number | null;
+  stages_total?: number | null;
+  stages_failed?: number | null;
+  warning?: string | null;
   total_tokens_in?: number | null;
   total_tokens_out?: number | null;
   tool_call_count?: number | null;

@@ -60,6 +60,18 @@ function ensureLiveLogKeyframes() {
   document.head.appendChild(style);
 }
 
+/** Format task_status event into a collapsed-row summary string. */
+function formatTaskStatusSummary(ev: LiveLogEvent): string {
+  const severity = ev.severity as string | undefined;
+  const stagesFailed = ev.stages_failed as number | undefined;
+  const reason = ev.reason as string | undefined;
+  if (reason) return `task → ${reason}`;
+  if ((severity === "warning" || (stagesFailed != null && stagesFailed > 0)) && stagesFailed) {
+    return `task → completed with warnings (${stagesFailed} agent failures)`;
+  }
+  return `task → ${ev.state ?? ev.status ?? "finished"}`;
+}
+
 export function LiveLog({ taskId, taskState }: Props) {
   useEffect(() => ensureLiveLogKeyframes(), []);
   const [expanded, setExpanded] = useState(false);
@@ -146,7 +158,7 @@ export function LiveLog({ taskId, taskState }: Props) {
             setLatestTool(msg ? `error → ${msg}` : "error");
           } else {
             // task / task_status
-            setLatestTool(`task → ${last.state ?? last.status ?? "finished"}`);
+            setLatestTool(formatTaskStatusSummary(last));
           }
         }
       })
@@ -602,11 +614,16 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
     dur = undefined;
     toolColor = "#16a34a";
   } else if (ev.type === "task_status" || ev.type === "task") {
-    icon = { char: "●", color: "#16a34a" };
+    const severity = (ev as LiveLogEvent & { severity?: string }).severity;
+    const stagesFailed = (ev as LiveLogEvent & { stages_failed?: number }).stages_failed;
+    const reason = (ev as LiveLogEvent & { reason?: string }).reason;
+    const isWarning = severity === "warning" || (stagesFailed != null && stagesFailed > 0);
+    icon = isWarning ? { char: "⚠", color: "#b45309" } : { char: "●", color: "#16a34a" };
     tool = "task";
-    param = ev.state ?? "";
+    param = reason ?? ev.state ?? (ev as LiveLogEvent & { status?: string }).status ?? "";
     dur = undefined;
-    toolColor = "#16a34a";
+    toolColor = isWarning ? "#b45309" : "#16a34a";
+    if (isWarning) rowBg = "rgba(180,83,9,0.025)";
   } else if (ev.type === "error") {
     icon = { char: "✕", color: "#dc2626" };
     tool = "error";

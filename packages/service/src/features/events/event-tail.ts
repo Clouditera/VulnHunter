@@ -55,9 +55,21 @@ export function translateYoungflowEvent(raw: Record<string, unknown>, source: st
     }
     case "flow_start":
       return { ...base, type: "task_status", status: "running" } as unknown as LiveLogEvent;
-    case "flow_end":
-      return { ...base, type: "task_status",
-        status: (raw.stages_failed as number) > 0 ? "failed" : "completed" } as unknown as LiveLogEvent;
+    case "flow_end": {
+      const failed = Number(raw.stages_failed ?? 0);
+      const completed = Number(raw.stages_completed ?? 0);
+      const total = Number(raw.stages_total ?? completed + failed);
+      return {
+        ...base,
+        type: "task_status",
+        status: "completed",
+        reason: failed > 0 ? `completed with ${failed} stage failure(s)` : undefined,
+        severity: failed > 0 ? "warning" : "info",
+        stages_failed: failed,
+        stages_completed: completed,
+        stages_total: total,
+      } as unknown as LiveLogEvent;
+    }
     case "api_error": case "extension_error": case "process_error":
     case "idle_timeout": case "timeout":
       return { ...base, type: "error",

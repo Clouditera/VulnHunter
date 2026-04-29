@@ -204,8 +204,25 @@ export function TaskDetailPage() {
               >
                 {task.project_name}
               </h1>
-              <span style={{ display: "inline-flex", alignItems: "center", lineHeight: 0 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", lineHeight: 0, gap: "8px" }}>
                 <StatusPill state={task.state} />
+                {Number(task.metadata?.execution?.stages_failed ?? 0) > 0 && (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      fontSize: "12px",
+                      color: "#b45309",
+                      backgroundColor: "rgba(180,83,9,0.08)",
+                      padding: "2px 8px",
+                      borderRadius: "10px",
+                      fontWeight: 500,
+                    }}
+                  >
+                    ⚠ {task.metadata.execution!.stages_failed} agent warnings
+                  </span>
+                )}
               </span>
             </div>
 
