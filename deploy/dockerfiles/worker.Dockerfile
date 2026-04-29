@@ -11,13 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN npm install -g @mariozechner/pi-coding-agent \
     && pi install npm:pi-mcp-adapter
 
-# youngflow — copy built dist + deps from submodule
-COPY submodules/youngflow/package.json /opt/youngflow/package.json
-COPY submodules/youngflow/dist /opt/youngflow/dist
-COPY submodules/youngflow/bin /opt/youngflow/bin
-COPY submodules/youngflow/node_modules /opt/youngflow/node_modules
-RUN chmod +x /opt/youngflow/bin/youngflow.js \
-    && ln -s /opt/youngflow/bin/youngflow.js /usr/local/bin/youngflow
+# youngflow — self-contained release binary (v0.2.2)
+COPY submodules/youngflow/release/youngflow-linux-x64 /usr/local/bin/youngflow
+RUN chmod +x /usr/local/bin/youngflow \
+    && youngflow --version
 
 # vulnhunt flow assets (separate from youngflow submodule)
 COPY flows/vulnhunt /opt/vulnhunt/flows/vulnhunt

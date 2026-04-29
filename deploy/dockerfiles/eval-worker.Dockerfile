@@ -19,13 +19,10 @@ RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.
 RUN npm install -g @mariozechner/pi-coding-agent \
     && pi install npm:pi-mcp-adapter
 
-# youngflow — copy built dist + deps from submodule
-COPY submodules/youngflow/package.json /opt/youngflow/package.json
-COPY submodules/youngflow/dist /opt/youngflow/dist
-COPY submodules/youngflow/bin /opt/youngflow/bin
-COPY submodules/youngflow/node_modules /opt/youngflow/node_modules
-RUN chmod +x /opt/youngflow/bin/youngflow.js \
-    && ln -s /opt/youngflow/bin/youngflow.js /usr/local/bin/youngflow
+# youngflow — self-contained release binary (v0.2.2)
+COPY submodules/youngflow/release/youngflow-linux-x64 /usr/local/bin/youngflow
+RUN chmod +x /usr/local/bin/youngflow \
+    && youngflow --version
 
 # DeVeye CLI — self-contained pkg binary for browser automation in POC flows
 COPY submodules/DevEye/packages/cli/binaries/index-linux /usr/local/bin/deveye
