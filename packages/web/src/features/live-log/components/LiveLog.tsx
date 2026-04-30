@@ -114,7 +114,7 @@ export function LiveLog({ taskId, taskState }: Props) {
           .filter(Boolean);
         // Cap at 1000 like the WS path does, keeping the latest tail —
         // archives can be many thousands of events for a long scan.
-        const tail = list.slice(-1000);
+        const tail = list;
         setEvents(tail);
         // Populate the source filter chips from what's actually present.
         const srcs = Array.from(
@@ -188,7 +188,7 @@ export function LiveLog({ taskId, taskState }: Props) {
         if (event.type === "ping" || event.type === "snapshot_end") return;
 
         setEvents((prev) => {
-          const next = [...prev, event].slice(-1000);
+          const next = [...prev, event];
           return next;
         });
 
@@ -377,7 +377,7 @@ export function LiveLog({ taskId, taskState }: Props) {
             fontVariantNumeric: "tabular-nums",
           }}
         >
-          {events.length >= 1000 ? `${i18n.t("liveLog.recent")} ${events.length}` : events.length} {i18n.t("liveLog.events")}
+          {events.length} {i18n.t("liveLog.events")}
         </span>
         <span
           style={{
@@ -464,41 +464,6 @@ export function LiveLog({ taskId, taskState }: Props) {
                 </button>
               );
             })}
-            <button
-              type="button"
-              data-testid="live-log-autoscroll"
-              data-on={autoScroll || undefined}
-              onClick={() => {
-                setAutoScroll((v) => !v);
-                if (!autoScroll && streamRef.current) {
-                  streamRef.current.scrollTop =
-                    streamRef.current.scrollHeight;
-                }
-              }}
-              title={i18n.t("liveLog.autoscroll")}
-              style={{
-                marginLeft: "auto",
-                padding: "4px 10px",
-                border: "1px solid var(--border)",
-                borderRadius: "6px",
-                background: autoScroll
-                  ? "var(--bg-page)"
-                  : "var(--bg-card)",
-                color: autoScroll
-                  ? "var(--text-primary)"
-                  : "var(--text-secondary)",
-                fontSize: "11px",
-                fontWeight: 500,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-              }}
-            >
-              <span>⇩</span>
-              {i18n.t("liveLog.autoscroll")}
-            </button>
           </div>
 
           {/* Event stream — white bg, semantic event prefix colors. */}
@@ -535,32 +500,6 @@ export function LiveLog({ taskId, taskState }: Props) {
               expanded ? <VirtualEventList events={filteredEvents} containerRef={streamRef} /> : null
             )}
           </div>
-
-          {!autoScroll && isRunning && (
-            <div
-              style={{
-                position: "sticky",
-                bottom: 0,
-                padding: "6px 12px",
-                background: "var(--bg-page)",
-                borderTop: "1px solid var(--divider)",
-                color: "var(--text-primary)",
-                fontSize: "11px",
-                cursor: "pointer",
-                textAlign: "center",
-                fontWeight: 500,
-              }}
-              onClick={() => {
-                setAutoScroll(true);
-                if (streamRef.current) {
-                  streamRef.current.scrollTop =
-                    streamRef.current.scrollHeight;
-                }
-              }}
-            >
-              ↓ {i18n.t("liveLog.resumeScroll")}
-            </div>
-          )}
       </div>
     </div>
   );
@@ -676,9 +615,6 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
         alignItems: "baseline",
         padding: "2px 14px",
         background: rowBg,
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
       }}
     >
       <span
@@ -734,20 +670,6 @@ if (typeof document !== "undefined" && !document.getElementById("ls-pulse-keyfra
   document.head.appendChild(styleTag);
 }
 
-/**
- * Format a duration in milliseconds for display next to a log line.
- *
- * Rules (fish feedback):
- *   - null / undefined / < 1s  → hidden (sub-second durations are noise)
- *   - 1s ≤ d < 60s             → "2.3s" (one decimal)
- *   - 60s ≤ d < 120s           → "1m 23s" (still plausibly a real call)
- *   - d ≥ 120s                 → hidden (backend currently emits cumulative
- *                                 wall-clock; likely not a real per-call time)
- *
- * The 120s ceiling is a heuristic to suppress the misleading values we saw
- * in the field (156000ms for a `bash ls`). Remove the ceiling once the
- * backend tool_execution_end carries a true per-call `elapsed_ms`.
- */
 
 /**
  * Virtual scrolling list for LiveLog events.
