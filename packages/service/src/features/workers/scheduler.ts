@@ -354,9 +354,12 @@ export class TaskScheduler {
       // Events file may not exist
     }
 
-    // 3. Model info from credential
+    // 3. Model info from task-specific credential (fallback to default)
     try {
-      const cred = await getDefaultCredential();
+      const task = await getTaskById(taskId);
+      const cred = task?.credential_id
+        ? await getCredentialById(task.credential_id)
+        : await getDefaultCredential();
       if (cred && metadata.execution) {
         (metadata.execution as Record<string, unknown>).model = `${cred.proto_type}/${cred.model_id}`;
       }
