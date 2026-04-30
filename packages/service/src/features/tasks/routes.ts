@@ -2,17 +2,24 @@ import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import * as taskStorage from "./storage.js";
-import { stopScanWorker, cleanupScanWorkDir } from "../workers/scan-worker.js";
+import { cleanupScanWorkDir } from "../workers/scan-worker.js";
 import { getAllEvents } from "../events/event-store.js";
 import { translateYoungflowEvent } from "../events/event-tail.js";
 import type { LiveLogEvent } from "@vulnhunt/shared";
 import { listCredentials } from "../settings/storage.js";
-import { notify } from "../notifications/index.js";
+import { cancelTask, pauseTask, restartTask, resumeTask, TaskControlError } from "./control-service.js";
 import { loadConfig } from "../../infra/config.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
 
 export const tasksRouter = new Hono();
+
+function controlErrorResponse(c: any, err: unknown) {
+  if (err instanceof TaskControlError) {
+    return c.json({ error: { code: err.code, message: err.message, ...(err.extra ?? {}) } }, err.status as 404 | 409);
+  }
+  throw err;
+}
 
 // All tasks routes require license + auth
 tasksRouter.use("*", licenseGuard);
@@ -66,103 +73,42 @@ tasksRouter.get("/:id", async (c) => {
 
 // POST /api/tasks/:id/cancel
 tasksRouter.post("/:id/cancel", async (c) => {
-  const task = await taskStorage.getTaskById(c.req.param("id"));
-  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
-  if (!["running", "paused", "queued"].includes(task.state)) {
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "Cannot cancel in current state" } }, 409);
+  try {
+    await cancelTask(c.req.param("id"));
+    return c.json({ ok: true });
+  } catch (err) {
+    return controlErrorResponse(c, err);
   }
-  // Set DB state BEFORE stopping container to prevent die handler race
-  await taskStorage.updateTaskState(task.id, "cancelled", { completedAt: new Date() });
-  if (task.state === "running") {
-    await stopScanWorker(task.id).catch((err) => {
-      logger.warn({ err, taskId: task.id }, "Failed to stop container on cancel");
-    });
-  }
-  notify({ type: "task_state", taskId: task.id, state: "cancelled" });
-  return c.json({ ok: true });
 });
 
 // POST /api/tasks/:id/pause
 tasksRouter.post("/:id/pause", async (c) => {
-  const task = await taskStorage.getTaskById(c.req.param("id"));
-  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
-  if (task.state !== "running") {
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "Task is not running" } }, 409);
+  try {
+    await pauseTask(c.req.param("id"));
+    return c.json({ ok: true });
+  } catch (err) {
+    return controlErrorResponse(c, err);
   }
-  // Set DB state BEFORE stopping container to prevent die handler race
-  await taskStorage.updateTaskState(task.id, "paused");
-  await stopScanWorker(task.id).catch((err) => {
-    logger.warn({ err, taskId: task.id }, "Failed to stop worker on pause");
-  });
-  notify({ type: "task_state", taskId: task.id, state: "paused" });
-  return c.json({ ok: true });
 });
 
 // POST /api/tasks/:id/resume
 tasksRouter.post("/:id/resume", async (c) => {
-  const task = await taskStorage.getTaskById(c.req.param("id"));
-  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
-  if (task.state !== "paused") {
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "Task is not paused" } }, 409);
+  try {
+    await resumeTask(c.req.param("id"));
+    return c.json({ ok: true });
+  } catch (err) {
+    return controlErrorResponse(c, err);
   }
-  // Clear stale fields from pause and set to queued
-  const db = (await import("../../infra/db/client.js")).getDb();
-  await db`
-    UPDATE tasks
-    SET state = 'queued',
-        completed_at = NULL,
-        failure_reason = NULL,
-        duration_ms = NULL
-    WHERE id = ${task.id}
-  `;
-  notify({ type: "task_state", taskId: task.id, state: "queued" });
-  return c.json({ ok: true });
 });
 
 // POST /api/tasks/:id/restart — full reset per architecture spec §3
 tasksRouter.post("/:id/restart", async (c) => {
-  const task = await taskStorage.getTaskById(c.req.param("id"));
-  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
-  if (!["failed", "cancelled", "completed"].includes(task.state)) {
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "Cannot restart in current state" } }, 409);
-  }
-
   try {
-    const { assertNoActiveOperation } = await import("./operation-lock.js");
-    await assertNoActiveOperation(task.id, "scan");
-  } catch (err: any) {
-    if (err.code === "ERR_TASK_BUSY") return c.json({ error: { code: "ERR_TASK_BUSY", message: err.message, active: err.active } }, 409);
-    throw err;
-  }
-
-  const config = loadConfig();
-  const minio = getMinio();
-
-  // 1. Reset DB state (clears started_at, metadata, findings)
-  await taskStorage.resetTaskForRestart(task.id);
-
-  // 2. Clean host workspace so scheduler re-prepares it
-  cleanupScanWorkDir(config.dataDir, task.id);
-
-  // 3. Clean MinIO scan-outputs (keep code-packages — zip is reusable)
-  try {
-    const prefix = `scan-outputs/${task.id}/`;
-    const objects = await new Promise<string[]>((resolve, reject) => {
-      const keys: string[] = [];
-      const stream = minio.listObjects(config.minio.bucket, prefix, true);
-      stream.on("data", (obj) => { if (obj.name) keys.push(obj.name); });
-      stream.on("end", () => resolve(keys));
-      stream.on("error", reject);
-    });
-    if (objects.length > 0) {
-      await minio.removeObjects(config.minio.bucket, objects);
-    }
+    await restartTask(c.req.param("id"));
+    return c.json({ ok: true });
   } catch (err) {
-    logger.warn({ err, taskId: task.id }, "Failed to cleanup MinIO scan-outputs on restart");
+    return controlErrorResponse(c, err);
   }
-
-  notify({ type: "task_state", taskId: task.id, state: "queued" });
-  return c.json({ ok: true });
 });
 
 // PATCH /api/tasks/:id — update task properties (credential_id)

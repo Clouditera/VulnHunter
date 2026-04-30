@@ -1,0 +1,103 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const state = {
+  task: null as any,
+  updates: [] as any[],
+  stopped: [] as string[],
+  reset: [] as string[],
+  cleaned: [] as string[],
+  notified: [] as any[],
+};
+
+vi.mock("../../src/features/tasks/storage.js", () => ({
+  getTaskById: vi.fn(async () => state.task),
+  updateTaskState: vi.fn(async (...args: any[]) => state.updates.push(args)),
+  queueTaskForResume: vi.fn(async (...args: any[]) => state.updates.push(["queueTaskForResume", ...args])),
+  resetTaskForRestart: vi.fn(async (taskId: string) => state.reset.push(taskId)),
+}));
+
+vi.mock("../../src/features/workers/scan-worker.js", () => ({
+  stopScanWorker: vi.fn(async (taskId: string) => state.stopped.push(taskId)),
+  cleanupScanWorkDir: vi.fn((dataDir: string, taskId: string) => state.cleaned.push(`${dataDir}:${taskId}`)),
+}));
+
+vi.mock("../../src/features/notifications/index.js", () => ({
+  notify: vi.fn((event: any) => state.notified.push(event)),
+}));
+
+vi.mock("../../src/features/tasks/operation-lock.js", () => ({
+  assertNoActiveOperation: vi.fn(async () => undefined),
+}));
+
+vi.mock("../../src/infra/minio/client.js", () => ({
+  getMinio: vi.fn(() => ({
+    listObjects: vi.fn(() => {
+      const { Readable } = require("node:stream");
+      return Readable.from([]);
+    }),
+    removeObjects: vi.fn(async () => undefined),
+  })),
+}));
+
+const { cancelTask, pauseTask, resumeTask, restartTask, TaskControlError } = await import("../../src/features/tasks/control-service.js");
+
+function makeTask(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "task-1",
+    project_name: "demo",
+    state: "running",
+    created_by: "user-1",
+    ...overrides,
+  } as any;
+}
+
+describe("task control service", () => {
+  beforeEach(() => {
+    state.task = null;
+    state.updates = [];
+    state.stopped = [];
+    state.reset = [];
+    state.cleaned = [];
+    state.notified = [];
+  });
+
+  it("cancels a running task and stops the worker", async () => {
+    state.task = makeTask({ state: "running" });
+    const result = await cancelTask("task-1");
+    expect(result.state).toBe("cancelled");
+    expect(state.updates[0][1]).toBe("cancelled");
+    expect(state.stopped).toEqual(["task-1"]);
+    expect(state.notified[0]).toMatchObject({ type: "task_state", taskId: "task-1", state: "cancelled" });
+  });
+
+  it("pauses a running task and stops the worker", async () => {
+    state.task = makeTask({ state: "running" });
+    const result = await pauseTask("task-1");
+    expect(result.state).toBe("paused");
+    expect(state.updates[0][1]).toBe("paused");
+    expect(state.stopped).toEqual(["task-1"]);
+  });
+
+  it("resumes a paused task by queuing it", async () => {
+    state.task = makeTask({ state: "paused" });
+    const result = await resumeTask("task-1");
+    expect(result.state).toBe("queued");
+    expect(state.notified[0]).toMatchObject({ type: "task_state", taskId: "task-1", state: "queued" });
+  });
+
+  it("restarts a completed task with cleanup", async () => {
+    state.task = makeTask({ state: "completed" });
+    const result = await restartTask("task-1", {
+      dataDir: "/tmp/vh",
+      minio: { bucket: "vulnhunt" },
+    } as any);
+    expect(result.state).toBe("queued");
+    expect(state.reset).toEqual(["task-1"]);
+    expect(state.cleaned).toEqual(["/tmp/vh:task-1"]);
+  });
+
+  it("rejects invalid state transitions with TaskControlError", async () => {
+    state.task = makeTask({ state: "completed" });
+    await expect(pauseTask("task-1")).rejects.toBeInstanceOf(TaskControlError);
+  });
+});

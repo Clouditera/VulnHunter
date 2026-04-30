@@ -9,6 +9,7 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 import * as findingsStorage from "../features/findings/storage.js";
 import * as taskStorage from "../features/tasks/storage.js";
+import { cancelTask as cancelTaskControl, TaskControlError } from "../features/tasks/control-service.js";
 import * as reportStorage from "../features/reports/storage.js";
 import { getMinio, uploadFile } from "../infra/minio/client.js";
 import { loadConfig } from "../infra/config.js";
@@ -263,21 +264,17 @@ export async function cancelTask(args: {
 }): Promise<ToolResult> {
   logger.debug({ args }, "MCP cancel-task");
 
-  const task = await taskStorage.getTaskById(args.task_id);
-  if (!task) {
-    return { content: [{ type: "text", text: `Task ${args.task_id} not found.` }] };
-  }
-
-  if (!["running", "paused", "queued"].includes(task.state)) {
+  try {
+    const result = await cancelTaskControl(args.task_id);
     return {
-      content: [{ type: "text", text: `Task ${task.project_name} is in state '${task.state}' and cannot be cancelled.` }],
+      content: [{ type: "text", text: `Task ${result.task.project_name} (${result.task.id}) has been cancelled.` }],
     };
+  } catch (err) {
+    if (err instanceof TaskControlError) {
+      return { content: [{ type: "text", text: err.message }] };
+    }
+    throw err;
   }
-
-  await taskStorage.updateTaskState(task.id, "cancelled", { completedAt: new Date() });
-  return {
-    content: [{ type: "text", text: `Task ${task.project_name} (${task.id}) has been cancelled.` }],
-  };
 }
 
 // ─── submit-report ───

@@ -3,7 +3,7 @@
  */
 import { z } from "zod";
 import * as taskStorage from "../../features/tasks/storage.js";
-import { notify } from "../../features/notifications/index.js";
+import { cancelTask, pauseTask, restartTask, resumeTask, TaskControlError } from "../../features/tasks/control-service.js";
 
 
 type ToolResult = { content: Array<{ type: "text"; text: string }> };
@@ -24,43 +24,28 @@ export async function controlTask(args: { task_id: string; action: string }): Pr
   if (!task) return text("Task not found.");
 
   try {
-    const { assertNoActiveOperation } = await import("../../features/tasks/operation-lock.js");
-
     switch (args.action) {
       case "cancel": {
-        if (!["running", "paused", "queued"].includes(task.state)) {
-          return text(`Cannot cancel task in '${task.state}' state.`);
-        }
-        await assertNoActiveOperation(task.id, "scan");
-        await taskStorage.updateTaskState(task.id, "cancelled" as any);
-        notify({ type: "task_state", taskId: task.id, state: "cancelled" });
-        return text(`Task ${task.project_name} cancelled. Container will be stopped by scheduler.`);
+        const result = await cancelTask(task.id);
+        return text(`Task ${result.task.project_name} cancelled.`);
       }
       case "pause": {
-        if (task.state !== "running") return text(`Cannot pause task in '${task.state}' state.`);
-        await taskStorage.updateTaskState(task.id, "paused" as any);
-        notify({ type: "task_state", taskId: task.id, state: "paused" });
-        return text(`Task ${task.project_name} paused.`);
+        const result = await pauseTask(task.id);
+        return text(`Task ${result.task.project_name} paused.`);
       }
       case "restart": {
-        if (!["failed", "cancelled", "completed"].includes(task.state)) {
-          return text(`Cannot restart task in '${task.state}' state.`);
-        }
-        await taskStorage.updateTaskState(task.id, "queued" as any);
-        notify({ type: "task_state", taskId: task.id, state: "queued" });
-        return text(`Task ${task.project_name} queued for restart.`);
+        const result = await restartTask(task.id);
+        return text(`Task ${result.task.project_name} queued for restart.`);
       }
       case "resume": {
-        if (task.state !== "paused") return text(`Cannot resume task in '${task.state}' state.`);
-        await taskStorage.updateTaskState(task.id, "queued" as any);
-        notify({ type: "task_state", taskId: task.id, state: "queued" });
-        return text(`Task ${task.project_name} queued for resume.`);
+        const result = await resumeTask(task.id);
+        return text(`Task ${result.task.project_name} queued for resume.`);
       }
       default:
         return text(`Unknown action: ${args.action}`);
     }
   } catch (err: any) {
-    if (err.code === "ERR_TASK_BUSY") return text(`Task is busy: ${err.message}`);
+    if (err instanceof TaskControlError) return text(err.message);
     throw err;
   }
 }

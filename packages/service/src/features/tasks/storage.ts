@@ -132,6 +132,18 @@ export async function updateTaskState(
   }
 }
 
+export async function queueTaskForResume(id: string): Promise<void> {
+  const db = getDb();
+  await db`
+    UPDATE tasks
+    SET state = 'queued',
+        completed_at = NULL,
+        failure_reason = NULL,
+        duration_ms = NULL
+    WHERE id = ${id}
+  `;
+}
+
 /** Full reset for restart — clears timestamps, metadata, findings so scheduler treats it as fresh */
 export async function updateTaskCredential(
   id: string,

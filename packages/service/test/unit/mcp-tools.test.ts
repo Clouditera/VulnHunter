@@ -13,6 +13,15 @@ vi.mock("../../src/features/tasks/storage.js", () => ({
   getTaskById: vi.fn(),
   listTasks: vi.fn(),
   updateTaskState: vi.fn(),
+  queueTaskForResume: vi.fn(),
+  resetTaskForRestart: vi.fn(),
+}));
+vi.mock("../../src/features/tasks/operation-lock.js", () => ({
+  assertNoActiveOperation: vi.fn(async () => undefined),
+}));
+vi.mock("../../src/features/workers/scan-worker.js", () => ({
+  stopScanWorker: vi.fn(async () => undefined),
+  cleanupScanWorkDir: vi.fn(),
 }));
 vi.mock("../../src/infra/minio/client.js", () => ({
   getMinio: vi.fn(),
