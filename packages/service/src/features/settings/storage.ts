@@ -1,5 +1,5 @@
 import { getDb } from "../../infra/db/client.js";
-import { MasterKeyVault } from "../../infra/crypto/master-key-vault.js";
+import { MasterKeyVault, CredentialDecryptError } from "../../infra/crypto/master-key-vault.js";
 
 let _vault: MasterKeyVault | null = null;
 
@@ -21,6 +21,7 @@ export interface DbLlmCredential {
   thinking_effort: string;
   label: string;
   is_default: boolean;
+  key_fingerprint: string | null;
 }
 
 export interface DecryptedLlmCredential extends DbLlmCredential {
@@ -35,7 +36,7 @@ export async function getDefaultCredential(): Promise<DecryptedLlmCredential | n
     api_key_tag: Buffer;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-           api_key_ciphertext, api_key_iv, api_key_tag
+           key_fingerprint, api_key_ciphertext, api_key_iv, api_key_tag
     FROM llm_credentials
     WHERE is_default = true
     ORDER BY created_at DESC
@@ -54,7 +55,7 @@ export async function getCredentialById(id: string): Promise<DecryptedLlmCredent
     api_key_tag: Buffer;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-           api_key_ciphertext, api_key_iv, api_key_tag
+           key_fingerprint, api_key_ciphertext, api_key_iv, api_key_tag
     FROM llm_credentials
     WHERE id = ${id}
     LIMIT 1
@@ -65,6 +66,8 @@ export async function getCredentialById(id: string): Promise<DecryptedLlmCredent
 
 export interface ListedLlmCredential extends DbLlmCredential {
   masked_key: string;
+  credential_health: "ok" | "decrypt_failed" | "unknown";
+  current_key_fingerprint: string;
 }
 
 export async function listCredentials(): Promise<ListedLlmCredential[]> {
@@ -75,23 +78,33 @@ export async function listCredentials(): Promise<ListedLlmCredential[]> {
     api_key_tag: Buffer;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-           api_key_ciphertext, api_key_iv, api_key_tag
+           key_fingerprint, api_key_ciphertext, api_key_iv, api_key_tag
     FROM llm_credentials
     ORDER BY is_default DESC, created_at DESC
   `;
 
+  const vault = getVault();
+  const currentKeyFingerprint = vault.fingerprint();
+
   return rows.map((row) => {
     let masked = "••••••••";
+    let health: ListedLlmCredential["credential_health"] = "unknown";
     try {
-      const key = getVault().decrypt({
+      const key = vault.decrypt({
         ciphertext: row.api_key_ciphertext,
         iv: row.api_key_iv,
         tag: row.api_key_tag,
       });
+      health = "ok";
       if (key.length > 8) {
         masked = `${key.slice(0, 4)}••••${key.slice(-4)}`;
       }
-    } catch { /* can't decrypt, use default mask */ }
+    } catch (err) {
+      if (err instanceof CredentialDecryptError) {
+        masked = "无法解密";
+        health = "decrypt_failed";
+      }
+    }
 
     return {
       id: row.id,
@@ -102,7 +115,10 @@ export async function listCredentials(): Promise<ListedLlmCredential[]> {
       thinking_effort: row.thinking_effort,
       label: row.label,
       is_default: row.is_default,
+      key_fingerprint: row.key_fingerprint,
       masked_key: masked,
+      credential_health: health,
+      current_key_fingerprint: currentKeyFingerprint,
     };
   });
 }
@@ -180,7 +196,8 @@ export async function upsertCredential(params: {
           label = ${params.label ?? ""},
           api_key_ciphertext = ${encrypted.ciphertext},
           api_key_iv = ${encrypted.iv},
-          api_key_tag = ${encrypted.tag}
+          api_key_tag = ${encrypted.tag},
+          key_fingerprint = ${vault.fingerprint()}
       WHERE id = ${params.id}
     `;
     if (params.isDefault) await setDefaultCredential(params.id);
@@ -200,17 +217,37 @@ export async function upsertCredential(params: {
   const rows = await db<{ id: string }[]>`
     INSERT INTO llm_credentials (
       provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-      api_key_ciphertext, api_key_iv, api_key_tag
+      api_key_ciphertext, api_key_iv, api_key_tag, key_fingerprint
     ) VALUES (
       ${params.provider}, ${params.protoType}, ${params.baseUrl ?? null},
       ${params.modelId}, ${params.thinkingEffort ?? "off"}, ${params.label ?? ""},
       ${makeDefault || isFirst},
-      ${encrypted.ciphertext}, ${encrypted.iv}, ${encrypted.tag}
+      ${encrypted.ciphertext}, ${encrypted.iv}, ${encrypted.tag}, ${vault.fingerprint()}
     )
     RETURNING id
   `;
 
   return rows[0]?.id ?? "";
+}
+
+export async function checkCredentialHealth(): Promise<{
+  total: number;
+  ok: number;
+  failed: number;
+  currentKeyFingerprint: string;
+  failedCredentials: Array<{ id: string; label: string; key_fingerprint: string | null }>;
+}> {
+  const credentials = await listCredentials();
+  const failedCredentials = credentials
+    .filter((cred) => cred.credential_health === "decrypt_failed")
+    .map((cred) => ({ id: cred.id, label: cred.label, key_fingerprint: cred.key_fingerprint }));
+  return {
+    total: credentials.length,
+    ok: credentials.filter((cred) => cred.credential_health === "ok").length,
+    failed: failedCredentials.length,
+    currentKeyFingerprint: getVault().fingerprint(),
+    failedCredentials,
+  };
 }
 
 export async function getSystemConfig(): Promise<Record<string, unknown>> {

@@ -1538,6 +1538,21 @@ export function SettingsPage() {
                       {c.masked_key ? " · " + c.masked_key : ""}
                     </div>
                   </div>
+                  {c.credential_health === "decrypt_failed" && (
+                    <span
+                      title="凭证无法用当前 master key 解密，请重新输入 API Key 并保存。"
+                      style={{
+                        fontSize: "11px",
+                        color: "#b45309",
+                        background: "rgba(180,83,9,0.08)",
+                        borderRadius: "999px",
+                        padding: "2px 8px",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      ⚠ 无法解密
+                    </span>
+                  )}
                   <Icon
                     name="chevron-down"
                     size={14}

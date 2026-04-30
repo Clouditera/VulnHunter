@@ -14,6 +14,7 @@ import { countTasksByState, getQueuedTasks, getTaskById, updateTaskState, type D
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir } from "./scan-worker.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
+import { CredentialDecryptError } from "../../infra/crypto/master-key-vault.js";
 import { credentialToWorkerEnv } from "../settings/credential-env.js";
 import { startTailing, stopTailing } from "../events/event-tail.js";
 import { indexFindings } from "../findings/indexer.js";
@@ -180,9 +181,24 @@ export class TaskScheduler {
 
       // Get LLM credentials — task-specific or default
       const credId = (task as DbTask & { credential_id?: string }).credential_id;
-      const cred = credId
-        ? await getCredentialById(credId)
-        : await getDefaultCredential();
+      let cred;
+      try {
+        cred = credId
+          ? await getCredentialById(credId)
+          : await getDefaultCredential();
+      } catch (err) {
+        if (err instanceof CredentialDecryptError) {
+          const reason = "LLM credential cannot be decrypted with current master key. Re-save the credential in Settings or restore the original master key.";
+          logger.error({ err, taskId: task.id, credId }, reason);
+          await updateTaskState(task.id, "failed", {
+            completedAt: new Date(),
+            failureReason: reason,
+          });
+          notify({ type: "task_state", taskId: task.id, state: "failed" as import("@vulnhunt/shared").TaskState });
+          continue;
+        }
+        throw err;
+      }
       if (!cred) {
         logger.warn({ taskId: task.id }, "No LLM credentials available — skipping");
         continue;

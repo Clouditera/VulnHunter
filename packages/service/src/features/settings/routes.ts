@@ -11,6 +11,7 @@ import {
   updateSystemConfig,
 } from "./storage.js";
 import { logger } from "../../infra/logger.js";
+import { CredentialDecryptError } from "../../infra/crypto/master-key-vault.js";
 
 export const settingsRouter = new Hono();
 settingsRouter.use("*", licenseGuard);
@@ -18,12 +19,19 @@ settingsRouter.use("*", requireAuth);
 
 // GET /api/settings/credential — show active LLM credential (no api_key)
 settingsRouter.get("/credential", async (c) => {
-  const cred = await getDefaultCredential();
-  if (!cred) return c.json({ credential: null });
-  const key = cred.api_key;
-  const masked_key = key.length > 8 ? `${key.slice(0, 4)}••••${key.slice(-4)}` : "••••••••";
-  const { api_key: _ak, api_key_ciphertext: _c, api_key_iv: _i, api_key_tag: _t, ...safe } = cred as typeof cred & Record<string, unknown>;
-  return c.json({ credential: { ...safe, masked_key } });
+  try {
+    const cred = await getDefaultCredential();
+    if (!cred) return c.json({ credential: null });
+    const key = cred.api_key;
+    const masked_key = key.length > 8 ? `${key.slice(0, 4)}••••${key.slice(-4)}` : "••••••••";
+    const { api_key: _ak, api_key_ciphertext: _c, api_key_iv: _i, api_key_tag: _t, ...safe } = cred as typeof cred & Record<string, unknown>;
+    return c.json({ credential: { ...safe, masked_key, credential_health: "ok" } });
+  } catch (err) {
+    if (err instanceof CredentialDecryptError) {
+      return c.json({ credential: { credential_health: "decrypt_failed", masked_key: "无法解密" } });
+    }
+    throw err;
+  }
 });
 
 // GET /api/settings/credentials — list all credentials (no api_key)
@@ -127,12 +135,19 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
   // If credential_id provided, load saved credential
   if (body.credential_id) {
     const { getCredentialById } = await import("./storage.js");
-    const cred = await getCredentialById(body.credential_id);
-    if (!cred) return c.json({ ok: false, error: "Credential not found" }, 404);
-    protoType = protoType || cred.proto_type;
-    baseUrl = baseUrl || (cred.base_url ?? "").replace(/\/$/, "");
-    modelId = modelId || cred.model_id;
-    apiKey = apiKey || cred.api_key;
+    try {
+      const cred = await getCredentialById(body.credential_id);
+      if (!cred) return c.json({ ok: false, error: "Credential not found" }, 404);
+      protoType = protoType || cred.proto_type;
+      baseUrl = baseUrl || (cred.base_url ?? "").replace(/\/$/, "");
+      modelId = modelId || cred.model_id;
+      apiKey = apiKey || cred.api_key;
+    } catch (err) {
+      if (err instanceof CredentialDecryptError) {
+        return c.json({ ok: false, error: "Credential cannot be decrypted with current master key. Re-enter and save the API key." }, 409);
+      }
+      throw err;
+    }
   }
 
   if (!apiKey || !modelId) {
@@ -200,11 +215,18 @@ settingsRouter.post("/models", requireAdmin, async (c) => {
   if (body.credential_id) {
     // Editing existing credential: use saved api_key, override base_url if provided
     const { getCredentialById } = await import("./storage.js");
-    const saved = await getCredentialById(body.credential_id);
-    if (!saved) return c.json({ models: [], error: "Credential not found" });
-    baseUrl = (body.base_url ?? saved.base_url ?? "").replace(/\/$/, "");
-    apiKey = body.api_key ?? saved.api_key;
-    protoType = body.proto_type ?? saved.proto_type;
+    try {
+      const saved = await getCredentialById(body.credential_id);
+      if (!saved) return c.json({ models: [], error: "Credential not found" });
+      baseUrl = (body.base_url ?? saved.base_url ?? "").replace(/\/$/, "");
+      apiKey = body.api_key ?? saved.api_key;
+      protoType = body.proto_type ?? saved.proto_type;
+    } catch (err) {
+      if (err instanceof CredentialDecryptError) {
+        return c.json({ models: [], error: "Credential cannot be decrypted with current master key. Re-enter and save the API key." }, 409);
+      }
+      throw err;
+    }
   } else if (body.base_url) {
     // New credential or base_url override — use provided values
     baseUrl = body.base_url.replace(/\/$/, "");
@@ -216,11 +238,18 @@ settingsRouter.post("/models", requireAdmin, async (c) => {
     apiKey = body.api_key;
     protoType = body.proto_type ?? "openai";
   } else {
-    const cred = await getDefaultCredential();
-    if (!cred) return c.json({ models: [], error: "No credential configured" });
-    baseUrl = (cred.base_url ?? "").replace(/\/$/, "");
-    apiKey = cred.api_key;
-    protoType = cred.proto_type;
+    try {
+      const cred = await getDefaultCredential();
+      if (!cred) return c.json({ models: [], error: "No credential configured" });
+      baseUrl = (cred.base_url ?? "").replace(/\/$/, "");
+      apiKey = cred.api_key;
+      protoType = cred.proto_type;
+    } catch (err) {
+      if (err instanceof CredentialDecryptError) {
+        return c.json({ models: [], error: "Credential cannot be decrypted with current master key. Re-enter and save the API key." }, 409);
+      }
+      throw err;
+    }
   }
 
   try {

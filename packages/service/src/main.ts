@@ -7,7 +7,7 @@ import { initDb, runMigrations } from "./infra/db/index.js";
 import { initMinio } from "./infra/minio/index.js";
 import { logger } from "./infra/logger.js";
 import { init as initLicense, tick as tickLicense } from "./features/license/index.js";
-import { initVault } from "./features/settings/index.js";
+import { initVault, checkCredentialHealth } from "./features/settings/index.js";
 import { initDocker, TaskScheduler, reconcileWorkers } from "./features/workers/index.js";
 import { startServer } from "./server.js";
 
@@ -30,6 +30,22 @@ async function main(): Promise<void> {
 
   // Initialize crypto vault
   initVault(config.dataDir);
+  const credentialHealth = await checkCredentialHealth().catch((err) => {
+    logger.warn({ err }, "Credential decrypt health check failed");
+    return null;
+  });
+  if (credentialHealth?.failed) {
+    logger.error(
+      {
+        total: credentialHealth.total,
+        ok: credentialHealth.ok,
+        failed: credentialHealth.failed,
+        currentKeyFingerprint: credentialHealth.currentKeyFingerprint,
+        failedCredentials: credentialHealth.failedCredentials,
+      },
+      "Credential decrypt health degraded. Re-save credentials or restore matching VULNHUNT_MASTER_KEY/DATA_DIR/.master.key.",
+    );
+  }
 
   // Initialize Docker
   initDocker(config.docker.socketPath);

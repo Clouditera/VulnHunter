@@ -1,6 +1,7 @@
 import {
   createCipheriv,
   createDecipheriv,
+  createHash,
   randomBytes,
 } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -17,15 +18,44 @@ export interface EncryptedData {
   tag: Buffer;
 }
 
+export class CredentialDecryptError extends Error {
+  constructor(message = "Credential cannot be decrypted with current master key", cause?: unknown) {
+    super(message);
+    this.name = "CredentialDecryptError";
+    this.cause = cause;
+  }
+}
+
+export interface MasterKeyInfo {
+  source: "env" | "file" | "generated";
+  keyPath?: string;
+  fingerprint: string;
+}
+
 export class MasterKeyVault {
   private readonly key: Buffer;
+  private readonly info: MasterKeyInfo;
 
   constructor(dataDir: string) {
-    this.key = this.loadOrGenerateKey(dataDir);
-    logger.debug("MasterKeyVault initialized");
+    const loaded = this.loadOrGenerateKey(dataDir);
+    this.key = loaded.key;
+    this.info = { ...loaded.info, fingerprint: this.computeFingerprint(this.key) };
+    logger.debug({ keyInfo: this.info }, "MasterKeyVault initialized");
   }
 
-  private loadOrGenerateKey(dataDir: string): Buffer {
+  getInfo(): MasterKeyInfo {
+    return this.info;
+  }
+
+  fingerprint(): string {
+    return this.info.fingerprint;
+  }
+
+  private computeFingerprint(key: Buffer): string {
+    return createHash("sha256").update(key).digest("hex").slice(0, 16);
+  }
+
+  private loadOrGenerateKey(dataDir: string): { key: Buffer; info: Omit<MasterKeyInfo, "fingerprint"> } {
     // Priority 1: env variable (32 bytes hex)
     const envKey = process.env.VULNHUNT_MASTER_KEY;
     if (envKey) {
@@ -36,7 +66,7 @@ export class MasterKeyVault {
         );
       }
       logger.info("Master key loaded from VULNHUNT_MASTER_KEY env");
-      return buf;
+      return { key: buf, info: { source: "env" } };
     }
 
     // Priority 2: file
@@ -44,7 +74,7 @@ export class MasterKeyVault {
     if (existsSync(keyPath)) {
       const hex = readFileSync(keyPath, "utf-8").trim();
       logger.info({ path: keyPath }, "Master key loaded from file");
-      return Buffer.from(hex, "hex");
+      return { key: Buffer.from(hex, "hex"), info: { source: "file", keyPath } };
     }
 
     // Generate and persist
@@ -52,7 +82,7 @@ export class MasterKeyVault {
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(keyPath, key.toString("hex"), { mode: 0o400 });
     logger.info({ path: keyPath }, "Master key generated and persisted");
-    return key;
+    return { key, info: { source: "generated", keyPath } };
   }
 
   encrypt(plaintext: string): EncryptedData {
@@ -66,11 +96,15 @@ export class MasterKeyVault {
   }
 
   decrypt({ ciphertext, iv, tag }: EncryptedData): string {
-    const decipher = createDecipheriv(ALGORITHM, this.key, iv);
-    decipher.setAuthTag(tag);
-    return Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final(),
-    ]).toString("utf-8");
+    try {
+      const decipher = createDecipheriv(ALGORITHM, this.key, iv);
+      decipher.setAuthTag(tag);
+      return Buffer.concat([
+        decipher.update(ciphertext),
+        decipher.final(),
+      ]).toString("utf-8");
+    } catch (err) {
+      throw new CredentialDecryptError(undefined, err);
+    }
   }
 }

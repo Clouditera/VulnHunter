@@ -564,6 +564,9 @@ export interface LlmCredential {
    * listCredentials / getCredential responses; never on write payloads.
    */
   masked_key?: string;
+  credential_health?: "ok" | "decrypt_failed" | "unknown";
+  key_fingerprint?: string | null;
+  current_key_fingerprint?: string;
 }
 
 export interface SaveCredentialPayload {
