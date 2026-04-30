@@ -236,12 +236,25 @@ export function LiveLog({ taskId, taskState }: Props) {
     };
   }, [taskId, isActive]);
 
-  // Auto-scroll
+  // Auto-scroll to bottom when events change (if autoScroll on)
+  // or when expanding the panel for the first time
   useEffect(() => {
     if (autoScroll && streamRef.current) {
       streamRef.current.scrollTop = streamRef.current.scrollHeight;
     }
   }, [events, autoScroll]);
+
+  // Scroll to bottom on expand
+  useEffect(() => {
+    if (expanded && streamRef.current) {
+      setAutoScroll(true);
+      requestAnimationFrame(() => {
+        if (streamRef.current) {
+          streamRef.current.scrollTop = streamRef.current.scrollHeight;
+        }
+      });
+    }
+  }, [expanded]);
 
   const filteredEvents =
     activeSource === "all"
@@ -575,7 +588,6 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
   // since task start (e.g. 156000ms for a 1s `bash ls`), which is misleading
   // — so we hide anything >= 2 min as likely suspect, and anything < 1s as
   // noise. Formatting: 1s ≤ d < 60s → "2.3s"; 60s ≤ d < 120s → "1m 23s".
-  let dur = ev.duration_ms;
 
   // Light-palette semantic colors (fish #18 feedback):
   // task = green, stage = amber-brown, tool = blue, error = red.
@@ -604,14 +616,12 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
     icon = { char: "▸", color: "#b45309" };
     tool = "stage";
     param = `${ev.stage ?? ""} starting`;
-    dur = undefined;
     toolColor = "#b45309";
     rowBg = "rgba(180,83,9,0.025)";
   } else if (ev.type === "stage_end") {
     icon = { char: "✓", color: "#16a34a" };
     tool = "stage";
     param = `${ev.stage ?? ""} done`;
-    dur = undefined;
     toolColor = "#16a34a";
   } else if (ev.type === "task_status" || ev.type === "task") {
     const severity = (ev as LiveLogEvent & { severity?: string }).severity;
@@ -621,7 +631,6 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
     icon = isWarning ? { char: "⚠", color: "#b45309" } : { char: "●", color: "#16a34a" };
     tool = "task";
     param = reason ?? ev.state ?? (ev as LiveLogEvent & { status?: string }).status ?? "";
-    dur = undefined;
     toolColor = isWarning ? "#b45309" : "#16a34a";
     if (isWarning) rowBg = "rgba(180,83,9,0.025)";
   } else if (ev.type === "error") {
@@ -631,7 +640,6 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
       (ev as LiveLogEvent & { summary?: string; message?: string }).summary ??
       (ev as LiveLogEvent & { message?: string }).message ??
       "unknown";
-    dur = undefined;
     toolColor = "#dc2626";
     rowBg = "rgba(220,38,38,0.03)";
   } else if (ev.type === "poc_output") {
@@ -640,7 +648,6 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
     icon = { char: isStderr ? "⚠" : "▸", color: isStderr ? "#d97706" : "var(--text-secondary)" };
     tool = "";
     param = pocEv.message ?? "";
-    dur = undefined;
     toolColor = isStderr ? "#d97706" : "var(--text-primary)";
     if (isStderr) rowBg = "rgba(217,119,6,0.03)";
   } else if (ev.type === "poc_exit") {
@@ -649,14 +656,12 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
     icon = ok ? { char: "✓", color: "#16a34a" } : { char: "✕", color: "#dc2626" };
     tool = "poc";
     param = ok ? `completed` : `failed (exit ${exitEv.exit_code})`;
-    dur = exitEv.duration_ms;
     toolColor = ok ? "#16a34a" : "#dc2626";
     if (!ok) rowBg = "rgba(220,38,38,0.03)";
   } else {
     icon = { char: "·", color: "var(--text-secondary)" };
     tool = ev.type;
     param = "";
-    dur = undefined;
     toolColor = "var(--text-secondary)";
   }
 
@@ -666,8 +671,8 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
       data-event-type={ev.type}
       style={{
         display: "grid",
-        gridTemplateColumns: "72px 18px 1fr",
-        gap: "6px",
+        gridTemplateColumns: "64px 16px 1fr",
+        gap: "4px",
         alignItems: "baseline",
         padding: "2px 14px",
         background: rowBg,
@@ -701,6 +706,7 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
+          minWidth: 0,
         }}
       >
         {tool && (
@@ -714,22 +720,7 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
         {param && (
           <span style={{ color: "var(--text-secondary)" }}> {param}</span>
         )}
-        {(() => {
-          const txt = formatDuration(dur);
-          if (!txt) return null;
-          return (
-            <span
-              data-testid="log-entry-duration"
-              style={{
-                color: "var(--text-secondary)",
-                marginLeft: "8px",
-                opacity: 0.6,
-              }}
-            >
-              · {txt}
-            </span>
-          );
-        })()}
+        {/* Duration removed per fish feedback */}
       </span>
     </div>
   );
@@ -757,14 +748,6 @@ if (typeof document !== "undefined" && !document.getElementById("ls-pulse-keyfra
  * in the field (156000ms for a `bash ls`). Remove the ceiling once the
  * backend tool_execution_end carries a true per-call `elapsed_ms`.
  */
-function formatDuration(ms: number | undefined | null): string | null {
-  if (ms == null || !Number.isFinite(ms)) return null;
-  if (ms < 1000) return null;
-  if (ms >= 120_000) return null;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  const s = Math.round(ms / 1000);
-  return `${Math.floor(s / 60)}m ${s % 60}s`;
-}
 
 /**
  * Virtual scrolling list for LiveLog events.
