@@ -20,10 +20,12 @@ services:
       WORKER_IMAGE: "vulnhunt-worker:latest"
       DOCKER_NETWORK: "vulnhunt-internal"
       DATA_DIR: "/data/vulnhunt"
+      VULNHUNT_MASTER_KEY_FILE: "${VULNHUNT_MASTER_KEY_FILE:-/run/secrets/vulnhunt-master.key}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - vulnhunt-data:/data/vulnhunt
+      - "${MASTER_KEY_FILE:-../.data/.master.key}:/run/secrets/vulnhunt-master.key:ro"
     networks:
       - vulnhunt-internal
     depends_on:

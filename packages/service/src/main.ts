@@ -48,7 +48,7 @@ async function main(): Promise<void> {
         currentKeyFingerprint: credentialHealth.currentKeyFingerprint,
         failedCredentials: credentialHealth.failedCredentials,
       },
-      "Credential decrypt health degraded. Re-save credentials or restore matching VULNHUNT_MASTER_KEY/DATA_DIR/.master.key.",
+      "Credential decrypt health degraded. Re-save credentials or restore the original master key file referenced by VULNHUNT_MASTER_KEY_FILE.",
     );
   }
 
