@@ -198,34 +198,68 @@ export class DirectoryTail {
   }
 }
 
-// Active tails per task
-const activeTails = new Map<string, { files: FileTail[]; dirs: DirectoryTail[] }>();
+// Active tails per task/source/path.
+// taskId -> tailKey(source:path) -> tail group
+const activeTails = new Map<string, Map<string, { files: FileTail[]; dirs: DirectoryTail[] }>>();
+
+function tailKey(source: string, path: string): string {
+  return `${source}:${path}`;
+}
+
+function stopGroup(group: { files: FileTail[]; dirs: DirectoryTail[] }): void {
+  for (const t of group.files) t.stop();
+  for (const d of group.dirs) d.stop();
+}
 
 export function startTailing(
   taskId: string,
   files: { path: string; source: string }[] = [],
   dirs: { path: string; source: string }[] = [],
 ): void {
-  const entry = { files: [] as FileTail[], dirs: [] as DirectoryTail[] };
+  let taskTails = activeTails.get(taskId);
+  if (!taskTails) {
+    taskTails = new Map();
+    activeTails.set(taskId, taskTails);
+  }
+
+  let startedFiles = 0;
+  let startedDirs = 0;
+
   for (const f of files) {
+    const key = tailKey(f.source, f.path);
+    const existing = taskTails.get(key);
+    if (existing) stopGroup(existing);
+
     const tail = new FileTail(f.path, taskId, f.source);
     tail.start();
-    entry.files.push(tail);
+    taskTails.set(key, { files: [tail], dirs: [] });
+    startedFiles++;
   }
+
   for (const d of dirs) {
+    const key = tailKey(d.source, d.path);
+    const existing = taskTails.get(key);
+    if (existing) stopGroup(existing);
+
     const dt = new DirectoryTail(d.path, taskId, d.source);
     dt.start();
-    entry.dirs.push(dt);
+    taskTails.set(key, { files: [], dirs: [dt] });
+    startedDirs++;
   }
-  activeTails.set(taskId, entry);
-  logger.info({ taskId, files: files.length, dirs: dirs.length }, "Started event tailing");
+
+  logger.info({ taskId, files: startedFiles, dirs: startedDirs }, "Started event tailing");
 }
 
-export function stopTailing(taskId: string): void {
-  const entry = activeTails.get(taskId);
-  if (entry) {
-    for (const t of entry.files) t.stop();
-    for (const d of entry.dirs) d.stop();
-    activeTails.delete(taskId);
+export function stopTailing(taskId: string, source?: string): void {
+  const taskTails = activeTails.get(taskId);
+  if (!taskTails) return;
+
+  for (const [key, group] of taskTails.entries()) {
+    if (!source || key.startsWith(`${source}:`)) {
+      stopGroup(group);
+      taskTails.delete(key);
+    }
   }
+
+  if (taskTails.size === 0) activeTails.delete(taskId);
 }

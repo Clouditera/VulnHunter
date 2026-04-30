@@ -3,9 +3,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import * as taskStorage from "./storage.js";
 import { cleanupScanWorkDir } from "../workers/scan-worker.js";
-import { getAllEvents } from "../events/event-store.js";
-import { translateYoungflowEvent } from "../events/event-tail.js";
-import type { LiveLogEvent } from "@vulnhunt/shared";
+import { loadTaskEvents } from "../events/event-archive.js";
 import { listCredentials } from "../settings/storage.js";
 import { cancelTask, pauseTask, restartTask, resumeTask, TaskControlError } from "./control-service.js";
 import { loadConfig } from "../../infra/config.js";
@@ -178,98 +176,20 @@ tasksRouter.delete("/:id", async (c) => {
 // NOTE: POC routes moved to features/poc/routes.ts (pocRouter)
 // Old GET /:id/poc and GET /:id/poc/:filename removed to avoid route conflict.
 
-// GET /api/tasks/:id/events — live log events (in-memory for running, MinIO archive for completed)
+// GET /api/tasks/:id/events — live log events (archive + memory via event-archive)
 tasksRouter.get("/:id/events", async (c) => {
   const task = await taskStorage.getTaskById(c.req.param("id"));
   if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
 
-  // In-memory events (from active tailing — may contain poc/report/scan events)
-  const memEvents = getAllEvents(task.id);
+  const source = c.req.query("source") ?? c.req.query("source_filter") ?? "all";
+  const limitRaw = c.req.query("limit");
+  const limit = limitRaw ? Math.min(Number(limitRaw), 5000) : undefined;
 
-  // If in-memory has events for running tasks, return them directly (fast path).
-  // Otherwise fall through to load from MinIO/local files (handles service restart).
-
-  // Read archived events from MinIO + merge with in-memory
-  const config = loadConfig();
-  const minio = getMinio();
-  const prefix = `scan-outputs/${task.id}/.youngflow/logs/`;
-
-  try {
-    // List all .service.jsonl files
-    const keys: string[] = [];
-    const stream = minio.listObjects(config.minio.bucket, prefix, true);
-    for await (const obj of stream) {
-      if (obj.name?.endsWith(".service.jsonl") || obj.name?.endsWith("youngflow.service.jsonl")) {
-        keys.push(obj.name);
-      }
-    }
-
-    if (keys.length === 0) {
-      // Fallback: read from local workspace (cancelled/failed tasks may not have synced to MinIO)
-      const { existsSync, readFileSync, readdirSync } = await import("node:fs");
-      const { join } = await import("node:path");
-      const localLogsDir = join(config.dataDir, "workspaces", task.id, "out", ".youngflow", "logs");
-      if (existsSync(localLogsDir)) {
-        const localFiles = readdirSync(localLogsDir).filter(f => f.endsWith(".service.jsonl"));
-        const localEvents: { seq: number; event: LiveLogEvent }[] = [];
-        let localSeq = 0;
-        for (const file of localFiles) {
-          try {
-            const text = readFileSync(join(localLogsDir, file), "utf-8");
-            for (const line of text.split("\n")) {
-              if (!line.trim()) continue;
-              try {
-                const raw = JSON.parse(line);
-                if (!raw.event) continue;
-                const translated = translateYoungflowEvent(raw, "scan");
-                if (translated) {
-                  localSeq++;
-                  translated.seq = localSeq;
-                  localEvents.push({ seq: localSeq, event: translated });
-                }
-              } catch { /* skip */ }
-            }
-          } catch { /* skip */ }
-        }
-        if (localEvents.length > 0) {
-          return c.json({ events: localEvents });
-        }
-      }
-      return c.json({ events: [] });
-    }
-
-    const events: { seq: number; event: LiveLogEvent }[] = [];
-    let seq = 0;
-
-    for (const key of keys) {
-      try {
-        const objStream = await minio.getObject(config.minio.bucket, key);
-        const chunks: Buffer[] = [];
-        for await (const chunk of objStream) chunks.push(Buffer.from(chunk));
-        const text = Buffer.concat(chunks).toString("utf-8");
-
-        for (const line of text.split("\n")) {
-          if (!line.trim()) continue;
-          try {
-            const raw = JSON.parse(line);
-            if (!raw.event) continue;
-            const translated = translateYoungflowEvent(raw, "scan");
-            if (translated) {
-              seq++;
-              translated.seq = seq;
-              events.push({ seq, event: translated });
-            }
-          } catch { /* skip malformed lines */ }
-        }
-      } catch { /* skip unreadable files */ }
-    }
-
-    // Merge archived events with in-memory events (dedup by checking if memEvents exist)
-    const allEvents = [...events, ...memEvents];
-    return c.json({ events: allEvents });
-  } catch (err) {
-    logger.warn({ err, taskId: task.id }, "Failed to load archived events");
-    // Fall back to in-memory only
-    return c.json({ events: memEvents });
-  }
+  const events = await loadTaskEvents({
+    taskId: task.id,
+    taskState: task.state,
+    source,
+    limit,
+  });
+  return c.json({ events });
 });
