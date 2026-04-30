@@ -7,6 +7,7 @@ const state = {
   reset: [] as string[],
   cleaned: [] as string[],
   notified: [] as any[],
+  busy: false,
 };
 
 vi.mock("../../src/features/tasks/storage.js", () => ({
@@ -26,7 +27,14 @@ vi.mock("../../src/features/notifications/index.js", () => ({
 }));
 
 vi.mock("../../src/features/tasks/operation-lock.js", () => ({
-  assertNoActiveOperation: vi.fn(async () => undefined),
+  assertNoActiveOperation: vi.fn(async () => {
+    if (state.busy) {
+      const err = new Error("active report operation") as Error & { code?: string; active?: string };
+      err.code = "ERR_TASK_BUSY";
+      err.active = "report";
+      throw err;
+    }
+  }),
 }));
 
 vi.mock("../../src/infra/minio/client.js", () => ({
@@ -59,6 +67,7 @@ describe("task control service", () => {
     state.reset = [];
     state.cleaned = [];
     state.notified = [];
+    state.busy = false;
   });
 
   it("cancels a running task and stops the worker", async () => {
@@ -96,8 +105,27 @@ describe("task control service", () => {
     expect(state.cleaned).toEqual(["/tmp/vh:task-1"]);
   });
 
-  it("rejects invalid state transitions with TaskControlError", async () => {
+  it("cancels a queued task without stopping a worker", async () => {
+    state.task = makeTask({ state: "queued" });
+    const result = await cancelTask("task-1");
+    expect(result.state).toBe("cancelled");
+    expect(state.updates[0][1]).toBe("cancelled");
+    expect(state.stopped).toEqual([]);
+  });
+
+  it("blocks cancel, pause, and restart when operation lock is busy", async () => {
+    state.busy = true;
+
+    state.task = makeTask({ state: "running" });
+    await expect(cancelTask("task-1")).rejects.toMatchObject({ code: "ERR_TASK_BUSY" });
+    await expect(pauseTask("task-1")).rejects.toMatchObject({ code: "ERR_TASK_BUSY" });
+
     state.task = makeTask({ state: "completed" });
-    await expect(pauseTask("task-1")).rejects.toBeInstanceOf(TaskControlError);
+    await expect(restartTask("task-1", { dataDir: "/tmp/vh", minio: { bucket: "vulnhunt" } } as any))
+      .rejects.toMatchObject({ code: "ERR_TASK_BUSY" });
+
+    expect(state.updates).toEqual([]);
+    expect(state.stopped).toEqual([]);
+    expect(state.reset).toEqual([]);
   });
 });
