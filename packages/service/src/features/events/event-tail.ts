@@ -263,3 +263,10 @@ export function stopTailing(taskId: string, source?: string): void {
 
   if (taskTails.size === 0) activeTails.delete(taskId);
 }
+
+export function __getActiveTailStatsForTest(taskId: string): { keys: string[]; count: number } {
+  if (process.env.NODE_ENV !== "test") return { keys: [], count: 0 };
+  const taskTails = activeTails.get(taskId);
+  const keys = taskTails ? Array.from(taskTails.keys()).sort() : [];
+  return { keys, count: keys.length };
+}

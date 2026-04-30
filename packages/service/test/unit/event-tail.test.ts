@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { translateYoungflowEvent } from "../../src/features/events/event-tail.js";
+import {
+  __getActiveTailStatsForTest,
+  startTailing,
+  stopTailing,
+  translateYoungflowEvent,
+} from "../../src/features/events/event-tail.js";
 
 describe("translateYoungflowEvent", () => {
   const source = "scan";
@@ -81,5 +86,27 @@ describe("translateYoungflowEvent", () => {
     expect(result).not.toBeNull();
     expect(result.type).toBe("stage_end");
     expect(result.status).toBe("error");
+  });
+
+  it("replaces duplicate source/path tails and supports source-specific stop", () => {
+    stopTailing("task-tail");
+
+    startTailing("task-tail", [{ path: "/tmp/scan.service.jsonl", source: "scan" }]);
+    startTailing("task-tail", [{ path: "/tmp/scan.service.jsonl", source: "scan" }]);
+    startTailing("task-tail", [{ path: "/tmp/report.service.jsonl", source: "report" }]);
+
+    expect(__getActiveTailStatsForTest("task-tail")).toEqual({
+      count: 2,
+      keys: ["report:/tmp/report.service.jsonl", "scan:/tmp/scan.service.jsonl"],
+    });
+
+    stopTailing("task-tail", "scan");
+    expect(__getActiveTailStatsForTest("task-tail")).toEqual({
+      count: 1,
+      keys: ["report:/tmp/report.service.jsonl"],
+    });
+
+    stopTailing("task-tail");
+    expect(__getActiveTailStatsForTest("task-tail")).toEqual({ count: 0, keys: [] });
   });
 });
