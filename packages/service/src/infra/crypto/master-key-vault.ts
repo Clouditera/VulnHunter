@@ -4,8 +4,7 @@ import {
   createHash,
   randomBytes,
 } from "node:crypto";
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, existsSync } from "node:fs";
 import { logger } from "../logger.js";
 
 const ALGORITHM = "aes-256-gcm";
@@ -27,8 +26,8 @@ export class CredentialDecryptError extends Error {
 }
 
 export interface MasterKeyInfo {
-  source: "env" | "file" | "generated";
-  keyPath?: string;
+  source: "file";
+  keyPath: string;
   fingerprint: string;
 }
 
@@ -36,10 +35,9 @@ export class MasterKeyVault {
   private readonly key: Buffer;
   private readonly info: MasterKeyInfo;
 
-  constructor(dataDir: string) {
-    const loaded = this.loadOrGenerateKey(dataDir);
-    this.key = loaded.key;
-    this.info = { ...loaded.info, fingerprint: this.computeFingerprint(this.key) };
+  constructor(keyPath: string) {
+    this.key = this.loadKeyFile(keyPath);
+    this.info = { source: "file", keyPath, fingerprint: this.computeFingerprint(this.key) };
     logger.debug({ keyInfo: this.info }, "MasterKeyVault initialized");
   }
 
@@ -55,34 +53,19 @@ export class MasterKeyVault {
     return createHash("sha256").update(key).digest("hex").slice(0, 16);
   }
 
-  private loadOrGenerateKey(dataDir: string): { key: Buffer; info: Omit<MasterKeyInfo, "fingerprint"> } {
-    // Priority 1: env variable (32 bytes hex)
-    const envKey = process.env.VULNHUNT_MASTER_KEY;
-    if (envKey) {
-      const buf = Buffer.from(envKey, "hex");
-      if (buf.length !== KEY_LENGTH) {
-        throw new Error(
-          `VULNHUNT_MASTER_KEY must be ${KEY_LENGTH * 2} hex chars (got ${envKey.length})`,
-        );
-      }
-      logger.info("Master key loaded from VULNHUNT_MASTER_KEY env");
-      return { key: buf, info: { source: "env" } };
+  private loadKeyFile(keyPath: string): Buffer {
+    if (!keyPath) {
+      throw new Error("VULNHUNT_MASTER_KEY_FILE is required");
     }
-
-    // Priority 2: file
-    const keyPath = join(dataDir, ".master.key");
-    if (existsSync(keyPath)) {
-      const hex = readFileSync(keyPath, "utf-8").trim();
-      logger.info({ path: keyPath }, "Master key loaded from file");
-      return { key: Buffer.from(hex, "hex"), info: { source: "file", keyPath } };
+    if (!existsSync(keyPath)) {
+      throw new Error(`Master key file not found: ${keyPath}`);
     }
-
-    // Generate and persist
-    const key = randomBytes(KEY_LENGTH);
-    mkdirSync(dataDir, { recursive: true });
-    writeFileSync(keyPath, key.toString("hex"), { mode: 0o400 });
-    logger.info({ path: keyPath }, "Master key generated and persisted");
-    return { key, info: { source: "generated", keyPath } };
+    const hex = readFileSync(keyPath, "utf-8").trim();
+    if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+      throw new Error(`Master key file must contain exactly ${KEY_LENGTH * 2} hex chars: ${keyPath}`);
+    }
+    logger.info({ path: keyPath }, "Master key loaded from file");
+    return Buffer.from(hex, "hex");
   }
 
   encrypt(plaintext: string): EncryptedData {

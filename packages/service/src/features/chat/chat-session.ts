@@ -15,6 +15,7 @@ import {
   getDocker,
 } from "../workers/docker-client.js";
 import { getDefaultCredential, getCredentialById, listCredentials } from "../settings/storage.js";
+import { CredentialDecryptError } from "../../infra/crypto/master-key-vault.js";
 import { credentialToWorkerEnv } from "../settings/credential-env.js";
 import { getSession, appendMessage } from "./storage.js";
 import { loadConfig } from "../../infra/config.js";
@@ -191,7 +192,15 @@ export class ChatSession {
       // Get credentials
       const session = await getSession(this.sessionId);
       const credId = session?.credential_id;
-      const cred = credId ? await getCredentialById(credId) : await getDefaultCredential();
+      let cred;
+      try {
+        cred = credId ? await getCredentialById(credId) : await getDefaultCredential();
+      } catch (err) {
+        if (err instanceof CredentialDecryptError) {
+          throw new Error("LLM credential cannot be decrypted with current master key. Re-save the credential in Settings or restore the original master key.");
+        }
+        throw err;
+      }
       if (!cred) throw new Error("No LLM credentials configured");
 
       // Prepare workspace
@@ -201,7 +210,12 @@ export class ChatSession {
       // Serialize all credentials for runtime model switching
       const listedCreds = await listCredentials();
       const decryptedCreds = await Promise.all(
-        listedCreds.map(c => getCredentialById(c.id)),
+        listedCreds
+          .filter((c) => c.credential_health !== "decrypt_failed")
+          .map((c) => getCredentialById(c.id).catch((err) => {
+            if (err instanceof CredentialDecryptError) return null;
+            throw err;
+          })),
       );
       const allCredsJson = JSON.stringify(
         decryptedCreds.filter(Boolean).map(c => ({

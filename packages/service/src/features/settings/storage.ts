@@ -1,10 +1,16 @@
 import { getDb } from "../../infra/db/client.js";
 import { MasterKeyVault, CredentialDecryptError } from "../../infra/crypto/master-key-vault.js";
+import { join } from "node:path";
 
 let _vault: MasterKeyVault | null = null;
 
 export function initVault(dataDir: string): void {
-  _vault = new MasterKeyVault(dataDir);
+  const keyPath = process.env.VULNHUNT_MASTER_KEY_FILE
+    ?? (process.env.VULNHUNT_ALLOW_DATA_DIR_MASTER_KEY_FALLBACK === "1" ? join(dataDir, ".master.key") : undefined);
+  if (!keyPath) {
+    throw new Error("VULNHUNT_MASTER_KEY_FILE is required. Generate and mount a stable master key file; do not rely on implicit DATA_DIR fallback.");
+  }
+  _vault = new MasterKeyVault(keyPath);
 }
 
 function getVault(): MasterKeyVault {

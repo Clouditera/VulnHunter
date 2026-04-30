@@ -15,6 +15,7 @@ import {
   getDocker,
 } from "../workers/docker-client.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
+import { CredentialDecryptError } from "../../infra/crypto/master-key-vault.js";
 import { credentialToWorkerEnv } from "../settings/credential-env.js";
 import { getSkill, updateReportStatus, getReport } from "./storage.js";
 import { getMinio } from "../../infra/minio/client.js";
@@ -37,9 +38,17 @@ export async function spawnReportWorker(params: {
   const skill = await getSkill(skillId);
   if (!skill) throw new Error("Skill not found");
 
-  const cred = params.credentialId
-    ? await getCredentialById(params.credentialId)
-    : await getDefaultCredential();
+  let cred;
+  try {
+    cred = params.credentialId
+      ? await getCredentialById(params.credentialId)
+      : await getDefaultCredential();
+  } catch (err) {
+    if (err instanceof CredentialDecryptError) {
+      throw new Error("LLM credential cannot be decrypted with current master key. Re-save the credential in Settings or restore the original master key.");
+    }
+    throw err;
+  }
   if (!cred) throw new Error("No LLM credentials configured");
 
   // Prepare workspace
