@@ -1538,9 +1538,9 @@ export function SettingsPage() {
                       {c.masked_key ? " · " + c.masked_key : ""}
                     </div>
                   </div>
-                  {c.credential_health === "decrypt_failed" && (
+                  {(c.credential_health === "decrypt_failed" || c.credential_health === "key_unavailable") && (
                     <span
-                      title="凭证无法用当前 master key 解密，请重新输入 API Key 并保存。"
+                      title={c.credential_health === "key_unavailable" ? "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE。" : "凭证无法用当前 master key 解密，请重新输入 API Key 并保存。"}
                       style={{
                         fontSize: "11px",
                         color: "#b45309",
@@ -1550,7 +1550,7 @@ export function SettingsPage() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      ⚠ 无法解密
+                      {c.credential_health === "key_unavailable" ? "⚠ key 未配置" : "⚠ 无法解密"}
                     </span>
                   )}
                   <Icon

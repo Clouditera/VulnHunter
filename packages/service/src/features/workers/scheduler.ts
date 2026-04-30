@@ -14,7 +14,7 @@ import { countTasksByState, getQueuedTasks, getTaskById, updateTaskState, type D
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir } from "./scan-worker.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
-import { CredentialDecryptError } from "../../infra/crypto/master-key-vault.js";
+import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { credentialToWorkerEnv } from "../settings/credential-env.js";
 import { startTailing, stopTailing } from "../events/event-tail.js";
 import { indexFindings } from "../findings/indexer.js";
@@ -187,6 +187,16 @@ export class TaskScheduler {
           ? await getCredentialById(credId)
           : await getDefaultCredential();
       } catch (err) {
+        if (err instanceof CredentialKeyUnavailableError) {
+          const reason = "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。";
+          logger.error({ err, taskId: task.id, credId }, reason);
+          await updateTaskState(task.id, "failed", {
+            completedAt: new Date(),
+            failureReason: reason,
+          });
+          notify({ type: "task_state", taskId: task.id, state: "failed" as import("@vulnhunt/shared").TaskState });
+          continue;
+        }
         if (err instanceof CredentialDecryptError) {
           const reason = "LLM credential cannot be decrypted with current master key. Re-save the credential in Settings or restore the original master key.";
           logger.error({ err, taskId: task.id, credId }, reason);

@@ -11,7 +11,7 @@ import {
   updateSystemConfig,
 } from "./storage.js";
 import { logger } from "../../infra/logger.js";
-import { CredentialDecryptError } from "../../infra/crypto/master-key-vault.js";
+import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 
 export const settingsRouter = new Hono();
 settingsRouter.use("*", licenseGuard);
@@ -27,6 +27,9 @@ settingsRouter.get("/credential", async (c) => {
     const { api_key: _ak, api_key_ciphertext: _c, api_key_iv: _i, api_key_tag: _t, ...safe } = cred as typeof cred & Record<string, unknown>;
     return c.json({ credential: { ...safe, masked_key, credential_health: "ok" } });
   } catch (err) {
+    if (err instanceof CredentialKeyUnavailableError) {
+      return c.json({ credential: { credential_health: "key_unavailable", masked_key: "key 未配置" } });
+    }
     if (err instanceof CredentialDecryptError) {
       return c.json({ credential: { credential_health: "decrypt_failed", masked_key: "无法解密" } });
     }
@@ -76,17 +79,25 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
     );
   }
 
-  const id = await upsertCredential({
-    id: body.id,
-    provider: body.provider,
-    protoType: body.proto_type,
-    baseUrl: body.base_url,
-    modelId: body.model_id,
-    thinkingEffort: body.thinking_effort,
-    label: body.label,
-    apiKey: body.api_key,
-    isDefault: body.is_default,
-  });
+  let id: string;
+  try {
+    id = await upsertCredential({
+      id: body.id,
+      provider: body.provider,
+      protoType: body.proto_type,
+      baseUrl: body.base_url,
+      modelId: body.model_id,
+      thinkingEffort: body.thinking_effort,
+      label: body.label,
+      apiKey: body.api_key,
+      isDefault: body.is_default,
+    });
+  } catch (err) {
+    if (err instanceof CredentialKeyUnavailableError) {
+      return c.json({ error: { code: "ERR_CREDENTIAL_KEY_UNAVAILABLE", message: "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" } }, 409);
+    }
+    throw err;
+  }
 
   return c.json({ id });
 });
@@ -143,6 +154,9 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
       modelId = modelId || cred.model_id;
       apiKey = apiKey || cred.api_key;
     } catch (err) {
+      if (err instanceof CredentialKeyUnavailableError) {
+        return c.json({ ok: false, error: "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" }, 409);
+      }
       if (err instanceof CredentialDecryptError) {
         return c.json({ ok: false, error: "Credential cannot be decrypted with current master key. Re-enter and save the API key." }, 409);
       }
@@ -222,6 +236,9 @@ settingsRouter.post("/models", requireAdmin, async (c) => {
       apiKey = body.api_key ?? saved.api_key;
       protoType = body.proto_type ?? saved.proto_type;
     } catch (err) {
+      if (err instanceof CredentialKeyUnavailableError) {
+        return c.json({ models: [], error: "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" }, 409);
+      }
       if (err instanceof CredentialDecryptError) {
         return c.json({ models: [], error: "Credential cannot be decrypted with current master key. Re-enter and save the API key." }, 409);
       }
@@ -245,6 +262,9 @@ settingsRouter.post("/models", requireAdmin, async (c) => {
       apiKey = cred.api_key;
       protoType = cred.proto_type;
     } catch (err) {
+      if (err instanceof CredentialKeyUnavailableError) {
+        return c.json({ models: [], error: "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" }, 409);
+      }
       if (err instanceof CredentialDecryptError) {
         return c.json({ models: [], error: "Credential cannot be decrypted with current master key. Re-enter and save the API key." }, 409);
       }

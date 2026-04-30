@@ -1,21 +1,41 @@
 import { getDb } from "../../infra/db/client.js";
-import { MasterKeyVault, CredentialDecryptError } from "../../infra/crypto/master-key-vault.js";
+import { MasterKeyVault, CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { join } from "node:path";
 
 let _vault: MasterKeyVault | null = null;
+let _vaultUnavailableReason: string | null = null;
 
 export function initVault(dataDir: string): void {
   const keyPath = process.env.VULNHUNT_MASTER_KEY_FILE
     ?? (process.env.VULNHUNT_ALLOW_DATA_DIR_MASTER_KEY_FALLBACK === "1" ? join(dataDir, ".master.key") : undefined);
   if (!keyPath) {
-    throw new Error("VULNHUNT_MASTER_KEY_FILE is required. Generate and mount a stable master key file; do not rely on implicit DATA_DIR fallback.");
+    _vault = null;
+    _vaultUnavailableReason = "VULNHUNT_MASTER_KEY_FILE is not configured";
+    return;
   }
-  _vault = new MasterKeyVault(keyPath);
+  try {
+    _vault = new MasterKeyVault(keyPath);
+    _vaultUnavailableReason = null;
+  } catch (err) {
+    _vault = null;
+    _vaultUnavailableReason = err instanceof Error ? err.message : String(err);
+  }
 }
 
 function getVault(): MasterKeyVault {
-  if (!_vault) throw new Error("Vault not initialized");
+  if (!_vault) {
+    throw new CredentialKeyUnavailableError(
+      "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。",
+    );
+  }
   return _vault;
+}
+
+export function getCredentialCryptoStatus():
+  | { state: "available"; currentKeyFingerprint: string }
+  | { state: "key_unavailable"; reason: string | null } {
+  if (!_vault) return { state: "key_unavailable", reason: _vaultUnavailableReason };
+  return { state: "available", currentKeyFingerprint: _vault.fingerprint() };
 }
 
 export interface DbLlmCredential {
@@ -72,7 +92,7 @@ export async function getCredentialById(id: string): Promise<DecryptedLlmCredent
 
 export interface ListedLlmCredential extends DbLlmCredential {
   masked_key: string;
-  credential_health: "ok" | "decrypt_failed" | "unknown";
+  credential_health: "ok" | "decrypt_failed" | "key_unavailable" | "unknown";
   current_key_fingerprint: string;
 }
 
@@ -89,10 +109,28 @@ export async function listCredentials(): Promise<ListedLlmCredential[]> {
     ORDER BY is_default DESC, created_at DESC
   `;
 
-  const vault = getVault();
-  const currentKeyFingerprint = vault.fingerprint();
+  const cryptoStatus = getCredentialCryptoStatus();
+  const currentKeyFingerprint = cryptoStatus.state === "available" ? cryptoStatus.currentKeyFingerprint : "";
 
   return rows.map((row) => {
+    if (cryptoStatus.state === "key_unavailable") {
+      return {
+        id: row.id,
+        provider: row.provider,
+        proto_type: row.proto_type,
+        base_url: row.base_url,
+        model_id: row.model_id,
+        thinking_effort: row.thinking_effort,
+        label: row.label,
+        is_default: row.is_default,
+        key_fingerprint: row.key_fingerprint,
+        masked_key: "key 未配置",
+        credential_health: "key_unavailable",
+        current_key_fingerprint: currentKeyFingerprint,
+      } as ListedLlmCredential;
+    }
+
+    const vault = getVault();
     let masked = "••••••••";
     let health: ListedLlmCredential["credential_health"] = "unknown";
     try {
@@ -240,18 +278,21 @@ export async function checkCredentialHealth(): Promise<{
   total: number;
   ok: number;
   failed: number;
-  currentKeyFingerprint: string;
+  keyUnavailable: boolean;
+  currentKeyFingerprint: string | null;
   failedCredentials: Array<{ id: string; label: string; key_fingerprint: string | null }>;
 }> {
   const credentials = await listCredentials();
   const failedCredentials = credentials
     .filter((cred) => cred.credential_health === "decrypt_failed")
     .map((cred) => ({ id: cred.id, label: cred.label, key_fingerprint: cred.key_fingerprint }));
+  const cryptoStatus = getCredentialCryptoStatus();
   return {
     total: credentials.length,
     ok: credentials.filter((cred) => cred.credential_health === "ok").length,
     failed: failedCredentials.length,
-    currentKeyFingerprint: getVault().fingerprint(),
+    keyUnavailable: cryptoStatus.state === "key_unavailable",
+    currentKeyFingerprint: cryptoStatus.state === "available" ? cryptoStatus.currentKeyFingerprint : null,
     failedCredentials,
   };
 }

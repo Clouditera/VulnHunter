@@ -15,7 +15,7 @@ import {
   getDocker,
 } from "../workers/docker-client.js";
 import { getDefaultCredential, getCredentialById, listCredentials } from "../settings/storage.js";
-import { CredentialDecryptError } from "../../infra/crypto/master-key-vault.js";
+import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { credentialToWorkerEnv } from "../settings/credential-env.js";
 import { getSession, appendMessage } from "./storage.js";
 import { loadConfig } from "../../infra/config.js";
@@ -196,6 +196,9 @@ export class ChatSession {
       try {
         cred = credId ? await getCredentialById(credId) : await getDefaultCredential();
       } catch (err) {
+        if (err instanceof CredentialKeyUnavailableError) {
+          throw new Error("凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。");
+        }
         if (err instanceof CredentialDecryptError) {
           throw new Error("LLM credential cannot be decrypted with current master key. Re-save the credential in Settings or restore the original master key.");
         }
@@ -213,6 +216,7 @@ export class ChatSession {
         listedCreds
           .filter((c) => c.credential_health !== "decrypt_failed")
           .map((c) => getCredentialById(c.id).catch((err) => {
+            if (err instanceof CredentialKeyUnavailableError) return null;
             if (err instanceof CredentialDecryptError) return null;
             throw err;
           })),

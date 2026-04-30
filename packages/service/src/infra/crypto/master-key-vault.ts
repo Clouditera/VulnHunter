@@ -17,6 +17,14 @@ export interface EncryptedData {
   tag: Buffer;
 }
 
+export class CredentialKeyUnavailableError extends Error {
+  constructor(message = "Credential encryption key is not configured", cause?: unknown) {
+    super(message);
+    this.name = "CredentialKeyUnavailableError";
+    this.cause = cause;
+  }
+}
+
 export class CredentialDecryptError extends Error {
   constructor(message = "Credential cannot be decrypted with current master key", cause?: unknown) {
     super(message);

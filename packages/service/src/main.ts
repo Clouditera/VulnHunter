@@ -34,7 +34,12 @@ async function main(): Promise<void> {
     logger.warn({ err }, "Credential decrypt health check failed");
     return null;
   });
-  if (credentialHealth?.failed) {
+  if (credentialHealth?.keyUnavailable) {
+    logger.warn(
+      { total: credentialHealth.total },
+      "Credential encryption key unavailable. Configure VULNHUNT_MASTER_KEY_FILE; credential operations will fail until configured.",
+    );
+  } else if (credentialHealth?.failed) {
     logger.error(
       {
         total: credentialHealth.total,
