@@ -212,10 +212,10 @@ const ZH: Record<string, string> = {
   "dashboard.cumulative": "累计",
   "dashboard.severityDist": "严重性分布",
   "dashboard.severityClickHint": "查看包含此严重级别漏洞的任务",
-  "dashboard.cweTop5": "CWE Top 5",
+  "dashboard.vulnerabilityTypeTop5": "漏洞类型 Top 5",
   "dashboard.recentScans": "近期扫描",
   "dashboard.noScans": "暂无扫描记录",
-  "dashboard.noCwe": "暂无 CWE 数据",
+  "dashboard.noVulnerabilityType": "暂无漏洞类型数据",
   "dashboard.loading": "加载中…",
 
   // Login
@@ -797,10 +797,10 @@ const EN: Record<string, string> = {
   "dashboard.cumulative": "cumulative",
   "dashboard.severityDist": "Severity Distribution",
   "dashboard.severityClickHint": "View tasks with findings of this severity",
-  "dashboard.cweTop5": "CWE Top 5",
+  "dashboard.vulnerabilityTypeTop5": "Vulnerability Type Top 5",
   "dashboard.recentScans": "Recent Scans",
   "dashboard.noScans": "No scans yet",
-  "dashboard.noCwe": "No CWE data yet",
+  "dashboard.noVulnerabilityType": "No vulnerability type data",
   "dashboard.loading": "Loading…",
 
   // Login
