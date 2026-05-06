@@ -17,35 +17,8 @@ const SEV_COLORS = {
   info: "var(--sev-info)",
 };
 
-// Distinct palette for CWE bars — rotates through 5 hues (matches prototype).
-const CWE_BAR_COLORS = ["#2563eb", "#7c3aed", "#dc2626", "#ea580c", "#0891b2"];
-
-/** Minimal inline CWE name lookup — enough to humanize common IDs shown in charts. */
-const CWE_NAMES: Record<string, string> = {
-  "CWE-20": "Improper Input Validation",
-  "CWE-22": "Path Traversal",
-  "CWE-78": "OS Command Injection",
-  "CWE-79": "Cross-site Scripting",
-  "CWE-89": "SQL Injection",
-  "CWE-119": "Buffer Overflow",
-  "CWE-120": "Buffer Copy Overflow",
-  "CWE-121": "Stack Buffer Overflow",
-  "CWE-122": "Heap Buffer Overflow",
-  "CWE-125": "Out-of-bounds Read",
-  "CWE-126": "Buffer Over-read",
-  "CWE-190": "Integer Overflow",
-  "CWE-200": "Information Exposure",
-  "CWE-287": "Improper Authentication",
-  "CWE-352": "CSRF",
-  "CWE-362": "Race Condition",
-  "CWE-416": "Use After Free",
-  "CWE-476": "NULL Pointer Dereference",
-  "CWE-477": "Obsolete Function",
-  "CWE-502": "Deserialization of Untrusted Data",
-  "CWE-787": "Out-of-bounds Write",
-  "CWE-798": "Hard-coded Credentials",
-  "CWE-835": "Infinite Loop",
-};
+// Distinct palette for vulnerability type bars — rotates through 5 hues.
+const VULN_TYPE_BAR_COLORS = ["#2563eb", "#7c3aed", "#dc2626", "#ea580c", "#0891b2"];
 
 function StatCard({
   label,
@@ -166,7 +139,7 @@ export function DashboardPage() {
 
   const stats = data.stats ?? {};
   const sevDist = data.severity_dist ?? {};
-  const cweTop5 = data.cwe_top5 ?? [];
+  const vulnerabilityTypeTop5 = data.vulnerability_type_top5 ?? [];
   const recentScans = data.recent_scans ?? [];
 
   const totalVulns = Object.values(sevDist as Record<string, number>).reduce(
@@ -363,9 +336,9 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {/* CWE Top 5 */}
+        {/* Vulnerability Type Top 5 */}
         <div
-          data-testid="dashboard-cwe-chart"
+          data-testid="dashboard-vulnerability-type-chart"
           style={{
             background: "var(--bg-card)",
             borderRadius: "10px",
@@ -374,19 +347,17 @@ export function DashboardPage() {
             boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
           }}
         >
-          <SectionHeader title={i18n.t("dashboard.cweTop5")} />
-          {cweTop5.length === 0 ? (
+          <SectionHeader title={i18n.t("dashboard.vulnerabilityTypeTop5")} />
+          {vulnerabilityTypeTop5.length === 0 ? (
             <div style={{ color: "var(--text-secondary)", fontSize: "13px", padding: "8px 0" }}>
-              {i18n.t("dashboard.noCwe")}
+              {i18n.t("dashboard.noVulnerabilityType")}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {cweTop5.map((item: { cwe: string | null; count: number }, i: number) => {
-                const maxCount = cweTop5[0]?.count ?? 1;
+              {vulnerabilityTypeTop5.map((item: { vuln_type: string; count: number }, i: number) => {
+                const maxCount = vulnerabilityTypeTop5[0]?.count ?? 1;
                 const pct = (item.count / maxCount) * 100;
-                const id = item.cwe ?? "CWE-?";
-                const name = CWE_NAMES[id];
-                const color = CWE_BAR_COLORS[i % CWE_BAR_COLORS.length];
+                const color = VULN_TYPE_BAR_COLORS[i % VULN_TYPE_BAR_COLORS.length];
                 return (
                   <div
                     key={i}
@@ -397,11 +368,18 @@ export function DashboardPage() {
                       alignItems: "center",
                     }}
                   >
-                    <span style={{ fontSize: "12px", color: "var(--text-primary)", fontWeight: 500 }}>
-                      <span>{id}</span>
-                      {name && (
-                        <span style={{ color: "var(--text-secondary)", fontWeight: 400 }}> {name}</span>
-                      )}
+                    <span
+                      title={item.vuln_type}
+                      style={{
+                        fontSize: "12px",
+                        color: "var(--text-primary)",
+                        fontWeight: 500,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item.vuln_type}
                     </span>
                     <div
                       style={{

@@ -914,6 +914,6 @@ export interface DashboardData {
     total_tokens_m?: { value: number; delta: string };
   };
   severity_dist: Record<string, number>;
-  cwe_top5: Array<{ cwe: string; count: number }>;
+  vulnerability_type_top5: Array<{ vuln_type: string; count: number }>;
   recent_scans: Task[];
 }

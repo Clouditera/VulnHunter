@@ -12,7 +12,7 @@ interface DashboardData {
   };
   severity_dist: { high: number; medium: number; low: number; info: number };
   review_status_dist: { pending: number; confirmed: number; false_positive: number; ignored: number };
-  cwe_top5: { cwe: string | null; count: number }[];
+  vulnerability_type_top5: { vuln_type: string; count: number }[];
   recent_scans: {
     id: string;
     project_name: string;
@@ -52,7 +52,7 @@ async function computeDashboard(range: string): Promise<DashboardData> {
         ? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
         : new Date(0);
 
-  const [scansRows, sevRows, cweRows, recentRows, durationRows] = await Promise.all([
+  const [scansRows, sevRows, vulnTypeRows, recentRows, durationRows] = await Promise.all([
     // Total scans
     db<{ count: string }[]>`
       SELECT COUNT(*) as count FROM tasks
@@ -66,12 +66,18 @@ async function computeDashboard(range: string): Promise<DashboardData> {
         AND indexed_at >= ${since}
       GROUP BY severity
     `,
-    // CWE Top 5
-    db<{ cwe: string | null; count: string }[]>`
-      SELECT cwe, COUNT(*) as count FROM findings_meta
-      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND cwe IS NOT NULL
-        AND indexed_at >= ${since}
-      GROUP BY cwe ORDER BY count DESC LIMIT 5
+    // Vulnerability Type Top 5
+    db<{ vuln_type: string; count: string }[]>`
+      SELECT vuln_type, COUNT(*) as count FROM (
+        SELECT COALESCE(NULLIF(vuln_type_full, ''), NULLIF(vuln_type, '')) as vuln_type
+        FROM findings_meta
+        WHERE tenant_id = ${DEFAULT_TENANT_ID}
+          AND indexed_at >= ${since}
+          AND COALESCE(NULLIF(vuln_type_full, ''), NULLIF(vuln_type, '')) IS NOT NULL
+      ) t
+      GROUP BY vuln_type
+      ORDER BY count DESC
+      LIMIT 5
     `,
     // Recent scans
     db<{
@@ -151,7 +157,7 @@ async function computeDashboard(range: string): Promise<DashboardData> {
     },
     severity_dist: severityDist,
     review_status_dist: reviewStatusDist,
-    cwe_top5: cweRows.map((r) => ({ cwe: r.cwe, count: Number(r.count) })),
+    vulnerability_type_top5: vulnTypeRows.map((r) => ({ vuln_type: r.vuln_type, count: Number(r.count) })),
     recent_scans: recentWithCounts,
   };
 }
