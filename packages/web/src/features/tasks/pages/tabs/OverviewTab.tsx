@@ -289,7 +289,7 @@ export function OverviewTab() {
             >
               {i18n.t("overview.totalFindings")}
             </div>
-            <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "4px" }}>
+            <div style={{ fontSize: "12px", color: "var(--text-muted, var(--text-secondary))", marginTop: "4px" }}>
               {i18n.t("overview.indexedFindings")}
             </div>
           </div>
@@ -322,9 +322,6 @@ export function OverviewTab() {
           <FactStat label={i18n.t("overview.pocReproduced")} value={reproducedCount} tone="poc" />
         </div>
 
-        <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "14px", lineHeight: 1.5 }}>
-          {i18n.t("overview.factOnlyNote")}
-        </div>
       </Card>
 
       {/* Key Findings — vuln_type title + BUG-ID chip */}
@@ -485,10 +482,29 @@ function SeverityStat({ severity, count }: { severity: "high" | "medium" | "low"
         background: "var(--bg-card)",
       }}
     >
-      <div style={{ fontSize: "26px", fontWeight: 800, color: SEV_COLORS[severity], lineHeight: 1 }}>
+      <div style={{ fontSize: "26px", fontWeight: 800, color: count === 0 ? "var(--text-muted, var(--text-secondary))" : SEV_COLORS[severity], lineHeight: 1 }}>
         {count}
       </div>
-      <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "6px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          fontSize: "12px",
+          color: "var(--text-secondary)",
+          marginTop: "6px",
+          fontWeight: 600,
+        }}
+      >
+        <span
+          style={{
+            width: "8px",
+            height: "8px",
+            borderRadius: "50%",
+            background: SEV_COLORS[severity],
+            flexShrink: 0,
+          }}
+        />
         {i18n.t(labelKey)}
       </div>
     </div>
