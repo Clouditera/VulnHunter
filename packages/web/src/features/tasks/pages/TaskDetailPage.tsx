@@ -6,11 +6,7 @@ import { LiveLog } from "../../live-log/components/LiveLog.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
-import {
-  formatDateTime,
-  parseRiskScore,
-  riskScoreColor,
-} from "../../../shared/utils/format.js";
+import { formatDateTime } from "../../../shared/utils/format.js";
 
 const TABS = [
   { labelKey: "taskDetail.tab.overview", path: "" },
@@ -105,6 +101,12 @@ export function TaskDetailPage() {
   });
 
   const task = data?.task as Task | undefined;
+  const headerSeverityCounts = {
+    high: findingsData?.findings?.filter((f) => f.severity === "high").length ?? task?.severity_counts?.high ?? 0,
+    medium: findingsData?.findings?.filter((f) => f.severity === "medium").length ?? task?.severity_counts?.medium ?? 0,
+    low: findingsData?.findings?.filter((f) => f.severity === "low").length ?? task?.severity_counts?.low ?? 0,
+    info: findingsData?.findings?.filter((f) => f.severity === "info").length ?? task?.severity_counts?.info ?? 0,
+  };
 
   if (isLoading) {
     return (
@@ -121,8 +123,6 @@ export function TaskDetailPage() {
       </div>
     );
   }
-
-  const risk = parseRiskScore(task.risk_score);
 
   const tabCounts: Record<string, number | undefined> = {
     findings: findingsCount > 0 ? findingsCount : undefined,
@@ -226,7 +226,7 @@ export function TaskDetailPage() {
               </span>
             </div>
 
-            {/* Meta row: Risk · Duration · Started */}
+            {/* Meta row: Findings · Duration · Started */}
             <div
               style={{
                 display: "flex",
@@ -237,30 +237,15 @@ export function TaskDetailPage() {
                 flexWrap: "wrap",
               }}
             >
-              {/* Always render the risk row so the shield icon stays visible.
-                  Shows '—' until the scan completes and a score is computed
-                  (matches the prototype). */}
-              <MetaItem icon="shield">
-                {i18n.t("taskDetail.meta.risk")}:{" "}
-                {risk != null ? (
-                  <strong
-                    style={{
-                      color: riskScoreColor(risk),
-                      marginLeft: "4px",
-                    }}
-                  >
-                    {risk.toFixed(1)}/10
-                  </strong>
-                ) : (
-                  <strong
-                    style={{
-                      color: "var(--text-secondary)",
-                      marginLeft: "4px",
-                      fontWeight: 500,
-                    }}
-                  >
-                    —
-                  </strong>
+              <MetaItem icon="alert-triangle">
+                {i18n.t("taskDetail.meta.findings")}: {" "}
+                <strong style={{ color: "var(--text-primary)", marginLeft: "4px" }}>
+                  {findingsCount > 0 ? findingsCount : "—"}
+                </strong>
+                {findingsCount > 0 && (
+                  <span style={{ marginLeft: "8px", color: "var(--text-secondary)" }}>
+                    {i18n.t("findings.sevHigh")} {headerSeverityCounts.high} · {i18n.t("findings.sevMedium")} {headerSeverityCounts.medium} · {i18n.t("findings.sevLow")} {headerSeverityCounts.low}
+                  </span>
                 )}
               </MetaItem>
               <MetaItem icon="clock">

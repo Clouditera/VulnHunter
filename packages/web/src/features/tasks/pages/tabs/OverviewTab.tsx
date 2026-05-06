@@ -4,11 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Task, type FindingMeta } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon, type IconName } from "../../../../shared/components/Icon.js";
-import {
-  formatDateTime,
-  parseRiskScore,
-  riskScoreColor,
-} from "../../../../shared/utils/format.js";
+import { formatDateTime } from "../../../../shared/utils/format.js";
 
 /**
  * Normalize `task.source_meta` — backend postgres returns it as a JSON
@@ -132,6 +128,12 @@ export function OverviewTab() {
     // finishes, so no refetchInterval is needed.
   });
 
+  const { data: pocSummaryData } = useQuery({
+    queryKey: ["poc-summary", task.id],
+    queryFn: () => api.tasks.pocSummary(task.id),
+    retry: false,
+  });
+
   const findings = (findingsData?.findings ?? []) as FindingMeta[];
   const counts = {
     high: findings.filter((f) => f.severity === "high").length,
@@ -139,7 +141,9 @@ export function OverviewTab() {
     low: findings.filter((f) => f.severity === "low").length,
     info: findings.filter((f) => f.severity === "info").length,
   };
-  const risk = parseRiskScore(task.risk_score);
+  const confirmedCount = findings.filter((f) => f.review_status === "confirmed").length;
+  const falsePositiveCount = findings.filter((f) => f.review_status === "false_positive").length;
+  const reproducedCount = pocSummaryData?.summary?.reproduced ?? 0;
   const profile = task.metadata?.profile ?? {};
   const exec = task.metadata?.execution ?? {};
 
@@ -239,99 +243,66 @@ export function OverviewTab() {
         />
       </Card>
 
-      {/* Risk Assessment — large number + segmented severity bar + legend */}
-      <Card title={i18n.t("overview.riskAssessment")} icon="shield" align="center">
-        {(() => {
-          // Use backend score if available; otherwise derive from severity counts
-          const total = counts.high + counts.medium + counts.low + counts.info;
-          const derivedScore = total > 0
-            ? Math.min(10, (counts.high * 2.5 + counts.medium * 1.2 + counts.low * 0.3 + counts.info * 0.05))
-            : null;
-          const displayScore = risk ?? derivedScore;
-          const isRunning = task.state !== "completed" && task.state !== "failed";
-
-          if (displayScore != null) {
-            return (
-              <>
-                <div
-                  style={{
-                    fontSize: "48px",
-                    fontWeight: 800,
-                    color: riskScoreColor(displayScore),
-                    lineHeight: 1,
-                    fontVariantNumeric: "tabular-nums",
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  {displayScore.toFixed(1)}
-                  <span
-                    style={{
-                      fontSize: "20px",
-                      color: "var(--text-secondary)",
-                      fontWeight: 500,
-                      marginLeft: "4px",
-                    }}
-                  >
-                    / 10
-                  </span>
-                </div>
-                <div
-                  style={{
-                    fontSize: "14px",
-                    color: "var(--text-secondary)",
-                    marginTop: "6px",
-                  }}
-                >
-                  {i18n.t("overview.overallRiskScore")}
-                </div>
-              </>
-            );
-          }
-
-          return (
-            <div
-              style={{
-                color: "var(--text-secondary)",
-                fontSize: "13px",
-                padding: "12px 0 6px",
-              }}
-            >
-              {isRunning ? i18n.t("overview.analyzing") : i18n.t("overview.riskNotAvailable")}
-            </div>
-          );
-        })()}
-
-        {/* Segmented severity bar — flex weights reflect counts (min 1 to stay visible) */}
-        <SevBar counts={counts} />
-
-        {/* Dot legend */}
+      {/* Vulnerability Overview — factual counts, no risk score */}
+      <Card title={i18n.t("overview.vulnerabilityOverview")} icon="alert-triangle" align="center">
         <div
           style={{
             display: "flex",
-            gap: "16px",
-            fontSize: "12px",
-            color: "var(--text-secondary)",
+            alignItems: "center",
             justifyContent: "center",
-            flexWrap: "wrap",
+            gap: "10px",
+            marginBottom: "12px",
+          }}
+        >
+          <div
+            data-testid="overview-total-findings"
+            style={{
+              fontSize: "48px",
+              fontWeight: 800,
+              color: "var(--text-primary)",
+              lineHeight: 1,
+              fontVariantNumeric: "tabular-nums",
+              letterSpacing: "-0.02em",
+            }}
+          >
+            {findings.length}
+          </div>
+          <div style={{ textAlign: "left" }}>
+            <div style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)" }}>
+              {i18n.t("overview.totalFindings")}
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "2px" }}>
+              {task.state === "completed" ? i18n.t("overview.indexedFindings") : i18n.t("overview.scanInProgress")}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: "8px",
+            marginBottom: "2px",
           }}
         >
           {(["high", "medium", "low", "info"] as const).map((s) => (
-            <span
-              key={s}
-              style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
-            >
-              <i
-                style={{
-                  display: "inline-block",
-                  width: "8px",
-                  height: "8px",
-                  borderRadius: "50%",
-                  background: SEV_COLORS[s],
-                }}
-              />
-              {counts[s]} {i18n.t(`findings.sev${s.charAt(0).toUpperCase() + s.slice(1)}`)}
-            </span>
+            <SeverityStat key={s} severity={s} count={counts[s]} />
           ))}
+        </div>
+
+        <SevBar counts={counts} />
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: "8px",
+            marginTop: "16px",
+          }}
+        >
+          <FactStat label={i18n.t("overview.confirmedFindings")} value={confirmedCount} />
+          <FactStat label={i18n.t("overview.falsePositiveFindings")} value={falsePositiveCount} />
+          <FactStat label={i18n.t("overview.pocReproduced")} value={reproducedCount} />
         </div>
       </Card>
 
@@ -479,6 +450,48 @@ function formatTokens(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
   if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
   return String(n);
+}
+
+function SeverityStat({ severity, count }: { severity: "high" | "medium" | "low" | "info"; count: number }) {
+  const labelKey = `findings.sev${severity.charAt(0).toUpperCase() + severity.slice(1)}`;
+  return (
+    <div
+      data-testid={`overview-severity-${severity}`}
+      style={{
+        padding: "10px 8px",
+        border: "1px solid var(--divider)",
+        borderRadius: "8px",
+        background: "var(--bg-page)",
+        textAlign: "center",
+      }}
+    >
+      <div style={{ fontSize: "20px", fontWeight: 800, color: SEV_COLORS[severity], lineHeight: 1 }}>
+        {count}
+      </div>
+      <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "6px" }}>
+        {i18n.t(labelKey)}
+      </div>
+    </div>
+  );
+}
+
+function FactStat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div
+      style={{
+        padding: "10px 8px",
+        borderTop: "1px solid var(--divider)",
+        textAlign: "center",
+      }}
+    >
+      <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--text-primary)", lineHeight: 1 }}>
+        {value}
+      </div>
+      <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "6px" }}>
+        {label}
+      </div>
+    </div>
+  );
 }
 
 function SevBar({ counts }: { counts: { high: number; medium: number; low: number; info: number } }) {
