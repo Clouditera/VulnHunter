@@ -244,50 +244,68 @@ export function OverviewTab() {
       </Card>
 
       {/* Vulnerability Overview — factual counts, no risk score */}
-      <Card title={i18n.t("overview.vulnerabilityOverview")} icon="alert-triangle" align="center">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "10px",
-            marginBottom: "12px",
-          }}
-        >
-          <div
-            data-testid="overview-total-findings"
-            style={{
-              fontSize: "48px",
-              fontWeight: 800,
-              color: "var(--text-primary)",
-              lineHeight: 1,
-              fontVariantNumeric: "tabular-nums",
-              letterSpacing: "-0.02em",
-            }}
-          >
-            {findings.length}
-          </div>
-          <div style={{ textAlign: "left" }}>
-            <div style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)" }}>
-              {i18n.t("overview.totalFindings")}
-            </div>
-            <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "2px" }}>
-              {task.state === "completed" ? i18n.t("overview.indexedFindings") : i18n.t("overview.scanInProgress")}
-            </div>
-          </div>
-        </div>
-
+      <Card title={i18n.t("overview.vulnerabilityOverview")}>
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "8px",
-            marginBottom: "2px",
+            gridTemplateColumns: "150px 1fr",
+            gap: "20px",
+            alignItems: "stretch",
+            marginBottom: "18px",
           }}
         >
-          {(["high", "medium", "low", "info"] as const).map((s) => (
-            <SeverityStat key={s} severity={s} count={counts[s]} />
-          ))}
+          <div
+            style={{
+              background: "var(--bg-page)",
+              border: "1px solid var(--divider)",
+              borderRadius: "12px",
+              padding: "18px 16px",
+              minHeight: "128px",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+            }}
+          >
+            <div
+              data-testid="overview-total-findings"
+              style={{
+                fontSize: "46px",
+                fontWeight: 800,
+                letterSpacing: "-0.04em",
+                lineHeight: 0.95,
+                color: "var(--text-primary)",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {findings.length}
+            </div>
+            <div
+              style={{
+                fontSize: "13px",
+                fontWeight: 700,
+                color: "var(--text-primary)",
+                marginTop: "10px",
+              }}
+            >
+              {i18n.t("overview.totalFindings")}
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "4px" }}>
+              {i18n.t("overview.indexedFindings")}
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: "10px",
+              alignSelf: "start",
+            }}
+          >
+            {(["high", "medium", "low", "info"] as const).map((s) => (
+              <SeverityStat key={s} severity={s} count={counts[s]} />
+            ))}
+          </div>
         </div>
 
         <SevBar counts={counts} />
@@ -296,13 +314,16 @@ export function OverviewTab() {
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(3, 1fr)",
-            gap: "8px",
-            marginTop: "16px",
+            gap: "10px",
           }}
         >
-          <FactStat label={i18n.t("overview.confirmedFindings")} value={confirmedCount} />
-          <FactStat label={i18n.t("overview.falsePositiveFindings")} value={falsePositiveCount} />
-          <FactStat label={i18n.t("overview.pocReproduced")} value={reproducedCount} />
+          <FactStat label={i18n.t("overview.confirmedFindings")} value={confirmedCount} tone="confirmed" />
+          <FactStat label={i18n.t("overview.falsePositiveFindings")} value={falsePositiveCount} tone="neutral" />
+          <FactStat label={i18n.t("overview.pocReproduced")} value={reproducedCount} tone="poc" />
+        </div>
+
+        <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "14px", lineHeight: 1.5 }}>
+          {i18n.t("overview.factOnlyNote")}
         </div>
       </Card>
 
@@ -458,14 +479,13 @@ function SeverityStat({ severity, count }: { severity: "high" | "medium" | "low"
     <div
       data-testid={`overview-severity-${severity}`}
       style={{
-        padding: "10px 8px",
+        padding: "13px 12px",
         border: "1px solid var(--divider)",
-        borderRadius: "8px",
-        background: "var(--bg-page)",
-        textAlign: "center",
+        borderRadius: "10px",
+        background: "var(--bg-card)",
       }}
     >
-      <div style={{ fontSize: "20px", fontWeight: 800, color: SEV_COLORS[severity], lineHeight: 1 }}>
+      <div style={{ fontSize: "26px", fontWeight: 800, color: SEV_COLORS[severity], lineHeight: 1 }}>
         {count}
       </div>
       <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "6px" }}>
@@ -475,19 +495,29 @@ function SeverityStat({ severity, count }: { severity: "high" | "medium" | "low"
   );
 }
 
-function FactStat({ label, value }: { label: string; value: number | string }) {
+function FactStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number | string;
+  tone: "confirmed" | "neutral" | "poc";
+}) {
+  const toneColor = tone === "confirmed" ? "#16a34a" : tone === "poc" ? "#7c3aed" : "var(--text-secondary)";
   return (
     <div
       style={{
-        padding: "10px 8px",
-        borderTop: "1px solid var(--divider)",
-        textAlign: "center",
+        background: "var(--bg-page)",
+        border: "1px solid var(--divider)",
+        borderRadius: "10px",
+        padding: "12px 13px",
       }}
     >
-      <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--text-primary)", lineHeight: 1 }}>
+      <div style={{ fontSize: "24px", fontWeight: 800, color: toneColor, lineHeight: 1 }}>
         {value}
       </div>
-      <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "6px" }}>
+      <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "6px", fontWeight: 600 }}>
         {label}
       </div>
     </div>
@@ -500,10 +530,10 @@ function SevBar({ counts }: { counts: { high: number; medium: number; low: numbe
     return (
       <div
         style={{
-          height: "10px",
+          height: "8px",
           background: "var(--divider)",
-          borderRadius: "5px",
-          margin: "20px 0 14px",
+          borderRadius: "999px",
+          margin: "2px 0 18px",
         }}
       />
     );
@@ -512,10 +542,10 @@ function SevBar({ counts }: { counts: { high: number; medium: number; low: numbe
     <div
       style={{
         display: "flex",
-        height: "10px",
-        borderRadius: "5px",
+        height: "8px",
+        borderRadius: "999px",
         overflow: "hidden",
-        margin: "20px 0 14px",
+        margin: "2px 0 18px",
         background: "var(--divider)",
       }}
     >
