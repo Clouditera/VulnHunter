@@ -79,7 +79,7 @@ export async function loadTaskEvents(params: {
       } catch { /* skip */ }
     }
 
-    const allEvents = [...events, ...memEvents];
+    const allEvents = orderEventsForDisplay([...events, ...memEvents], taskState);
     return applyFilters(allEvents, source, limit);
   } catch (err) {
     logger.warn({ err, taskId }, "Failed to load archived events");
@@ -116,7 +116,42 @@ async function loadLocalEvents(taskId: string, dataDir: string): Promise<EventEn
       }
     } catch { /* skip */ }
   }
-  return events;
+  return orderEventsForDisplay(events, "completed");
+}
+
+function orderEventsForDisplay(events: EventEntry[], taskState: string): EventEntry[] {
+  const ordered = [...events].sort((a, b) => {
+    const at = Date.parse(a.event.ts ?? "");
+    const bt = Date.parse(b.event.ts ?? "");
+    if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return at - bt;
+    return a.seq - b.seq;
+  });
+
+  // Terminal tasks should surface the final task_status as the effective tail.
+  // In-memory events can be merged after archive events and otherwise hide the
+  // YoungFlow flow_end translation from the collapsed LiveLog summary.
+  if (["completed", "failed", "cancelled"].includes(taskState)) {
+    let idx = -1;
+    for (let i = ordered.length - 1; i >= 0; i--) {
+      const entry = ordered[i];
+      if (
+        entry.event.type === "task_status" &&
+        ["completed", "failed", "cancelled"].includes(String((entry.event as any).status ?? (entry.event as any).state ?? ""))
+      ) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx >= 0 && idx !== ordered.length - 1) {
+      const [terminal] = ordered.splice(idx, 1);
+      ordered.push(terminal);
+    }
+  }
+
+  return ordered.map((entry, index) => ({
+    seq: index + 1,
+    event: { ...entry.event, seq: index + 1 },
+  }));
 }
 
 function applyFilters(events: EventEntry[], source?: string, limit?: number): EventEntry[] {

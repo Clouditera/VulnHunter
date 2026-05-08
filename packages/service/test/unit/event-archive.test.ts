@@ -5,6 +5,7 @@ import { appendEvent, clearTaskBuffer } from "../../src/features/events/event-st
 const archiveLines = [
   JSON.stringify({ event: "stage_start", ts: "2026-04-30T00:00:00Z", stage: "archived-scan" }),
   JSON.stringify({ event: "stage_done", ts: "2026-04-30T00:00:01Z", stage: "archived-scan", exit_code: 0, duration_ms: 1000 }),
+  JSON.stringify({ event: "flow_end", ts: "2026-04-30T00:00:03Z", stages_total: 1, stages_completed: 1, stages_failed: 0 }),
 ].join("\n");
 
 vi.mock("../../src/infra/config.js", () => ({
@@ -40,16 +41,33 @@ describe("loadTaskEvents", () => {
     } as any);
 
     const all = await loadTaskEvents({ taskId: "task-archive", taskState: "completed", source: "all" });
-    expect(all).toHaveLength(3);
-    expect(all.map((entry) => entry.event.source)).toEqual(["scan", "scan", "report"]);
+    expect(all).toHaveLength(4);
+    expect(all.map((entry) => entry.event.source)).toEqual(["scan", "scan", "report", "scan"]);
 
     const scanOnly = await loadTaskEvents({ taskId: "task-archive", taskState: "completed", source: "scan" });
-    expect(scanOnly).toHaveLength(2);
+    expect(scanOnly).toHaveLength(3);
     expect(scanOnly.every((entry) => entry.event.source === "scan")).toBe(true);
 
     const reportOnly = await loadTaskEvents({ taskId: "task-archive", taskState: "completed", source: "report" });
     expect(reportOnly).toHaveLength(1);
     expect(reportOnly[0].event.source).toBe("report");
+  });
+
+  it("moves terminal archived task_status after stale memory events for completed tasks", async () => {
+    appendEvent("task-archive", {
+      type: "tool_call",
+      source: "scan",
+      seq: 0,
+      ts: "2026-04-30T00:00:02Z",
+      tool: "read",
+      args_summary: "stale memory event",
+    } as any);
+
+    const events = await loadTaskEvents({ taskId: "task-archive", taskState: "completed", source: "all" });
+    const last = events.at(-1)?.event as any;
+
+    expect(last.type).toBe("task_status");
+    expect(last.status).toBe("completed");
   });
 
   it("uses memory-only fast path for running tasks with source filtering", async () => {

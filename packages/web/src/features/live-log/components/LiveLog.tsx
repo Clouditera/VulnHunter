@@ -206,11 +206,16 @@ export function LiveLog({ taskId, taskState }: Props) {
           const prefix = `${event.tool}: `;
           if (args.startsWith(prefix)) args = args.slice(prefix.length);
           setLatestTool(args ? `${event.tool} → ${args}` : event.tool);
-        } else if (event.type === "stage") {
+        } else if (
+          event.type === "stage" ||
+          event.type === "stage_start" ||
+          event.type === "stage_end"
+        ) {
           // stage events may carry the stage name in `stage`, `name`, or
           // `state` depending on producer; use whichever is present.
           const label = event.stage || event.name || event.state || "";
-          setLatestTool(label ? `stage → ${label}` : "stage");
+          const suffix = event.type === "stage_start" ? " starting" : event.type === "stage_end" ? " done" : "";
+          setLatestTool(label ? `stage → ${label}${suffix}` : "stage");
         } else if (event.type === "poc_output") {
           const msg = event.message || "";
           const truncated = msg.length > 60 ? msg.slice(0, 57) + "…" : msg;
@@ -223,10 +228,8 @@ export function LiveLog({ taskId, taskState }: Props) {
           const raw = event.message || event.text || "";
           const msg = raw.length > 80 ? raw.slice(0, 77) + "…" : raw;
           setLatestTool(msg ? `error → ${msg}` : "error");
-        } else if (event.type === "task" && !latestTool) {
-          // Bootstrap value so the strip doesn't say "等待事件…" once we
-          // already have a task-started event.
-          setLatestTool("task → started");
+        } else if (event.type === "task" || event.type === "task_status") {
+          setLatestTool(formatTaskStatusSummary(event));
         }
       } catch {}
     };
