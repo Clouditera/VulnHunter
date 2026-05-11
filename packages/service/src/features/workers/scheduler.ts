@@ -26,6 +26,70 @@ import { onEvalContainerDie, onPocRunContainerDie, tickPocScheduler } from "../p
 import { notify } from "../notifications/index.js";
 import type { ServiceConfig } from "../../infra/config.js";
 
+export function summarizeExecutionEvents(lines: string[]): {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  toolCallCount: number;
+  stageCount: number;
+  flowStagesTotal: number;
+  flowStagesCompleted: number;
+  flowStagesFailed: number;
+} {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheWriteTokens = 0;
+  let totalTokens = 0;
+  let toolCallCount = 0;
+  let stageCount = 0;
+  let flowStagesTotal = 0;
+  let flowStagesCompleted = 0;
+  let flowStagesFailed = 0;
+
+  for (const line of lines) {
+    try {
+      const ev = JSON.parse(line);
+      if (ev.event === "stage_done" || ev.type === "stage_end") {
+        stageCount++;
+        const input = Number(ev.input_tokens ?? ev.tokens_in ?? 0) || 0;
+        const output = Number(ev.output_tokens ?? ev.tokens_out ?? 0) || 0;
+        const cacheRead = Number(ev.cache_read_tokens ?? ev.tokens_cache_read ?? 0) || 0;
+        const cacheWrite = Number(ev.cache_write_tokens ?? ev.tokens_cache_write ?? 0) || 0;
+        const stageTotal = Number(ev.total_tokens ?? ev.tokens_total ?? 0) || 0;
+        const computedStageTotal = input + output + cacheRead + cacheWrite;
+
+        inputTokens += input;
+        outputTokens += output;
+        cacheReadTokens += cacheRead;
+        cacheWriteTokens += cacheWrite;
+        totalTokens += stageTotal > 0 ? Math.max(stageTotal, computedStageTotal) : computedStageTotal;
+        toolCallCount += Number(ev.tools ?? 0) || 0;
+      }
+      if (ev.event === "flow_end") {
+        flowStagesTotal = Number(ev.stages_total ?? 0);
+        flowStagesCompleted = Number(ev.stages_completed ?? 0);
+        flowStagesFailed = Number(ev.stages_failed ?? 0);
+      }
+    } catch { /* skip bad lines */ }
+  }
+
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    totalTokens,
+    toolCallCount,
+    stageCount,
+    flowStagesTotal,
+    flowStagesCompleted,
+    flowStagesFailed,
+  };
+}
+
 export class TaskScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private unsubscribeEvents: (() => void) | null = null;
@@ -305,49 +369,36 @@ export class TaskScheduler {
       const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
       const eventsFile = join(eventsDir, "youngflow.service.jsonl");
       const lines = readFileSync(eventsFile, "utf-8").split("\n").filter(Boolean);
-      let totalTokensIn = 0;
-      let totalTokensOut = 0;
-      let toolCallCount = 0;
-      let stageCount = 0;
-      let flowStagesTotal = 0;
-      let flowStagesCompleted = 0;
-      let flowStagesFailed = 0;
-
-      for (const line of lines) {
-        try {
-          const ev = JSON.parse(line);
-          if (ev.event === "stage_done" || ev.type === "stage_end") {
-            stageCount++;
-            totalTokensIn += ev.tokens_in ?? 0;
-            totalTokensOut += ev.tokens_out ?? 0;
-            toolCallCount += ev.tools ?? 0;
-          }
-          if (ev.event === "flow_end") {
-            flowStagesTotal = Number(ev.stages_total ?? 0);
-            flowStagesCompleted = Number(ev.stages_completed ?? 0);
-            flowStagesFailed = Number(ev.stages_failed ?? 0);
-          }
-        } catch { /* skip bad lines */ }
-      }
+      const summary = summarizeExecutionEvents(lines);
 
       metadata.execution = {
         model: undefined, // filled from cred below
-        stages_completed: flowStagesCompleted || stageCount,
-        stages_total: flowStagesTotal || stageCount,
-        stages_failed: flowStagesFailed,
-        warning: flowStagesFailed > 0 ? `${flowStagesFailed} agent/stage failures` : undefined,
-        total_tokens_in: totalTokensIn,
-        total_tokens_out: totalTokensOut,
-        tool_call_count: toolCallCount,
+        stages_completed: summary.flowStagesCompleted || summary.stageCount,
+        stages_total: summary.flowStagesTotal || summary.stageCount,
+        stages_failed: summary.flowStagesFailed,
+        warning: summary.flowStagesFailed > 0 ? `${summary.flowStagesFailed} agent/stage failures` : undefined,
+        input_tokens: summary.inputTokens,
+        output_tokens: summary.outputTokens,
+        cache_read_tokens: summary.cacheReadTokens,
+        cache_write_tokens: summary.cacheWriteTokens,
+        total_tokens: summary.totalTokens,
+        total_tokens_in: summary.inputTokens,
+        total_tokens_out: summary.outputTokens,
+        tool_call_count: summary.toolCallCount,
       };
 
       // Update numeric columns too
       await db`
         UPDATE tasks SET
-          total_tokens_in = ${totalTokensIn},
-          total_tokens_out = ${totalTokensOut},
-          tool_call_count = ${toolCallCount},
-          stage_count = ${stageCount}
+          total_tokens_in = ${summary.inputTokens},
+          total_tokens_out = ${summary.outputTokens},
+          input_tokens = ${summary.inputTokens},
+          output_tokens = ${summary.outputTokens},
+          cache_read_tokens = ${summary.cacheReadTokens},
+          cache_write_tokens = ${summary.cacheWriteTokens},
+          total_tokens = ${summary.totalTokens},
+          tool_call_count = ${summary.toolCallCount},
+          stage_count = ${summary.stageCount}
         WHERE id = ${taskId}
       `;
     } catch {

@@ -43,6 +43,11 @@ export interface TaskExecution {
   warning?: string | null;
   total_tokens_in?: number | null;
   total_tokens_out?: number | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cache_read_tokens?: number | null;
+  cache_write_tokens?: number | null;
+  total_tokens?: number | null;
   tool_call_count?: number | null;
 }
 
@@ -62,6 +67,11 @@ export interface Task {
   duration_ms: number | null;
   total_tokens_in: number;
   total_tokens_out: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  total_tokens: number;
   tool_call_count: number;
   stage_count: number;
   created_at: string;

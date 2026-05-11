@@ -34,9 +34,28 @@ export function translateYoungflowEvent(raw: Record<string, unknown>, source: st
     case "stage_start":
       stageElapsedTracker.delete(`${source}:${stage}`);
       return { ...base, type: "stage_start" } as LiveLogEvent;
-    case "stage_done":
-      return { ...base, type: "stage_end", status: (raw.exit_code ?? 0) === 0 ? "success" : "error",
-        duration_ms: (raw.duration_ms as number) ?? 0 } as LiveLogEvent;
+    case "stage_done": {
+      const inputTokens = Number(raw.input_tokens ?? raw.tokens_in ?? 0) || 0;
+      const outputTokens = Number(raw.output_tokens ?? raw.tokens_out ?? 0) || 0;
+      const cacheReadTokens = Number(raw.cache_read_tokens ?? raw.tokens_cache_read ?? 0) || 0;
+      const cacheWriteTokens = Number(raw.cache_write_tokens ?? raw.tokens_cache_write ?? 0) || 0;
+      const computedTotal = inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
+      const totalTokens = Math.max(Number(raw.total_tokens ?? raw.tokens_total ?? 0) || 0, computedTotal);
+      return {
+        ...base,
+        type: "stage_end",
+        status: (raw.exit_code ?? 0) === 0 ? "success" : "error",
+        duration_ms: (raw.duration_ms as number) ?? 0,
+        turns: Number(raw.turns ?? 0) || 0,
+        tokens_in: inputTokens,
+        tokens_out: outputTokens,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        cache_read_tokens: cacheReadTokens,
+        cache_write_tokens: cacheWriteTokens,
+        total_tokens: totalTokens,
+      } as LiveLogEvent;
+    }
     case "stage_skipped":
       return { ...base, type: "stage_end", status: "success", duration_ms: 0 } as LiveLogEvent;
     case "tool_call": {

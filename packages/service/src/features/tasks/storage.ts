@@ -15,6 +15,11 @@ export interface DbTask {
   failure_reason: string | null;
   total_tokens_in: number;
   total_tokens_out: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  total_tokens: number;
   tool_call_count: number;
   stage_count: number;
   auto_skill_ids: string[];

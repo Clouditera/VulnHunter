@@ -141,6 +141,13 @@ const ZH: Record<string, string> = {
   "overview.model": "模型",
   "overview.concurrency": "并发度",
   "overview.tokenUsage": "Token 用量",
+  "overview.aiUsage": "AI 用量",
+  "overview.totalTokens": "总 Token 用量",
+  "overview.inputTokensShort": "输入",
+  "overview.outputTokensShort": "输出",
+  "overview.cacheReadTokensShort": "缓存读取",
+  "overview.cacheWriteTokensShort": "缓存写入",
+  "overview.tokenUsageTooltip": "总 Token 用量包含输入、输出、缓存读取和缓存写入 Token。不同模型服务商对缓存 Token 的计费方式不同，实际费用以服务商账单为准。",
   "overview.toolCalls": "工具调用",
 
   // Overview
@@ -725,6 +732,13 @@ const EN: Record<string, string> = {
   "overview.model": "Model",
   "overview.concurrency": "Concurrency",
   "overview.tokenUsage": "Token Usage",
+  "overview.aiUsage": "AI Usage",
+  "overview.totalTokens": "Total Tokens",
+  "overview.inputTokensShort": "Input",
+  "overview.outputTokensShort": "Output",
+  "overview.cacheReadTokensShort": "Cache read",
+  "overview.cacheWriteTokensShort": "Cache write",
+  "overview.tokenUsageTooltip": "Total Tokens includes input, output, cache read, and cache write tokens. Different model providers bill cached tokens differently; actual cost follows the provider bill.",
   "overview.toolCalls": "Tool Calls",
 
   // Overview

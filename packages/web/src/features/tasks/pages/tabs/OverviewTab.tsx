@@ -147,9 +147,7 @@ export function OverviewTab() {
   const profile = task.metadata?.profile ?? {};
   const exec = task.metadata?.execution ?? {};
 
-  const totalTokens =
-    (Number(exec.total_tokens_in ?? task.total_tokens_in ?? 0) || 0) +
-    (Number(exec.total_tokens_out ?? task.total_tokens_out ?? 0) || 0);
+  const tokenUsage = getTokenUsage(task);
   const toolCalls = Number(exec.tool_call_count ?? task.tool_call_count ?? 0);
 
   // All findings sorted by severity weight desc
@@ -440,15 +438,48 @@ export function OverviewTab() {
             until the backend starts writing scheduler.max_parallel into
             tasks.metadata.execution. */}
         <KV label={i18n.t("overview.concurrency")} value={null} />
-        <KV
-          label={i18n.t("overview.tokenUsage")}
-          value={totalTokens > 0 ? formatTokens(totalTokens) : null}
-        />
+        <TokenUsageBlock usage={tokenUsage} />
         <KV
           label={i18n.t("overview.toolCalls")}
           value={toolCalls > 0 ? toolCalls.toLocaleString() : null}
         />
       </Card>
+    </div>
+  );
+}
+
+function getTokenUsage(task: Task) {
+  const exec = task.metadata?.execution ?? {};
+  const input = Number(exec.input_tokens ?? task.input_tokens ?? exec.total_tokens_in ?? task.total_tokens_in ?? 0) || 0;
+  const output = Number(exec.output_tokens ?? task.output_tokens ?? exec.total_tokens_out ?? task.total_tokens_out ?? 0) || 0;
+  const cacheRead = Number(exec.cache_read_tokens ?? task.cache_read_tokens ?? 0) || 0;
+  const cacheWrite = Number(exec.cache_write_tokens ?? task.cache_write_tokens ?? 0) || 0;
+  const computed = input + output + cacheRead + cacheWrite;
+  const total = Number(exec.total_tokens ?? task.total_tokens ?? 0) || computed;
+  return { input, output, cacheRead, cacheWrite, total: Math.max(total, computed) };
+}
+
+function TokenUsageBlock({ usage }: { usage: ReturnType<typeof getTokenUsage> }) {
+  if (usage.total <= 0) {
+    return <KV label={i18n.t("overview.aiUsage")} value={null} />;
+  }
+  return (
+    <div
+      title={i18n.t("overview.tokenUsageTooltip")}
+      style={{ padding: "10px 0", borderBottom: "1px solid var(--divider)" }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "12px" }}>
+        <span style={{ color: "var(--text-secondary)", fontSize: "13px" }}>{i18n.t("overview.aiUsage")}</span>
+        <span style={{ fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
+          {formatTokens(usage.total)}
+        </span>
+      </div>
+      <div style={{ textAlign: "right", fontSize: "12px", color: "var(--text-secondary)", fontWeight: 600, marginTop: "2px" }}>
+        {i18n.t("overview.totalTokens")}
+      </div>
+      <div style={{ textAlign: "right", fontSize: "11px", color: "var(--text-muted, var(--text-secondary))", marginTop: "6px" }}>
+        {i18n.t("overview.inputTokensShort")} {formatTokens(usage.input)} · {i18n.t("overview.outputTokensShort")} {formatTokens(usage.output)} · {i18n.t("overview.cacheReadTokensShort")} {formatTokens(usage.cacheRead)} · {i18n.t("overview.cacheWriteTokensShort")} {formatTokens(usage.cacheWrite)}
+      </div>
     </div>
   );
 }
