@@ -38,12 +38,12 @@ const BTN: CSSProperties = {
   cursor: "pointer",
 };
 
-export function ArtifactCard({ artifact }: { artifact: ChatArtifact }) {
+export function ArtifactCard({ artifact, onSelect }: { artifact: ChatArtifact; onSelect?: (artifact: ChatArtifact) => void }) {
   const size = formatBytes(artifact.size_bytes);
   const canCopy = !!artifact.preview && /^(text\/|application\/(json|xml)|.*markdown)/i.test(artifact.mime_type);
 
   return (
-    <div data-testid="chat-artifact-card" style={CARD}>
+    <div data-testid="chat-artifact-card" style={{ ...CARD, cursor: onSelect ? "pointer" : undefined }} onClick={() => onSelect?.(artifact)}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: "10px" }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: "13px", color: "var(--text-primary)" }}>{artifact.title}</div>

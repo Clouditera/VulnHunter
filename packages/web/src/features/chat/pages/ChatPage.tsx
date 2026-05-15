@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { SessionList } from "../components/SessionList.js";
 import { MessageFlow } from "../components/MessageFlow.js";
-import { ArtifactPanel } from "../components/ArtifactPanel.js";
+import { ArtifactWorkspace } from "../components/ArtifactWorkspace.js";
 import { useChatMock } from "../hooks/useChatMock.js";
 import { useChat } from "../hooks/useChat.js";
 
@@ -82,7 +82,7 @@ export function ChatPage() {
         onSend={sendPrompt}
         onAbort={abort}
       />
-      <ArtifactPanel messages={messages} persistedArtifacts={artifacts} />
+      <ArtifactWorkspace messages={messages} persistedArtifacts={artifacts} streaming={streaming} />
     </div>
   );
 }
