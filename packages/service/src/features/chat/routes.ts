@@ -6,7 +6,7 @@ import { getOrCreateSession, destroySession } from "./chat-session.js";
 import { logger } from "../../infra/logger.js";
 import { loadConfig } from "../../infra/config.js";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join, extname } from "node:path";
+import { join, extname, basename } from "node:path";
 import { createHash } from "node:crypto";
 
 export const chatRouter = new Hono();
@@ -183,4 +183,76 @@ chatRouter.post("/sessions/:id/upload", async (c) => {
     mimeType: file.type || "application/octet-stream",
     size: buffer.length,
   });
+});
+
+// GET /api/chat/sessions/:id/artifacts — durable presented artifacts for this session
+chatRouter.get("/sessions/:id/artifacts", async (c) => {
+  const session = await getOwnedSession(c);
+  if (!session) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+
+  const { getDb } = await import("../../infra/db/client.js");
+  const db = getDb();
+  const artifacts = await db`
+    SELECT id, title, original_name, filename, mime_type, size_bytes, created_at
+    FROM chat_artifacts
+    WHERE session_id = ${session.id}
+      AND user_id = ${session.user_id}
+      AND tenant_id = ${session.tenant_id}
+      AND kind = 'presented'
+    ORDER BY created_at DESC
+  `;
+
+  return c.json({ artifacts: artifacts.map((a: any) => ({
+    artifact_id: a.id,
+    title: a.title ?? a.original_name,
+    filename: a.filename,
+    original_name: a.original_name,
+    mime_type: a.mime_type,
+    size_bytes: Number(a.size_bytes ?? 0),
+    download_url: `/api/chat/sessions/${session.id}/artifacts/${a.id}/download`,
+    created_at: a.created_at,
+  })) });
+});
+
+// GET /api/chat/sessions/:id/artifacts/:artifactId/download — authenticated artifact download
+chatRouter.get("/sessions/:id/artifacts/:artifactId/download", async (c) => {
+  const session = await getOwnedSession(c);
+  if (!session) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+
+  const { getDb } = await import("../../infra/db/client.js");
+  const db = getDb();
+  const rows = await db<any[]>`
+    SELECT id, filename, mime_type, minio_key
+    FROM chat_artifacts
+    WHERE id = ${c.req.param("artifactId")}
+      AND session_id = ${session.id}
+      AND user_id = ${session.user_id}
+      AND tenant_id = ${session.tenant_id}
+      AND kind = 'presented'
+    LIMIT 1
+  `;
+  const artifact = rows[0];
+  if (!artifact) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+
+  try {
+    const config = loadConfig();
+    const { getMinio } = await import("../../infra/minio/client.js");
+    const stream = await getMinio().getObject(config.minio.bucket, artifact.minio_key);
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+      stream.on("end", resolve);
+      stream.on("error", reject);
+    });
+    const filename = basename(artifact.filename || "artifact").replace(/["\\]/g, "_");
+    return new Response(Buffer.concat(chunks), {
+      headers: {
+        "Content-Type": artifact.mime_type || "application/octet-stream",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+      },
+    });
+  } catch (err) {
+    logger.error({ err, artifactId: artifact.id }, "Failed to download chat artifact");
+    return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  }
 });

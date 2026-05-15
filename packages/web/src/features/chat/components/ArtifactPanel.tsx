@@ -3,6 +3,8 @@ import type { CSSProperties } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import type { ArtifactRef, ChatMessage } from "../types.js";
+import { extractChatArtifacts } from "../artifacts.js";
+import { ArtifactCard } from "./ArtifactCard.js";
 
 /**
  * Right column (360px) — "References" panel.
@@ -53,6 +55,7 @@ const CARD: CSSProperties = {
 };
 
 export function ArtifactPanel({ messages }: { messages: ChatMessage[] }) {
+  const artifacts = useMemo(() => extractChatArtifacts(messages), [messages]);
   const refs = useMemo(() => extractRefs(messages), [messages]);
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -74,7 +77,7 @@ export function ArtifactPanel({ messages }: { messages: ChatMessage[] }) {
         >
           {i18n.t("chat.artifact.title")}
         </span>
-        {refs.length > 0 ? (
+        {artifacts.length + refs.length > 0 ? (
           <span
             style={{
               padding: "1px 8px",
@@ -86,13 +89,13 @@ export function ArtifactPanel({ messages }: { messages: ChatMessage[] }) {
               lineHeight: 1.4,
             }}
           >
-            {refs.length}
+            {artifacts.length + refs.length}
           </span>
         ) : null}
       </header>
 
       <div style={CONTENT}>
-        {refs.length === 0 ? (
+        {artifacts.length === 0 && refs.length === 0 ? (
           <div
             data-testid="chat-artifact-empty"
             style={{
@@ -106,7 +109,9 @@ export function ArtifactPanel({ messages }: { messages: ChatMessage[] }) {
             {i18n.t("chat.artifact.empty")}
           </div>
         ) : (
-          refs.map((r) => (
+          <>
+          {artifacts.map((a) => <ArtifactCard key={a.artifact_id} artifact={a} />)}
+          {refs.map((r) => (
             <div
               key={r.key}
               data-testid="chat-artifact-card"
@@ -172,7 +177,8 @@ export function ArtifactPanel({ messages }: { messages: ChatMessage[] }) {
                 Referenced in message #{r.source_message_id.slice(0, 4)}
               </div>
             </div>
-          ))
+          ))}
+          </>
         )}
       </div>
     </aside>

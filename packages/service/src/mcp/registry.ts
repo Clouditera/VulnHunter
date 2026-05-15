@@ -54,7 +54,7 @@ export function registerChatTools(server: McpServer, ctx: McpContext): void {
   server.tool("control-task", controlTaskSchema, async (args) => controlTask(args as any, ctx));
   server.tool("generate-report", generateReportSchema, async (args) => generateReport(args as any, ctx));
   server.tool("generate-poc", generatePocSchema, async (args) => generatePoc(args as any, ctx));
-  server.tool("present-artifact", presentArtifactSchema, async (args) => presentArtifact(args as any));
+  server.tool("present-artifact", presentArtifactSchema, async (args) => presentArtifact(args as any, ctx));
 
   // TODO P1: prepare-source-context
   // TODO P2: review-finding

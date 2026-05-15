@@ -183,3 +183,15 @@ export interface ArtifactRef {
   /** Source message id that produced this ref (for jump-to-source). */
   source_message_id: string;
 }
+
+export interface ChatArtifact {
+  type: "chat_artifact";
+  artifact_id: string;
+  title: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  preview?: string;
+  download_url: string;
+  created_at?: string;
+}

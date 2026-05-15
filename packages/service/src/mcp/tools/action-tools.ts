@@ -2,6 +2,9 @@
  * MCP Action Tools — P1 tools for Chat Agent platform operations.
  */
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { basename, join, normalize, resolve } from "node:path";
 import * as taskStorage from "../../features/tasks/storage.js";
 import { cancelTask, pauseTask, restartTask, resumeTask, TaskControlError } from "../../features/tasks/control-service.js";
 import type { McpContext } from "../context.js";
@@ -174,43 +177,61 @@ export async function presentArtifact(args: {
   content?: string;
   source_path?: string;
   mime_type?: string;
-}): Promise<ToolResult> {
+}, ctx: McpContext): Promise<ToolResult> {
+  if (ctx.actorType !== "chat" || !ctx.sessionId) {
+    return text("Error: present-artifact is only available in Chat sessions.");
+  }
   if (!args.content && !args.source_path) {
     return text("Error: Either content or source_path is required.");
   }
 
-  // Validate source_path: must be within /workspace and not contain traversal
+  const config = (await import("../../infra/config.js")).loadConfig();
+  const safeFilename = basename(args.filename || "artifact.txt").replace(/[^a-zA-Z0-9._-]/g, "_") || "artifact.txt";
+  const mimeType = args.mime_type ?? "text/plain";
+  let buffer: Buffer;
+  let workspacePath: string | null = null;
+
   if (args.source_path) {
-    const { resolve, normalize } = await import("node:path");
     const normalized = normalize(args.source_path);
-    // Reject absolute paths outside /workspace and any path traversal
-    if (!normalized.startsWith("/workspace/") && !normalized.startsWith("/workspace")) {
+    if (!normalized.startsWith("/workspace/")) {
       return text("Error: source_path must be within /workspace/.");
     }
-    if (normalized.includes("..")) {
-      return text("Error: Path traversal (..) is not allowed.");
+    const relative = normalized.replace(/^\/workspace\//, "");
+    if (!relative || relative.startsWith("..") || relative.includes("/../")) {
+      return text("Error: Path traversal is not allowed.");
     }
-    // Resolve and re-check
-    const resolved = resolve("/workspace", normalized.replace(/^\/workspace\/?/, ""));
-    if (!resolved.startsWith("/workspace")) {
-      return text("Error: source_path resolves outside /workspace.");
+    const sessionRoot = resolve(config.dataDir, "chat-sessions", ctx.sessionId);
+    const hostPath = resolve(join(sessionRoot, relative));
+    if (!hostPath.startsWith(`${sessionRoot}/`) && hostPath !== sessionRoot) {
+      return text("Error: source_path resolves outside the chat session workspace.");
     }
+    buffer = await readFile(hostPath);
+    workspacePath = normalized;
+  } else {
+    buffer = Buffer.from(args.content ?? "", "utf8");
   }
 
-  if (args.content) {
-    return text([
-      `📎 **${args.title}**`,
-      `_${args.filename}_ (${args.mime_type ?? "text/plain"})`,
-      "",
-      "---",
-      args.content,
-    ].join("\n"));
-  }
+  const artifactId = randomUUID();
+  const minioKey = `chat-artifacts/${ctx.sessionId}/presented/${artifactId}/${safeFilename}`;
+  const { getMinio } = await import("../../infra/minio/client.js");
+  await getMinio().putObject(config.minio.bucket, minioKey, buffer);
 
-  return text([
-    `📎 **${args.title}**`,
-    `_${args.filename}_ at ${args.source_path}`,
-    ``,
-    `File prepared at workspace path. Use the \`read\` tool to view its contents.`,
-  ].join("\n"));
+  const { getDb } = await import("../../infra/db/client.js");
+  const db = getDb();
+  await db`
+    INSERT INTO chat_artifacts (id, tenant_id, session_id, user_id, kind, title, original_name, filename, mime_type, size_bytes, minio_key, workspace_path, metadata)
+    VALUES (${artifactId}, ${ctx.tenantId}, ${ctx.sessionId}, ${ctx.userId}, 'presented', ${args.title}, ${args.filename}, ${safeFilename}, ${mimeType}, ${buffer.length}, ${minioKey}, ${workspacePath}, ${JSON.stringify({ source_path: args.source_path ?? null })}::jsonb)
+  `;
+
+  const previewText = buffer.toString("utf8", 0, Math.min(buffer.length, 2000));
+  return text(JSON.stringify({
+    type: "chat_artifact",
+    artifact_id: artifactId,
+    title: args.title,
+    filename: safeFilename,
+    mime_type: mimeType,
+    size_bytes: buffer.length,
+    preview: previewText,
+    download_url: `/api/chat/sessions/${ctx.sessionId}/artifacts/${artifactId}/download`,
+  }, null, 2));
 }

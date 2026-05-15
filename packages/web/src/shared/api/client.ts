@@ -479,6 +479,10 @@ export const api = {
           }>;
         });
       },
+      artifacts: (id: string) =>
+        request<{ artifacts: ChatArtifactApi[] }>(`/api/chat/sessions/${id}/artifacts`),
+      artifactDownloadUrl: (id: string, artifactId: string) =>
+        `/api/chat/sessions/${id}/artifacts/${artifactId}/download`,
       abort: (id: string) =>
         request<{ ok: boolean }>(`/api/chat/sessions/${id}/abort`, {
           method: "POST",
@@ -914,6 +918,17 @@ export interface ChatMessageApi {
   seq: number;
   created_at: string;
   tool_calls?: ChatToolCallApi[];
+}
+
+export interface ChatArtifactApi {
+  artifact_id: string;
+  title: string;
+  filename: string;
+  original_name?: string;
+  mime_type: string;
+  size_bytes: number;
+  download_url: string;
+  created_at?: string;
 }
 
 export interface DashboardData {

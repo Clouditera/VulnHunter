@@ -3,6 +3,8 @@ import type { CSSProperties } from "react";
 import type { ChatImageAttachment, ChatMessage } from "../types.js";
 import { ToolCallBlock } from "./ToolCallBlock.js";
 import { Markdown } from "./Markdown.js";
+import { ArtifactCard } from "./ArtifactCard.js";
+import { extractChatArtifacts, stripChatArtifactJson } from "../artifacts.js";
 
 /**
  * A single message rendered inside the MessageFlow stream.
@@ -116,6 +118,9 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
     );
   }
 
+  const artifacts = extractChatArtifacts([message]);
+  const visibleContent = stripChatArtifactJson(message.content);
+
   return (
     <div
       data-testid="chat-message"
@@ -134,9 +139,10 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
           ))}
           <div
             data-testid="chat-message-content"
-            style={message.content ? AGENT_BUBBLE : undefined}
+            style={visibleContent || artifacts.length ? AGENT_BUBBLE : undefined}
           >
-            {message.content ? <Markdown content={message.content} /> : null}
+            {visibleContent ? <Markdown content={visibleContent} /> : null}
+            {artifacts.map((a) => <ArtifactCard key={a.artifact_id} artifact={a} />)}
             {message.streaming ? (
               <span
                 aria-hidden
