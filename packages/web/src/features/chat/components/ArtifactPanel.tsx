@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
-import type { ArtifactRef, ChatMessage } from "../types.js";
+import type { ArtifactRef, ChatArtifact, ChatMessage } from "../types.js";
 import { extractChatArtifacts } from "../artifacts.js";
 import { ArtifactCard } from "./ArtifactCard.js";
 
@@ -54,8 +54,8 @@ const CARD: CSSProperties = {
   transition: "all 0.12s",
 };
 
-export function ArtifactPanel({ messages }: { messages: ChatMessage[] }) {
-  const artifacts = useMemo(() => extractChatArtifacts(messages), [messages]);
+export function ArtifactPanel({ messages, persistedArtifacts = [] }: { messages: ChatMessage[]; persistedArtifacts?: ChatArtifact[] }) {
+  const artifacts = useMemo(() => mergeArtifacts(persistedArtifacts, extractChatArtifacts(messages)), [persistedArtifacts, messages]);
   const refs = useMemo(() => extractRefs(messages), [messages]);
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -114,7 +114,7 @@ export function ArtifactPanel({ messages }: { messages: ChatMessage[] }) {
           {refs.map((r) => (
             <div
               key={r.key}
-              data-testid="chat-artifact-card"
+              data-testid="chat-reference-card"
               data-kind={r.kind}
               data-selected={selected === r.key || undefined}
               onClick={() => setSelected((s) => (s === r.key ? null : r.key))}
@@ -198,6 +198,19 @@ export function ArtifactPanel({ messages }: { messages: ChatMessage[] }) {
  * Deduped by normalised key so repeated mentions collapse into a
  * single card. Preserves discovery order so older refs stay on top.
  */
+function mergeArtifacts(...groups: ChatArtifact[][]): ChatArtifact[] {
+  const out: ChatArtifact[] = [];
+  const seen = new Set<string>();
+  for (const group of groups) {
+    for (const artifact of group) {
+      if (seen.has(artifact.artifact_id)) continue;
+      seen.add(artifact.artifact_id);
+      out.push(artifact);
+    }
+  }
+  return out;
+}
+
 function extractRefs(messages: ChatMessage[]): ArtifactRef[] {
   const out: ArtifactRef[] = [];
   const seen = new Set<string>();

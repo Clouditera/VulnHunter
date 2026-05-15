@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type ChatMessageApi, type ChatSessionApi } from "../../../shared/api/client.js";
+import { api, type ChatArtifactApi, type ChatMessageApi, type ChatSessionApi } from "../../../shared/api/client.js";
 import type {
+  ChatArtifact,
   ChatImageAttachment,
   ChatMessage,
   ChatSession,
@@ -57,6 +58,8 @@ export function useChat() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messagesBySession, setMessagesBySession] =
     useState<Record<string, ChatMessage[]>>({});
+  const [artifactsBySession, setArtifactsBySession] =
+    useState<Record<string, ChatArtifact[]>>({});
   const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -131,6 +134,28 @@ export function useChat() {
       mounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
+  /* --------------------------------------------------------------------- */
+  /*  Load durable artifacts for active session                             */
+  /* --------------------------------------------------------------------- */
+
+  useEffect(() => {
+    if (!activeId) return;
+    let mounted = true;
+    api.chat.sessions
+      .artifacts(activeId)
+      .then((res) => {
+        if (!mounted) return;
+        setArtifactsBySession((prev) => ({ ...prev, [activeId]: res.artifacts.map(toDomainArtifact) }));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setArtifactsBySession((prev) => ({ ...prev, [activeId]: [] }));
+      });
+    return () => {
+      mounted = false;
+    };
   }, [activeId]);
 
   /* --------------------------------------------------------------------- */
@@ -390,6 +415,7 @@ export function useChat() {
   /* --------------------------------------------------------------------- */
 
   const messages = activeId ? messagesBySession[activeId] ?? [] : [];
+  const artifacts = activeId ? artifactsBySession[activeId] ?? [] : [];
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeId) ?? null,
     [sessions, activeId],
@@ -501,6 +527,7 @@ export function useChat() {
     activeId,
     activeSession,
     messages,
+    artifacts,
     streaming,
     loading,
     lastError,
@@ -554,6 +581,19 @@ function toDomainSession(s: ChatSessionApi): ChatSession {
     preview: s.preview ?? undefined,
     worker_state: s.worker_state ?? "idle",
     credential_id: s.credential_id ?? null,
+  };
+}
+
+function toDomainArtifact(a: ChatArtifactApi): ChatArtifact {
+  return {
+    type: "chat_artifact",
+    artifact_id: a.artifact_id,
+    title: a.title,
+    filename: a.filename,
+    mime_type: a.mime_type,
+    size_bytes: a.size_bytes,
+    download_url: a.download_url,
+    created_at: a.created_at,
   };
 }
 

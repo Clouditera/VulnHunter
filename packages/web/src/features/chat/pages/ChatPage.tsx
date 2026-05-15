@@ -49,6 +49,7 @@ export function ChatPage() {
     activeId,
     activeSession,
     messages,
+    artifacts,
     streaming,
     selectSession,
     createSession,
@@ -81,7 +82,7 @@ export function ChatPage() {
         onSend={sendPrompt}
         onAbort={abort}
       />
-      <ArtifactPanel messages={messages} />
+      <ArtifactPanel messages={messages} persistedArtifacts={artifacts} />
     </div>
   );
 }
