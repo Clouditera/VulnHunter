@@ -66,6 +66,17 @@ export async function updateSessionCredential(id: string, credentialId: string):
   await db`UPDATE chat_sessions SET credential_id = ${credentialId}, updated_at = now() WHERE id = ${id}`;
 }
 
+export async function updateSessionTitleIfDefault(id: string, title: string, defaultTitles: string[]): Promise<boolean> {
+  const db = getDb();
+  const rows = await db<{ id: string }[]>`
+    UPDATE chat_sessions
+    SET title = ${title}, updated_at = now()
+    WHERE id = ${id} AND (title IS NULL OR btrim(title) = ANY(${defaultTitles}))
+    RETURNING id
+  `;
+  return rows.length > 0;
+}
+
 export async function appendMessage(params: {
   sessionId: string;
   role: "user" | "assistant";

@@ -18,6 +18,7 @@ import { getDefaultCredential, getCredentialById, listCredentials } from "../set
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { credentialToWorkerEnv } from "../settings/credential-env.js";
 import { getSession, appendMessage } from "./storage.js";
+import { maybeGenerateTitle } from "./title-generation.js";
 import { loadConfig } from "../../infra/config.js";
 import { notify } from "../notifications/index.js";
 import { logger } from "../../infra/logger.js";
@@ -379,7 +380,14 @@ export class ChatSession {
           role: "assistant",
           content: this.assistantContent,
           toolCalls: this.toolCalls.length > 0 ? this.toolCalls : undefined,
-        }).catch((err) => logger.warn({ err }, "Failed to persist assistant message"));
+        })
+          .then(() => {
+            if (this.bridgeUrl) {
+              maybeGenerateTitle({ sessionId: this.sessionId, bridgeUrl: this.bridgeUrl })
+                .catch((err) => logger.debug({ err, sessionId: this.sessionId }, "Chat title generation failed"));
+            }
+          })
+          .catch((err) => logger.warn({ err }, "Failed to persist assistant message"));
       }
     }
 

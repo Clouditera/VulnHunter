@@ -49,6 +49,7 @@ type NotificationEvent =
   | { type: "task_state"; taskId: string; state: string }
   | { type: "findings_indexed"; taskId: string; count: number }
   | { type: "chat_worker_state"; sessionId: string; state: string }
+  | { type: "chat_session_title"; sessionId: string; title: string }
   | { type: string; [k: string]: unknown };
 
 function handleEvent(qc: QueryClient, evt: NotificationEvent) {
@@ -79,8 +80,9 @@ function handleEvent(qc: QueryClient, evt: NotificationEvent) {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       return;
     }
-    case "chat_worker_state": {
-      // Chat sessions list shows a worker-running badge; refresh it.
+    case "chat_worker_state":
+    case "chat_session_title": {
+      // Chat sessions list shows title/worker-running badge; refresh it.
       qc.invalidateQueries({ queryKey: ["chat-sessions"] });
       if ("sessionId" in evt && typeof evt.sessionId === "string") {
         qc.invalidateQueries({

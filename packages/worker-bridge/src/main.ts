@@ -7,8 +7,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
-import { writeFileSync, mkdirSync, existsSync, createWriteStream } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, createWriteStream, mkdtempSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { WebSocketServer, WebSocket } from "ws";
 
 const PORT = Number(process.env.BRIDGE_PORT ?? "8080");
@@ -261,6 +262,87 @@ function sendToPi(command: Record<string, unknown>): boolean {
   return true;
 }
 
+function sanitizeTitle(raw: string): string {
+  let title = raw
+    .trim()
+    .replace(/^```[a-zA-Z]*\s*/, "")
+    .replace(/```$/g, "")
+    .trim()
+    .replace(/^标题[:：]\s*/, "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[\"'“”‘’`]/g, "")
+    .replace(/[。！？!?.,，、；;：:]+$/g, "")
+    .trim();
+  title = title.split(/[。！？!?\n]/)[0]?.trim() ?? title;
+  if (title.length > 20) title = title.slice(0, 20).trim();
+  return title;
+}
+
+function extractAssistantText(event: Record<string, any>): string {
+  const message = event.message;
+  if (!message || message.role !== "assistant" || !Array.isArray(message.content)) return "";
+  return message.content
+    .filter((b: any) => b?.type === "text" && typeof b.text === "string")
+    .map((b: any) => b.text)
+    .join("\n");
+}
+
+function generateTitle(messages: Array<{ role: string; content: string }>, credentialId?: string): Promise<string> {
+  return new Promise((resolve) => {
+    const mapping = credentialId ? credProviderMap.get(credentialId) : undefined;
+    const modelStr = mapping
+      ? `${mapping.providerKey}/${mapping.modelId}`
+      : BASE_URL
+        ? `vulnhunt/${MODEL_NAME}`
+        : `${MODEL_PROTO}/${MODEL_NAME}`;
+    const piDir = join(process.env.HOME ?? "/root", ".pi", "agent");
+    const tmpSession = join(mkdtempSync(join(tmpdir(), "vh-chat-title-")), "session.jsonl");
+    const prompt = [
+      "请根据下面第一轮对话生成一个会话标题。",
+      "要求：中文优先，8到20个字；只输出标题本身；不要引号、编号、解释或句末标点；不要写泛泛的“安全分析”“问题咨询”。",
+      "",
+      ...messages.map((m) => `${m.role === "assistant" ? "assistant" : "user"}: ${m.content.slice(0, 1600)}`),
+    ].join("\n");
+    const args = [
+      "-p",
+      "--mode", "json",
+      "--model", modelStr,
+      "--no-skills",
+      "--no-extensions",
+      "--no-prompt-templates",
+      "--no-themes",
+      "--session", tmpSession,
+      "--system-prompt", "你是对话标题生成器。只输出一个简短中文标题，不输出解释。",
+    ];
+    const child = spawn("pi", args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      cwd: "/workspace",
+      env: { ...process.env, PI_CODING_AGENT_DIR: piDir },
+    });
+    let title = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      resolve(title);
+    }, 18_000);
+    const rl = createInterface({ input: child.stdout! });
+    rl.on("line", (line) => {
+      try {
+        const event = JSON.parse(line);
+        if (event.type === "message_end") {
+          const text = extractAssistantText(event);
+          if (text) title = sanitizeTitle(text);
+        }
+      } catch { /* ignore non-json */ }
+    });
+    child.stderr?.on("data", (buf) => console.log(`[title stderr] ${String(buf).trim()}`));
+    child.on("exit", () => {
+      clearTimeout(timer);
+      resolve(title);
+    });
+    child.stdin?.end(prompt + "\n");
+  });
+}
+
 // ─── HTTP Server ───
 
 function handleRequest(req: IncomingMessage, res: ServerResponse): void {
@@ -299,6 +381,33 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     const ok = sendToPi({ type: "abort" });
     res.writeHead(ok ? 200 : 503, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok }));
+    return;
+  }
+
+  if (method === "POST" && url === "/chat/title") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { messages, credentialId } = JSON.parse(body) as { messages?: Array<{ role: string; content: string }>; credentialId?: string };
+        if (!Array.isArray(messages) || messages.length === 0) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "messages required" }));
+          return;
+        }
+        generateTitle(messages, credentialId).then((title) => {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, title }));
+        }).catch((err) => {
+          console.log("[bridge] title generation failed", err);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, title: "" }));
+        });
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "Invalid JSON" }));
+      }
+    });
     return;
   }
 
