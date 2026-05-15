@@ -51,6 +51,16 @@ export async function getSession(id: string): Promise<DbChatSession | null> {
   return rows[0] ?? null;
 }
 
+export async function getSessionForUser(id: string, userId: string): Promise<DbChatSession | null> {
+  const db = getDb();
+  const rows = await db<DbChatSession[]>`
+    SELECT * FROM chat_sessions
+    WHERE id = ${id} AND user_id = ${userId}
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
 export async function deleteSession(id: string): Promise<void> {
   const db = getDb();
   await db`DELETE FROM chat_sessions WHERE id = ${id}`;

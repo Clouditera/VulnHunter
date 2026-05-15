@@ -262,7 +262,7 @@ export const cancelTaskSchema = {
 
 export async function cancelTask(args: {
   task_id: string;
-}): Promise<ToolResult> {
+}, _ctx?: McpContext): Promise<ToolResult> {
   logger.debug({ args }, "MCP cancel-task");
 
   try {

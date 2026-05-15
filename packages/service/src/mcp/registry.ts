@@ -37,7 +37,7 @@ export function registerChatTools(server: McpServer, ctx: McpContext): void {
   server.tool("read-finding", readFindingSchema, async (args) => readFinding(args as any));
   server.tool("list-tasks", listTasksSchema, async (args) => listTasks(args as any));
   server.tool("read-task-metadata", readTaskMetadataSchema, async (args) => readTaskMetadata(args as any));
-  server.tool("cancel-task", cancelTaskSchema, async (args) => cancelTask(args as any));
+  server.tool("cancel-task", cancelTaskSchema, async (args) => cancelTask(args as any, ctx));
   server.tool("create-task", createTaskSchema, async (args) => createMcpTask(args as any, ctx));
 
   // P0 query tools

@@ -13,6 +13,11 @@ export const chatRouter = new Hono();
 chatRouter.use("*", licenseGuard);
 chatRouter.use("*", requireAuth);
 
+async function getOwnedSession(c: any) {
+  const user = c.get("user");
+  return chatStorage.getSessionForUser(c.req.param("id"), user.userId);
+}
+
 // GET /api/chat/sessions
 chatRouter.get("/sessions", async (c) => {
   const user = c.get("user");
@@ -30,24 +35,27 @@ chatRouter.post("/sessions", async (c) => {
 
 // GET /api/chat/sessions/:id
 chatRouter.get("/sessions/:id", async (c) => {
-  const session = await chatStorage.getSession(c.req.param("id"));
+  const session = await getOwnedSession(c);
   if (!session) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   return c.json({ session });
 });
 
 // DELETE /api/chat/sessions/:id
 chatRouter.delete("/sessions/:id", async (c) => {
-  const id = c.req.param("id");
-  await destroySession(id);
-  await chatStorage.deleteSession(id);
+  const session = await getOwnedSession(c);
+  if (!session) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  await destroySession(session.id);
+  await chatStorage.deleteSession(session.id);
   return c.json({ ok: true });
 });
 
 // GET /api/chat/sessions/:id/messages
 chatRouter.get("/sessions/:id/messages", async (c) => {
+  const session = await getOwnedSession(c);
+  if (!session) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   const sinceSeq = c.req.query("since_seq");
   const messages = await chatStorage.listMessages(
-    c.req.param("id"),
+    session.id,
     sinceSeq ? Number(sinceSeq) : undefined,
   );
   return c.json({ messages });
@@ -55,9 +63,9 @@ chatRouter.get("/sessions/:id/messages", async (c) => {
 
 // POST /api/chat/sessions/:id/prompt — send message
 chatRouter.post("/sessions/:id/prompt", async (c) => {
-  const sessionId = c.req.param("id");
-  const session = await chatStorage.getSession(sessionId);
+  const session = await getOwnedSession(c);
   if (!session) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  const sessionId = session.id;
 
   const body = await c.req.json<{ message: string; images?: unknown[] }>();
   if (!body.message?.trim()) {
@@ -85,17 +93,18 @@ chatRouter.post("/sessions/:id/prompt", async (c) => {
 
 // POST /api/chat/sessions/:id/abort
 chatRouter.post("/sessions/:id/abort", async (c) => {
-  const sessionId = c.req.param("id");
-  const session = getOrCreateSession(sessionId);
+  const dbSession = await getOwnedSession(c);
+  if (!dbSession) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  const session = getOrCreateSession(dbSession.id);
   await session.abort();
   return c.json({ ok: true });
 });
 
 // POST /api/chat/sessions/:id/set-model — runtime model switching
 chatRouter.post("/sessions/:id/set-model", async (c) => {
-  const sessionId = c.req.param("id");
-  const dbSession = await chatStorage.getSession(sessionId);
+  const dbSession = await getOwnedSession(c);
   if (!dbSession) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  const sessionId = dbSession.id;
 
   const body = await c.req.json<{ credential_id: string }>();
   if (!body.credential_id) {
@@ -118,9 +127,9 @@ chatRouter.post("/sessions/:id/set-model", async (c) => {
 
 // POST /api/chat/sessions/:id/upload — file attachment upload (any file type, up to 500MB)
 chatRouter.post("/sessions/:id/upload", async (c) => {
-  const sessionId = c.req.param("id");
-  const session = await chatStorage.getSession(sessionId);
+  const session = await getOwnedSession(c);
   if (!session) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  const sessionId = session.id;
 
   const body = await c.req.parseBody();
   const file = body["file"];
