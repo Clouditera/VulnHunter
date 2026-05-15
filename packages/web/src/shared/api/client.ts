@@ -927,6 +927,7 @@ export interface ChatArtifactApi {
   original_name?: string;
   mime_type: string;
   size_bytes: number;
+  preview?: string;
   download_url: string;
   created_at?: string;
 }

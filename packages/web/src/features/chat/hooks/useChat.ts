@@ -67,6 +67,11 @@ export function useChat() {
   const currentAssistantId = useRef<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
+  const refreshArtifacts = useCallback(async (sid: string) => {
+    const res = await api.chat.sessions.artifacts(sid);
+    setArtifactsBySession((prev) => ({ ...prev, [sid]: res.artifacts.map(toDomainArtifact) }));
+  }, []);
+
   /* --------------------------------------------------------------------- */
   /*  Initial session list                                                 */
   /* --------------------------------------------------------------------- */
@@ -101,14 +106,19 @@ export function useChat() {
     es.onmessage = (msg) => {
       try {
         const evt = JSON.parse(msg.data) as { type?: string; sessionId?: string; title?: string };
-        if (evt.type !== "chat_session_title" || !evt.sessionId || !evt.title?.trim()) return;
-        setSessions((s) =>
-          s.map((x) => (x.id === evt.sessionId ? { ...x, title: evt.title!.trim() } : x)),
-        );
+        if (evt.type === "chat_session_title" && evt.sessionId && evt.title?.trim()) {
+          setSessions((s) =>
+            s.map((x) => (x.id === evt.sessionId ? { ...x, title: evt.title!.trim() } : x)),
+          );
+          return;
+        }
+        if (evt.type === "chat_artifact_created" && evt.sessionId) {
+          refreshArtifacts(evt.sessionId).catch(() => {});
+        }
       } catch { /* ignore malformed SSE */ }
     };
     return () => es.close();
-  }, []);
+  }, [refreshArtifacts]);
 
   /* --------------------------------------------------------------------- */
   /*  Load messages for active session                                     */
@@ -143,11 +153,9 @@ export function useChat() {
   useEffect(() => {
     if (!activeId) return;
     let mounted = true;
-    api.chat.sessions
-      .artifacts(activeId)
-      .then((res) => {
+    refreshArtifacts(activeId)
+      .then(() => {
         if (!mounted) return;
-        setArtifactsBySession((prev) => ({ ...prev, [activeId]: res.artifacts.map(toDomainArtifact) }));
       })
       .catch(() => {
         if (!mounted) return;
@@ -156,7 +164,7 @@ export function useChat() {
     return () => {
       mounted = false;
     };
-  }, [activeId]);
+  }, [activeId, refreshArtifacts]);
 
   /* --------------------------------------------------------------------- */
   /*  WebSocket lifecycle                                                   */
@@ -592,6 +600,7 @@ function toDomainArtifact(a: ChatArtifactApi): ChatArtifact {
     filename: a.filename,
     mime_type: a.mime_type,
     size_bytes: a.size_bytes,
+    preview: a.preview,
     download_url: a.download_url,
     created_at: a.created_at,
   };

@@ -19,6 +19,7 @@ export type NotificationEvent =
   | { type: "findings_indexed"; taskId: string; count: number }
   | { type: "chat_worker_state"; sessionId: string; state: string }
   | { type: "chat_session_title"; sessionId: string; title: string }
+  | { type: "chat_artifact_created"; sessionId: string; artifactId: string }
   | { type: "finding_review_updated"; taskId: string; findingKeys: string[]; reviewStatus: FindingReviewStatus };
 
 // ─── In-memory subscriber list ───

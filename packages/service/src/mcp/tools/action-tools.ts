@@ -218,12 +218,15 @@ export async function presentArtifact(args: {
 
   const { getDb } = await import("../../infra/db/client.js");
   const db = getDb();
+  const previewText = isPreviewableMime(mimeType) ? buffer.toString("utf8", 0, Math.min(buffer.length, 2000)) : undefined;
   await db`
     INSERT INTO chat_artifacts (id, tenant_id, session_id, user_id, kind, title, original_name, filename, mime_type, size_bytes, minio_key, workspace_path, metadata)
-    VALUES (${artifactId}, ${ctx.tenantId}, ${ctx.sessionId}, ${ctx.userId}, 'presented', ${args.title}, ${args.filename}, ${safeFilename}, ${mimeType}, ${buffer.length}, ${minioKey}, ${workspacePath}, ${JSON.stringify({ source_path: args.source_path ?? null })}::jsonb)
+    VALUES (${artifactId}, ${ctx.tenantId}, ${ctx.sessionId}, ${ctx.userId}, 'presented', ${args.title}, ${args.filename}, ${safeFilename}, ${mimeType}, ${buffer.length}, ${minioKey}, ${workspacePath}, ${JSON.stringify({ source_path: args.source_path ?? null, preview: previewText ?? null })}::jsonb)
   `;
 
-  const previewText = buffer.toString("utf8", 0, Math.min(buffer.length, 2000));
+  const { notify } = await import("../../features/notifications/index.js");
+  notify({ type: "chat_artifact_created", sessionId: ctx.sessionId, artifactId });
+
   return text(JSON.stringify({
     type: "chat_artifact",
     artifact_id: artifactId,
@@ -234,4 +237,8 @@ export async function presentArtifact(args: {
     preview: previewText,
     download_url: `/api/chat/sessions/${ctx.sessionId}/artifacts/${artifactId}/download`,
   }, null, 2));
+}
+
+function isPreviewableMime(mime: string): boolean {
+  return mime.startsWith("text/") || ["application/json", "application/xml", "application/javascript"].includes(mime) || mime.includes("markdown");
 }
