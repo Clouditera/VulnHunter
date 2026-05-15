@@ -48,6 +48,7 @@ vi.mock("../../src/infra/db/client.js", () => ({
       if (strings.join("?").includes("FROM chat_artifacts")) return artifactRows;
       return [];
     };
+    (db as any).json = (value: unknown) => JSON.stringify(value);
     return db;
   }),
 }));

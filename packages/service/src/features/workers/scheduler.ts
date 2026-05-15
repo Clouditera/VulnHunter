@@ -90,6 +90,12 @@ export function summarizeExecutionEvents(lines: string[]): {
   };
 }
 
+export function missingCredentialFailureReason(credId?: string | null): string {
+  return credId
+    ? "指定的模型凭证不存在或已不可用，请重新选择模型凭证后重试。"
+    : "任务缺少可用模型凭证。请在任务或 Settings 中配置模型凭证后重新创建/重启任务。";
+}
+
 export class TaskScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private unsubscribeEvents: (() => void) | null = null;
@@ -234,12 +240,17 @@ export class TaskScheduler {
 
     if (capacity <= 0) return;
 
-    const queued = await getQueuedTasks(capacity);
+    // Fetch beyond immediate capacity so invalid queued items (e.g. old tasks
+    // without credentials) can be failed in this tick instead of starving valid
+    // newer tasks that sit behind them.
+    const queued = await getQueuedTasks(Math.max(capacity, 20));
     if (queued.length === 0) return;
 
     logger.info({ queued: queued.length, capacity }, "Scheduling queued tasks");
 
+    let spawned = 0;
     for (const task of queued) {
+      if (spawned >= capacity) break;
       // Detect resume: if started_at is set, task was previously running/paused
       const isResume = task.started_at != null;
 
@@ -274,7 +285,13 @@ export class TaskScheduler {
         throw err;
       }
       if (!cred) {
-        logger.warn({ taskId: task.id }, "No LLM credentials available — skipping");
+        const reason = missingCredentialFailureReason(credId);
+        logger.warn({ taskId: task.id, credId }, reason);
+        await updateTaskState(task.id, "failed", {
+          completedAt: new Date(),
+          failureReason: reason,
+        });
+        notify({ type: "task_state", taskId: task.id, state: "failed" as import("@vulnhunt/shared").TaskState });
         continue;
       }
 
@@ -290,6 +307,8 @@ export class TaskScheduler {
         const hostWorkDir = getHostWorkDir(this.config.dataDir, task.id);
         const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
         startTailing(task.id, [], [{ path: eventsDir, source: "scan" }]);
+
+        spawned++;
 
         if (isResume) {
           logger.info({ taskId: task.id }, "Task resumed from paused state");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeExecutionEvents } from "../../src/features/workers/scheduler.js";
+import { missingCredentialFailureReason, summarizeExecutionEvents } from "../../src/features/workers/scheduler.js";
 
 describe("summarizeExecutionEvents", () => {
   it("summarizes cache-aware stage_done token usage", () => {
@@ -53,5 +53,15 @@ describe("summarizeExecutionEvents", () => {
     ]);
 
     expect(summary.totalTokens).toBe(118);
+  });
+});
+
+describe("missingCredentialFailureReason", () => {
+  it("returns a terminal user-facing reason for old queued tasks without credentials", () => {
+    expect(missingCredentialFailureReason(null)).toContain("任务缺少可用模型凭证");
+  });
+
+  it("returns a terminal user-facing reason for deleted credential references", () => {
+    expect(missingCredentialFailureReason("cred-missing")).toContain("指定的模型凭证不存在或已不可用");
   });
 });

@@ -414,7 +414,7 @@ export async function createMcpTask(args: {
     await minio.copyObject(config.minio.bucket, targetKey, `/${config.minio.bucket}/${artifact.minio_key}`);
 
     // Update task with code package key
-    await db`UPDATE tasks SET source_meta = source_meta || ${JSON.stringify({ code_package_key: targetKey })}::jsonb WHERE id = ${task.id}`;
+    await db`UPDATE tasks SET source_meta = COALESCE(source_meta, '{}'::jsonb) || ${db.json({ code_package_key: targetKey })}::jsonb WHERE id = ${task.id}`;
 
     notify({ type: "task_state", taskId: task.id, state: "queued" });
 
