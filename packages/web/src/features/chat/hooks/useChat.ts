@@ -90,6 +90,24 @@ export function useChat() {
   }, []);
 
   /* --------------------------------------------------------------------- */
+  /*  Local title update events                                             */
+  /* --------------------------------------------------------------------- */
+
+  useEffect(() => {
+    const es = new EventSource("/api/notifications", { withCredentials: true });
+    es.onmessage = (msg) => {
+      try {
+        const evt = JSON.parse(msg.data) as { type?: string; sessionId?: string; title?: string };
+        if (evt.type !== "chat_session_title" || !evt.sessionId || !evt.title?.trim()) return;
+        setSessions((s) =>
+          s.map((x) => (x.id === evt.sessionId ? { ...x, title: evt.title!.trim() } : x)),
+        );
+      } catch { /* ignore malformed SSE */ }
+    };
+    return () => es.close();
+  }, []);
+
+  /* --------------------------------------------------------------------- */
   /*  Load messages for active session                                     */
   /* --------------------------------------------------------------------- */
 

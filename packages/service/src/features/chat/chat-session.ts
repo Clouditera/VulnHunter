@@ -386,11 +386,17 @@ export class ChatSession {
               maybeGenerateTitle({ sessionId: this.sessionId, bridgeUrl: this.bridgeUrl })
                 .then((title) => {
                   if (title) {
-                    this.broadcastToClients(JSON.stringify({
+                    const event = JSON.stringify({
                       session_id: this.sessionId,
                       type: "session_title",
                       title,
-                    }));
+                    });
+                    this.eventBuffer.push(event);
+                    if (this.eventBuffer.length > EVENT_BUFFER_SIZE) {
+                      this.eventBuffer.shift();
+                    }
+                    this.broadcastToClients(event);
+                    logger.info({ sessionId: this.sessionId, title }, "Broadcasted chat session_title");
                   }
                 })
                 .catch((err) => logger.debug({ err, sessionId: this.sessionId }, "Chat title generation failed"));
