@@ -254,6 +254,12 @@ export async function listTasks(args: {
   };
 }
 
+async function resolveTaskCredential(ctx: McpContext) {
+  const { getDefaultCredential, getCredentialById } = await import("../features/settings/storage.js");
+  if (ctx.actorType === "chat" && ctx.credentialId) return getCredentialById(ctx.credentialId);
+  return getDefaultCredential();
+}
+
 // ─── cancel-task ───
 
 export const cancelTaskSchema = {
@@ -350,7 +356,6 @@ export async function submitReport(args: {
 
 export const createTaskSchema = {
   project_name: z.string().optional().describe("Project name"),
-  credential_id: z.string().optional().describe("LLM credential ID to use"),
   git_url: z.string().optional().describe("Git repository URL (use this OR attachment_id)"),
   git_branch: z.string().optional().default("main").describe("Git branch (default: main)"),
   attachment_id: z.string().optional().describe("Chat artifact ID of an uploaded zip file (use this OR git_url)"),
@@ -358,7 +363,6 @@ export const createTaskSchema = {
 
 export async function createMcpTask(args: {
   project_name?: string;
-  credential_id?: string;
   git_url?: string;
   git_branch?: string;
   attachment_id?: string;
@@ -369,11 +373,10 @@ export async function createMcpTask(args: {
     return { content: [{ type: "text", text: "Error: Either git_url or attachment_id is required." }] };
   }
 
-  // Resolve credential
-  const { getDefaultCredential, getCredentialById } = await import("../features/settings/storage.js");
-  const cred = args.credential_id
-    ? await getCredentialById(args.credential_id)
-    : await getDefaultCredential();
+  const cred = await resolveTaskCredential(ctx);
+  if (!cred) {
+    return { content: [{ type: "text", text: "Error: 当前会话没有可用模型凭证。请在右上角选择模型或在 Settings 配置默认凭证后重试。" }] };
+  }
 
   if (args.attachment_id) {
     if (ctx.actorType !== "chat" || !ctx.sessionId) {
@@ -402,7 +405,7 @@ export async function createMcpTask(args: {
       projectName,
       sourceType: "upload",
       sourceMeta: { filename: artifact.original_name, minio_key: artifact.minio_key, size_bytes: artifact.size_bytes, chat_artifact_id: artifact.id },
-      credentialId: cred?.id,
+      credentialId: cred.id,
     });
 
     // Copy artifact from chat-artifacts to code-packages
@@ -424,7 +427,7 @@ export async function createMcpTask(args: {
           `- **Project**: ${projectName}`,
           `- **Source**: ${artifact.original_name} (${Math.round(artifact.size_bytes / 1024)}KB)`,
           `- **State**: queued`,
-          `- **Credential**: ${cred?.label ?? "default"}`,
+          `- **Credential**: ${cred.label ?? "default"}`,
         ].join("\n"),
       }],
     };
@@ -440,7 +443,7 @@ export async function createMcpTask(args: {
     projectName,
     sourceType: "git",
     sourceMeta: { git_url: args.git_url!, git_branch: args.git_branch ?? "main" },
-    credentialId: cred?.id,
+    credentialId: cred.id,
   });
 
   cloneAndUpload(
@@ -461,7 +464,7 @@ export async function createMcpTask(args: {
         `- **Project**: ${projectName}`,
         `- **Source**: ${args.git_url} (branch: ${args.git_branch ?? "main"})`,
         `- **State**: queued`,
-        `- **Credential**: ${cred?.label ?? "default"}`,
+        `- **Credential**: ${cred.label ?? "default"}`,
         ``,
         `Git clone is running in the background. The task will start scanning once the code is ready.`,
       ].join("\n"),

@@ -13,6 +13,8 @@ const ctx: McpContext = {
 const createTaskMock = vi.fn();
 const cloneAndUploadMock = vi.fn();
 const copyObjectMock = vi.fn();
+const getDefaultCredentialMock = vi.fn(async () => ({ id: "cred-1", label: "Default" }));
+const getCredentialByIdMock = vi.fn(async (id: string) => ({ id, label: "Selected" }));
 let artifactRows: unknown[] = [];
 const sqlCalls: string[] = [];
 
@@ -20,8 +22,8 @@ vi.mock("../../src/features/tasks/storage.js", () => ({
   createTask: createTaskMock,
 }));
 vi.mock("../../src/features/settings/storage.js", () => ({
-  getDefaultCredential: vi.fn(async () => ({ id: "cred-1", label: "Default" })),
-  getCredentialById: vi.fn(async (id: string) => ({ id, label: "Selected" })),
+  getDefaultCredential: getDefaultCredentialMock,
+  getCredentialById: getCredentialByIdMock,
 }));
 vi.mock("../../src/features/files/git-clone.js", () => ({
   cloneAndUpload: cloneAndUploadMock,
@@ -57,19 +59,49 @@ describe("createMcpTask context binding", () => {
     sqlCalls.length = 0;
     createTaskMock.mockResolvedValue({ id: "task-1", project_name: "demo", state: "queued" });
     cloneAndUploadMock.mockResolvedValue(undefined);
+    getDefaultCredentialMock.mockResolvedValue({ id: "cred-1", label: "Default" });
+    getCredentialByIdMock.mockImplementation(async (id: string) => ({ id, label: "Selected" }));
   });
 
-  it("creates git tasks with ctx.userId, not fake MCP users", async () => {
+  it("does not expose credential_id in create-task schema", async () => {
+    const { createTaskSchema } = await import("../../src/mcp/tools.js");
+
+    expect(createTaskSchema).not.toHaveProperty("credential_id");
+  });
+
+  it("creates git tasks with ctx.userId and ctx credential, not fake MCP users", async () => {
     const { createMcpTask } = await import("../../src/mcp/tools.js");
 
-    const result = await createMcpTask({ git_url: "https://example.com/demo.git" }, ctx);
+    const result = await createMcpTask({ git_url: "https://example.com/demo.git" }, { ...ctx, credentialId: "cred-session" });
 
     expect(result.content[0].text).toContain("Task created successfully");
     expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
       createdBy: "user-1",
       sourceType: "git",
       sourceMeta: expect.objectContaining({ git_url: "https://example.com/demo.git" }),
+      credentialId: "cred-session",
     }));
+    expect(getCredentialByIdMock).toHaveBeenCalledWith("cred-session");
+  });
+
+  it("falls back to default credential when chat session has no credential", async () => {
+    const { createMcpTask } = await import("../../src/mcp/tools.js");
+
+    const result = await createMcpTask({ git_url: "https://example.com/demo.git" }, { ...ctx, credentialId: null });
+
+    expect(result.content[0].text).toContain("Task created successfully");
+    expect(getDefaultCredentialMock).toHaveBeenCalled();
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({ credentialId: "cred-1" }));
+  });
+
+  it("does not create chat tasks when no credential is available", async () => {
+    const { createMcpTask } = await import("../../src/mcp/tools.js");
+    getDefaultCredentialMock.mockResolvedValueOnce(null);
+
+    const result = await createMcpTask({ git_url: "https://example.com/demo.git" }, { ...ctx, credentialId: null });
+
+    expect(result.content[0].text).toContain("当前会话没有可用模型凭证");
+    expect(createTaskMock).not.toHaveBeenCalled();
   });
 
   it("creates upload tasks only from artifacts owned by current chat context", async () => {
@@ -92,6 +124,7 @@ describe("createMcpTask context binding", () => {
       createdBy: "user-1",
       projectName: "project",
       sourceType: "upload",
+      credentialId: "cred-1",
     }));
     expect(copyObjectMock).toHaveBeenCalledWith("vulnhunt", "code-packages/task-1.zip", "/vulnhunt/chat-artifacts/sess-1/project.zip");
   });

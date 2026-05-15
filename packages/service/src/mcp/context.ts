@@ -14,6 +14,7 @@ export interface McpContext {
   userId: string;
   tenantId: string;
   role: "admin" | "user";
+  credentialId?: string | null;
 }
 
 /**
@@ -24,8 +25,8 @@ export async function resolveMcpContext(token: string): Promise<McpContext | nul
   const db = getDb();
 
   // Try chat session first
-  const chatRows = await db<{ id: string; user_id: string; tenant_id: string }[]>`
-    SELECT cs.id, cs.user_id, cs.tenant_id
+  const chatRows = await db<{ id: string; user_id: string; tenant_id: string; credential_id: string | null }[]>`
+    SELECT cs.id, cs.user_id, cs.tenant_id, cs.credential_id
     FROM chat_sessions cs
     WHERE cs.id = ${token}
     LIMIT 1
@@ -42,6 +43,7 @@ export async function resolveMcpContext(token: string): Promise<McpContext | nul
       userId: session.user_id,
       tenantId: session.tenant_id,
       role: (userRows[0]?.role as "admin" | "user") ?? "user",
+      credentialId: session.credential_id,
     };
   }
 

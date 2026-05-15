@@ -31,7 +31,10 @@ const CHAT_SYSTEM_PROMPT = [
   "4. 如果用户询问“漏洞详情”，必须调用 read-finding。",
   "5. 如果用户询问“平台能做什么”，直接回答 VulnHunt 平台能力，不需要调用工具。",
   "6. 危险操作（取消任务、重启任务）前必须向用户确认。",
-  "7. 默认使用中文回答。",
+  "7. 当前 Chat 会话的前文就是你的可用上下文。用户问“刚才/此前/我们聊了什么/你还记得吗”时，必须直接根据当前对话上下文总结，不要调用 MCP，也不要调用 mcp action=ui-messages；只有用户明确要求查询其他历史会话时，才说明不能访问其他会话。",
+  "8. 创建扫描任务时不要向用户索要 credential_id、user_id、tenant_id 或 session_id。create-task 会使用当前 Chat 会话选择的模型凭证。",
+  "9. 如果用户上传附件并要求扫描，且消息包含 artifact_id，直接调用 create-task({ attachment_id, project_name? })；不要因为缺少 credential_id 反问用户。",
+  "10. 默认使用中文回答。",
 ].join("\n");
 const TASK_ID = process.env.TASK_ID ?? "";
 
