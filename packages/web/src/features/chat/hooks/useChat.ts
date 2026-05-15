@@ -162,6 +162,14 @@ export function useChat() {
 
   const applyEvent = useCallback((sid: string, evt: PiWsEvent) => {
     switch (evt.type) {
+      case "session_title":
+        if (typeof evt.title === "string" && evt.title.trim()) {
+          setSessions((s) =>
+            s.map((x) => (x.id === sid ? { ...x, title: evt.title!.trim() } : x)),
+          );
+        }
+        return;
+
       case "agent_start":
         setStreaming(true);
         setSessions((s) =>
@@ -512,6 +520,7 @@ interface PiWsEvent {
   args?: unknown;
   result?: string;
   error?: string;
+  title?: string;
 }
 
 /* -------------------------------------------------------------------------- */

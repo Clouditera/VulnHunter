@@ -30,15 +30,15 @@ export function sanitizeGeneratedTitle(raw: string): string {
 export async function maybeGenerateTitle(params: {
   sessionId: string;
   bridgeUrl: string;
-}): Promise<void> {
+}): Promise<string | null> {
   const session = await getSession(params.sessionId);
-  if (!session || !isDefaultChatTitle(session.title)) return;
+  if (!session || !isDefaultChatTitle(session.title)) return null;
 
   const messages = await listMessages(params.sessionId);
   const firstTurn = messages.slice(0, 4).map((m) => ({ role: m.role, content: m.content }));
   const hasUser = firstTurn.some((m) => m.role === "user" && m.content.trim());
   const hasAssistant = firstTurn.some((m) => m.role === "assistant" && m.content.trim());
-  if (!hasUser || !hasAssistant) return;
+  if (!hasUser || !hasAssistant) return null;
 
   try {
     const res = await fetch(`${params.bridgeUrl}/chat/title`, {
@@ -47,17 +47,20 @@ export async function maybeGenerateTitle(params: {
       body: JSON.stringify({ messages: firstTurn, credentialId: session.credential_id }),
       signal: AbortSignal.timeout(TITLE_TIMEOUT_MS),
     });
-    if (!res.ok) return;
+    if (!res.ok) return null;
     const body = (await res.json()) as { title?: string };
     const title = sanitizeGeneratedTitle(body.title ?? "");
-    if (!title) return;
+    if (!title) return null;
 
     const updated = await updateSessionTitleIfDefault(params.sessionId, title, [...DEFAULT_TITLES]);
     if (updated) {
       notify({ type: "chat_session_title", sessionId: params.sessionId, title });
       logger.info({ sessionId: params.sessionId, title }, "Generated chat session title");
+      return title;
     }
+    return null;
   } catch (err) {
     logger.debug({ err, sessionId: params.sessionId }, "Chat title generation skipped");
+    return null;
   }
 }

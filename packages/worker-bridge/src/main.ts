@@ -309,6 +309,7 @@ function generateTitle(messages: Array<{ role: string; content: string }>, crede
       "--model", modelStr,
       "--no-skills",
       "--no-extensions",
+      "--no-tools",
       "--no-prompt-templates",
       "--no-themes",
       "--session", tmpSession,
