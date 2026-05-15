@@ -32,13 +32,13 @@ import {
 /**
  * Register Chat Agent tools (excludes report-worker-only tools).
  */
-export function registerChatTools(server: McpServer, _ctx: McpContext): void {
+export function registerChatTools(server: McpServer, ctx: McpContext): void {
   server.tool("list-findings", listFindingsSchema, async (args) => listFindings(args as any));
   server.tool("read-finding", readFindingSchema, async (args) => readFinding(args as any));
   server.tool("list-tasks", listTasksSchema, async (args) => listTasks(args as any));
   server.tool("read-task-metadata", readTaskMetadataSchema, async (args) => readTaskMetadata(args as any));
   server.tool("cancel-task", cancelTaskSchema, async (args) => cancelTask(args as any));
-  server.tool("create-task", createTaskSchema, async (args) => createMcpTask(args as any));
+  server.tool("create-task", createTaskSchema, async (args) => createMcpTask(args as any, ctx));
 
   // P0 query tools
   server.tool("get-platform-overview", getPlatformOverviewSchema, async () => getPlatformOverview());
@@ -51,9 +51,9 @@ export function registerChatTools(server: McpServer, _ctx: McpContext): void {
   server.tool("get-poc-results", getPocResultsSchema, async (args) => getPocResults(args as any));
 
   // P1 action tools
-  server.tool("control-task", controlTaskSchema, async (args) => controlTask(args as any));
-  server.tool("generate-report", generateReportSchema, async (args) => generateReport(args as any));
-  server.tool("generate-poc", generatePocSchema, async (args) => generatePoc(args as any));
+  server.tool("control-task", controlTaskSchema, async (args) => controlTask(args as any, ctx));
+  server.tool("generate-report", generateReportSchema, async (args) => generateReport(args as any, ctx));
+  server.tool("generate-poc", generatePocSchema, async (args) => generatePoc(args as any, ctx));
   server.tool("present-artifact", presentArtifactSchema, async (args) => presentArtifact(args as any));
 
   // TODO P1: prepare-source-context

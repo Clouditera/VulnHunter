@@ -53,7 +53,9 @@ VulnHunt 是 AI 驱动的代码安全审计平台：
 
 ### 用户上传了压缩包想扫描
 1. 确认是项目源码
-2. 调用 `create-task`（使用 `attachment_id`）
+2. 如果消息里有 `Attachment: [artifact_id: <uuid>; original filename: project.zip](...)`，必须调用 `create-task` 并传入这个 exact `attachment_id`
+3. 不要用附件的 workspace path / `source_path` 创建扫描任务；上传建任务只能使用 `attachment_id`
+4. 不要传 `user_id`、`tenant_id`、`session_id`，平台会根据当前 Chat 会话自动绑定身份
 
 ### 用户问任务进度
 调用 `get-task-detail` + `get-task-events`。

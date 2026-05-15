@@ -26,9 +26,9 @@ import type { ChatImageAttachment } from "../types.js";
  *   1. On submit, each pending file is POSTed to
  *      `POST /api/chat/sessions/:id/upload` (multipart, field=`file`).
  *   2. Server stores under the session's attachments dir and returns
- *      `{ path: "/workspace/chat-session/attachments/<hash>.png",
+ *      `{ artifact_id, path: "/workspace/chat-session/attachments/<hash>.png",
  *         originalFilename: "screenshot.png" }`.
- *   3. We prepend `Attachment: [original filename: x.png](<path>)` lines
+ *   3. We prepend `Attachment: [artifact_id: <uuid>; original filename: x.png](<path>)` lines
  *      to the user's text and send the whole thing as a plain prompt.
  *   4. pi's `read` tool opens the file natively.
  *
@@ -44,8 +44,8 @@ import type { ChatImageAttachment } from "../types.js";
 /*  Constants                                                                 */
 /* -------------------------------------------------------------------------- */
 
-/** Per-file hard cap (10 MB). Generous for screenshots / small binaries. */
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+/** Per-file hard cap (500 MB). Matches backend upload limit. */
+const MAX_FILE_BYTES = 500 * 1024 * 1024;
 /** Max attachments per message. */
 const MAX_ATTACHMENTS = 8;
 
@@ -234,7 +234,7 @@ export function ChatInput({
         i18n
           .t("chat.attach.errOversize")
           .replace("{name}", oversized.name)
-          .replace("{limit}", "10 MB"),
+          .replace("{limit}", "500 MB"),
       );
       return;
     }
@@ -332,7 +332,7 @@ export function ChatInput({
         for (const pf of pending) {
           const res = await api.chat.sessions.upload(sessionId, pf.file);
           lines.push(
-            `Attachment: [original filename: ${res.originalName}](${res.path})`,
+            `Attachment: [artifact_id: ${res.artifact_id}; original filename: ${res.originalName}](${res.path})`,
           );
           if (pf.isImage) {
             imgs.push({

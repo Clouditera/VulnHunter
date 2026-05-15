@@ -15,6 +15,7 @@ import { getMinio, uploadFile } from "../infra/minio/client.js";
 import { loadConfig } from "../infra/config.js";
 import { notify } from "../features/notifications/index.js";
 import { logger } from "../infra/logger.js";
+import type { McpContext } from "./context.js";
 
 type ToolResult = { content: Array<{ type: "text"; text: string }> };
 
@@ -361,7 +362,7 @@ export async function createMcpTask(args: {
   git_url?: string;
   git_branch?: string;
   attachment_id?: string;
-}): Promise<ToolResult> {
+}, ctx: McpContext): Promise<ToolResult> {
   const config = loadConfig();
 
   if (!args.git_url && !args.attachment_id) {
@@ -375,21 +376,29 @@ export async function createMcpTask(args: {
     : await getDefaultCredential();
 
   if (args.attachment_id) {
-    // Attachment-based task creation
+    if (ctx.actorType !== "chat" || !ctx.sessionId) {
+      return { content: [{ type: "text", text: "Error: attachment_id can only be used from a Chat session." }] };
+    }
+    // Attachment-based task creation. Authorization is based on server-side McpContext,
+    // not values supplied by the agent.
     const db = (await import("../infra/db/client.js")).getDb();
-    const [artifact] = await db<{ id: string; original_name: string; minio_key: string; size_bytes: number; session_id: string; user_id: string }[]>`
-      SELECT id, original_name, minio_key, size_bytes, session_id, user_id FROM chat_artifacts
-      WHERE id = ${args.attachment_id} AND kind = 'upload'
+    const [artifact] = await db<{ id: string; original_name: string; minio_key: string; size_bytes: number; session_id: string; user_id: string; tenant_id: string }[]>`
+      SELECT id, original_name, minio_key, size_bytes, session_id, user_id, tenant_id FROM chat_artifacts
+      WHERE id = ${args.attachment_id}
+        AND kind = 'upload'
+        AND session_id = ${ctx.sessionId}
+        AND user_id = ${ctx.userId}
+        AND tenant_id = ${ctx.tenantId}
       LIMIT 1
     `;
     if (!artifact) {
-      return { content: [{ type: "text", text: "Error: Attachment not found or not an upload." }] };
+      return { content: [{ type: "text", text: "Error: Attachment not found or not accessible in this Chat session." }] };
     }
 
     const projectName = args.project_name ?? artifact.original_name.replace(/\.(zip|tar\.gz|tgz)$/i, "");
 
     const task = await taskStorage.createTask({
-      createdBy: artifact.user_id,
+      createdBy: ctx.userId,
       projectName,
       sourceType: "upload",
       sourceMeta: { filename: artifact.original_name, minio_key: artifact.minio_key, size_bytes: artifact.size_bytes, chat_artifact_id: artifact.id },
@@ -427,7 +436,7 @@ export async function createMcpTask(args: {
     new URL(args.git_url!).pathname.split("/").pop()?.replace(/\.git$/, "") ?? "project";
 
   const task = await taskStorage.createTask({
-    createdBy: cred?.id ? "mcp-user" : "mcp-agent",
+    createdBy: ctx.userId,
     projectName,
     sourceType: "git",
     sourceMeta: { git_url: args.git_url!, git_branch: args.git_branch ?? "main" },

@@ -456,7 +456,7 @@ export const api = {
         }),
       /**
        * Upload a file attachment. Server stores it under the session's
-       * attachments directory and returns `{ path, originalFilename }`.
+       * attachments directory and returns `{ artifact_id, path, originalFilename }`.
        * The path is container-local (`/workspace/chat-session/...`) so
        * pi's `read` tool can open it directly.
        */
@@ -473,6 +473,7 @@ export const api = {
             throw new Error(text || `upload failed (${r.status})`);
           }
           return r.json() as Promise<{
+            artifact_id: string;
             path: string;
             originalName: string;
           }>;
