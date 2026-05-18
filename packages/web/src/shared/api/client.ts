@@ -62,6 +62,7 @@ export interface TaskMetadata {
 export interface Task {
   id: string;
   project_name: string;
+  display_name?: string | null;
   state: string;
   risk_score: number | null;
   failure_reason: string | null;
@@ -193,7 +194,7 @@ export const api = {
     create: (
       body:
         | FormData
-        | { git_url: string; project_name?: string; credential_id?: string },
+        | { git_url: string; project_name?: string; display_name?: string; credential_id?: string },
     ) =>
       body instanceof FormData
         ? fetch("/api/tasks", { method: "POST", credentials: "include", body }).then((r) => r.json() as Promise<{ task: Task }>)
@@ -238,6 +239,8 @@ export const api = {
       }),
     update: (id: string, body: { credential_id?: string | null }) =>
       request<Task>(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    updateDisplayName: (id: string, display_name: string | null) =>
+      request<{ task: Task }>(`/api/tasks/${id}/display-name`, { method: "PATCH", body: JSON.stringify({ display_name }) }),
     cancel: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/cancel`, { method: "POST" }),
     pause: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/pause`, { method: "POST" }),
     resume: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/resume`, { method: "POST" }),

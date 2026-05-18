@@ -99,6 +99,16 @@ export function TaskDetailPage() {
     mutationFn: () => api.tasks.restart(taskId!),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["task", taskId] }),
   });
+  const [editingName, setEditingName] = useState(false);
+  const [displayNameDraft, setDisplayNameDraft] = useState("");
+  const displayNameMut = useMutation({
+    mutationFn: (name: string) => api.tasks.updateDisplayName(taskId!, name),
+    onSuccess: () => {
+      setEditingName(false);
+      qc.invalidateQueries({ queryKey: ["task", taskId] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
 
   const task = data?.task as Task | undefined;
   const headerSeverityCounts = {
@@ -202,8 +212,19 @@ export function TaskDetailPage() {
                   lineHeight: 1,
                 }}
               >
-                {task.project_name}
+                {task.display_name?.trim() || task.project_name}
               </h1>
+              {editingName ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <input data-testid="task-display-name-input" value={displayNameDraft} onChange={(e) => setDisplayNameDraft(e.target.value)} maxLength={120} style={{ height: 30, border: "1px solid var(--border)", borderRadius: 6, padding: "0 8px", background: "var(--bg-card)", color: "var(--text-primary)" }} />
+                  <button data-testid="task-display-name-save" onClick={() => displayNameMut.mutate(displayNameDraft)} style={{ height: 30, border: "1px solid var(--brand)", borderRadius: 6, background: "var(--brand)", color: "#fff", padding: "0 10px", cursor: "pointer" }}>{i18n.t("tasks.saveDisplayName")}</button>
+                  <button onClick={() => setEditingName(false)} style={{ height: 30, border: "1px solid var(--border)", borderRadius: 6, background: "transparent", color: "var(--text-secondary)", padding: "0 10px", cursor: "pointer" }}>Cancel</button>
+                </span>
+              ) : (
+                <button data-testid="task-display-name-edit" title={i18n.t("tasks.editDisplayName")} onClick={() => { setDisplayNameDraft(task.display_name ?? ""); setEditingName(true); }} style={{ border: "none", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", padding: 2 }}>
+                  <Icon name="edit" size={14} />
+                </button>
+              )}
               <span style={{ display: "inline-flex", alignItems: "center", lineHeight: 0, gap: "8px" }}>
                 <StatusPill state={task.state} />
                 {Number(task.metadata?.execution?.stages_failed ?? 0) > 0 && (

@@ -58,7 +58,7 @@ VulnHunt 是 AI 驱动的代码安全审计平台：
 2. 如果消息里有 `Attachment: [artifact_id: <uuid>; original filename: project.zip](...)`，必须调用 `create-task` 并传入这个 exact `attachment_id`
 3. 不要用附件的 workspace path / `source_path` 创建扫描任务；上传建任务只能使用 `attachment_id`
 4. 不要传 `credential_id`、`user_id`、`tenant_id`、`session_id`，平台会根据当前 Chat 会话自动绑定身份和模型凭证
-5. 如果用户要求创建扫描任务，不要因为缺少 `credential_id` 反问用户；直接调用 `create-task({ attachment_id, project_name? })`
+5. 如果用户要求创建扫描任务，不要因为缺少 `credential_id` 反问用户；直接调用 `create-task({ attachment_id, project_name?, display_name? })`。如果用户说“任务名/叫做/命名为”，把该名称放入 `display_name`；不要用展示名覆盖源码项目名 `project_name`。
 
 ### 用户问任务进度
 调用 `get-task-detail` + `get-task-events`。

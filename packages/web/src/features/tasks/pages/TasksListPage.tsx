@@ -91,6 +91,7 @@ export function TasksListPage() {
   const filteredTasks = q
     ? rawTasks.filter(
         (t) =>
+          (t.display_name ?? "").toLowerCase().includes(q) ||
           (t.project_name ?? "").toLowerCase().includes(q) ||
           t.id.toLowerCase().includes(q),
       )
@@ -100,7 +101,7 @@ export function TasksListPage() {
   // client-side so that oldest/name modes work identically.
   const tasks = [...filteredTasks].sort((a, b) => {
     if (sortBy === "name") {
-      return (a.project_name ?? "").localeCompare(b.project_name ?? "");
+      return ((a.display_name?.trim() || a.project_name) ?? "").localeCompare((b.display_name?.trim() || b.project_name) ?? "");
     }
     const tA = Date.parse(a.created_at);
     const tB = Date.parse(b.created_at);
@@ -356,6 +357,8 @@ export function TasksListPage() {
             ) : (
               tasks.map((task: Task) => {
                 const risk = parseRiskScore(task.risk_score);
+                const title = task.display_name?.trim() || task.project_name;
+                const subtitle = task.display_name?.trim() ? task.project_name : null;
                 return (
                   <tr
                     key={task.id}
@@ -381,8 +384,9 @@ export function TasksListPage() {
                           size={14}
                           style={{ color: "var(--text-secondary)" }}
                         />
-                        <span>{task.project_name}</span>
+                        <span>{title}</span>
                       </div>
+                      {subtitle ? <div style={{ marginLeft: 22, marginTop: 3, fontSize: 11, color: "var(--text-secondary)", fontWeight: 400 }}>{subtitle}</div> : null}
                     </td>
                     <td style={{ padding: "14px 20px" }}>
                       <StatusPill state={task.state} />
@@ -450,7 +454,7 @@ export function TasksListPage() {
                             onClick={() => {
                               const msg = i18n
                                 .t("tasks.delete.confirm")
-                                .replace("{name}", task.project_name);
+                                .replace("{name}", title);
                               if (window.confirm(msg)) deleteMut.mutate(task.id);
                             }}
                             style={{

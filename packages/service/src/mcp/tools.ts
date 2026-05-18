@@ -355,7 +355,8 @@ export async function submitReport(args: {
 // ─── create-task ───
 
 export const createTaskSchema = {
-  project_name: z.string().optional().describe("Project name"),
+  project_name: z.string().optional().describe("Detected project/source name; optional"),
+  display_name: z.string().optional().describe("Optional user-facing task display name"),
   git_url: z.string().optional().describe("Git repository URL (use this OR attachment_id)"),
   git_branch: z.string().optional().default("main").describe("Git branch (default: main)"),
   attachment_id: z.string().optional().describe("Chat artifact ID of an uploaded zip file (use this OR git_url)"),
@@ -363,6 +364,7 @@ export const createTaskSchema = {
 
 export async function createMcpTask(args: {
   project_name?: string;
+  display_name?: string;
   git_url?: string;
   git_branch?: string;
   attachment_id?: string;
@@ -403,6 +405,7 @@ export async function createMcpTask(args: {
     const task = await taskStorage.createTask({
       createdBy: ctx.userId,
       projectName,
+      displayName: args.display_name,
       sourceType: "upload",
       sourceMeta: { filename: artifact.original_name, minio_key: artifact.minio_key, size_bytes: artifact.size_bytes, chat_artifact_id: artifact.id },
       credentialId: cred.id,
@@ -441,6 +444,7 @@ export async function createMcpTask(args: {
   const task = await taskStorage.createTask({
     createdBy: ctx.userId,
     projectName,
+    displayName: args.display_name,
     sourceType: "git",
     sourceMeta: { git_url: args.git_url!, git_branch: args.git_branch ?? "main" },
     credentialId: cred.id,

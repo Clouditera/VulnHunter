@@ -32,6 +32,7 @@ filesRouter.post("/tasks", async (c) => {
     }
 
     const credentialId = (formData.get("credential_id") as string | null) || undefined;
+    const displayName = (formData.get("display_name") as string | null) || undefined;
     const taskId = randomUUID();
     const minioKey = `code-packages/${taskId}.zip`;
 
@@ -41,6 +42,7 @@ filesRouter.post("/tasks", async (c) => {
     const task = await createTask({
       createdBy: user.userId,
       projectName: file.name.replace(/\.(zip|tar\.gz|tar\.bz2)$/, ""),
+      displayName,
       sourceType: "upload",
       sourceMeta: { filename: file.name, minio_key: minioKey, size_bytes: file.size },
       credentialId,
@@ -56,6 +58,7 @@ filesRouter.post("/tasks", async (c) => {
     project_name?: string;
     auto_skill_ids?: string[];
     credential_id?: string;
+    display_name?: string;
   }>();
 
   if (!body.git_url) {
@@ -65,6 +68,7 @@ filesRouter.post("/tasks", async (c) => {
   const task = await createTask({
     createdBy: user.userId,
     projectName: body.project_name ?? new URL(body.git_url).pathname.split("/").pop() ?? "project",
+    displayName: body.display_name,
     sourceType: "git",
     sourceMeta: { git_url: body.git_url, git_branch: body.git_branch ?? "main" },
     autoSkillIds: body.auto_skill_ids,

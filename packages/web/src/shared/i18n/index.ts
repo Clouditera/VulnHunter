@@ -17,6 +17,10 @@ const ZH: Record<string, string> = {
   // Tasks
   "tasks.title": "任务",
   "tasks.newTask": "新建任务",
+  "tasks.displayNameOptional": "任务名称（可选）",
+  "tasks.displayNamePlaceholder": "例如：客户演示 - Langflow RCE 复扫",
+  "tasks.editDisplayName": "编辑任务名称",
+  "tasks.saveDisplayName": "保存",
   "tasks.status.running": "运行中",
   "tasks.status.completed": "已完成",
   "tasks.status.failed": "失败",
@@ -614,6 +618,10 @@ const EN: Record<string, string> = {
   // Tasks
   "tasks.title": "Tasks",
   "tasks.newTask": "New Task",
+  "tasks.displayNameOptional": "Task name (optional)",
+  "tasks.displayNamePlaceholder": "e.g. Customer demo - Langflow RCE rerun",
+  "tasks.editDisplayName": "Edit task name",
+  "tasks.saveDisplayName": "Save",
   "tasks.status.running": "Running",
   "tasks.status.completed": "Completed",
   "tasks.status.failed": "Failed",

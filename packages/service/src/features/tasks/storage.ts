@@ -8,6 +8,7 @@ export interface DbTask {
   tenant_id: string;
   created_by: string;
   project_name: string;
+  display_name: string | null;
   state: TaskState;
   source_type: string;
   source_meta: Record<string, string | number | boolean | null>;
@@ -35,6 +36,7 @@ export interface DbTask {
 export async function createTask(params: {
   createdBy: string;
   projectName: string;
+  displayName?: string | null;
   sourceType: "upload" | "git";
   sourceMeta: Record<string, string | number | boolean | null>;
   autoSkillIds?: string[];
@@ -42,13 +44,29 @@ export async function createTask(params: {
 }): Promise<DbTask> {
   const db = getDb();
   const rows = await db<DbTask[]>`
-    INSERT INTO tasks (tenant_id, created_by, project_name, source_type, source_meta, auto_skill_ids, credential_id)
-    VALUES (${DEFAULT_TENANT_ID}, ${params.createdBy}, ${params.projectName},
+    INSERT INTO tasks (tenant_id, created_by, project_name, display_name, source_type, source_meta, auto_skill_ids, credential_id)
+    VALUES (${DEFAULT_TENANT_ID}, ${params.createdBy}, ${params.projectName}, ${normalizeDisplayName(params.displayName)},
             ${params.sourceType}, ${db.json(params.sourceMeta)}::jsonb,
             ${params.autoSkillIds ?? []}, ${params.credentialId ?? null})
     RETURNING *
   `;
   return rows[0];
+}
+
+function normalizeDisplayName(name?: string | null): string | null {
+  const trimmed = name?.trim();
+  return trimmed ? trimmed.slice(0, 120) : null;
+}
+
+export async function updateTaskDisplayName(id: string, displayName: string | null): Promise<DbTask | null> {
+  const db = getDb();
+  const rows = await db<DbTask[]>`
+    UPDATE tasks
+    SET display_name = ${normalizeDisplayName(displayName)}
+    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    RETURNING *
+  `;
+  return rows[0] ?? null;
 }
 
 export async function getTaskById(id: string): Promise<DbTask | null> {

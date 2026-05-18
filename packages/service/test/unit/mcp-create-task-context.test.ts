@@ -68,6 +68,7 @@ describe("createMcpTask context binding", () => {
     const { createTaskSchema } = await import("../../src/mcp/tools.js");
 
     expect(createTaskSchema).not.toHaveProperty("credential_id");
+    expect(createTaskSchema).toHaveProperty("display_name");
   });
 
   it("creates git tasks with ctx.userId and ctx credential, not fake MCP users", async () => {

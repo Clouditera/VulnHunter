@@ -11,6 +11,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [tab, setTab] = useState<"upload" | "git">("upload");
   const [gitUrl, setGitUrl] = useState("");
   const [gitBranch, setGitBranch] = useState("main");
+  const [displayName, setDisplayName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
@@ -53,6 +54,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         const fd = new FormData();
         fd.append("file", file);
         if (credentialId) fd.append("credential_id", credentialId);
+        if (displayName.trim()) fd.append("display_name", displayName.trim());
         setUploadPct(0);
         await api.tasks.createWithProgress(fd, (pct) => setUploadPct(pct));
       } else {
@@ -60,6 +62,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         await api.tasks.create({
           git_url: gitUrl,
           project_name: gitUrl.split("/").pop(),
+          display_name: displayName.trim() || undefined,
           credential_id: credentialId || undefined,
         });
       }
@@ -165,6 +168,20 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
 
         {/* Body */}
         <div style={{ padding: "24px" }}>
+          <div style={{ marginBottom: "16px" }}>
+            <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
+              {i18n.t("tasks.displayNameOptional")}
+            </label>
+            <input
+              data-testid="new-task-display-name-input"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder={i18n.t("tasks.displayNamePlaceholder")}
+              maxLength={120}
+              style={{ width: "100%", height: "40px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 10px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box" }}
+            />
+          </div>
+
           {/* Credential picker — only shown when multiple credentials exist */}
           {credentials.length > 1 && (
             <div

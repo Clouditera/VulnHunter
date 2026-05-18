@@ -109,6 +109,15 @@ tasksRouter.post("/:id/restart", async (c) => {
   }
 });
 
+// PATCH /api/tasks/:id/display-name — update user-facing task label
+tasksRouter.patch("/:id/display-name", async (c) => {
+  const task = await taskStorage.getTaskById(c.req.param("id"));
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+  const body = await c.req.json<{ display_name?: string | null }>().catch(() => ({} as { display_name?: string | null }));
+  const updated = await taskStorage.updateTaskDisplayName(task.id, body.display_name ?? null);
+  return c.json({ task: updated });
+});
+
 // PATCH /api/tasks/:id — update task properties (credential_id)
 const EDITABLE_STATES = new Set(["paused", "cancelled", "failed", "completed"]);
 tasksRouter.patch("/:id", async (c) => {
