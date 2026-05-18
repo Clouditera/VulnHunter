@@ -29,9 +29,15 @@ export function ActivatePage() {
 
   async function copyMachineCode() {
     if (!machineCode) return;
-    await navigator.clipboard.writeText(machineCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    setError("");
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("clipboard_unavailable");
+      await navigator.clipboard.writeText(machineCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setError(i18n.t("activate.copyFailed"));
+    }
   }
 
   async function handleActivate(e: React.FormEvent) {
@@ -42,7 +48,7 @@ export function ActivatePage() {
       await api.system.activate(cert.trim());
       setSuccess(true);
       qc.invalidateQueries({ queryKey: ["system-status"] });
-      setTimeout(() => navigate("/login"), 1500);
+      setTimeout(() => navigate("/"), 1500);
     } catch (err) {
       setError(licenseErrorMessage(err));
     } finally {

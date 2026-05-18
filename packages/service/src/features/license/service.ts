@@ -36,6 +36,10 @@ export async function getCurrentState(): Promise<LicenseState> {
     return { status: "invalid", machineCode: installationId };
   }
 
+  if (cert.Basic.software !== "vulnhunt") {
+    return { status: "invalid", machineCode: installationId };
+  }
+
   try {
     if (!verifyCert(cert)) {
       return { status: "invalid", machineCode: installationId };
@@ -77,6 +81,10 @@ export async function activate(certRaw: string): Promise<{ ok: boolean; error?: 
   const cert = parseCert(certRaw);
   if (!cert) {
     return { ok: false, error: "invalid_format" };
+  }
+
+  if (cert.Basic.software !== "vulnhunt") {
+    return { ok: false, error: "wrong_software" };
   }
 
   // Verify RSA signature

@@ -85,6 +85,34 @@ describe("license service", () => {
     });
   });
 
+  it("rejects activation for a different software product", async () => {
+    const service = await import("../../src/features/license/service.js");
+    await expect(service.activate(makeCert({ software: "other-product" }))).resolves.toEqual({
+      ok: false,
+      error: "wrong_software",
+    });
+  });
+
+  it("activates a valid VulnHunt certificate", async () => {
+    const service = await import("../../src/features/license/service.js");
+    await expect(service.activate(makeCert())).resolves.toEqual({ ok: true });
+    expect(storageState.saved).toMatchObject({ machineCode: "local-machine" });
+  });
+
+  it("returns invalid when stored license software is not VulnHunt", async () => {
+    const certRaw = makeCert({ software: "other-product" });
+    storageState.activeLicense = {
+      id: "lic-1",
+      cert_raw: certRaw,
+      machine_code: "local-machine",
+      expires_at: new Date(Date.now() + 3600_000),
+      activated_at: new Date(),
+      last_seen_at: new Date(),
+    };
+    const service = await import("../../src/features/license/service.js");
+    await expect(service.getCurrentState()).resolves.toMatchObject({ status: "invalid" });
+  });
+
   it("returns invalid when stored license machine mismatches current installation", async () => {
     const certRaw = makeCert({ machine_code: "other-machine" });
     storageState.activeLicense = {
