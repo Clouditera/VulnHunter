@@ -42,6 +42,7 @@ function LoadingScreen() {
 function licenseTarget(status: ReturnType<typeof useSystemStatus>["data"]): string | null {
   if (!status) return "/activate";
   if (status.license.status === "expired") return "/expired";
+  if (status.license.status === "invalid" && status.license.invalid_reason === "version_mismatch") return "/expired";
   if (status.license.status !== "active") return "/activate";
   return null;
 }
@@ -50,7 +51,7 @@ function ActivateGuard() {
   const { data: status, isLoading } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
   if (status?.license.status === "active") return <Navigate to="/" replace />;
-  if (status?.license.status === "expired") return <Navigate to="/expired" replace />;
+  if (status?.license.status === "expired" || (status?.license.status === "invalid" && status.license.invalid_reason === "version_mismatch")) return <Navigate to="/expired" replace />;
   return <ActivatePage />;
 }
 
@@ -58,7 +59,7 @@ function ExpiredGuard() {
   const { data: status, isLoading } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
   if (status?.license.status === "active") return <Navigate to="/" replace />;
-  if (status?.license.status !== "expired") return <Navigate to="/activate" replace />;
+  if (status?.license.status !== "expired" && !(status?.license.status === "invalid" && status.license.invalid_reason === "version_mismatch")) return <Navigate to="/activate" replace />;
   return <ExpiredPage />;
 }
 
