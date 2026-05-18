@@ -13,7 +13,7 @@ YOUNGFLOW_VERSION="${YOUNGFLOW_VERSION:-0.2.5}"
 rm -rf "$OUT"
 mkdir -p "$OUT/images" "$OUT/docs"
 
-cat > VERSION.json << JSON
+cat > "$OUT/VERSION.json" << JSON
 {
   "product": "vulnhunt",
   "version": "$VERSION",
@@ -39,7 +39,12 @@ if [[ ! -x submodules/youngflow/release/youngflow-linux-x64 ]]; then
   exit 1
 fi
 
-docker build -f deploy/dockerfiles/service.Dockerfile -t "vulnhunt-service:$VERSION" -t vulnhunt-service:latest .
+docker build -f deploy/dockerfiles/service.Dockerfile \
+  --build-arg VULNHUNT_VERSION="$VERSION" \
+  --build-arg VULNHUNT_BUILD_TIME="$BUILD_TIME" \
+  --build-arg VULNHUNT_GIT_COMMIT="$GIT_COMMIT" \
+  --build-arg YOUNGFLOW_VERSION="$YOUNGFLOW_VERSION" \
+  -t "vulnhunt-service:$VERSION" -t vulnhunt-service:latest .
 docker build -f deploy/dockerfiles/web.Dockerfile -t "vulnhunt-web:$VERSION" -t vulnhunt-web:latest .
 docker build -f deploy/dockerfiles/worker.Dockerfile -t "vulnhunt-worker:$VERSION" -t vulnhunt-worker:latest .
 docker build -f deploy/dockerfiles/eval-worker.Dockerfile -t "vulnhunt-eval-worker:$VERSION" -t vulnhunt-eval-worker:latest .
@@ -53,7 +58,6 @@ docker save "vulnhunt-eval-worker:$VERSION" -o "$OUT/images/vulnhunt-eval-worker
 docker save "$POSTGRES_IMAGE" -o "$OUT/images/postgres-16-alpine.tar"
 docker save "$MINIO_IMAGE" -o "$OUT/images/minio.tar"
 
-cp VERSION.json "$OUT/VERSION.json"
 cp deploy/docker-compose.yml deploy/.env.example deploy/install.sh deploy/upgrade.sh deploy/uninstall.sh deploy/doctor.sh "$OUT/"
 sed -i "s|^SERVICE_IMAGE=.*|SERVICE_IMAGE=vulnhunt-service:$VERSION|" "$OUT/.env.example"
 sed -i "s|^WEB_IMAGE=.*|WEB_IMAGE=vulnhunt-web:$VERSION|" "$OUT/.env.example"

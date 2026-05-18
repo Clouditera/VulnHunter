@@ -24,12 +24,18 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 vulnhunt
 WORKDIR /app
 
+ARG VULNHUNT_VERSION=unknown
+ARG VULNHUNT_BUILD_TIME=
+ARG VULNHUNT_GIT_COMMIT=
+ARG YOUNGFLOW_VERSION=0.2.5
+
 COPY --from=builder --chown=vulnhunt:nodejs /prod/service/node_modules ./node_modules
 COPY --from=builder --chown=vulnhunt:nodejs /prod/service/package.json ./package.json
 COPY --from=builder --chown=vulnhunt:nodejs /prod/service/dist ./packages/service/dist
 COPY --from=builder --chown=vulnhunt:nodejs /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder --chown=vulnhunt:nodejs /app/packages/web/dist ./public
-COPY --chown=vulnhunt:nodejs VERSION.json ./VERSION.json
+RUN printf '{\n  "product": "vulnhunt",\n  "version": "%s",\n  "buildTime": "%s",\n  "gitCommit": "%s",\n  "youngflowVersion": "%s",\n  "licenseSchema": "v1"\n}\n' "$VULNHUNT_VERSION" "$VULNHUNT_BUILD_TIME" "$VULNHUNT_GIT_COMMIT" "$YOUNGFLOW_VERSION" > /app/VERSION.json && \
+    chown vulnhunt:nodejs /app/VERSION.json
 
 # DeVeye toolkit files for user download (~190MB: 3 platform binaries + extension)
 COPY --chown=vulnhunt:nodejs submodules/DevEye/packages/cli/binaries/index-linux /opt/deveye-toolkits/binaries/index-linux
