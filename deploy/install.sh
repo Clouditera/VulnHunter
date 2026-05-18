@@ -54,6 +54,16 @@ source .env
 set +a
 
 mkdir -p "${DATA_DIR:-$DATA_DIR_DEFAULT}" .secrets
+if ! chown 1001:1001 "${DATA_DIR:-$DATA_DIR_DEFAULT}" 2>/dev/null; then
+  echo "[install] warning: could not chown DATA_DIR to container uid 1001. If service fails with EACCES, run: sudo chown -R 1001:1001 ${DATA_DIR:-$DATA_DIR_DEFAULT}" >&2
+fi
+if ! chmod u+rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}" 2>/dev/null; then
+  echo "[install] warning: could not chmod DATA_DIR: ${DATA_DIR:-$DATA_DIR_DEFAULT}" >&2
+fi
+if [[ ! -w "${DATA_DIR:-$DATA_DIR_DEFAULT}" ]]; then
+  echo "[install] DATA_DIR is not writable by installer user: ${DATA_DIR:-$DATA_DIR_DEFAULT}" >&2
+  exit 1
+fi
 if [[ -d "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}" ]]; then
   echo "[install] master key path is a directory: ${MASTER_KEY_FILE}" >&2
   exit 1

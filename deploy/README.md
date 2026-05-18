@@ -38,6 +38,7 @@ Open `http://<server>:23000/`, activate license, bootstrap admin, then configure
 
 - Port occupied: change `WEB_PORT` in `.env`.
 - Master key path is directory: remove the directory and rerun `install.sh`; it must be a file.
+- Service cannot write `.install_id`: ensure `DATA_DIR` is owned/writable by container uid 1001, e.g. `sudo chown -R 1001:1001 /opt/vulnhunt/data` or your custom data dir.
 - Docker unavailable: ensure Docker daemon is running and current user can access it.
 - Service cannot access Docker socket: rerun `install.sh` so `DOCKER_GID` is detected from `/var/run/docker.sock`, or set `DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)` in `.env` and restart.
 - Worker image missing: rerun install with `images/*.tar` present or build/load images manually.

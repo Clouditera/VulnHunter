@@ -5,6 +5,7 @@ cd "$ROOT"
 [[ -f .env ]] && set -a && source .env && set +a
 WEB_PORT="${WEB_PORT:-23000}"
 MASTER_KEY_FILE="${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}"
+DATA_DIR="${DATA_DIR:-/opt/vulnhunt/data}"
 
 echo "== VulnHunt doctor =="
 fail=0
@@ -17,6 +18,7 @@ echo "-- containers --"
 docker compose ps || fail=1
 
 check "master key file exists" "test -f '$MASTER_KEY_FILE'"
+check "data dir writable by service uid" "docker run --rm --user 1001:1001 -v '$DATA_DIR:/data/vulnhunt' ${SERVICE_IMAGE:-vulnhunt-service:latest} node -e \"require('node:fs').writeFileSync('/data/vulnhunt/.doctor-write-test','ok'); require('node:fs').unlinkSync('/data/vulnhunt/.doctor-write-test')\""
 check "web root" "curl -fsS http://127.0.0.1:${WEB_PORT}/"
 check "system status API" "curl -fsS http://127.0.0.1:${WEB_PORT}/api/system/status"
 check "service health" "docker exec vulnhunt-service node -e \"fetch('http://127.0.0.1:28080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
