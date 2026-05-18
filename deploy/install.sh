@@ -168,7 +168,7 @@ if [[ ! -f "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}" ]]; then
   echo "[install] restore .secrets/license-public.pem from the release package or configure LICENSE_PUBLIC_KEY_FILE" >&2
   exit 1
 fi
-if ! grep -q "BEGIN PUBLIC KEY" "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}"; then
+if ! openssl pkey -pubin -in "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}" -noout >/dev/null 2>&1; then
   echo "[install] license public key is invalid: ${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}" >&2
   exit 1
 fi
