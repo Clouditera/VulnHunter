@@ -246,8 +246,6 @@ function ModelChip({
     (activeId ? credentials.find((c) => c.id === activeId) : null) ??
     credentials.find((c) => c.is_default) ??
     null;
-  if (!resolved && credentials.length === 0) return null;
-
   const label = resolved ? (resolved.model_id || resolved.label || resolved.provider) : "未选择模型";
   const canSwitch = credentials.length > 0;
 
