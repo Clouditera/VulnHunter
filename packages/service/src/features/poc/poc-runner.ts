@@ -66,7 +66,7 @@ export async function spawnPocRunner(
   const container = await createWorkerContainer({
     taskId: run.id,
     taskType: "poc-run",
-    image: config.docker.workerImage.replace("vulnhunt-worker", "vulnhunt-eval-worker"),
+    image: config.docker.evalWorkerImage,
     network: config.docker.network,
     hostWorkDir,
     cpuQuota: 100000,

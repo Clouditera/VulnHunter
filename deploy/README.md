@@ -30,6 +30,8 @@ Open `http://<server>:23000/`, activate license, bootstrap admin, then configure
 
 - Web URL: `http://<host>:23000/`
 - Data dir: `/opt/vulnhunt/data`
+  - This default usually requires root/sudo permission to create and write.
+  - If installing as a normal user, set `DATA_DIR` to a writable path in `.env` before running `docker compose up -d`, for example `/home/<user>/vulnhunt-data`.
 - Master key: `.secrets/vulnhunt-master.key`
 
 ## Troubleshooting

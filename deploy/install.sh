@@ -12,6 +12,7 @@ require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "[install] missing com
 
 require_cmd docker
 require_cmd openssl
+require_cmd curl
 if ! docker compose version >/dev/null 2>&1; then
   echo "[install] Docker Compose v2 is required" >&2
   exit 1

@@ -129,7 +129,7 @@ export async function spawnEvalWorker(
   const container = await createWorkerContainer({
     taskId: job.id,
     taskType: "eval",
-    image: config.docker.workerImage.replace("vulnhunt-worker", "vulnhunt-eval-worker"),
+    image: config.docker.evalWorkerImage,
     network: pocSettings?.container_network_mode === "host" ? "host" : config.docker.network,
     hostWorkDir,
     cpuQuota: 200000,
