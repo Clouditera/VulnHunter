@@ -28,7 +28,8 @@ export function ExpiredPage() {
     try {
       await api.system.activate(key.trim());
       setSuccess(true);
-      qc.invalidateQueries({ queryKey: ["system-status"] });
+      await qc.invalidateQueries({ queryKey: ["system-status"] });
+      qc.removeQueries({ queryKey: ["system-status"] });
       setTimeout(() => navigate("/"), 1500);
     } catch (err) {
       setError(licenseErrorMessage(err));
