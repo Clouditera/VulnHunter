@@ -48,7 +48,8 @@ export async function reconcileWorkers(): Promise<void> {
       if (taskType === "scan") {
         const hostWorkDir = getHostWorkDir(config.dataDir, taskId);
         const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
-        startTailing(taskId, [], [{ path: eventsDir, source: "scan" }]);
+        const serviceLogsDir = join(hostWorkDir, ".service-logs");
+        startTailing(taskId, [], [{ path: eventsDir, source: "scan" }, { path: serviceLogsDir, source: "scan" }]);
       }
       logger.info({ taskId, taskType }, "Re-attached to running worker (event tailing started)");
     } else if (dbRunning && !containerRunning) {

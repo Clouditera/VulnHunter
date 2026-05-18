@@ -5,7 +5,7 @@ set -euo pipefail
 : "${POC_JOB_ID:?POC_JOB_ID is required}"
 
 FLOW_DIR="/opt/vulnhunt/flows/vulnhunt-poc"
-SERVICE_LOG="/tmp/youngflow.service.jsonl"
+SERVICE_LOG="/workspace/.service-logs/youngflow.service.jsonl"
 
 finish_log() {
   mkdir -p /workspace/out/.youngflow/logs
@@ -47,6 +47,7 @@ export DEVEYE_TOKEN=${DEVEYE_TOKEN:-}
 ENVEOF
 fi
 
+mkdir -p /workspace/.service-logs
 rm -f "$SERVICE_LOG"
 
 echo "[eval] Running youngflow POC flow (target_mode=$TARGET_MODE)..." >&2

@@ -3,7 +3,7 @@ set -e
 
 TASK_ID="${TASK_ID:?TASK_ID is required}"
 FLOW_DIR="/opt/vulnhunt/flows/vulnhunt"
-SERVICE_LOG="/tmp/youngflow.service.jsonl"
+SERVICE_LOG="/workspace/.service-logs/youngflow.service.jsonl"
 
 finish_log() {
   mkdir -p /workspace/out/.youngflow/logs
@@ -44,6 +44,7 @@ EOF
 if [ "${RESUME:-0}" != "1" ]; then
   rm -rf /workspace/out
 fi
+mkdir -p /workspace/.service-logs
 rm -f "$SERVICE_LOG"
 
 echo "[scan] Running youngflow (model=$LLM_MODEL_NAME)..." >&2

@@ -4,7 +4,7 @@ set -e
 
 REPORT_ID="${REPORT_ID:?REPORT_ID is required}"
 TASK_ID="${TASK_ID:?TASK_ID is required}"
-SERVICE_LOG="/tmp/youngflow.service.jsonl"
+SERVICE_LOG="/workspace/.service-logs/youngflow.service.jsonl"
 
 finish_log() {
   mkdir -p /workspace/out/.youngflow/logs
@@ -50,6 +50,7 @@ YOUNGFLOW_IDLE_TIMEOUT=${YOUNGFLOW_IDLE_TIMEOUT:-3600}
 YOUNGFLOW_ERROR_RETRIES=${YOUNGFLOW_ERROR_RETRIES:-5}
 ENVEOF
 
+mkdir -p /workspace/.service-logs
 rm -f "$SERVICE_LOG"
 
 echo "[report] Running youngflow report flow..." >&2
