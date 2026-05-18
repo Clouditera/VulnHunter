@@ -841,6 +841,16 @@ export function SettingsPage() {
                 {licenseStatusLabel(status?.license?.status)}
               </span>
             </InfoRow>
+            {status?.version?.version ? (
+              <InfoRow label={i18n.t("settings.license.currentVersion")}>
+                <span data-testid="settings-current-version" style={{ fontSize: 13, fontWeight: 600 }}>{status.version.version}</span>
+              </InfoRow>
+            ) : null}
+            {status?.license?.licensed_version ? (
+              <InfoRow label={i18n.t("settings.license.licensedVersion")}>
+                <span data-testid="settings-licensed-version" style={{ fontSize: 13, fontWeight: 600 }}>{status.license.licensed_version}</span>
+              </InfoRow>
+            ) : null}
             {status?.license?.expires_at ? (
               <InfoRow label={i18n.t("settings.license.expires")}>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>

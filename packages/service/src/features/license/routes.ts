@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import * as licenseService from "./service.js";
 import * as authStorage from "../auth/storage.js";
+import { getVersionInfo } from "../../infra/version.js";
 
 export const systemRouter = new Hono();
 
@@ -19,7 +20,10 @@ systemRouter.get("/status", async (c) => {
       expires_at: licenseState.expiresAt?.toISOString(),
       days_remaining: licenseState.daysRemaining,
       machine_code: licenseState.machineCode,
+      licensed_version: licenseState.licensedVersion,
+      invalid_reason: licenseState.invalidReason,
     },
+    version: getVersionInfo(),
     has_admin: hasAdmin,
     is_authenticated: isAuthenticated,
     installation_id: licenseService.getInstallationId(),

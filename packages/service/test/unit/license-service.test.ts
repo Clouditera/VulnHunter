@@ -50,6 +50,7 @@ function makeCert(overrides: Partial<LicenseBasic> = {}): string {
 
 beforeEach(async () => {
   vi.resetModules();
+  process.env.VULNHUNT_VERSION = "1.0.1";
   storageState.activeLicense = null;
   storageState.saved = null;
   process.env.VULNHUNT_LICENSE_PUBLIC_KEY = publicKey;
@@ -85,6 +86,14 @@ describe("license service", () => {
     });
   });
 
+  it("rejects activation for an incompatible VulnHunt version", async () => {
+    const service = await import("../../src/features/license/service.js");
+    await expect(service.activate(makeCert({ version: "1.1" }))).resolves.toEqual({
+      ok: false,
+      error: "version_mismatch",
+    });
+  });
+
   it("rejects activation for a different software product", async () => {
     const service = await import("../../src/features/license/service.js");
     await expect(service.activate(makeCert({ software: "other-product" }))).resolves.toEqual({
@@ -97,6 +106,20 @@ describe("license service", () => {
     const service = await import("../../src/features/license/service.js");
     await expect(service.activate(makeCert())).resolves.toEqual({ ok: true });
     expect(storageState.saved).toMatchObject({ machineCode: "local-machine" });
+  });
+
+  it("returns invalid when stored license version mismatches current version", async () => {
+    const certRaw = makeCert({ version: "1.1" });
+    storageState.activeLicense = {
+      id: "lic-1",
+      cert_raw: certRaw,
+      machine_code: "local-machine",
+      expires_at: new Date(Date.now() + 3600_000),
+      activated_at: new Date(),
+      last_seen_at: new Date(),
+    };
+    const service = await import("../../src/features/license/service.js");
+    await expect(service.getCurrentState()).resolves.toMatchObject({ status: "invalid", invalidReason: "version_mismatch" });
   });
 
   it("returns invalid when stored license software is not VulnHunt", async () => {

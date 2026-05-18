@@ -6,6 +6,16 @@ export interface SystemStatus {
     expires_at?: string;
     days_remaining?: number;
     machine_code: string;
+    licensed_version?: string;
+    invalid_reason?: string;
+  };
+  version: {
+    product: string;
+    version: string;
+    buildTime?: string;
+    gitCommit?: string;
+    youngflowVersion?: string;
+    licenseSchema: string;
   };
   has_admin: boolean;
   is_authenticated: boolean;

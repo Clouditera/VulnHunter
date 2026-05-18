@@ -29,6 +29,7 @@ COPY --from=builder --chown=vulnhunt:nodejs /prod/service/package.json ./package
 COPY --from=builder --chown=vulnhunt:nodejs /prod/service/dist ./packages/service/dist
 COPY --from=builder --chown=vulnhunt:nodejs /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder --chown=vulnhunt:nodejs /app/packages/web/dist ./public
+COPY --chown=vulnhunt:nodejs VERSION.json ./VERSION.json
 
 # DeVeye toolkit files for user download (~190MB: 3 platform binaries + extension)
 COPY --chown=vulnhunt:nodejs submodules/DevEye/packages/cli/binaries/index-linux /opt/deveye-toolkits/binaries/index-linux

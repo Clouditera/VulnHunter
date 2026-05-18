@@ -1,6 +1,8 @@
 import { logger } from "../../infra/logger.js";
 import * as storage from "./storage.js";
 import { verifyCert, parseCert, LicenseVerifierUnconfiguredError } from "./verify.js";
+import { getVersionInfo } from "../../infra/version.js";
+import { checkLicenseVersion } from "./version-compat.js";
 import type { LicenseState } from "./types.js";
 
 let installationId: string = "";
@@ -15,7 +17,6 @@ export function getInstallationId(): string {
 }
 
 export async function getCurrentState(): Promise<LicenseState> {
-  // Recompute from DB (no long-lived in-memory cache to avoid stale state on cert change)
   const license = await storage.getActiveLicense();
 
   if (!license) {
@@ -24,7 +25,6 @@ export async function getCurrentState(): Promise<LicenseState> {
 
   const now = new Date();
 
-  // Time rollback defense: if last_seen_at is in the future (> now+5min), suspicious
   const lastSeen = license.last_seen_at;
   if (lastSeen > new Date(now.getTime() + 5 * 60 * 1000)) {
     logger.warn({ lastSeen, now }, "Time rollback detected — treating license as expired");
@@ -33,27 +33,32 @@ export async function getCurrentState(): Promise<LicenseState> {
 
   const cert = parseCert(license.cert_raw);
   if (!cert) {
-    return { status: "invalid", machineCode: installationId };
+    return { status: "invalid", machineCode: installationId, invalidReason: "invalid_format" };
   }
 
   if (cert.Basic.software !== "vulnhunt") {
-    return { status: "invalid", machineCode: installationId };
+    return { status: "invalid", machineCode: installationId, licensedVersion: cert.Basic.version, invalidReason: "wrong_software" };
+  }
+
+  const versionCheck = checkLicenseVersion(cert.Basic.version, getVersionInfo().version);
+  if (!versionCheck.ok) {
+    return { status: "invalid", machineCode: installationId, licensedVersion: cert.Basic.version, invalidReason: versionCheck.reason };
   }
 
   try {
     if (!verifyCert(cert)) {
-      return { status: "invalid", machineCode: installationId };
+      return { status: "invalid", machineCode: installationId, licensedVersion: cert.Basic.version, invalidReason: "invalid_signature" };
     }
   } catch (err) {
     if (err instanceof LicenseVerifierUnconfiguredError) {
-      return { status: "invalid", machineCode: installationId };
+      return { status: "invalid", machineCode: installationId, licensedVersion: cert.Basic.version, invalidReason: "license_verifier_unconfigured" };
     }
     throw err;
   }
 
   if (license.machine_code !== installationId || cert.Basic.machine_code !== installationId) {
     logger.warn({ stored: license.machine_code, certMachine: cert.Basic.machine_code, local: installationId }, "Stored license machine_code mismatch");
-    return { status: "invalid", machineCode: installationId };
+    return { status: "invalid", machineCode: installationId, licensedVersion: cert.Basic.version, invalidReason: "machine_code_mismatch" };
   }
 
   if (license.expires_at < now) {
@@ -62,6 +67,7 @@ export async function getCurrentState(): Promise<LicenseState> {
       expiresAt: license.expires_at,
       daysRemaining: 0,
       machineCode: installationId,
+      licensedVersion: cert.Basic.version,
     };
   }
 
@@ -74,6 +80,7 @@ export async function getCurrentState(): Promise<LicenseState> {
     expiresAt: license.expires_at,
     daysRemaining,
     machineCode: installationId,
+    licensedVersion: cert.Basic.version,
   };
 }
 
@@ -87,7 +94,11 @@ export async function activate(certRaw: string): Promise<{ ok: boolean; error?: 
     return { ok: false, error: "wrong_software" };
   }
 
-  // Verify RSA signature
+  const versionCheck = checkLicenseVersion(cert.Basic.version, getVersionInfo().version);
+  if (!versionCheck.ok) {
+    return { ok: false, error: versionCheck.reason };
+  }
+
   try {
     if (!verifyCert(cert)) {
       return { ok: false, error: "invalid_signature" };
@@ -99,7 +110,6 @@ export async function activate(certRaw: string): Promise<{ ok: boolean; error?: 
     throw err;
   }
 
-  // Verify machine_code matches this installation
   if (cert.Basic.machine_code !== installationId) {
     logger.warn(
       { certMachine: cert.Basic.machine_code, local: installationId },
@@ -108,7 +118,6 @@ export async function activate(certRaw: string): Promise<{ ok: boolean; error?: 
     return { ok: false, error: "machine_code_mismatch" };
   }
 
-  // Check not already expired
   const expiresAt = new Date(cert.Basic.expire_at * 1000);
   if (expiresAt < new Date()) {
     return { ok: false, error: "already_expired" };
@@ -121,11 +130,9 @@ export async function activate(certRaw: string): Promise<{ ok: boolean; error?: 
   });
 
   logger.info({ expiresAt, subject: cert.Basic.subject }, "License activated");
-  // cache will be recomputed on next getCurrentState() call
   return { ok: true };
 }
 
-/** Called hourly to update last_seen */
 export async function tick(): Promise<void> {
   await storage.updateLastSeen();
   const state = await getCurrentState();

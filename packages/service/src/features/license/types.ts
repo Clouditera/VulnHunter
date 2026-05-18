@@ -20,9 +20,20 @@ export interface LicenseCert {
 
 export type LicenseStatus = "active" | "expired" | "not_activated" | "invalid";
 
+export type LicenseInvalidReason =
+  | "invalid_format"
+  | "invalid_signature"
+  | "machine_code_mismatch"
+  | "wrong_software"
+  | "already_expired"
+  | "license_verifier_unconfigured"
+  | "version_mismatch";
+
 export interface LicenseState {
   status: LicenseStatus;
   expiresAt?: Date;
   daysRemaining?: number;
   machineCode: string;
+  licensedVersion?: string;
+  invalidReason?: LicenseInvalidReason;
 }
