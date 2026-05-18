@@ -215,10 +215,12 @@ export function TaskDetailPage() {
                 {task.display_name?.trim() || task.project_name}
               </h1>
               {editingName ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <input data-testid="task-display-name-input" value={displayNameDraft} onChange={(e) => setDisplayNameDraft(e.target.value)} maxLength={120} style={{ height: 30, border: "1px solid var(--border)", borderRadius: 6, padding: "0 8px", background: "var(--bg-card)", color: "var(--text-primary)" }} />
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <input data-testid="task-display-name-input" value={displayNameDraft} onChange={(e) => setDisplayNameDraft(e.target.value)} maxLength={120} placeholder={task.project_name} style={{ height: 30, border: "1px solid var(--border)", borderRadius: 6, padding: "0 8px", background: "var(--bg-card)", color: "var(--text-primary)" }} />
                   <button data-testid="task-display-name-save" onClick={() => displayNameMut.mutate(displayNameDraft)} style={{ height: 30, border: "1px solid var(--brand)", borderRadius: 6, background: "var(--brand)", color: "#fff", padding: "0 10px", cursor: "pointer" }}>{i18n.t("tasks.saveDisplayName")}</button>
-                  <button onClick={() => setEditingName(false)} style={{ height: 30, border: "1px solid var(--border)", borderRadius: 6, background: "transparent", color: "var(--text-secondary)", padding: "0 10px", cursor: "pointer" }}>Cancel</button>
+                  <button data-testid="task-display-name-clear" onClick={() => { setDisplayNameDraft(""); displayNameMut.mutate(""); }} style={{ height: 30, border: "1px solid var(--border)", borderRadius: 6, background: "transparent", color: "var(--text-secondary)", padding: "0 10px", cursor: "pointer" }}>{i18n.t("tasks.clearDisplayName")}</button>
+                  <button onClick={() => setEditingName(false)} style={{ height: 30, border: "1px solid var(--border)", borderRadius: 6, background: "transparent", color: "var(--text-secondary)", padding: "0 10px", cursor: "pointer" }}>{i18n.t("tasks.cancelDisplayName")}</button>
+                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{i18n.t("tasks.displayNameClearHint")}</span>
                 </span>
               ) : (
                 <button data-testid="task-display-name-edit" title={i18n.t("tasks.editDisplayName")} onClick={() => { setDisplayNameDraft(task.display_name ?? ""); setEditingName(true); }} style={{ border: "none", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", padding: 2 }}>
@@ -246,6 +248,11 @@ export function TaskDetailPage() {
                 )}
               </span>
             </div>
+            {task.display_name?.trim() ? (
+              <div data-testid="task-project-identity" style={{ marginTop: 8, fontSize: 12, color: "var(--text-secondary)" }}>
+                {i18n.t("tasks.projectIdentity").replace("{name}", task.project_name)}
+              </div>
+            ) : null}
 
             {/* Meta row: Findings · Duration · Started */}
             <div
