@@ -78,8 +78,6 @@ if [[ -d images ]]; then
   done
 fi
 
-docker network create vulnhunt-internal >/dev/null 2>&1 || true
-
 echo "[install] starting VulnHunt..."
 docker compose up -d
 
