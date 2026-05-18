@@ -164,10 +164,13 @@ if [[ "$(id -u)" == "0" ]]; then
 fi
 chmod 0400 "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}"
 if [[ ! -f "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}" ]]; then
-  cat > "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}" <<'EOF'
-# license public key placeholder; replace before production license enforcement
-EOF
-  chmod 0444 "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}"
+  echo "[install] license public key missing: ${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}" >&2
+  echo "[install] restore .secrets/license-public.pem from the release package or configure LICENSE_PUBLIC_KEY_FILE" >&2
+  exit 1
+fi
+if ! grep -q "BEGIN PUBLIC KEY" "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}"; then
+  echo "[install] license public key is invalid: ${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}" >&2
+  exit 1
 fi
 if [[ "$(id -u)" == "0" ]]; then
   chown "${SERVICE_UID}:${SERVICE_GID}" "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}"

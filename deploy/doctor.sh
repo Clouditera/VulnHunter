@@ -22,7 +22,7 @@ docker compose ps || fail=1
 
 check "master key file exists" "test -f '$MASTER_KEY_FILE'"
 check "master key readable by service uid" "docker run --rm --user ${SERVICE_UID}:${SERVICE_GID} -v '$MASTER_KEY_FILE:/run/secrets/vulnhunt-master.key:ro' ${SERVICE_IMAGE:-vulnhunt-service:latest} node -e \"require('node:fs').readFileSync('/run/secrets/vulnhunt-master.key','utf8')\""
-check "license public key readable by service uid" "docker run --rm --user ${SERVICE_UID}:${SERVICE_GID} -v '$LICENSE_PUBLIC_KEY_FILE:/run/secrets/license-public.pem:ro' ${SERVICE_IMAGE:-vulnhunt-service:latest} node -e \"require('node:fs').readFileSync('/run/secrets/license-public.pem','utf8')\""
+check "license public key readable by service uid" "docker run --rm --user ${SERVICE_UID}:${SERVICE_GID} -v '$LICENSE_PUBLIC_KEY_FILE:/run/secrets/license-public.pem:ro' ${SERVICE_IMAGE:-vulnhunt-service:latest} node -e \"const s=require('node:fs').readFileSync('/run/secrets/license-public.pem','utf8'); process.exit(s.includes('BEGIN PUBLIC KEY')?0:1)\""
 check "data dir writable by service uid" "docker run --rm --user ${SERVICE_UID}:${SERVICE_GID} -v '$DATA_DIR:$DATA_DIR' ${SERVICE_IMAGE:-vulnhunt-service:latest} node -e \"require('node:fs').writeFileSync('${DATA_DIR}/.doctor-write-test','ok'); require('node:fs').unlinkSync('${DATA_DIR}/.doctor-write-test')\""
 identity_probe=".doctor-path-identity-$$"
 printf 'ok' > "${DATA_DIR}/${identity_probe}"

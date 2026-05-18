@@ -59,6 +59,8 @@ docker save "$POSTGRES_IMAGE" -o "$OUT/images/postgres-16-alpine.tar"
 docker save "$MINIO_IMAGE" -o "$OUT/images/minio.tar"
 
 cp deploy/docker-compose.yml deploy/.env.example deploy/install.sh deploy/upgrade.sh deploy/uninstall.sh deploy/doctor.sh "$OUT/"
+mkdir -p "$OUT/.secrets"
+cp deploy/license-public.pem "$OUT/.secrets/license-public.pem"
 sed -i "s|^SERVICE_IMAGE=.*|SERVICE_IMAGE=vulnhunt-service:$VERSION|" "$OUT/.env.example"
 sed -i "s|^WEB_IMAGE=.*|WEB_IMAGE=vulnhunt-web:$VERSION|" "$OUT/.env.example"
 sed -i "s|^WORKER_IMAGE=.*|WORKER_IMAGE=vulnhunt-worker:$VERSION|" "$OUT/.env.example"
@@ -70,7 +72,7 @@ chmod +x "$OUT"/*.sh
 (
   cd "$OUT"
   find images -type f -name '*.tar' -print | sort
-  printf '%s\n' docker-compose.yml .env.example install.sh doctor.sh upgrade.sh uninstall.sh VERSION.json docs/install.md
+  printf '%s\n' docker-compose.yml .env.example install.sh doctor.sh upgrade.sh uninstall.sh VERSION.json docs/install.md .secrets/license-public.pem
 ) | while IFS= read -r file; do
   [[ -f "$OUT/$file" ]] && sha256sum "$OUT/$file"
 done | sed "s|  $OUT/|  |" > "$OUT/checksums.sha256"
