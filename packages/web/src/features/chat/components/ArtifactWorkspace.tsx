@@ -29,7 +29,7 @@ export function ArtifactWorkspace({ messages, persistedArtifacts = [], streaming
       <header style={{ minHeight: 48, padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
         <Icon name="file-text" size={16} style={{ color: "var(--text-secondary)" }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>交付物预览区</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>文件预览区</div>
           {streaming ? <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>Agent 正在生成交付物…</div> : null}
         </div>
         {artifacts.length > 0 ? <span style={{ padding: "1px 8px", borderRadius: 10, background: "var(--divider)", color: "var(--text-secondary)", fontSize: 11, fontWeight: 600 }}>{artifacts.length}</span> : null}

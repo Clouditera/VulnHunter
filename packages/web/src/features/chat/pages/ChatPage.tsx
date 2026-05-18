@@ -131,7 +131,7 @@ export function ChatPage() {
               <div style={{ position: "relative", height: "100%", width: "min(440px, 90vw)", maxWidth: "100vw", boxShadow: "-16px 0 40px rgba(0,0,0,0.22)" }}>
                 <button
                   type="button"
-                  aria-label="关闭交付物预览区"
+                  aria-label="关闭文件预览区"
                   onClick={() => setDrawerOpen(false)}
                   style={{ position: "absolute", top: 10, right: 12, zIndex: 2, border: "1px solid var(--border)", background: "var(--bg-card)", color: "var(--text-primary)", borderRadius: 6, height: 28, padding: "0 10px", cursor: "pointer" }}
                 >
