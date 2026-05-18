@@ -33,18 +33,79 @@ if (( mem_kb > 0 && mem_kb < 32*1024*1024 )); then
   echo "[install] warning: memory below recommended 32GiB; install smoke can run, large scans may need lower concurrency" >&2
 fi
 
+is_tty() { [[ -t 0 && -t 1 ]]; }
+default_data_dir() {
+  if [[ "$(id -u)" == "0" ]]; then
+    printf '%s\n' "$DATA_DIR_DEFAULT"
+  else
+    printf '%s\n' "${HOME:-/tmp}/vulnhunt-data"
+  fi
+}
+port_available() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ! ss -ltn "sport = :$port" | grep -q ":$port"
+  else
+    ! (echo >"/dev/tcp/127.0.0.1/$port") >/dev/null 2>&1
+  fi
+}
+
 if [[ ! -f .env ]]; then
-  cp .env.example .env
-  data_dir="${DATA_DIR:-$DATA_DIR_DEFAULT}"
+  if [[ -z "${DATA_DIR:-}" && ! is_tty ]]; then
+    echo "[install] DATA_DIR is required in non-interactive first install." >&2
+    echo "Example: DATA_DIR=/opt/vulnhunt/data WEB_PORT=23000 ./install.sh" >&2
+    exit 1
+  fi
+
+  data_dir="${DATA_DIR:-$(default_data_dir)}"
+  web_port="${WEB_PORT:-23000}"
+
+  if [[ -z "${DATA_DIR:-}" && is_tty ]]; then
+    echo "VulnHunt 安装向导"
+    echo ""
+    echo "数据目录会保存数据库、扫描工作区、报告、对象存储和授权状态。"
+    echo "请使用持久化磁盘路径，不建议使用 /tmp。"
+    echo ""
+    read -r -p "请选择数据目录 DATA_DIR [$data_dir]: " input_data_dir
+    data_dir="${input_data_dir:-$data_dir}"
+    read -r -p "请选择 Web 访问端口 WEB_PORT [$web_port]: " input_web_port
+    web_port="${input_web_port:-$web_port}"
+    echo ""
+    echo "安装配置："
+    echo "- 数据目录：$data_dir"
+    echo "- Web 端口：$web_port"
+    echo ""
+    read -r -p "确认开始安装？[Y/n] " confirm
+    case "${confirm:-Y}" in
+      y|Y|yes|YES) ;;
+      *) echo "[install] cancelled"; exit 0 ;;
+    esac
+  fi
+
   if [[ "$data_dir" != /* ]]; then
     echo "[install] DATA_DIR must be an absolute host path: $data_dir" >&2
     exit 1
   fi
+  if ! [[ "$web_port" =~ ^[0-9]+$ ]] || (( web_port < 1 || web_port > 65535 )); then
+    echo "[install] WEB_PORT must be a number between 1 and 65535: $web_port" >&2
+    exit 1
+  fi
+  if ! mkdir -p "$data_dir" 2>/dev/null || [[ ! -w "$data_dir" ]]; then
+    echo "[install] 当前用户无法写入数据目录：$data_dir" >&2
+    echo "请选择其他目录，例如：${HOME:-/tmp}/vulnhunt-data" >&2
+    exit 1
+  fi
+  if ! port_available "$web_port"; then
+    echo "[install] WEB_PORT is already in use: $web_port" >&2
+    exit 1
+  fi
+
+  cp .env.example .env
   sed -i "s|^DATA_DIR=.*|DATA_DIR=$data_dir|" .env
   sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=$(rand_hex 18)|" .env
   sed -i "s|^MINIO_ACCESS_KEY=.*|MINIO_ACCESS_KEY=vh$(rand_hex 8)|" .env
   sed -i "s|^MINIO_SECRET_KEY=.*|MINIO_SECRET_KEY=$(rand_hex 24)|" .env
-  sed -i "s|^WEB_PORT=.*|WEB_PORT=$WEB_PORT|" .env
+  sed -i "s|^WEB_PORT=.*|WEB_PORT=$web_port|" .env
   if [[ "$(id -u)" == "0" ]]; then
     sed -i "s|^SERVICE_UID=.*|SERVICE_UID=1001|" .env
     sed -i "s|^SERVICE_GID=.*|SERVICE_GID=1001|" .env
