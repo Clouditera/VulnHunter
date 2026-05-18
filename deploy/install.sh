@@ -51,7 +51,7 @@ port_available() {
 }
 
 if [[ ! -f .env ]]; then
-  if [[ -z "${DATA_DIR:-}" && ! is_tty ]]; then
+  if [[ -z "${DATA_DIR:-}" ]] && ! is_tty; then
     echo "[install] DATA_DIR is required in non-interactive first install." >&2
     echo "Example: DATA_DIR=/opt/vulnhunt/data WEB_PORT=23000 ./install.sh" >&2
     exit 1
@@ -60,7 +60,7 @@ if [[ ! -f .env ]]; then
   data_dir="${DATA_DIR:-$(default_data_dir)}"
   web_port="${WEB_PORT:-23000}"
 
-  if [[ -z "${DATA_DIR:-}" && is_tty ]]; then
+  if [[ -z "${DATA_DIR:-}" ]] && is_tty; then
     echo "VulnHunt 安装向导"
     echo ""
     echo "数据目录会保存数据库、扫描工作区、报告、对象存储和授权状态。"
