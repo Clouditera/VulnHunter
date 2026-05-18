@@ -76,6 +76,18 @@ export interface ChatMessage {
   images?: ChatImageAttachment[];
 }
 
+export type ChatActivityStatus = "running" | "success" | "warning" | "waiting" | "neutral";
+
+export interface ChatActivity {
+  id: string;
+  session_id: string;
+  status: ChatActivityStatus;
+  label: string;
+  detail?: string;
+  created_at: number;
+  expires_at?: number;
+}
+
 export interface ChatSession {
   id: string;
   title: string;

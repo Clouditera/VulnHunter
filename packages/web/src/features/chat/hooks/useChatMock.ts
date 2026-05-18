@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type {
+  ChatActivity,
   ChatImageAttachment,
   ChatMessage,
   ChatSession,
@@ -127,6 +128,7 @@ export function useChatMock() {
   const [messagesBySession, setMessagesBySession] =
     useState<Record<string, ChatMessage[]>>(SEED_MESSAGES);
   const [streaming, setStreaming] = useState(false);
+  const [activity, setActivity] = useState<ChatActivity | null>(null);
   const abortRef = { current: false };
 
   const messages = activeId ? messagesBySession[activeId] ?? [] : [];
@@ -182,8 +184,12 @@ export function useChatMock() {
       ...prev,
       [sid]: [...prior, userMsg, assistantMsg],
     }));
+    setActivity({ id: `act-${Date.now()}`, session_id: sid, status: "running", label: "正在思考…", created_at: Date.now() });
     setStreaming(true);
     abortRef.current = false;
+
+    await sleep(250);
+    setActivity({ id: `act-${Date.now()}`, session_id: sid, status: "running", label: /BUG-\d+/i.test(text) ? "正在读取漏洞详情…" : "正在整理回答…", created_at: Date.now() });
 
     // Simulate streaming chunks
     const mockReply = buildMockReply(text);
@@ -207,11 +213,13 @@ export function useChatMock() {
       const updated: ChatMessage = { ...last, streaming: false };
       return { ...prev, [sid]: [...arr.slice(0, -1), updated] };
     });
+    setActivity({ id: `act-${Date.now()}`, session_id: sid, status: "success", label: "已完成处理", created_at: Date.now(), expires_at: Date.now() + 2500 });
     setStreaming(false);
   }
 
   function abort() {
     abortRef.current = true;
+    if (activeId) setActivity({ id: `act-${Date.now()}`, session_id: activeId, status: "neutral", label: "已停止生成", created_at: Date.now(), expires_at: Date.now() + 2500 });
   }
 
   return {
@@ -220,6 +228,8 @@ export function useChatMock() {
     activeSession: sessions.find((s) => s.id === activeId) ?? null,
     messages,
     streaming,
+    activity,
+    recentActivities: activity ? [activity] : [],
     selectSession: setActiveId,
     createSession,
     deleteSession,

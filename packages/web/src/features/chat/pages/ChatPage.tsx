@@ -58,6 +58,8 @@ export function ChatPage() {
     messages,
     artifacts,
     streaming,
+    activity,
+    recentActivities,
     selectSession,
     createSession,
     deleteSession,
@@ -95,6 +97,8 @@ export function ChatPage() {
         onSend={sendPrompt}
         onAbort={abort}
         onArtifactSelect={handleArtifactSelect}
+        activity={activity}
+        recentActivities={recentActivities}
       />
       {isNarrow ? (
         <>

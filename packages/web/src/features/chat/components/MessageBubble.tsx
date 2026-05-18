@@ -134,9 +134,9 @@ export function MessageBubble({ message, onArtifactSelect }: { message: ChatMess
         <div style={AGENT_BODY}>
           {/* Tool calls render first, then the text. This matches pi rpc
               timing — tool calls happen before / during text generation. */}
-          {(message.tool_calls ?? []).map((call, i) => (
+          {isDebugToolsEnabled() ? (message.tool_calls ?? []).map((call, i) => (
             <ToolCallBlock key={i} call={call} />
-          ))}
+          )) : null}
           <div
             data-testid="chat-message-content"
             style={visibleContent || artifacts.length ? AGENT_BUBBLE : undefined}
@@ -237,4 +237,8 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
       />
     </div>
   );
+}
+
+function isDebugToolsEnabled(): boolean {
+  return typeof window !== "undefined" && window.localStorage.getItem("vh.chat.debugTools") === "1";
 }

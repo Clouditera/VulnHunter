@@ -3,7 +3,8 @@ import type { CSSProperties } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential } from "../../../shared/api/client.js";
-import type { ChatArtifact, ChatImageAttachment, ChatMessage, ChatSession } from "../types.js";
+import type { ChatActivity, ChatArtifact, ChatImageAttachment, ChatMessage, ChatSession } from "../types.js";
+import { ChatActivityBar } from "./ChatActivityBar.js";
 import { MessageBubble } from "./MessageBubble.js";
 import { ChatInput } from "./ChatInput.js";
 
@@ -47,6 +48,8 @@ export function MessageFlow({
   onSend,
   onAbort,
   onArtifactSelect,
+  activity,
+  recentActivities = [],
 }: {
   session: ChatSession | null;
   messages: ChatMessage[];
@@ -54,6 +57,8 @@ export function MessageFlow({
   onSend: (text: string, images?: ChatImageAttachment[]) => void;
   onAbort: () => void;
   onArtifactSelect?: (artifact: ChatArtifact) => void;
+  activity?: ChatActivity | null;
+  recentActivities?: ChatActivity[];
 }) {
   const streamRef = useRef<HTMLDivElement | null>(null);
 
@@ -198,6 +203,8 @@ export function MessageFlow({
           </>
         )}
       </div>
+
+      <ChatActivityBar activity={activity} recent={recentActivities} />
 
       {/* Input bar */}
       <ChatInput

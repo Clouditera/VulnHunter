@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type ChatArtifactApi, type ChatMessageApi, type ChatSessionApi } from "../../../shared/api/client.js";
 import type {
+  ChatActivity,
   ChatArtifact,
   ChatImageAttachment,
   ChatMessage,
   ChatSession,
   ChatToolCall,
 } from "../types.js";
+import { mapToolActivity, respondingActivity, stoppedActivity, thinkingActivity, warningActivity, type ActivityDraft } from "../activity.js";
 
 /**
  * Real-data version of the chat hook — talks to the backend via REST +
@@ -63,9 +65,29 @@ export function useChat() {
   const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [activitiesBySession, setActivitiesBySession] = useState<Record<string, ChatActivity[]>>({});
   // Id of the assistant message currently being streamed (one at a time).
   const currentAssistantId = useRef<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+
+  const pushActivity = useCallback((sid: string, draft: ActivityDraft) => {
+    const now = Date.now();
+    const activity: ChatActivity = {
+      id: `act-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      session_id: sid,
+      status: draft.status,
+      label: draft.label,
+      detail: draft.detail,
+      created_at: now,
+      expires_at: draft.ttlMs ? now + draft.ttlMs : undefined,
+    };
+    setActivitiesBySession((prev) => ({ ...prev, [sid]: [...(prev[sid] ?? []).filter((a) => !a.expires_at || a.expires_at > now), activity].slice(-5) }));
+  }, []);
+
+  const expireActivities = useCallback((sid: string, ttlMs: number) => {
+    const expiresAt = Date.now() + ttlMs;
+    setActivitiesBySession((prev) => ({ ...prev, [sid]: (prev[sid] ?? []).map((a) => a.expires_at ? a : { ...a, expires_at: expiresAt }) }));
+  }, []);
 
   const refreshArtifacts = useCallback(async (sid: string) => {
     const res = await api.chat.sessions.artifacts(sid);
@@ -114,11 +136,12 @@ export function useChat() {
         }
         if (evt.type === "chat_artifact_created" && evt.sessionId) {
           refreshArtifacts(evt.sessionId).catch(() => {});
+          pushActivity(evt.sessionId, { status: "success", label: evt.title ? `文件已生成：${String(evt.title).split(/[\\/]/).pop()?.slice(0, 48)}` : "文件已生成", ttlMs: 2500 });
         }
       } catch { /* ignore malformed SSE */ }
     };
     return () => es.close();
-  }, [refreshArtifacts]);
+  }, [refreshArtifacts, pushActivity]);
 
   /* --------------------------------------------------------------------- */
   /*  Load messages for active session                                     */
@@ -222,6 +245,8 @@ export function useChat() {
         return;
 
       case "agent_start":
+      case "turn_start":
+        pushActivity(sid, thinkingActivity());
         setStreaming(true);
         setSessions((s) =>
           s.map((x) =>
@@ -232,6 +257,7 @@ export function useChat() {
 
       case "agent_end":
       case "turn_end":
+        expireActivities(sid, 2500);
         setStreaming(false);
         return;
 
@@ -292,6 +318,8 @@ export function useChat() {
           (b): b is { type: "thinking"; thinking: string } =>
             b?.type === "thinking",
         );
+
+        if (textBlock?.text) pushActivity(sid, respondingActivity());
 
         setMessagesBySession((prev) => {
           const arr = prev[sid] ?? [];
@@ -363,6 +391,7 @@ export function useChat() {
         const tool = evt.tool ?? evt.name ?? "tool";
         const args =
           typeof evt.args === "string" ? evt.args : JSON.stringify(evt.args ?? {});
+        pushActivity(sid, mapToolActivity(tool, "start"));
         setMessagesBySession((prev) => {
           const arr = prev[sid] ?? [];
           const idx = arr.findIndex((m) => m.id === id);
@@ -385,6 +414,8 @@ export function useChat() {
         const id = currentAssistantId.current;
         if (!id) return;
         const tcId = evt.tool_call_id;
+        const tool = evt.tool ?? evt.name;
+        pushActivity(sid, mapToolActivity(tool, evt.error ? "error" : "success", evt.result));
         setMessagesBySession((prev) => {
           const arr = prev[sid] ?? [];
           const idx = arr.findIndex((m) => m.id === id);
@@ -408,6 +439,7 @@ export function useChat() {
       }
 
       case "error": {
+        pushActivity(sid, warningActivity());
         setLastError(evt.error ?? "pi error");
         setStreaming(false);
         return;
@@ -416,12 +448,16 @@ export function useChat() {
       default:
         return; // agent_end, turn_start, thinking_* handled above or ignored
     }
-  }, []);
+  }, [expireActivities, pushActivity]);
 
   /* --------------------------------------------------------------------- */
   /*  Derived state                                                         */
   /* --------------------------------------------------------------------- */
 
+  const now = Date.now();
+  const activeActivities = activeId ? (activitiesBySession[activeId] ?? []).filter((a) => !a.expires_at || a.expires_at > now) : [];
+  const activity = activeActivities[activeActivities.length - 1] ?? null;
+  const recentActivities = activeActivities.slice(-3);
   const messages = activeId ? messagesBySession[activeId] ?? [] : [];
   const artifacts = activeId ? artifactsBySession[activeId] ?? [] : [];
   const activeSession = useMemo(
@@ -490,6 +526,7 @@ export function useChat() {
         ...prev,
         [sid]: [...(prev[sid] ?? []), optimistic],
       }));
+      pushActivity(sid, thinkingActivity());
       setStreaming(true);
       setLastError(null);
       try {
@@ -515,11 +552,12 @@ export function useChat() {
           ...prev,
           [sid]: [...(prev[sid] ?? []), errMsg],
         }));
+        pushActivity(sid, warningActivity(code));
         setStreaming(false);
         setLastError(code);
       }
     },
-    [activeId, streaming, messagesBySession],
+    [activeId, streaming, messagesBySession, pushActivity],
   );
 
   const abort = useCallback(() => {
@@ -527,8 +565,9 @@ export function useChat() {
     api.chat.sessions.abort(activeId).catch(() => {
       /* best-effort */
     });
+    pushActivity(activeId, stoppedActivity());
     setStreaming(false);
-  }, [activeId]);
+  }, [activeId, pushActivity]);
 
   return {
     sessions,
@@ -537,6 +576,8 @@ export function useChat() {
     messages,
     artifacts,
     streaming,
+    activity,
+    recentActivities,
     loading,
     lastError,
     selectSession,
