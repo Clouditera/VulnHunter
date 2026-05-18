@@ -15,6 +15,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { resolveMcpContext, type McpContext } from "./context.js";
 import { registerChatTools, registerReportTools } from "./registry.js";
 import { logger } from "../infra/logger.js";
+import { licenseGuard } from "../middleware/license-guard.js";
 
 // Per-MCP-session state
 interface McpSession {
@@ -40,6 +41,8 @@ function createToolServer(ctx: McpContext): McpServer {
 }
 
 export const mcpRouter = new Hono();
+
+mcpRouter.use("*", licenseGuard);
 
 // Auth middleware — Bearer token resolved to McpContext
 mcpRouter.use("*", async (c, next) => {

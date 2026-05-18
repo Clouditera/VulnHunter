@@ -8,6 +8,8 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 import { logger } from "../../infra/logger.js";
+import { licenseGuard } from "../../middleware/license-guard.js";
+import { requireAuth } from "../../middleware/auth.js";
 
 export const downloadsRouter = new Hono();
 
@@ -21,7 +23,7 @@ const PLATFORM_MAP: Record<string, { binary: string; outName: string; setupScrip
 };
 
 // GET /api/downloads/deveye/toolkit?platform=linux|windows|macos
-downloadsRouter.get("/deveye/toolkit", async (c) => {
+downloadsRouter.get("/deveye/toolkit", licenseGuard, requireAuth, async (c) => {
   const platform = (c.req.query("platform") || "linux").toLowerCase();
   const spec = PLATFORM_MAP[platform];
   if (!spec) {
