@@ -24,7 +24,7 @@ check "database health" "docker inspect --format='{{.State.Health.Status}}' vuln
 check "minio health" "docker inspect --format='{{.State.Health.Status}}' vulnhunt-minio | grep -qx healthy"
 check "worker image present" "docker image inspect ${WORKER_IMAGE:-vulnhunt-worker:latest}"
 check "eval worker image present" "docker image inspect ${EVAL_WORKER_IMAGE:-vulnhunt-eval-worker:latest}"
-check "service docker socket" "docker exec vulnhunt-service test -S /var/run/docker.sock"
+check "service docker socket access" "docker exec vulnhunt-service node -e \"const net=require('node:net'); const c=net.createConnection('/var/run/docker.sock'); c.setTimeout(3000); c.on('connect',()=>{c.write('GET /_ping HTTP/1.0\\r\\n\\r\\n')}); c.on('data',(d)=>{process.exit(d.toString().includes('OK')?0:1)}); c.on('timeout',()=>process.exit(1)); c.on('error',()=>process.exit(1));\""
 
 echo "-- system status --"
 curl -fsS "http://127.0.0.1:${WEB_PORT}/api/system/status" || true

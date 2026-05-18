@@ -37,6 +37,8 @@ services:
       VULNHUNT_MASTER_KEY_FILE: "${VULNHUNT_MASTER_KEY_FILE:-/run/secrets/vulnhunt-master.key}"
       VULNHUNT_LICENSE_PUBLIC_KEY_FILE: "${VULNHUNT_LICENSE_PUBLIC_KEY_FILE:-/run/secrets/license-public.pem}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
+    group_add:
+      - "${DOCKER_GID:-0}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - vulnhunt-data:/data/vulnhunt

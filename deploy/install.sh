@@ -41,6 +41,10 @@ if [[ ! -f .env ]]; then
   sed -i "s|^MINIO_ACCESS_KEY=.*|MINIO_ACCESS_KEY=vh$(rand_hex 8)|" .env
   sed -i "s|^MINIO_SECRET_KEY=.*|MINIO_SECRET_KEY=$(rand_hex 24)|" .env
   sed -i "s|^WEB_PORT=.*|WEB_PORT=$WEB_PORT|" .env
+  if [[ -S /var/run/docker.sock ]]; then
+    docker_gid="$(stat -c '%g' /var/run/docker.sock)"
+    sed -i "s|^DOCKER_GID=.*|DOCKER_GID=$docker_gid|" .env
+  fi
   echo "[install] generated .env"
 fi
 
