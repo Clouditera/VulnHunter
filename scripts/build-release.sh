@@ -32,7 +32,7 @@ cat > "$OUT/VERSION.json" << JSON
 }
 JSON
 
-pnpm build
+pnpm turbo run build --filter=@vulnhunt/service --filter=@vulnhunt/web
 pnpm --filter @vulnhunt/worker-bridge build
 if [[ ! -x submodules/youngflow/release/youngflow-linux-x64 ]]; then
   echo "missing submodules/youngflow/release/youngflow-linux-x64" >&2
