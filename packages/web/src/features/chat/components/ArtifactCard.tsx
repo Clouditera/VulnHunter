@@ -15,19 +15,6 @@ const META: CSSProperties = {
   marginTop: "4px",
 };
 
-const PREVIEW: CSSProperties = {
-  marginTop: "10px",
-  padding: "10px",
-  borderRadius: "6px",
-  background: "var(--bg-card)",
-  border: "1px solid var(--border)",
-  maxHeight: "160px",
-  overflow: "auto",
-  whiteSpace: "pre-wrap",
-  fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-  fontSize: "12px",
-};
-
 const BTN: CSSProperties = {
   border: "1px solid var(--border)",
   borderRadius: "6px",
@@ -40,7 +27,6 @@ const BTN: CSSProperties = {
 
 export function ArtifactCard({ artifact, onSelect }: { artifact: ChatArtifact; onSelect?: (artifact: ChatArtifact) => void }) {
   const size = formatBytes(artifact.size_bytes);
-  const canCopy = !!artifact.preview && /^(text\/|application\/(json|xml)|.*markdown)/i.test(artifact.mime_type);
 
   return (
     <div data-testid="chat-artifact-card" style={{ ...CARD, cursor: onSelect ? "pointer" : undefined }} onClick={() => onSelect?.(artifact)}>
@@ -50,13 +36,11 @@ export function ArtifactCard({ artifact, onSelect }: { artifact: ChatArtifact; o
           <div style={META}>{artifact.filename} · {artifact.mime_type} · {size}</div>
         </div>
         <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
-          {canCopy ? (
-            <button type="button" style={BTN} onClick={() => navigator.clipboard?.writeText(artifact.preview ?? "")}>Copy</button>
-          ) : null}
-          <a style={{ ...BTN, textDecoration: "none" }} href={artifact.download_url} download={artifact.filename}>Download</a>
+          <span style={{ ...BTN, borderColor: "transparent" }}>在右侧预览</span>
+          <a style={{ ...BTN, textDecoration: "none" }} href={artifact.download_url} download={artifact.filename} onClick={(e) => e.stopPropagation()}>Download</a>
         </div>
       </div>
-      {artifact.preview ? <pre style={PREVIEW}>{artifact.preview}</pre> : null}
+
     </div>
   );
 }

@@ -28,9 +28,10 @@ interface SplitterProps {
   /** Optional ref to the wrapping flex container — if provided, size is computed
       relative to its top-left edge (handles scrollable parents correctly). */
   containerRef?: React.RefObject<HTMLElement | null>;
+  invert?: boolean;
 }
 
-export function Splitter({ value, onResize, min = 200, max = 600, axis = "x", containerRef }: SplitterProps) {
+export function Splitter({ value, onResize, min = 200, max = 600, axis = "x", containerRef, invert = false }: SplitterProps) {
   const [dragging, setDragging] = useState(false);
   const [hover, setHover] = useState(false);
   const startRef = useRef<{ pos: number; size: number } | null>(null);
@@ -52,10 +53,14 @@ export function Splitter({ value, onResize, min = 200, max = 600, axis = "x", co
       let next: number;
       if (containerRef?.current) {
         const rect = containerRef.current.getBoundingClientRect();
-        next = axis === "x" ? e.clientX - rect.left : e.clientY - rect.top;
+        if (axis === "x") {
+          next = invert ? rect.right - e.clientX : e.clientX - rect.left;
+        } else {
+          next = invert ? rect.bottom - e.clientY : e.clientY - rect.top;
+        }
       } else {
         const delta = (axis === "x" ? e.clientX : e.clientY) - startRef.current.pos;
-        next = startRef.current.size + delta;
+        next = startRef.current.size + (invert ? -delta : delta);
       }
       next = Math.max(min, Math.min(max, next));
       onResize(next);
@@ -77,7 +82,7 @@ export function Splitter({ value, onResize, min = 200, max = 600, axis = "x", co
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [dragging, axis, min, max, onResize, containerRef]);
+  }, [dragging, axis, min, max, onResize, containerRef, invert]);
 
   const active = dragging || hover;
   const isX = axis === "x";

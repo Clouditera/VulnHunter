@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
-import type { ChatImageAttachment, ChatMessage } from "../types.js";
+import type { ChatArtifact, ChatImageAttachment, ChatMessage } from "../types.js";
 import { ToolCallBlock } from "./ToolCallBlock.js";
 import { Markdown } from "./Markdown.js";
 import { ArtifactCard } from "./ArtifactCard.js";
@@ -85,7 +85,7 @@ const AGENT_BUBBLE: CSSProperties = {
   maxWidth: "100%",
 };
 
-export function MessageBubble({ message }: { message: ChatMessage }) {
+export function MessageBubble({ message, onArtifactSelect }: { message: ChatMessage; onArtifactSelect?: (artifact: ChatArtifact) => void }) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   if (message.role === "user") {
@@ -142,7 +142,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
             style={visibleContent || artifacts.length ? AGENT_BUBBLE : undefined}
           >
             {visibleContent ? <Markdown content={visibleContent} /> : null}
-            {artifacts.map((a) => <ArtifactCard key={a.artifact_id} artifact={a} />)}
+            {artifacts.map((a) => <ArtifactCard key={a.artifact_id} artifact={a} onSelect={onArtifactSelect} />)}
             {message.streaming ? (
               <span
                 aria-hidden

@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { SessionList } from "../components/SessionList.js";
 import { MessageFlow } from "../components/MessageFlow.js";
 import { ArtifactWorkspace } from "../components/ArtifactWorkspace.js";
+import { Splitter, useResizableWidth } from "../../../shared/components/Splitter.js";
 import { useChatMock } from "../hooks/useChatMock.js";
 import { useChat } from "../hooks/useChat.js";
 
@@ -40,6 +41,9 @@ export function ChatPage() {
   useEffect(() => i18n.onChange(() => force((n) => n + 1)), []);
 
   const useMock = useMockFromStorage();
+  const layoutRef = useRef<HTMLDivElement | null>(null);
+  const [artifactWidth, setArtifactWidth] = useResizableWidth("chat-artifact-width", 440, { min: 360, max: 640 });
+  const [drawerOpen, setDrawerOpen] = useState(false);
   // Both hooks expose the same surface area; React rules require we always
   // call the same hook, so we branch at module scope via a small wrapper.
   const real = useChat();
@@ -61,6 +65,7 @@ export function ChatPage() {
   return (
     <div
       data-testid="chat-page"
+      ref={layoutRef}
       style={{
         display: "flex",
         height: "100%",
@@ -81,8 +86,10 @@ export function ChatPage() {
         streaming={streaming}
         onSend={sendPrompt}
         onAbort={abort}
+        onArtifactSelect={() => setDrawerOpen(true)}
       />
-      <ArtifactWorkspace messages={messages} persistedArtifacts={artifacts} streaming={streaming} />
+      <Splitter value={artifactWidth} onResize={setArtifactWidth} min={360} max={640} containerRef={layoutRef} invert />
+      <ArtifactWorkspace messages={messages} persistedArtifacts={artifacts} streaming={streaming} width={artifactWidth} />
     </div>
   );
 }

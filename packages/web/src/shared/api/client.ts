@@ -928,6 +928,8 @@ export interface ChatArtifactApi {
   mime_type: string;
   size_bytes: number;
   preview?: string;
+  preview_status?: "ready" | "unsupported" | "failed";
+  preview_truncated?: boolean;
   download_url: string;
   created_at?: string;
 }

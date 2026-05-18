@@ -174,16 +174,6 @@ export type PiEvent =
 /*  Artifact references (v1.0)                                                */
 /* -------------------------------------------------------------------------- */
 
-export interface ArtifactRef {
-  /** Unique key — either `bug:BUG-001` or `task:<uuid>`. Drives dedup. */
-  key: string;
-  kind: "finding" | "task";
-  /** Display id — `BUG-001` or task short uuid. */
-  display: string;
-  /** Source message id that produced this ref (for jump-to-source). */
-  source_message_id: string;
-}
-
 export interface ChatArtifact {
   type: "chat_artifact";
   artifact_id: string;
@@ -192,6 +182,8 @@ export interface ChatArtifact {
   mime_type: string;
   size_bytes: number;
   preview?: string;
+  preview_status?: "ready" | "unsupported" | "failed";
+  preview_truncated?: boolean;
   download_url: string;
   created_at?: string;
 }

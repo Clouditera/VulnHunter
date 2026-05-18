@@ -8,6 +8,7 @@ import { loadConfig } from "../../infra/config.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, extname, basename } from "node:path";
 import { createHash } from "node:crypto";
+import { isPreviewableMime, readMinioPreview } from "./artifact-preview.js";
 
 export const chatRouter = new Hono();
 chatRouter.use("*", licenseGuard);
@@ -206,11 +207,21 @@ chatRouter.get("/sessions/:id/artifacts", async (c) => {
   const { getMinio } = await import("../../infra/minio/client.js");
   const minio = getMinio();
   const withPreview = await Promise.all(artifacts.map(async (a: any) => {
-    let preview: string | undefined;
-    if (isPreviewableMime(a.mime_type)) {
-      preview = typeof a.metadata?.preview === "string"
-        ? a.metadata.preview
-        : await readMinioPreview(minio, config.minio.bucket, a.minio_key);
+    const meta = a.metadata ?? {};
+    let preview: string | undefined = typeof meta.preview === "string" ? meta.preview : undefined;
+    let preview_status = typeof meta.preview_status === "string" ? meta.preview_status : undefined;
+    let preview_truncated = Boolean(meta.preview_truncated);
+    if (!preview_status) {
+      if (preview) {
+        preview_status = "ready";
+      } else if (isPreviewableMime(a.mime_type)) {
+        const result = await readMinioPreview(minio, config.minio.bucket, a.minio_key, a.mime_type);
+        preview = result.preview;
+        preview_status = result.preview_status;
+        preview_truncated = result.preview_truncated;
+      } else {
+        preview_status = "unsupported";
+      }
     }
     return {
       artifact_id: a.id,
@@ -220,6 +231,8 @@ chatRouter.get("/sessions/:id/artifacts", async (c) => {
       mime_type: a.mime_type,
       size_bytes: Number(a.size_bytes ?? 0),
       preview,
+      preview_status,
+      preview_truncated,
       download_url: `/api/chat/sessions/${session.id}/artifacts/${a.id}/download`,
       created_at: a.created_at,
     };
@@ -227,29 +240,6 @@ chatRouter.get("/sessions/:id/artifacts", async (c) => {
 
   return c.json({ artifacts: withPreview });
 });
-
-function isPreviewableMime(mime: string): boolean {
-  return mime.startsWith("text/") || ["application/json", "application/xml", "application/javascript"].includes(mime) || mime.includes("markdown");
-}
-
-async function readMinioPreview(minio: any, bucket: string, key: string): Promise<string | undefined> {
-  try {
-    const stream = await minio.getObject(bucket, key);
-    const chunks: Buffer[] = [];
-    let total = 0;
-    await new Promise<void>((resolve, reject) => {
-      stream.on("data", (chunk: Buffer) => {
-        if (total < 2000) chunks.push(chunk.slice(0, Math.max(0, 2000 - total)));
-        total += chunk.length;
-      });
-      stream.on("end", resolve);
-      stream.on("error", reject);
-    });
-    return Buffer.concat(chunks).toString("utf8");
-  } catch {
-    return undefined;
-  }
-}
 
 // GET /api/chat/sessions/:id/artifacts/:artifactId/download — authenticated artifact download
 chatRouter.get("/sessions/:id/artifacts/:artifactId/download", async (c) => {

@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential } from "../../../shared/api/client.js";
-import type { ChatImageAttachment, ChatMessage, ChatSession } from "../types.js";
+import type { ChatArtifact, ChatImageAttachment, ChatMessage, ChatSession } from "../types.js";
 import { MessageBubble } from "./MessageBubble.js";
 import { ChatInput } from "./ChatInput.js";
 
@@ -46,12 +46,14 @@ export function MessageFlow({
   streaming,
   onSend,
   onAbort,
+  onArtifactSelect,
 }: {
   session: ChatSession | null;
   messages: ChatMessage[];
   streaming: boolean;
   onSend: (text: string, images?: ChatImageAttachment[]) => void;
   onAbort: () => void;
+  onArtifactSelect?: (artifact: ChatArtifact) => void;
 }) {
   const streamRef = useRef<HTMLDivElement | null>(null);
 
@@ -172,7 +174,7 @@ export function MessageFlow({
                 return text.length > 0;
               })
               .map((m) => (
-                <MessageBubble key={m.id} message={m} />
+                <MessageBubble key={m.id} message={m} onArtifactSelect={onArtifactSelect} />
               ))}
             {streaming &&
             messages[messages.length - 1]?.role !== "assistant" ? (

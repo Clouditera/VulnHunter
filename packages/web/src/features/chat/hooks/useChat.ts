@@ -601,6 +601,8 @@ function toDomainArtifact(a: ChatArtifactApi): ChatArtifact {
     mime_type: a.mime_type,
     size_bytes: a.size_bytes,
     preview: a.preview,
+    preview_status: a.preview_status,
+    preview_truncated: a.preview_truncated,
     download_url: a.download_url,
     created_at: a.created_at,
   };
