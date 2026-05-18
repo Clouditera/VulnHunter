@@ -14,13 +14,16 @@ COPY packages/service ./packages/service
 COPY packages/web ./packages/web
 
 RUN pnpm turbo run build --filter=@vulnhunt/service --filter=@vulnhunt/web
+RUN pnpm deploy --filter=@vulnhunt/service --prod /prod/service
 
 FROM base AS runner
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 vulnhunt
 WORKDIR /app
 
-COPY --from=builder --chown=vulnhunt:nodejs /app/packages/service/dist ./packages/service/dist
+COPY --from=builder --chown=vulnhunt:nodejs /prod/service/node_modules ./node_modules
+COPY --from=builder --chown=vulnhunt:nodejs /prod/service/package.json ./package.json
+COPY --from=builder --chown=vulnhunt:nodejs /prod/service/dist ./packages/service/dist
 COPY --from=builder --chown=vulnhunt:nodejs /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder --chown=vulnhunt:nodejs /app/packages/web/dist ./public
 
