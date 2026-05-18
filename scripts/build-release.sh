@@ -76,6 +76,9 @@ chmod +x "$OUT"/*.sh
 done | sed "s|  $OUT/|  |" > "$OUT/checksums.sha256"
 
 tar -C "$(dirname "$OUT")" -czf "$OUT.tar.gz" "$(basename "$OUT")"
-sha256sum "$OUT.tar.gz" > "$OUT.tar.gz.sha256"
+(
+  cd "$(dirname "$OUT")"
+  sha256sum "$(basename "$OUT").tar.gz"
+) > "$OUT.tar.gz.sha256"
 echo "release package: $OUT.tar.gz"
 echo "release checksum: $OUT.tar.gz.sha256"
