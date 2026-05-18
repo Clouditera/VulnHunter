@@ -2,7 +2,7 @@ FROM node:20-slim AS base
 WORKDIR /app
 
 FROM base AS builder
-COPY package.json pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/service/package.json ./packages/service/
 COPY packages/web/package.json ./packages/web/
