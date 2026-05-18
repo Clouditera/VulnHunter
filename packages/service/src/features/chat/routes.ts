@@ -9,6 +9,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join, extname, basename } from "node:path";
 import { createHash } from "node:crypto";
 import { isPreviewableMime, readMinioPreview } from "./artifact-preview.js";
+import { getCredentialById, getDefaultOrFirstAvailableCredential } from "../settings/storage.js";
+import { ChatCredentialUnavailableError } from "./errors.js";
+import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 
 export const chatRouter = new Hono();
 chatRouter.use("*", licenseGuard);
@@ -30,7 +33,26 @@ chatRouter.get("/sessions", async (c) => {
 chatRouter.post("/sessions", async (c) => {
   const user = c.get("user");
   const body = await c.req.json<{ name?: string; credential_id?: string }>().catch(() => ({} as { name?: string; credential_id?: string }));
-  const session = await chatStorage.createSession(user.userId, body.name, body.credential_id);
+  let credentialId: string | undefined;
+  try {
+    if (body.credential_id) {
+      const credential = await getCredentialById(body.credential_id);
+      if (!credential) {
+        return c.json({ error: { code: "ERR_NO_LLM_CREDENTIAL", detail: "选择的模型凭证不可用。请重新选择模型，或在 Settings 重新配置后重试。" } }, 409);
+      }
+      credentialId = credential.id;
+    } else {
+      const credential = await getDefaultOrFirstAvailableCredential();
+      credentialId = credential?.id;
+    }
+  } catch (err) {
+    if (err instanceof CredentialKeyUnavailableError || err instanceof CredentialDecryptError) {
+      credentialId = undefined;
+    } else {
+      throw err;
+    }
+  }
+  const session = await chatStorage.createSession(user.userId, body.name, credentialId);
   return c.json({ session }, 201);
 });
 
@@ -70,7 +92,7 @@ chatRouter.post("/sessions/:id/prompt", async (c) => {
 
   const body = await c.req.json<{ message: string; images?: unknown[] }>();
   if (!body.message?.trim()) {
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "message required" } }, 400);
+    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "message required" } }, 400);
   }
 
   // Save user message to DB
@@ -88,6 +110,9 @@ chatRouter.post("/sessions/:id/prompt", async (c) => {
     return c.json({ ok: true });
   } catch (err) {
     logger.error({ err, sessionId }, "Failed to send prompt");
+    if (err instanceof ChatCredentialUnavailableError) {
+      return c.json({ error: { code: err.code, detail: err.message } }, 409);
+    }
     return c.json({ error: { code: "ERR_INTERNAL", detail: String(err) } }, 503);
   }
 });
@@ -109,7 +134,7 @@ chatRouter.post("/sessions/:id/set-model", async (c) => {
 
   const body = await c.req.json<{ credential_id: string }>();
   if (!body.credential_id) {
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "credential_id required" } }, 400);
+    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "credential_id required" } }, 400);
   }
 
   try {
@@ -135,12 +160,12 @@ chatRouter.post("/sessions/:id/upload", async (c) => {
   const body = await c.req.parseBody();
   const file = body["file"];
   if (!file || typeof file === "string") {
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "file field required" } }, 400);
+    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "file field required" } }, 400);
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
   if (buffer.length === 0) {
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "Empty file" } }, 400);
+    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "Empty file" } }, 400);
   }
   if (buffer.length > 500 * 1024 * 1024) {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "File too large (max 500MB)" } }, 413);

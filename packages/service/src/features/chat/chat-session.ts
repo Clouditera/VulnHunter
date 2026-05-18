@@ -14,7 +14,8 @@ import {
   ensureWorkDir,
   getDocker,
 } from "../workers/docker-client.js";
-import { getDefaultCredential, getCredentialById, listCredentials } from "../settings/storage.js";
+import { getCredentialById, getDefaultOrFirstAvailableCredential, listCredentials } from "../settings/storage.js";
+import { ChatCredentialUnavailableError } from "./errors.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { credentialToWorkerEnv } from "../settings/credential-env.js";
 import { getSession, appendMessage } from "./storage.js";
@@ -195,17 +196,23 @@ export class ChatSession {
       const credId = session?.credential_id;
       let cred;
       try {
-        cred = credId ? await getCredentialById(credId) : await getDefaultCredential();
+        cred = credId ? await getCredentialById(credId) : await getDefaultOrFirstAvailableCredential();
       } catch (err) {
         if (err instanceof CredentialKeyUnavailableError) {
-          throw new Error("凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。");
+          throw new ChatCredentialUnavailableError("凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。");
         }
         if (err instanceof CredentialDecryptError) {
-          throw new Error("LLM credential cannot be decrypted with current master key. Re-save the credential in Settings or restore the original master key.");
+          throw new ChatCredentialUnavailableError("当前会话选择的模型凭证无法解密。请在 Settings 重新保存凭证，或恢复原 master key 后重试。");
         }
         throw err;
       }
-      if (!cred) throw new Error("No LLM credentials configured");
+      if (!cred) {
+        throw new ChatCredentialUnavailableError(
+          credId
+            ? "当前会话选择的模型凭证不可用。请在右上角选择其他模型，或在 Settings 重新配置后重试。"
+            : undefined,
+        );
+      }
 
       // Prepare workspace
       const hostWorkDir = join(config.dataDir, "chat-sessions", this.sessionId);

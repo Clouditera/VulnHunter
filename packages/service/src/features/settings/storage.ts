@@ -90,6 +90,33 @@ export async function getCredentialById(id: string): Promise<DecryptedLlmCredent
   return decryptRow(rows[0]);
 }
 
+export async function getDefaultOrFirstAvailableCredential(): Promise<DecryptedLlmCredential | null> {
+  const defaultCredential = await getDefaultCredential();
+  if (defaultCredential) return defaultCredential;
+
+  const db = getDb();
+  const rows = await db<(DbLlmCredential & {
+    api_key_ciphertext: Buffer;
+    api_key_iv: Buffer;
+    api_key_tag: Buffer;
+  })[]>`
+    SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
+           key_fingerprint, api_key_ciphertext, api_key_iv, api_key_tag
+    FROM llm_credentials
+    ORDER BY is_default DESC, created_at DESC
+  `;
+
+  for (const row of rows) {
+    try {
+      return decryptRow(row);
+    } catch (err) {
+      if (err instanceof CredentialDecryptError) continue;
+      throw err;
+    }
+  }
+  return null;
+}
+
 export interface ListedLlmCredential extends DbLlmCredential {
   masked_key: string;
   credential_health: "ok" | "decrypt_failed" | "key_unavailable" | "unknown";

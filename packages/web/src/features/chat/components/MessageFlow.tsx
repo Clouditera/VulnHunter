@@ -245,14 +245,14 @@ function ModelChip({
   const resolved =
     (activeId ? credentials.find((c) => c.id === activeId) : null) ??
     credentials.find((c) => c.is_default) ??
-    credentials[0];
-  if (!resolved) return null;
+    null;
+  if (!resolved && credentials.length === 0) return null;
 
-  const label = resolved.model_id || resolved.label || resolved.provider;
-  const canSwitch = credentials.length > 1;
+  const label = resolved ? (resolved.model_id || resolved.label || resolved.provider) : "未选择模型";
+  const canSwitch = credentials.length > 0;
 
   async function handleSelect(cred: LlmCredential) {
-    if (cred.id === resolved.id) {
+    if (resolved && cred.id === resolved.id) {
       setOpen(false);
       return;
     }
@@ -275,15 +275,17 @@ function ModelChip({
       <button
         type="button"
         data-testid="chat-model-chip"
-        data-credential-id={resolved.id}
+        data-credential-id={resolved?.id ?? ""}
         title={
           canSwitch
             ? i18n.t("chat.model.switchHint")
-            : i18n
-                .t("chat.model.chipTooltip")
-                .replace("{label}", resolved.label || resolved.model_id)
-                .replace("{provider}", resolved.provider)
-                .replace("{proto}", resolved.proto_type)
+            : resolved
+              ? i18n
+                  .t("chat.model.chipTooltip")
+                  .replace("{label}", resolved.label || resolved.model_id)
+                  .replace("{provider}", resolved.provider)
+                  .replace("{proto}", resolved.proto_type)
+              : "请选择模型"
         }
         onClick={() => canSwitch && setOpen((v) => !v)}
         style={{
@@ -344,7 +346,7 @@ function ModelChip({
           }}
         >
           {credentials.map((c) => {
-            const isActive = c.id === resolved.id;
+            const isActive = c.id === resolved?.id;
             return (
               <button
                 key={c.id}
