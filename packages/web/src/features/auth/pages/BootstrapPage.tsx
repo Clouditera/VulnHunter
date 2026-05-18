@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
+import { AuthLanguageSelect } from "../../../shared/components/AuthSplitLayout.js";
 
 export function BootstrapPage() {
   const [email, setEmail] = useState("");
@@ -40,6 +41,7 @@ export function BootstrapPage() {
         background: "var(--bg-page)",
       }}
     >
+      <AuthLanguageSelect />
       <div
         style={{
           background: "var(--bg-card)",

@@ -1,10 +1,42 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { i18n } from "../i18n/index.js";
 
 /**
  * Split-screen auth layout used by Login / Activate / Expired / Bootstrap.
  * Left 55% = brand red with giant "V" lettermark; Right 45% = form card.
  * Matches prototype `login-brand` + `form-wrap`.
  */
+export function AuthLanguageSelect() {
+  const [, forceI18n] = useState(0);
+  useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
+
+  return (
+    <select
+      data-testid="auth-lang-select"
+      aria-label={i18n.locale() === "zh" ? "语言" : "Language"}
+      value={i18n.locale()}
+      onChange={(e) => i18n.setLocale(e.target.value as "zh" | "en")}
+      style={{
+        position: "absolute",
+        top: "20px",
+        right: "24px",
+        zIndex: 2,
+        height: "32px",
+        border: "1px solid var(--border)",
+        borderRadius: "8px",
+        background: "var(--bg-card)",
+        color: "var(--text-secondary)",
+        fontSize: "13px",
+        padding: "0 10px",
+        outline: "none",
+      }}
+    >
+      <option value="zh">中文</option>
+      <option value="en">English</option>
+    </select>
+  );
+}
+
 export function AuthSplitLayout({ children, testid }: { children: ReactNode; testid?: string }) {
   return (
     <div
@@ -17,6 +49,8 @@ export function AuthSplitLayout({ children, testid }: { children: ReactNode; tes
         zIndex: 50,
       }}
     >
+      <AuthLanguageSelect />
+
       {/* Left: brand panel */}
       <div
         style={{
