@@ -41,6 +41,13 @@ if [[ ! -f .env ]]; then
   sed -i "s|^MINIO_ACCESS_KEY=.*|MINIO_ACCESS_KEY=vh$(rand_hex 8)|" .env
   sed -i "s|^MINIO_SECRET_KEY=.*|MINIO_SECRET_KEY=$(rand_hex 24)|" .env
   sed -i "s|^WEB_PORT=.*|WEB_PORT=$WEB_PORT|" .env
+  if [[ "$(id -u)" == "0" ]]; then
+    sed -i "s|^SERVICE_UID=.*|SERVICE_UID=1001|" .env
+    sed -i "s|^SERVICE_GID=.*|SERVICE_GID=1001|" .env
+  else
+    sed -i "s|^SERVICE_UID=.*|SERVICE_UID=$(id -u)|" .env
+    sed -i "s|^SERVICE_GID=.*|SERVICE_GID=$(id -g)|" .env
+  fi
   if [[ -S /var/run/docker.sock ]]; then
     docker_gid="$(stat -c '%g' /var/run/docker.sock)"
     sed -i "s|^DOCKER_GID=.*|DOCKER_GID=$docker_gid|" .env
@@ -54,14 +61,21 @@ source .env
 set +a
 
 mkdir -p "${DATA_DIR:-$DATA_DIR_DEFAULT}" .secrets
-if ! chown 1001:1001 "${DATA_DIR:-$DATA_DIR_DEFAULT}" 2>/dev/null; then
-  echo "[install] warning: could not chown DATA_DIR to container uid 1001. If service fails with EACCES, run: sudo chown -R 1001:1001 ${DATA_DIR:-$DATA_DIR_DEFAULT}" >&2
+SERVICE_UID="${SERVICE_UID:-1001}"
+SERVICE_GID="${SERVICE_GID:-1001}"
+if [[ "$(id -u)" == "0" ]]; then
+  chown -R "${SERVICE_UID}:${SERVICE_GID}" "${DATA_DIR:-$DATA_DIR_DEFAULT}" .secrets
+else
+  if [[ "$SERVICE_UID" != "$(id -u)" || "$SERVICE_GID" != "$(id -g)" ]]; then
+    echo "[install] non-root install requires SERVICE_UID/SERVICE_GID to match installer user. Current: $(id -u):$(id -g), configured: ${SERVICE_UID}:${SERVICE_GID}" >&2
+    exit 1
+  fi
 fi
-if ! chmod u+rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}" 2>/dev/null; then
-  echo "[install] warning: could not chmod DATA_DIR: ${DATA_DIR:-$DATA_DIR_DEFAULT}" >&2
+if ! chmod u+rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}" .secrets 2>/dev/null; then
+  echo "[install] warning: could not chmod DATA_DIR/.secrets" >&2
 fi
-if [[ ! -w "${DATA_DIR:-$DATA_DIR_DEFAULT}" ]]; then
-  echo "[install] DATA_DIR is not writable by installer user: ${DATA_DIR:-$DATA_DIR_DEFAULT}" >&2
+if [[ ! -w "${DATA_DIR:-$DATA_DIR_DEFAULT}" || ! -w .secrets ]]; then
+  echo "[install] DATA_DIR or .secrets is not writable by service/install user" >&2
   exit 1
 fi
 if [[ -d "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}" ]]; then
@@ -73,12 +87,20 @@ if [[ ! -f "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}" ]]; then
   chmod 0400 "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}"
   echo "[install] generated master key: ${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}"
 fi
+if [[ "$(id -u)" == "0" ]]; then
+  chown "${SERVICE_UID}:${SERVICE_GID}" "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}"
+fi
+chmod 0400 "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}"
 if [[ ! -f "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}" ]]; then
   cat > "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}" <<'EOF'
 # license public key placeholder; replace before production license enforcement
 EOF
   chmod 0444 "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}"
 fi
+if [[ "$(id -u)" == "0" ]]; then
+  chown "${SERVICE_UID}:${SERVICE_GID}" "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}"
+fi
+chmod 0444 "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}"
 
 if [[ -d images ]]; then
   for img in images/*.tar; do

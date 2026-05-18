@@ -31,14 +31,14 @@ Open `http://<server>:23000/`, activate license, bootstrap admin, then configure
 - Web URL: `http://<host>:23000/`
 - Data dir: `/opt/vulnhunt/data`
   - This default usually requires root/sudo permission to create and write.
-  - If installing as a normal user, set `DATA_DIR` to a writable path in `.env` before running `docker compose up -d`, for example `/home/<user>/vulnhunt-data`.
+  - For normal-user installs, run `DATA_DIR=/home/<user>/vulnhunt-data ./install.sh` or edit `.env` before starting. `install.sh` sets `SERVICE_UID/SERVICE_GID` to the installer user so the service can read/write the data dir and secrets.
 - Master key: `.secrets/vulnhunt-master.key`
 
 ## Troubleshooting
 
 - Port occupied: change `WEB_PORT` in `.env`.
 - Master key path is directory: remove the directory and rerun `install.sh`; it must be a file.
-- Service cannot write `.install_id`: ensure `DATA_DIR` is owned/writable by container uid 1001, e.g. `sudo chown -R 1001:1001 /opt/vulnhunt/data` or your custom data dir.
+- Service cannot write `.install_id`: run `./doctor.sh` and check `SERVICE_UID/SERVICE_GID`. For normal-user installs they must match `id -u` / `id -g`; for root installs ensure data and `.secrets` are owned by `1001:1001`.
 - Docker unavailable: ensure Docker daemon is running and current user can access it.
 - Service cannot access Docker socket: rerun `install.sh` so `DOCKER_GID` is detected from `/var/run/docker.sock`, or set `DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)` in `.env` and restart.
 - Worker image missing: rerun install with `images/*.tar` present or build/load images manually.

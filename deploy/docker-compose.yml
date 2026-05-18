@@ -17,6 +17,7 @@ services:
     image: ${SERVICE_IMAGE:-vulnhunt-service:latest}
     container_name: vulnhunt-service
     restart: unless-stopped
+    user: "${SERVICE_UID:-1001}:${SERVICE_GID:-1001}"
     ports:
       - "${SERVICE_PORT:-28080}:28080"
     environment:
