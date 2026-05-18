@@ -106,6 +106,9 @@ if [[ ! -f .env ]]; then
   sed -i "s|^MINIO_ACCESS_KEY=.*|MINIO_ACCESS_KEY=vh$(rand_hex 8)|" .env
   sed -i "s|^MINIO_SECRET_KEY=.*|MINIO_SECRET_KEY=$(rand_hex 24)|" .env
   sed -i "s|^WEB_PORT=.*|WEB_PORT=$web_port|" .env
+  master_key_file="$data_dir/.secrets/vulnhunt-master.key"
+  sed -i "s|^MASTER_KEY_FILE=.*|MASTER_KEY_FILE=$master_key_file|" .env
+  sed -i "s|^VULNHUNT_MASTER_KEY_FILE=.*|VULNHUNT_MASTER_KEY_FILE=$master_key_file|" .env
   if [[ "$(id -u)" == "0" ]]; then
     sed -i "s|^SERVICE_UID=.*|SERVICE_UID=1001|" .env
     sed -i "s|^SERVICE_GID=.*|SERVICE_GID=1001|" .env
@@ -129,22 +132,22 @@ if [[ "${DATA_DIR:-$DATA_DIR_DEFAULT}" != /* ]]; then
   echo "[install] DATA_DIR must be an absolute host path: ${DATA_DIR:-$DATA_DIR_DEFAULT}" >&2
   exit 1
 fi
-mkdir -p "${DATA_DIR:-$DATA_DIR_DEFAULT}" .secrets
+mkdir -p "${DATA_DIR:-$DATA_DIR_DEFAULT}" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" .secrets
 SERVICE_UID="${SERVICE_UID:-1001}"
 SERVICE_GID="${SERVICE_GID:-1001}"
 if [[ "$(id -u)" == "0" ]]; then
-  chown -R "${SERVICE_UID}:${SERVICE_GID}" "${DATA_DIR:-$DATA_DIR_DEFAULT}" .secrets
+  chown -R "${SERVICE_UID}:${SERVICE_GID}" "${DATA_DIR:-$DATA_DIR_DEFAULT}" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" .secrets
 else
   if [[ "$SERVICE_UID" != "$(id -u)" || "$SERVICE_GID" != "$(id -g)" ]]; then
     echo "[install] non-root install requires SERVICE_UID/SERVICE_GID to match installer user. Current: $(id -u):$(id -g), configured: ${SERVICE_UID}:${SERVICE_GID}" >&2
     exit 1
   fi
 fi
-if ! chmod u+rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}" .secrets 2>/dev/null; then
+if ! chmod u+rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" .secrets 2>/dev/null; then
   echo "[install] warning: could not chmod DATA_DIR/.secrets" >&2
 fi
-if [[ ! -w "${DATA_DIR:-$DATA_DIR_DEFAULT}" || ! -w .secrets ]]; then
-  echo "[install] DATA_DIR or .secrets is not writable by service/install user" >&2
+if [[ ! -w "${DATA_DIR:-$DATA_DIR_DEFAULT}" || ! -w "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" || ! -w .secrets ]]; then
+  echo "[install] DATA_DIR, master key directory, or .secrets is not writable by service/install user" >&2
   exit 1
 fi
 if [[ -d "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}" ]]; then
