@@ -12,7 +12,7 @@ const COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds
 export const authRouter = new Hono();
 
 // POST /api/auth/login
-authRouter.post("/login", async (c) => {
+authRouter.post("/login", licenseGuard, async (c) => {
   const body = await c.req.json<{ email: string; password: string }>();
   const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip");
   const userAgent = c.req.header("user-agent");
@@ -49,7 +49,7 @@ authRouter.post("/login", async (c) => {
 });
 
 // POST /api/auth/change-password (personal, requires old password)
-authRouter.post("/change-password", requireAuth, async (c) => {
+authRouter.post("/change-password", licenseGuard, requireAuth, async (c) => {
   const user = c.get("user");
   const body = await c.req.json<{ old_password: string; new_password: string }>();
 
@@ -66,7 +66,7 @@ authRouter.post("/change-password", requireAuth, async (c) => {
 });
 
 // POST /api/auth/force-change-password (first-login flow)
-authRouter.post("/force-change-password", requireAuth, async (c) => {
+authRouter.post("/force-change-password", licenseGuard, requireAuth, async (c) => {
   const user = c.get("user");
   const body = await c.req.json<{ new_password: string }>();
 
@@ -79,7 +79,7 @@ authRouter.post("/force-change-password", requireAuth, async (c) => {
 });
 
 // PATCH /api/auth/me — self-update display_name
-authRouter.patch("/me", requireAuth, async (c) => {
+authRouter.patch("/me", licenseGuard, requireAuth, async (c) => {
   const user = c.get("user");
   const body = await c.req.json<{ display_name?: string }>();
   if (body.display_name !== undefined) {
@@ -99,7 +99,7 @@ authRouter.post("/logout", async (c) => {
 });
 
 // POST /api/system/bootstrap
-authRouter.post("/bootstrap", async (c) => {
+authRouter.post("/bootstrap", licenseGuard, async (c) => {
   const body = await c.req.json<{ email: string; password: string }>();
 
   if (!body.email || !body.password || body.password.length < 8) {

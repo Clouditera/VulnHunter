@@ -21,13 +21,7 @@ import { SettingsPage } from "../features/settings/pages/SettingsPage.js";
 function RootGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
 
-  if (isLoading) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--bg-page)", color: "var(--text-secondary)", fontSize: "14px" }}>
-        Loading…
-      </div>
-    );
-  }
+  if (isLoading) return <LoadingScreen />;
 
   if (error || !status) return <Navigate to="/activate" replace />;
   if (status.license.status === "expired") return <Navigate to="/expired" replace />;
@@ -37,12 +31,59 @@ function RootGuard() {
   return <Navigate to="/dashboard" replace />;
 }
 
+function LoadingScreen() {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--bg-page)", color: "var(--text-secondary)", fontSize: "14px" }}>
+      Loading…
+    </div>
+  );
+}
+
+function licenseTarget(status: ReturnType<typeof useSystemStatus>["data"]): string | null {
+  if (!status) return "/activate";
+  if (status.license.status === "expired") return "/expired";
+  if (status.license.status !== "active") return "/activate";
+  return null;
+}
+
+function LicenseFirstGuard() {
+  const { data: status, isLoading, error } = useSystemStatus();
+  if (isLoading) return <LoadingScreen />;
+  if (error || !status) return <Navigate to="/activate" replace />;
+  const target = licenseTarget(status);
+  if (target) return <Navigate to={target} replace />;
+  return <Outlet />;
+}
+
+function BootstrapGuard() {
+  const { data: status, isLoading, error } = useSystemStatus();
+  if (isLoading) return <LoadingScreen />;
+  if (error || !status) return <Navigate to="/activate" replace />;
+  const target = licenseTarget(status);
+  if (target) return <Navigate to={target} replace />;
+  if (status.has_admin) return <Navigate to={status.is_authenticated ? "/dashboard" : "/login"} replace />;
+  return <BootstrapPage />;
+}
+
+function LoginGuard() {
+  const { data: status, isLoading, error } = useSystemStatus();
+  if (isLoading) return <LoadingScreen />;
+  if (error || !status) return <Navigate to="/activate" replace />;
+  const target = licenseTarget(status);
+  if (target) return <Navigate to={target} replace />;
+  if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
+  if (status.is_authenticated) return <Navigate to="/dashboard" replace />;
+  return <LoginPage />;
+}
+
 function AuthGuard() {
-  const { data: status, isLoading } = useSystemStatus();
-  if (isLoading) return null;
-  if (!status?.is_authenticated) return <Navigate to="/login" replace />;
-  if (status.license.status === "expired") return <Navigate to="/expired" replace />;
-  if (status.license.status !== "active") return <Navigate to="/activate" replace />;
+  const { data: status, isLoading, error } = useSystemStatus();
+  if (isLoading) return <LoadingScreen />;
+  if (error || !status) return <Navigate to="/activate" replace />;
+  const target = licenseTarget(status);
+  if (target) return <Navigate to={target} replace />;
+  if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
+  if (!status.is_authenticated) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
 
@@ -50,9 +91,9 @@ export const router = createBrowserRouter([
   { path: "/", element: <RootGuard /> },
   { path: "/activate", element: <ActivatePage /> },
   { path: "/expired", element: <ExpiredPage /> },
-  { path: "/bootstrap", element: <BootstrapPage /> },
-  { path: "/login", element: <LoginPage /> },
-  { path: "/change-password", element: <ChangePasswordPage /> },
+  { element: <LicenseFirstGuard />, children: [{ path: "/change-password", element: <ChangePasswordPage /> }] },
+  { path: "/bootstrap", element: <BootstrapGuard /> },
+  { path: "/login", element: <LoginGuard /> },
   {
     element: <AuthGuard />,
     children: [
