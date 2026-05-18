@@ -1,6 +1,6 @@
 import { logger } from "../../infra/logger.js";
 import * as storage from "./storage.js";
-import { verifyCert, parseCert } from "./verify.js";
+import { verifyCert, parseCert, LicenseVerifierUnconfiguredError } from "./verify.js";
 import type { LicenseState } from "./types.js";
 
 let installationId: string = "";
@@ -31,6 +31,27 @@ export async function getCurrentState(): Promise<LicenseState> {
     return { status: "expired", machineCode: installationId };
   }
 
+  const cert = parseCert(license.cert_raw);
+  if (!cert) {
+    return { status: "invalid", machineCode: installationId };
+  }
+
+  try {
+    if (!verifyCert(cert)) {
+      return { status: "invalid", machineCode: installationId };
+    }
+  } catch (err) {
+    if (err instanceof LicenseVerifierUnconfiguredError) {
+      return { status: "invalid", machineCode: installationId };
+    }
+    throw err;
+  }
+
+  if (license.machine_code !== installationId || cert.Basic.machine_code !== installationId) {
+    logger.warn({ stored: license.machine_code, certMachine: cert.Basic.machine_code, local: installationId }, "Stored license machine_code mismatch");
+    return { status: "invalid", machineCode: installationId };
+  }
+
   if (license.expires_at < now) {
     return {
       status: "expired",
@@ -59,8 +80,15 @@ export async function activate(certRaw: string): Promise<{ ok: boolean; error?: 
   }
 
   // Verify RSA signature
-  if (!verifyCert(cert)) {
-    return { ok: false, error: "invalid_signature" };
+  try {
+    if (!verifyCert(cert)) {
+      return { ok: false, error: "invalid_signature" };
+    }
+  } catch (err) {
+    if (err instanceof LicenseVerifierUnconfiguredError) {
+      return { ok: false, error: "license_verifier_unconfigured" };
+    }
+    throw err;
   }
 
   // Verify machine_code matches this installation

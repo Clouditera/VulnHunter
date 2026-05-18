@@ -4,26 +4,47 @@
  */
 
 import { createVerify } from "node:crypto";
+import { readFileSync } from "node:fs";
 import type { LicenseCert } from "./types.js";
+
+export class LicenseVerifierUnconfiguredError extends Error {
+  constructor() {
+    super("license_verifier_unconfigured");
+    this.name = "LicenseVerifierUnconfiguredError";
+  }
+}
 
 /**
  * The issuer's RSA-2048 public key (PEM).
- * In production, embed the real public key here or load from env.
- * Env var VULNHUNT_LICENSE_PUBLIC_KEY overrides this.
- * Read at call time (not module-load time) to support test injection.
+ * Env var VULNHUNT_LICENSE_PUBLIC_KEY overrides file config.
+ * Env var VULNHUNT_LICENSE_PUBLIC_KEY_FILE loads a PEM from disk.
+ * Read at call time to support test injection.
  */
+function normalizePublicKey(raw: string): string {
+  const key = raw.trim();
+  return key.includes("-----BEGIN PUBLIC KEY-----") || key.includes("-----BEGIN RSA PUBLIC KEY-----")
+    ? key
+    : "";
+}
+
 function getPublicKey(): string {
-  return process.env.VULNHUNT_LICENSE_PUBLIC_KEY ?? "";
+  if (process.env.VULNHUNT_LICENSE_PUBLIC_KEY) return normalizePublicKey(process.env.VULNHUNT_LICENSE_PUBLIC_KEY);
+  const file = process.env.VULNHUNT_LICENSE_PUBLIC_KEY_FILE;
+  if (!file) return "";
+  try {
+    return normalizePublicKey(readFileSync(file, "utf-8"));
+  } catch {
+    return "";
+  }
 }
 
 export function verifyCert(cert: LicenseCert): boolean {
   const pubKey = getPublicKey();
   if (!pubKey) {
-    // Dev mode: no public key configured — accept any cert (DO NOT use in production)
     if (process.env.NODE_ENV === "production") {
-      throw new Error("VULNHUNT_LICENSE_PUBLIC_KEY must be set in production");
+      throw new LicenseVerifierUnconfiguredError();
     }
-    return true; // dev/test fallback
+    return true; // dev/test fallback only
   }
 
   try {

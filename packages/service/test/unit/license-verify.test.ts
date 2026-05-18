@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { generateKeyPairSync, createSign } from "node:crypto";
-import { parseCert, verifyCert } from "../../src/features/license/verify.js";
+import { LicenseVerifierUnconfiguredError, parseCert, verifyCert } from "../../src/features/license/verify.js";
 import type { LicenseBasic, LicenseCert } from "../../src/features/license/types.js";
 
 // Generate a test RSA keypair
@@ -29,6 +29,12 @@ const validBasic: LicenseBasic = {
   auth_at: Math.floor(Date.now() / 1000),
   biz: '{"enabled":true}',
 };
+
+afterEach(() => {
+  process.env.VULNHUNT_LICENSE_PUBLIC_KEY = publicKeyPem;
+  delete process.env.VULNHUNT_LICENSE_PUBLIC_KEY_FILE;
+  delete process.env.NODE_ENV;
+});
 
 beforeAll(() => {
   const { publicKey, privateKey } = generateKeyPairSync("rsa", {
@@ -81,5 +87,13 @@ describe("verifyCert", () => {
   it("rejects empty signature", () => {
     const cert = makeCert(validBasic, "");
     expect(verifyCert(cert)).toBe(false);
+  });
+
+  it("does not accept certificates in production when verifier is unconfigured", () => {
+    delete process.env.VULNHUNT_LICENSE_PUBLIC_KEY;
+    delete process.env.VULNHUNT_LICENSE_PUBLIC_KEY_FILE;
+    process.env.NODE_ENV = "production";
+    const cert = makeCert(validBasic, "anything");
+    expect(() => verifyCert(cert)).toThrow(LicenseVerifierUnconfiguredError);
   });
 });

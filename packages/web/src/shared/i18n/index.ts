@@ -245,12 +245,22 @@ const ZH: Record<string, string> = {
 
   // Activate
   "activate.title": "激活 VulnHunt",
-  "activate.desc": "请输入授权码以激活平台",
+  "activate.desc": "复制机器码发给供应商获取授权证书，然后粘贴证书激活平台。",
+  "activate.machineCode": "机器码",
+  "activate.copyMachineCode": "复制机器码",
+  "activate.copied": "已复制",
+  "activate.steps": "1. 复制机器码并发送给供应商。\n2. 获取授权证书后粘贴到下方。\n3. 点击激活完成授权。",
   "activate.licenseKey": "授权码",
   "activate.placeholder": "粘贴授权证书 JSON",
   "activate.submit": "激活",
   "activate.activating": "激活中…",
   "activate.success": "✅ 激活成功 — 跳转中…",
+  "activate.error.invalid_format": "授权证书格式无效，请粘贴完整 JSON 证书。",
+  "activate.error.invalid_signature": "授权证书签名无效，请联系供应商重新签发。",
+  "activate.error.machine_code_mismatch": "授权证书与本机机器码不匹配，请使用当前机器码重新申请。",
+  "activate.error.already_expired": "授权证书已过期，请联系供应商获取新证书。",
+  "activate.error.license_verifier_unconfigured": "授权校验未配置，请联系部署管理员检查授权公钥配置。",
+  "activate.error.default": "授权激活失败，请检查证书或联系供应商。",
 
   // Expired
   "expired.title": "许可证已过期",
@@ -849,12 +859,22 @@ const EN: Record<string, string> = {
 
   // Activate
   "activate.title": "Activate VulnHunt",
-  "activate.desc": "Enter your license key to activate the platform",
+  "activate.desc": "Copy the machine code, request a license certificate from your vendor, then paste it below to activate.",
+  "activate.machineCode": "Machine Code",
+  "activate.copyMachineCode": "Copy Machine Code",
+  "activate.copied": "Copied",
+  "activate.steps": "1. Copy the machine code and send it to your vendor.\n2. Paste the license certificate below.\n3. Activate the platform.",
   "activate.licenseKey": "License Key",
   "activate.placeholder": "Paste your license certificate JSON here",
   "activate.submit": "Activate",
   "activate.activating": "Activating…",
   "activate.success": "✅ Activated successfully — redirecting…",
+  "activate.error.invalid_format": "Invalid license certificate format. Paste the full JSON certificate.",
+  "activate.error.invalid_signature": "Invalid license signature. Contact your vendor for a new certificate.",
+  "activate.error.machine_code_mismatch": "This license does not match the current machine code.",
+  "activate.error.already_expired": "This license certificate has expired.",
+  "activate.error.license_verifier_unconfigured": "License verifier is not configured. Contact the deployment administrator.",
+  "activate.error.default": "License activation failed. Check the certificate or contact your vendor.",
 
   // Expired
   "expired.title": "License Expired",

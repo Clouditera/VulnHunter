@@ -30,6 +30,7 @@ function RootGuard() {
   }
 
   if (error || !status) return <Navigate to="/activate" replace />;
+  if (status.license.status === "expired") return <Navigate to="/expired" replace />;
   if (status.license.status !== "active") return <Navigate to="/activate" replace />;
   if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
   if (!status.is_authenticated) return <Navigate to="/login" replace />;
@@ -40,6 +41,7 @@ function AuthGuard() {
   const { data: status, isLoading } = useSystemStatus();
   if (isLoading) return null;
   if (!status?.is_authenticated) return <Navigate to="/login" replace />;
+  if (status.license.status === "expired") return <Navigate to="/expired" replace />;
   if (status.license.status !== "active") return <Navigate to="/activate" replace />;
   return <Outlet />;
 }

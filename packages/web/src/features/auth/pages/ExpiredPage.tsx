@@ -4,6 +4,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 
+function licenseErrorMessage(err: unknown): string {
+  const detail = err instanceof Error ? err.message : String(err);
+  const key = `activate.error.${detail}`;
+  const translated = i18n.t(key);
+  return translated === key ? i18n.t("expired.error") : translated;
+}
+
 export function ExpiredPage() {
   const [key, setKey] = useState("");
   const [error, setError] = useState("");
@@ -23,8 +30,8 @@ export function ExpiredPage() {
       setSuccess(true);
       qc.invalidateQueries({ queryKey: ["system-status"] });
       setTimeout(() => navigate("/login"), 1500);
-    } catch {
-      setError(i18n.t("expired.error"));
+    } catch (err) {
+      setError(licenseErrorMessage(err));
     } finally {
       setLoading(false);
     }

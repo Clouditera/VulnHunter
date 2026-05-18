@@ -36,16 +36,19 @@ systemRouter.get("/status", async (c) => {
 
 // POST /api/system/activate  (public)
 systemRouter.post("/activate", async (c) => {
-  const body = await c.req.json<{ cert: string }>();
+  const body = await c.req.json<{ cert: string }>().catch(() => ({ cert: "" }));
   if (!body.cert) {
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "cert required" } }, 400);
+    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "cert required" } }, 400);
   }
 
   const result = await licenseService.activate(body.cert);
   if (!result.ok) {
+    const code = result.error === "license_verifier_unconfigured"
+      ? "ERR_LICENSE_VERIFIER_UNCONFIGURED"
+      : "ERR_LICENSE_INVALID";
     return c.json(
-      { error: { code: "ERR_LICENSE_INVALID", detail: result.error } },
-      402,
+      { error: { code, detail: result.error } },
+      code === "ERR_LICENSE_VERIFIER_UNCONFIGURED" ? 500 : 402,
     );
   }
 
