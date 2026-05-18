@@ -46,13 +46,20 @@ function licenseTarget(status: ReturnType<typeof useSystemStatus>["data"]): stri
   return null;
 }
 
-function LicenseFirstGuard() {
-  const { data: status, isLoading, error } = useSystemStatus();
+function ActivateGuard() {
+  const { data: status, isLoading } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
-  if (error || !status) return <Navigate to="/activate" replace />;
-  const target = licenseTarget(status);
-  if (target) return <Navigate to={target} replace />;
-  return <Outlet />;
+  if (status?.license.status === "active") return <Navigate to="/" replace />;
+  if (status?.license.status === "expired") return <Navigate to="/expired" replace />;
+  return <ActivatePage />;
+}
+
+function ExpiredGuard() {
+  const { data: status, isLoading } = useSystemStatus();
+  if (isLoading) return <LoadingScreen />;
+  if (status?.license.status === "active") return <Navigate to="/" replace />;
+  if (status?.license.status !== "expired") return <Navigate to="/activate" replace />;
+  return <ExpiredPage />;
 }
 
 function BootstrapGuard() {
@@ -89,9 +96,12 @@ function AuthGuard() {
 
 export const router = createBrowserRouter([
   { path: "/", element: <RootGuard /> },
-  { path: "/activate", element: <ActivatePage /> },
-  { path: "/expired", element: <ExpiredPage /> },
-  { element: <LicenseFirstGuard />, children: [{ path: "/change-password", element: <ChangePasswordPage /> }] },
+  { path: "/activate", element: <ActivateGuard /> },
+  { path: "/expired", element: <ExpiredGuard /> },
+  {
+    element: <AuthGuard />,
+    children: [{ path: "/change-password", element: <ChangePasswordPage /> }],
+  },
   { path: "/bootstrap", element: <BootstrapGuard /> },
   { path: "/login", element: <LoginGuard /> },
   {
