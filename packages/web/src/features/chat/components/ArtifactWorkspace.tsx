@@ -7,16 +7,25 @@ import { Markdown } from "./Markdown.js";
 
 const ACTION: CSSProperties = { height: "28px", padding: "0 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 500, cursor: "pointer" };
 
-export function ArtifactWorkspace({ messages, persistedArtifacts = [], streaming, width }: { messages: ChatMessage[]; persistedArtifacts?: ChatArtifact[]; streaming?: boolean; width?: number }) {
+export function ArtifactWorkspace({ messages, persistedArtifacts = [], streaming, width, selectedArtifactId, onSelectedArtifactChange }: { messages: ChatMessage[]; persistedArtifacts?: ChatArtifact[]; streaming?: boolean; width?: number | string; selectedArtifactId?: string | null; onSelectedArtifactChange?: (id: string) => void }) {
   const artifacts = useMemo(() => mergeArtifacts(persistedArtifacts, extractChatArtifacts(messages)), [persistedArtifacts, messages]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+  const selectedId = selectedArtifactId ?? internalSelectedId;
+  const setSelectedId = (id: string) => {
+    if (onSelectedArtifactChange) onSelectedArtifactChange(id);
+    else setInternalSelectedId(id);
+  };
   useEffect(() => {
-    if (artifacts.length > 0) setSelectedId((id) => id && artifacts.some((a) => a.artifact_id === id) ? id : artifacts[0].artifact_id);
-  }, [artifacts]);
+    if (artifacts.length > 0) {
+      const current = selectedArtifactId ?? internalSelectedId;
+      if (!current || !artifacts.some((a) => a.artifact_id === current)) setSelectedId(artifacts[0].artifact_id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artifacts, selectedArtifactId]);
   const selected = artifacts.find((a) => a.artifact_id === selectedId) ?? artifacts[0] ?? null;
 
   return (
-    <aside data-testid="chat-artifact-panel" style={{ width: width ?? 440, minWidth: 360, maxWidth: 640, flexShrink: 0, background: "var(--bg-card)", borderLeft: "1px solid var(--border)", display: "flex", flexDirection: "column", height: "100%" }}>
+    <aside data-testid="chat-artifact-panel" style={{ width: width ?? 440, minWidth: typeof width === "string" ? undefined : 360, maxWidth: typeof width === "string" ? undefined : 640, flexShrink: 0, background: "var(--bg-card)", borderLeft: "1px solid var(--border)", display: "flex", flexDirection: "column", height: "100%" }}>
       <header style={{ minHeight: 48, padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
         <Icon name="file-text" size={16} style={{ color: "var(--text-secondary)" }} />
         <div style={{ flex: 1, minWidth: 0 }}>
