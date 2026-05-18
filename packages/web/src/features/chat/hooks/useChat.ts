@@ -189,6 +189,25 @@ export function useChat() {
     };
   }, [activeId, refreshArtifacts]);
 
+  useEffect(() => {
+    if (!activeId) return;
+    const now = Date.now();
+    const activities = activitiesBySession[activeId] ?? [];
+    const nextExpiry = activities
+      .map((a) => a.expires_at)
+      .filter((v): v is number => typeof v === "number" && v > now)
+      .sort((a, b) => a - b)[0];
+    if (!nextExpiry) return;
+    const timer = window.setTimeout(() => {
+      const t = Date.now();
+      setActivitiesBySession((prev) => ({
+        ...prev,
+        [activeId]: (prev[activeId] ?? []).filter((a) => !a.expires_at || a.expires_at > t),
+      }));
+    }, Math.max(0, nextExpiry - now + 25));
+    return () => window.clearTimeout(timer);
+  }, [activeId, activitiesBySession]);
+
   /* --------------------------------------------------------------------- */
   /*  WebSocket lifecycle                                                   */
   /* --------------------------------------------------------------------- */
