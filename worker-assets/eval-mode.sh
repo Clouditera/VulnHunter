@@ -5,10 +5,18 @@ set -euo pipefail
 : "${POC_JOB_ID:?POC_JOB_ID is required}"
 
 FLOW_DIR="/opt/vulnhunt/flows/vulnhunt-poc"
+SERVICE_LOG="/tmp/youngflow.service.jsonl"
+
+finish_log() {
+  mkdir -p /workspace/out/.youngflow/logs
+  if [ -f "$SERVICE_LOG" ]; then
+    cp "$SERVICE_LOG" /workspace/out/.youngflow/logs/youngflow.service.jsonl
+  fi
+}
+
+trap finish_log EXIT
 
 echo "[eval] Starting POC generation: task=$TASK_ID job=$POC_JOB_ID" >&2
-
-mkdir -p /workspace/out/.youngflow/logs
 
 # Write .env for youngflow model config
 cat > "$FLOW_DIR/.env" << EOF
@@ -39,7 +47,10 @@ export DEVEYE_TOKEN=${DEVEYE_TOKEN:-}
 ENVEOF
 fi
 
+rm -f "$SERVICE_LOG"
+
 echo "[eval] Running youngflow POC flow (target_mode=$TARGET_MODE)..." >&2
+set +e
 youngflow "$FLOW_DIR" \
   --work-dir /workspace/subject \
   --output-dir /workspace/out \
@@ -48,10 +59,13 @@ youngflow "$FLOW_DIR" \
   ${BROWSER_TOOL:+--browser-tool "${BROWSER_TOOL}"} \
   ${CUSTOM_INSTRUCTIONS:+--custom-instructions "${CUSTOM_INSTRUCTIONS}"} \
   --json-log \
-  $([ "$RESUME" = "1" ] && echo "--resume") \
-  2>/workspace/out/.youngflow/logs/youngflow.service.jsonl
-
+  $([ "${RESUME:-0}" = "1" ] && echo "--resume") \
+  2>"$SERVICE_LOG"
 EXIT=$?
+set -e
+
+finish_log
+trap - EXIT
 
 echo "[eval] Done (exit=$EXIT)" >&2
 exit $EXIT

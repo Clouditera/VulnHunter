@@ -4,12 +4,22 @@ set -e
 
 REPORT_ID="${REPORT_ID:?REPORT_ID is required}"
 TASK_ID="${TASK_ID:?TASK_ID is required}"
+SERVICE_LOG="/tmp/youngflow.service.jsonl"
+
+finish_log() {
+  mkdir -p /workspace/out/.youngflow/logs
+  if [ -f "$SERVICE_LOG" ]; then
+    cp "$SERVICE_LOG" /workspace/out/.youngflow/logs/youngflow.service.jsonl
+  fi
+}
+
+trap finish_log EXIT
 
 echo "[report] Starting report worker: task=$TASK_ID report=$REPORT_ID"
 
 FLOW_DIR="/opt/vulnhunt/flows/vulnhunt-report"
 
-mkdir -p /workspace/reports /workspace/context /workspace/out/.youngflow/logs
+mkdir -p /workspace/reports /workspace/context
 
 # Copy flow to workspace so we can inject uploaded skill
 cp -r "$FLOW_DIR" /workspace/flow
@@ -40,7 +50,10 @@ YOUNGFLOW_IDLE_TIMEOUT=${YOUNGFLOW_IDLE_TIMEOUT:-3600}
 YOUNGFLOW_ERROR_RETRIES=${YOUNGFLOW_ERROR_RETRIES:-5}
 ENVEOF
 
+rm -f "$SERVICE_LOG"
+
 echo "[report] Running youngflow report flow..." >&2
+set +e
 youngflow "$FLOW_DIR" \
   --work-dir /workspace \
   --output-dir /workspace/out \
@@ -49,8 +62,12 @@ youngflow "$FLOW_DIR" \
   --context-file "/workspace/context/report-context.json" \
   --reports-dir "/workspace/reports" \
   --json-log \
-  2>/workspace/out/.youngflow/logs/youngflow.service.jsonl
-
+  2>"$SERVICE_LOG"
 EXIT=$?
+set -e
+
+finish_log
+trap - EXIT
+
 echo "[report] Done (exit=$EXIT)" >&2
 exit $EXIT
