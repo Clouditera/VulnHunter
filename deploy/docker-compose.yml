@@ -1,31 +1,47 @@
 version: "3.9"
 
 services:
+  web:
+    image: ${WEB_IMAGE:-vulnhunt-web:latest}
+    container_name: vulnhunt-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-23000}:80"
+    networks:
+      - vulnhunt-internal
+    depends_on:
+      service:
+        condition: service_started
+
   service:
-    image: vulnhunt-service:latest
+    image: ${SERVICE_IMAGE:-vulnhunt-service:latest}
     container_name: vulnhunt-service
     restart: unless-stopped
     ports:
-      - "${PORT:-28080}:28080"
+      - "${SERVICE_PORT:-28080}:28080"
     environment:
+      NODE_ENV: "production"
       PORT: "28080"
       DATABASE_URL: "postgresql://vulnhunt:${DB_PASSWORD:-vulnhunt}@db:5432/vulnhunt"
       MINIO_ENDPOINT: "minio"
-      MINIO_PORT: "9000"  # internal container port, not host
+      MINIO_PORT: "9000"
       MINIO_USE_SSL: "false"
       MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
       MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
       MINIO_BUCKET: "vulnhunt"
       DOCKER_SOCKET: "/var/run/docker.sock"
-      WORKER_IMAGE: "vulnhunt-worker:latest"
+      WORKER_IMAGE: "${WORKER_IMAGE:-vulnhunt-worker:latest}"
+      EVAL_WORKER_IMAGE: "${EVAL_WORKER_IMAGE:-vulnhunt-eval-worker:latest}"
       DOCKER_NETWORK: "vulnhunt-internal"
       DATA_DIR: "/data/vulnhunt"
       VULNHUNT_MASTER_KEY_FILE: "${VULNHUNT_MASTER_KEY_FILE:-/run/secrets/vulnhunt-master.key}"
+      VULNHUNT_LICENSE_PUBLIC_KEY_FILE: "${VULNHUNT_LICENSE_PUBLIC_KEY_FILE:-/run/secrets/license-public.pem}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - vulnhunt-data:/data/vulnhunt
-      - "${MASTER_KEY_FILE:-../.data/.master.key}:/run/secrets/vulnhunt-master.key:ro"
+      - "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}:/run/secrets/vulnhunt-master.key:ro"
+      - "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}:/run/secrets/license-public.pem:ro"
     networks:
       - vulnhunt-internal
     depends_on:
@@ -35,11 +51,9 @@ services:
         condition: service_healthy
 
   db:
-    image: postgres:16-alpine
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     container_name: vulnhunt-db
     restart: unless-stopped
-    ports:
-      - "${DB_HOST_PORT:-25432}:5432"
     environment:
       POSTGRES_DB: vulnhunt
       POSTGRES_USER: vulnhunt
@@ -55,13 +69,10 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}
     container_name: vulnhunt-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
-    ports:
-      - "29000:9000"
-      - "29001:9001"
     environment:
       MINIO_ROOT_USER: "${MINIO_ACCESS_KEY:-minioadmin}"
       MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY:-minioadmin}"
@@ -81,7 +92,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: "${DATA_DIR:-/data/vulnhunt}"
+      device: "${DATA_DIR:-/opt/vulnhunt/data}"
   vulnhunt-db:
     driver: local
   vulnhunt-minio:
