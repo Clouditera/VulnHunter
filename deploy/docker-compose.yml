@@ -34,7 +34,7 @@ services:
       WORKER_IMAGE: "${WORKER_IMAGE:-vulnhunt-worker:latest}"
       EVAL_WORKER_IMAGE: "${EVAL_WORKER_IMAGE:-vulnhunt-eval-worker:latest}"
       DOCKER_NETWORK: "vulnhunt-internal"
-      DATA_DIR: "/data/vulnhunt"
+      DATA_DIR: "${DATA_DIR:-/opt/vulnhunt/data}"
       VULNHUNT_MASTER_KEY_FILE: "${VULNHUNT_MASTER_KEY_FILE:-/run/secrets/vulnhunt-master.key}"
       VULNHUNT_LICENSE_PUBLIC_KEY_FILE: "${VULNHUNT_LICENSE_PUBLIC_KEY_FILE:-/run/secrets/license-public.pem}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
@@ -42,7 +42,7 @@ services:
       - "${DOCKER_GID:-0}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - vulnhunt-data:/data/vulnhunt
+      - "${DATA_DIR:-/opt/vulnhunt/data}:${DATA_DIR:-/opt/vulnhunt/data}"
       - "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}:/run/secrets/vulnhunt-master.key:ro"
       - "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}:/run/secrets/license-public.pem:ro"
     networks:

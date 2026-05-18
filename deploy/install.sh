@@ -36,6 +36,10 @@ fi
 if [[ ! -f .env ]]; then
   cp .env.example .env
   data_dir="${DATA_DIR:-$DATA_DIR_DEFAULT}"
+  if [[ "$data_dir" != /* ]]; then
+    echo "[install] DATA_DIR must be an absolute host path: $data_dir" >&2
+    exit 1
+  fi
   sed -i "s|^DATA_DIR=.*|DATA_DIR=$data_dir|" .env
   sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=$(rand_hex 18)|" .env
   sed -i "s|^MINIO_ACCESS_KEY=.*|MINIO_ACCESS_KEY=vh$(rand_hex 8)|" .env
@@ -60,6 +64,10 @@ set -a
 source .env
 set +a
 
+if [[ "${DATA_DIR:-$DATA_DIR_DEFAULT}" != /* ]]; then
+  echo "[install] DATA_DIR must be an absolute host path: ${DATA_DIR:-$DATA_DIR_DEFAULT}" >&2
+  exit 1
+fi
 mkdir -p "${DATA_DIR:-$DATA_DIR_DEFAULT}" .secrets
 SERVICE_UID="${SERVICE_UID:-1001}"
 SERVICE_GID="${SERVICE_GID:-1001}"
