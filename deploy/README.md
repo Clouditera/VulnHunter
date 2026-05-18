@@ -3,6 +3,7 @@
 ## Quick start
 
 ```bash
+sha256sum -c vulnhunt-release-<version>.tar.gz.sha256
 tar -xzf vulnhunt-release-<version>.tar.gz
 cd vulnhunt-release-<version>
 ./install.sh
@@ -17,6 +18,7 @@ Open `http://<server>:23000/`, activate license, bootstrap admin, then configure
 - `.secrets/vulnhunt-master.key` — credential encryption key. Back it up. Never regenerate it for an existing deployment.
 - `.secrets/license-public.pem` — placeholder for license public key; license hardening is implemented separately.
 - `images/*.tar` — offline Docker images loaded by `install.sh` when present.
+- `checksums.sha256` — package-internal checksums. `install.sh` verifies it before loading images.
 
 ## Commands
 

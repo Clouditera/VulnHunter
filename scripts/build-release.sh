@@ -63,5 +63,15 @@ cp -r docs/vulnhunt-srv/releases "$OUT/docs/releases" 2>/dev/null || true
 cp deploy/README.md "$OUT/docs/install.md" 2>/dev/null || true
 chmod +x "$OUT"/*.sh
 
+(
+  cd "$OUT"
+  find images -type f -name '*.tar' -print | sort
+  printf '%s\n' docker-compose.yml .env.example install.sh doctor.sh upgrade.sh uninstall.sh VERSION.json docs/install.md
+) | while IFS= read -r file; do
+  [[ -f "$OUT/$file" ]] && sha256sum "$OUT/$file"
+done | sed "s|  $OUT/|  |" > "$OUT/checksums.sha256"
+
 tar -C "$(dirname "$OUT")" -czf "$OUT.tar.gz" "$(basename "$OUT")"
+sha256sum "$OUT.tar.gz" > "$OUT.tar.gz.sha256"
 echo "release package: $OUT.tar.gz"
+echo "release checksum: $OUT.tar.gz.sha256"

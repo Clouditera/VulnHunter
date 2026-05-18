@@ -110,6 +110,11 @@ if [[ "$(id -u)" == "0" ]]; then
 fi
 chmod 0444 "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}"
 
+if [[ -f checksums.sha256 ]]; then
+  echo "[install] verifying release files..."
+  sha256sum -c checksums.sha256
+fi
+
 if [[ -d images ]]; then
   for img in images/*.tar; do
     [[ -f "$img" ]] || continue
