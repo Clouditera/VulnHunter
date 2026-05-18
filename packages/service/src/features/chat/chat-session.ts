@@ -233,6 +233,7 @@ export class ChatSession {
         decryptedCreds.filter(Boolean).map(c => ({
           id: c!.id, label: c!.label, proto_type: c!.proto_type,
           base_url: c!.base_url, api_key: c!.api_key, model_id: c!.model_id,
+          context_window_tokens: c!.context_window_tokens ?? 128000,
         })),
       );
 

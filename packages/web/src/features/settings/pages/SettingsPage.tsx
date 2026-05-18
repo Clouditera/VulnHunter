@@ -258,6 +258,25 @@ function normalizeProtoType(raw: string): string {
   return "openai-completions";
 }
 
+const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
+function parseContextWindowInput(text: string): number | null {
+  const raw = text.trim().toLowerCase();
+  if (!raw) return null;
+  const match = raw.match(/^(\d+(?:\.\d+)?)([km]?)$/);
+  if (!match) return null;
+  const n = Number(match[1]);
+  if (!Number.isFinite(n)) return null;
+  const unit = match[2];
+  const tokens = Math.trunc(n * (unit === "m" ? 1000000 : unit === "k" ? 1000 : 1));
+  return tokens >= 1000 && tokens <= 10000000 ? tokens : null;
+}
+function formatContextWindow(tokens?: number | null): string {
+  const value = tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS;
+  if (value % 1000000 === 0) return `${value / 1000000}m`;
+  if (value % 1000 === 0) return `${value / 1000}k`;
+  return String(value);
+}
+
 const THINKING_VALUES = ["off", "minimal", "low", "medium", "high"] as const;
 type ThinkingValue = (typeof THINKING_VALUES)[number];
 
@@ -317,6 +336,7 @@ export function SettingsPage() {
   const [baseUrl, setBaseUrl] = useState<string>("");
   const [modelId, setModelId] = useState<string>("");
   const [thinking, setThinking] = useState<ThinkingValue>("medium");
+  const [contextWindow, setContextWindow] = useState<string>("128k");
   const [apiKey, setApiKey] = useState<string>("");
   const [showKey, setShowKey] = useState(false);
 
@@ -386,6 +406,7 @@ export function SettingsPage() {
     setBaseUrl(c.base_url ?? "");
     setModelId(c.model_id);
     setThinking((c.thinking_effort as ThinkingValue) ?? "medium");
+    setContextWindow(formatContextWindow(c.context_window_tokens));
     setLabel(c.label ?? "");
     setApiKey(""); // always require re-entry for security
     setTestState({ kind: "idle" });
@@ -412,6 +433,7 @@ export function SettingsPage() {
     setBaseUrl("");
     setModelId(first.defaultModel);
     setThinking("medium");
+    setContextWindow("128k");
     setLabel("");
     setApiKey("");
     setTestState({ kind: "idle" });
@@ -469,11 +491,12 @@ export function SettingsPage() {
           (cred.base_url ?? "") !== baseUrl ||
           cred.model_id !== modelId ||
           cred.thinking_effort !== thinking ||
+          (cred.context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS) !== (parseContextWindowInput(contextWindow) ?? -1) ||
           (cred.label ?? "") !== label)) ||
       (!cred && (apiKey.length > 0 || modelId.length > 0));
     const cfgChanged = config ? config.max_parallel_scan !== maxParallel : false;
     return Boolean(credChanged) || cfgChanged;
-  }, [apiKey, cred, protoType, baseUrl, modelId, thinking, label, config, maxParallel]);
+  }, [apiKey, cred, protoType, baseUrl, modelId, thinking, contextWindow, label, config, maxParallel]);
 
   const canSaveCred = apiKey.length > 0 || Boolean(cred);
 
@@ -482,6 +505,12 @@ export function SettingsPage() {
     setSaving(true);
     setToast(null);
     try {
+      const contextWindowTokens = parseContextWindowInput(contextWindow);
+      if (contextWindowTokens == null) {
+        setToast({ kind: "err", msg: i18n.t("settings.model.contextWindow.invalid") });
+        setSaving(false);
+        return;
+      }
       const ops: Array<Promise<unknown>> = [];
 
       const credChangedNoKey =
@@ -491,6 +520,7 @@ export function SettingsPage() {
           (cred.base_url ?? "") !== baseUrl ||
           cred.model_id !== modelId ||
           cred.thinking_effort !== thinking ||
+          (cred.context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS) !== contextWindowTokens ||
           (cred.label ?? "") !== label);
 
       if (apiKey.length > 0) {
@@ -508,6 +538,7 @@ export function SettingsPage() {
             model_id: modelId,
             thinking_effort: thinking,
             label: label || undefined,
+            context_window_tokens: contextWindowTokens,
             api_key: apiKey,
           }),
         );
@@ -521,6 +552,7 @@ export function SettingsPage() {
             model_id: modelId,
             thinking_effort: thinking,
             label: label || undefined,
+            context_window_tokens: contextWindowTokens,
           }),
         );
       }
@@ -1138,6 +1170,20 @@ export function SettingsPage() {
               />
             </Field>
 
+            <Field
+              label={i18n.t("settings.model.contextWindow")}
+              hint={i18n.t("settings.model.contextWindow.hint")}
+            >
+              <input
+                data-testid="settings-context-window-input"
+                type="text"
+                value={contextWindow}
+                onChange={(e) => setContextWindow(e.target.value)}
+                placeholder="128k"
+                style={FIELD_INPUT}
+              />
+            </Field>
+
             {/* Test Connection lives inside the model card so it's right
                 next to the credentials the user just filled in, not
                 buried at the bottom of the page next to "Save". */}
@@ -1534,6 +1580,7 @@ export function SettingsPage() {
                       }}
                     >
                       {c.model_id}
+                      {` · ${i18n.t("settings.model.contextWindow.short").replace("{value}", formatContextWindow(c.context_window_tokens))}`}
                       {c.base_url ? " · " + c.base_url : ""}
                       {c.masked_key ? " · " + c.masked_key : ""}
                     </div>

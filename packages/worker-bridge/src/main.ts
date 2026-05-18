@@ -45,6 +45,8 @@ const API_KEY = process.env.LLM_API_KEY ?? "";
 const BASE_URL = process.env.LLM_BASE_URL ?? "";
 const SERVICE_URL = process.env.SERVICE_URL ?? "";
 const MCP_TOKEN = process.env.CHAT_WORKER_TOKEN ?? "";
+const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
+const CONTEXT_WINDOW = parsePositiveInt(process.env.LLM_CONTEXT_WINDOW_TOKENS, DEFAULT_CONTEXT_WINDOW_TOKENS);
 
 // ─── Pi RPC Process ───
 
@@ -81,7 +83,7 @@ function setupPiConfig(): void {
       baseUrl: BASE_URL,
       api,
       apiKey: "VH_LLM_API_KEY",
-      models: [{ id: MODEL_NAME, input: ["text", "image"], contextWindow: 200000, maxTokens: 16384 }],
+      models: [{ id: MODEL_NAME, input: ["text", "image"], contextWindow: CONTEXT_WINDOW, maxTokens: 16384 }],
     };
   }
 
@@ -91,8 +93,8 @@ function setupPiConfig(): void {
     try {
       const allCreds = JSON.parse(allCredsJson) as Array<{
         id: string; label: string; proto_type: string;
-        base_url: string; api_key: string; model_id: string;
-      }>;
+        base_url: string; api_key: string; model_id: string; context_window_tokens?: number;
+      }>; 
       for (const cred of allCreds) {
         const api = PROTO_API_MAP[cred.proto_type];
         if (!api) continue;
@@ -106,7 +108,7 @@ function setupPiConfig(): void {
             baseUrl: cred.base_url,
             api,
             apiKey: apiKeyEnv,
-            models: [{ id: cred.model_id, input: ["text", "image"], contextWindow: 200000, maxTokens: 16384 }],
+            models: [{ id: cred.model_id, input: ["text", "image"], contextWindow: parsePositiveInt(String(cred.context_window_tokens ?? ""), DEFAULT_CONTEXT_WINDOW_TOKENS), maxTokens: 16384 }],
           };
         }
         credProviderMap.set(cred.id, { providerKey, modelId: cred.model_id });
@@ -513,3 +515,9 @@ function main(): void {
 }
 
 main();
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  const value = Number.parseInt(raw ?? "", 10);
+  if (!Number.isFinite(value) || value < 1000 || value > 10000000) return fallback;
+  return value;
+}

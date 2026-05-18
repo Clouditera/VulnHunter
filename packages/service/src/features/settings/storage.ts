@@ -3,6 +3,12 @@ import { MasterKeyVault, CredentialDecryptError, CredentialKeyUnavailableError }
 import { join } from "node:path";
 
 let _vault: MasterKeyVault | null = null;
+
+const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
+function normalizeContextWindowTokens(value?: number | null): number {
+  if (!Number.isFinite(value ?? NaN)) return DEFAULT_CONTEXT_WINDOW_TOKENS;
+  return Math.trunc(value!);
+}
 let _vaultUnavailableReason: string | null = null;
 
 export function initVault(dataDir: string): void {
@@ -48,6 +54,7 @@ export interface DbLlmCredential {
   label: string;
   is_default: boolean;
   key_fingerprint: string | null;
+  context_window_tokens: number;
 }
 
 export interface DecryptedLlmCredential extends DbLlmCredential {
@@ -62,7 +69,7 @@ export async function getDefaultCredential(): Promise<DecryptedLlmCredential | n
     api_key_tag: Buffer;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-           key_fingerprint, api_key_ciphertext, api_key_iv, api_key_tag
+           key_fingerprint, context_window_tokens, api_key_ciphertext, api_key_iv, api_key_tag
     FROM llm_credentials
     WHERE is_default = true
     ORDER BY created_at DESC
@@ -81,7 +88,7 @@ export async function getCredentialById(id: string): Promise<DecryptedLlmCredent
     api_key_tag: Buffer;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-           key_fingerprint, api_key_ciphertext, api_key_iv, api_key_tag
+           key_fingerprint, context_window_tokens, api_key_ciphertext, api_key_iv, api_key_tag
     FROM llm_credentials
     WHERE id = ${id}
     LIMIT 1
@@ -101,7 +108,7 @@ export async function getDefaultOrFirstAvailableCredential(): Promise<DecryptedL
     api_key_tag: Buffer;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-           key_fingerprint, api_key_ciphertext, api_key_iv, api_key_tag
+           key_fingerprint, context_window_tokens, api_key_ciphertext, api_key_iv, api_key_tag
     FROM llm_credentials
     ORDER BY is_default DESC, created_at DESC
   `;
@@ -131,7 +138,7 @@ export async function listCredentials(): Promise<ListedLlmCredential[]> {
     api_key_tag: Buffer;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-           key_fingerprint, api_key_ciphertext, api_key_iv, api_key_tag
+           key_fingerprint, context_window_tokens, api_key_ciphertext, api_key_iv, api_key_tag
     FROM llm_credentials
     ORDER BY is_default DESC, created_at DESC
   `;
@@ -151,6 +158,7 @@ export async function listCredentials(): Promise<ListedLlmCredential[]> {
         label: row.label,
         is_default: row.is_default,
         key_fingerprint: row.key_fingerprint,
+        context_window_tokens: row.context_window_tokens ?? 128000,
         masked_key: "key 未配置",
         credential_health: "key_unavailable",
         current_key_fingerprint: currentKeyFingerprint,
@@ -187,6 +195,7 @@ export async function listCredentials(): Promise<ListedLlmCredential[]> {
       label: row.label,
       is_default: row.is_default,
       key_fingerprint: row.key_fingerprint,
+      context_window_tokens: row.context_window_tokens ?? 128000,
       masked_key: masked,
       credential_health: health,
       current_key_fingerprint: currentKeyFingerprint,
@@ -228,6 +237,7 @@ export async function updateCredentialMeta(params: {
   modelId?: string;
   thinkingEffort?: string;
   label?: string;
+  contextWindowTokens?: number;
 }): Promise<void> {
   const db = getDb();
   await db`
@@ -237,7 +247,8 @@ export async function updateCredentialMeta(params: {
         base_url = COALESCE(${params.baseUrl ?? null}, base_url),
         model_id = COALESCE(${params.modelId ?? null}, model_id),
         thinking_effort = COALESCE(${params.thinkingEffort ?? null}, thinking_effort),
-        label = COALESCE(${params.label ?? null}, label)
+        label = COALESCE(${params.label ?? null}, label),
+        context_window_tokens = COALESCE(${params.contextWindowTokens ?? null}, context_window_tokens)
     WHERE id = ${params.id}
   `;
 }
@@ -252,10 +263,12 @@ export async function upsertCredential(params: {
   label?: string;
   apiKey: string;
   isDefault?: boolean;
+  contextWindowTokens?: number;
 }): Promise<string> {
   const db = getDb();
   const vault = getVault();
   const encrypted = vault.encrypt(params.apiKey);
+  const contextWindowTokens = normalizeContextWindowTokens(params.contextWindowTokens);
 
   if (params.id) {
     // Update existing credential
@@ -268,7 +281,8 @@ export async function upsertCredential(params: {
           api_key_ciphertext = ${encrypted.ciphertext},
           api_key_iv = ${encrypted.iv},
           api_key_tag = ${encrypted.tag},
-          key_fingerprint = ${vault.fingerprint()}
+          key_fingerprint = ${vault.fingerprint()},
+          context_window_tokens = ${contextWindowTokens}
       WHERE id = ${params.id}
     `;
     if (params.isDefault) await setDefaultCredential(params.id);
@@ -288,12 +302,12 @@ export async function upsertCredential(params: {
   const rows = await db<{ id: string }[]>`
     INSERT INTO llm_credentials (
       provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-      api_key_ciphertext, api_key_iv, api_key_tag, key_fingerprint
+      api_key_ciphertext, api_key_iv, api_key_tag, key_fingerprint, context_window_tokens
     ) VALUES (
       ${params.provider}, ${params.protoType}, ${params.baseUrl ?? null},
       ${params.modelId}, ${params.thinkingEffort ?? "off"}, ${params.label ?? ""},
       ${makeDefault || isFirst},
-      ${encrypted.ciphertext}, ${encrypted.iv}, ${encrypted.tag}, ${vault.fingerprint()}
+      ${encrypted.ciphertext}, ${encrypted.iv}, ${encrypted.tag}, ${vault.fingerprint()}, ${contextWindowTokens}
     )
     RETURNING id
   `;

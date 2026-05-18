@@ -347,7 +347,7 @@ export const api = {
         body: JSON.stringify(cred),
       }),
     /** Update credential metadata without re-entering API key */
-    patchCredential: (id: string, meta: { provider?: string; proto_type?: string; base_url?: string; model_id?: string; thinking_effort?: string; label?: string }) =>
+    patchCredential: (id: string, meta: { provider?: string; proto_type?: string; base_url?: string; model_id?: string; thinking_effort?: string; label?: string; context_window_tokens?: number }) =>
       request<{ ok: boolean }>(`/api/settings/credential/${id}`, {
         method: "PATCH",
         body: JSON.stringify(meta),
@@ -584,6 +584,7 @@ export interface LlmCredential {
   credential_health?: "ok" | "decrypt_failed" | "key_unavailable" | "unknown";
   key_fingerprint?: string | null;
   current_key_fingerprint?: string;
+  context_window_tokens: number;
 }
 
 export interface SaveCredentialPayload {
@@ -597,6 +598,7 @@ export interface SaveCredentialPayload {
   label?: string;
   api_key: string;
   is_default?: boolean;
+  context_window_tokens?: number;
 }
 
 export interface SystemConfig {

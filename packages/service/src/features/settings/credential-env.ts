@@ -12,6 +12,7 @@ export function credentialToWorkerEnv(cred: DecryptedLlmCredential): Record<stri
     LLM_API_KEY: cred.api_key,
     LLM_BASE_URL: normalizeBaseUrl(cred.base_url ?? ""),
     MODEL_EFFORT: cred.thinking_effort ?? "off",
+    LLM_CONTEXT_WINDOW_TOKENS: String(cred.context_window_tokens ?? 128000),
   };
 }
 

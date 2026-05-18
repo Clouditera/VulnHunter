@@ -13,6 +13,15 @@ import {
 import { logger } from "../../infra/logger.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 
+const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
+function parseContextWindowTokens(value: unknown): number {
+  if (value == null) return DEFAULT_CONTEXT_WINDOW_TOKENS;
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("invalid context_window_tokens");
+  const tokens = Math.trunc(value);
+  if (tokens < 1000 || tokens > 10000000) throw new Error("invalid context_window_tokens");
+  return tokens;
+}
+
 export const settingsRouter = new Hono();
 settingsRouter.use("*", licenseGuard);
 settingsRouter.use("*", requireAuth);
@@ -70,6 +79,7 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
     label?: string;
     api_key: string;
     is_default?: boolean;
+    context_window_tokens?: number;
   }>();
 
   if (!body.provider || !body.model_id || !body.api_key) {
@@ -77,6 +87,13 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
       { error: { code: "ERR_INTERNAL", detail: "provider, model_id, api_key required" } },
       400,
     );
+  }
+
+  let contextWindowTokens: number;
+  try {
+    contextWindowTokens = parseContextWindowTokens(body.context_window_tokens);
+  } catch {
+    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "invalid context_window_tokens" } }, 400);
   }
 
   let id: string;
@@ -91,6 +108,7 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
       label: body.label,
       apiKey: body.api_key,
       isDefault: body.is_default,
+      contextWindowTokens,
     });
   } catch (err) {
     if (err instanceof CredentialKeyUnavailableError) {
@@ -112,7 +130,17 @@ settingsRouter.patch("/credential/:id", requireAdmin, async (c) => {
     model_id?: string;
     thinking_effort?: string;
     label?: string;
+    context_window_tokens?: number;
   }>();
+
+  let contextWindowTokens: number | undefined;
+  if (body.context_window_tokens !== undefined) {
+    try {
+      contextWindowTokens = parseContextWindowTokens(body.context_window_tokens);
+    } catch {
+      return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "invalid context_window_tokens" } }, 400);
+    }
+  }
 
   const { updateCredentialMeta } = await import("./storage.js");
   await updateCredentialMeta({
@@ -123,6 +151,7 @@ settingsRouter.patch("/credential/:id", requireAdmin, async (c) => {
     modelId: body.model_id,
     thinkingEffort: body.thinking_effort,
     label: body.label,
+    contextWindowTokens,
   });
 
   return c.json({ ok: true });
