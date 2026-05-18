@@ -306,7 +306,8 @@ export class TaskScheduler {
         // Start tailing service event files
         const hostWorkDir = getHostWorkDir(this.config.dataDir, task.id);
         const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
-        startTailing(task.id, [], [{ path: eventsDir, source: "scan" }]);
+        const serviceLogsDir = join(hostWorkDir, ".service-logs");
+        startTailing(task.id, [], [{ path: eventsDir, source: "scan" }, { path: serviceLogsDir, source: "scan" }]);
 
         spawned++;
 

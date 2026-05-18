@@ -31,7 +31,10 @@ YOUNGFLOW_IDLE_TIMEOUT=${YOUNGFLOW_IDLE_TIMEOUT:-3600}
 YOUNGFLOW_ERROR_RETRIES=${YOUNGFLOW_ERROR_RETRIES:-5}
 EOF
 
-mkdir -p /workspace/out/.youngflow/logs
+if [ "${RESUME:-0}" != "1" ]; then
+  rm -rf /workspace/out
+fi
+mkdir -p /workspace/.service-logs
 
 echo "[scan] Running youngflow (model=$LLM_MODEL_NAME)..." >&2
 youngflow "$FLOW_DIR" \
@@ -40,7 +43,7 @@ youngflow "$FLOW_DIR" \
   --json-log \
   ${UNTIL:+--until "$UNTIL"} \
   $([ "$RESUME" = "1" ] && echo "--resume") \
-  2>/workspace/out/.youngflow/logs/youngflow.service.jsonl
+  2>/workspace/.service-logs/youngflow.service.jsonl
 
 EXIT=$?
 
