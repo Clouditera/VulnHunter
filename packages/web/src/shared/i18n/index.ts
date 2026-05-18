@@ -283,6 +283,7 @@ const ZH: Record<string, string> = {
   "bootstrap.confirm": "确认密码",
   "bootstrap.submit": "创建管理员",
   "bootstrap.creating": "创建中…",
+  "bootstrap.error": "创建管理员失败，请检查邮箱和密码后重试。",
 
   // Settings
   "settings.title": "设置",
@@ -902,6 +903,7 @@ const EN: Record<string, string> = {
   "bootstrap.confirm": "Confirm Password",
   "bootstrap.submit": "Create Admin",
   "bootstrap.creating": "Creating…",
+  "bootstrap.error": "Failed to create administrator. Check the email and password, then try again.",
 
   // Settings
   "settings.title": "Settings",
@@ -1248,8 +1250,8 @@ const STORAGE_KEY = "vh-lang";
 
 function detectLocale(): string {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) return saved;
-  return navigator.language.startsWith("zh") ? "zh" : "en";
+  if (saved === "zh" || saved === "en") return saved;
+  return "zh";
 }
 
 let currentLocale = detectLocale();

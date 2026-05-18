@@ -22,8 +22,8 @@ export function BootstrapPage() {
       await api.system.bootstrap(email, password);
       qc.invalidateQueries({ queryKey: ["system-status"] });
       navigate("/login");
-    } catch (err) {
-      setError(String(err));
+    } catch {
+      setError(i18n.t("bootstrap.error"));
     } finally {
       setLoading(false);
     }
