@@ -59,7 +59,6 @@ export function ChatPage() {
     artifacts,
     streaming,
     activity,
-    recentActivities,
     selectSession,
     createSession,
     deleteSession,
@@ -98,7 +97,6 @@ export function ChatPage() {
         onAbort={abort}
         onArtifactSelect={handleArtifactSelect}
         activity={activity}
-        recentActivities={recentActivities}
       />
       {isNarrow ? (
         <>

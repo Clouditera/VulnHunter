@@ -49,7 +49,6 @@ export function MessageFlow({
   onAbort,
   onArtifactSelect,
   activity,
-  recentActivities = [],
 }: {
   session: ChatSession | null;
   messages: ChatMessage[];
@@ -58,7 +57,6 @@ export function MessageFlow({
   onAbort: () => void;
   onArtifactSelect?: (artifact: ChatArtifact) => void;
   activity?: ChatActivity | null;
-  recentActivities?: ChatActivity[];
 }) {
   const streamRef = useRef<HTMLDivElement | null>(null);
 
@@ -204,7 +202,7 @@ export function MessageFlow({
         )}
       </div>
 
-      <ChatActivityBar activity={activity} recent={recentActivities} />
+      <ChatActivityBar activity={activity} />
 
       {/* Input bar */}
       <ChatInput

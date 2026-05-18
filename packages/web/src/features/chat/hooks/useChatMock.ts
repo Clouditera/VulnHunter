@@ -213,7 +213,7 @@ export function useChatMock() {
       const updated: ChatMessage = { ...last, streaming: false };
       return { ...prev, [sid]: [...arr.slice(0, -1), updated] };
     });
-    setActivity({ id: `act-${Date.now()}`, session_id: sid, status: "success", label: "已完成处理", created_at: Date.now(), expires_at: Date.now() + 2500 });
+    setActivity({ id: `act-${Date.now()}`, session_id: sid, status: "success", label: "正在整理回答…", created_at: Date.now(), expires_at: Date.now() + 2500 });
     setStreaming(false);
   }
 
@@ -229,7 +229,6 @@ export function useChatMock() {
     messages,
     streaming,
     activity,
-    recentActivities: activity ? [activity] : [],
     selectSession: setActiveId,
     createSession,
     deleteSession,

@@ -457,7 +457,6 @@ export function useChat() {
   const now = Date.now();
   const activeActivities = activeId ? (activitiesBySession[activeId] ?? []).filter((a) => !a.expires_at || a.expires_at > now) : [];
   const activity = activeActivities[activeActivities.length - 1] ?? null;
-  const recentActivities = activeActivities.slice(-3);
   const messages = activeId ? messagesBySession[activeId] ?? [] : [];
   const artifacts = activeId ? artifactsBySession[activeId] ?? [] : [];
   const activeSession = useMemo(
@@ -577,7 +576,6 @@ export function useChat() {
     artifacts,
     streaming,
     activity,
-    recentActivities,
     loading,
     lastError,
     selectSession,
