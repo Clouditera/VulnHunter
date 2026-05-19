@@ -3,7 +3,7 @@
  * Called by scheduler after worker completes (before indexing).
  */
 
-import { join, relative, sep } from "node:path";
+import { join, relative } from "node:path";
 import { readdirSync, existsSync } from "node:fs";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
@@ -40,16 +40,7 @@ export async function syncOutputsToMinio(
     return results;
   }
 
-  function shouldSync(relPath: string): boolean {
-    const normalized = relPath.split(sep).join("/");
-    if (normalized.includes(".youngflow/checkpoints/")) return false;
-    if (normalized.includes(".youngflow/sessions/")) return false;
-    if (normalized.startsWith(".youngflow/logs/") && normalized !== ".youngflow/logs/youngflow.service.jsonl") return false;
-    if (normalized.endsWith(".events.jsonl")) return false;
-    return true;
-  }
-
-  const files = walkDir(outDir).filter((filePath) => shouldSync(relative(outDir, filePath)));
+  const files = walkDir(outDir);
   for (const filePath of files) {
     const relPath = relative(outDir, filePath);
     const objectName = prefix + relPath;
