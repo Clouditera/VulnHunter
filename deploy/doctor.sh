@@ -4,6 +4,16 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 [[ -f .env ]] && set -a && source .env && set +a
 WEB_PORT="${WEB_PORT:-23000}"
+compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    docker-compose "$@"
+  else
+    echo "[doctor] Docker Compose is required: install Docker Compose v2 ('docker compose') or legacy docker-compose" >&2
+    return 127
+  fi
+}
 MASTER_KEY_FILE="${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}"
 DATA_DIR="${DATA_DIR:-/opt/vulnhunt/data}"
 SERVICE_UID="${SERVICE_UID:-1001}"
@@ -15,10 +25,10 @@ fail=0
 check() { if eval "$2" >/dev/null 2>&1; then echo "[ok] $1"; else echo "[fail] $1"; fail=1; fi; }
 
 check "docker daemon" "docker info"
-check "docker compose" "docker compose version"
+check "docker compose" "compose version"
 
 echo "-- containers --"
-docker compose ps || fail=1
+compose ps || fail=1
 
 check "master key file exists" "test -f '$MASTER_KEY_FILE'"
 check "master key readable by service uid" "docker run --rm --user ${SERVICE_UID}:${SERVICE_GID} -v '$MASTER_KEY_FILE:/run/secrets/vulnhunt-master.key:ro' ${SERVICE_IMAGE:-vulnhunt-service:latest} node -e \"require('node:fs').readFileSync('/run/secrets/vulnhunt-master.key','utf8')\""

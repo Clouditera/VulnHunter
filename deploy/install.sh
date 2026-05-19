@@ -9,12 +9,21 @@ DATA_DIR_DEFAULT="/opt/vulnhunt/data"
 
 rand_hex() { openssl rand -hex "$1"; }
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "[install] missing command: $1" >&2; exit 1; }; }
+compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    docker-compose "$@"
+  else
+    echo "[install] Docker Compose is required: install Docker Compose v2 ('docker compose') or legacy docker-compose" >&2
+    return 127
+  fi
+}
 
 require_cmd docker
 require_cmd openssl
 require_cmd curl
-if ! docker compose version >/dev/null 2>&1; then
-  echo "[install] Docker Compose v2 is required" >&2
+if ! compose version >/dev/null 2>&1; then
   exit 1
 fi
 if ! docker info >/dev/null 2>&1; then
@@ -191,7 +200,7 @@ if [[ -d images ]]; then
 fi
 
 echo "[install] starting VulnHunt..."
-docker compose up -d
+compose up -d
 
 url="http://127.0.0.1:${WEB_PORT}/api/system/status"
 for i in {1..60}; do
@@ -201,7 +210,7 @@ for i in {1..60}; do
   fi
   if [[ "$i" == 60 ]]; then
     echo "[install] timed out waiting for $url" >&2
-    docker compose ps
+    compose ps
     exit 1
   fi
   sleep 2
