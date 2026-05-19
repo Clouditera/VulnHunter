@@ -97,12 +97,6 @@ mkdir -p backups
 stamp="$(date +%Y%m%d-%H%M%S)"
 [[ -f .env ]] && cp .env "backups/.env.$stamp"
 [[ -d .secrets ]] && tar -czf "backups/secrets.$stamp.tar.gz" .secrets
-prepare_data_dirs
-migrate_container_data vulnhunt-db /var/lib/postgresql/data "${DATA_DIR:-/opt/vulnhunt/data}/db" db
-migrate_container_data vulnhunt-minio /data "${DATA_DIR:-/opt/vulnhunt/data}/minio" minio
-protect_or_migrate_legacy_volume db "${DATA_DIR:-/opt/vulnhunt/data}/db" db
-protect_or_migrate_legacy_volume minio "${DATA_DIR:-/opt/vulnhunt/data}/minio" minio
-prepare_data_dirs
 if [[ -d images ]]; then
   for img in images/*.tar; do
     [[ -f "$img" ]] || continue
@@ -110,5 +104,12 @@ if [[ -d images ]]; then
     docker load -i "$img"
   done
 fi
+prepare_data_dirs
+migrate_container_data vulnhunt-db /var/lib/postgresql/data "${DATA_DIR:-/opt/vulnhunt/data}/db" db
+migrate_container_data vulnhunt-minio /data "${DATA_DIR:-/opt/vulnhunt/data}/minio" minio
+protect_or_migrate_legacy_volume db "${DATA_DIR:-/opt/vulnhunt/data}/db" db
+protect_or_migrate_legacy_volume minio "${DATA_DIR:-/opt/vulnhunt/data}/minio" minio
+prepare_data_dirs
+docker rm -f vulnhunt-web vulnhunt-service vulnhunt-db vulnhunt-minio >/dev/null 2>&1 || true
 compose up -d
 "$ROOT/doctor.sh"
