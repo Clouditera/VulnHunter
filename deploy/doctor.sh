@@ -27,7 +27,7 @@ check_shell() { local name="$1"; shift; if "$@" >/dev/null 2>&1; then echo "[ok]
 mount_source() { docker inspect "$1" --format "{{range .Mounts}}{{if eq .Destination \"$2\"}}{{.Source}}{{end}}{{end}}" 2>/dev/null || true; }
 check_mount_source() { [[ "$(mount_source "$1" "$2")" == "$3" ]]; }
 check_service_socket() {
-  docker exec vulnhunt-service node <<'NODE'
+  docker exec -i vulnhunt-service node <<'NODE'
 const net = require('node:net');
 const c = net.createConnection('/var/run/docker.sock');
 c.setTimeout(3000);
