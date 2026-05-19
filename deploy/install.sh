@@ -153,9 +153,9 @@ else
     exit 1
   fi
   if command -v setfacl >/dev/null 2>&1; then
-    setfacl -m u:70:rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}/db" 2>/dev/null || chmod 0777 "${DATA_DIR:-$DATA_DIR_DEFAULT}/db"
+    setfacl -R -m u:70:rwX -m d:u:70:rwX "${DATA_DIR:-$DATA_DIR_DEFAULT}/db" 2>/dev/null || chmod -R a+rwX "${DATA_DIR:-$DATA_DIR_DEFAULT}/db"
   else
-    chmod 0777 "${DATA_DIR:-$DATA_DIR_DEFAULT}/db"
+    chmod -R a+rwX "${DATA_DIR:-$DATA_DIR_DEFAULT}/db"
   fi
 fi
 if ! chmod u+rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}" "${DATA_DIR:-$DATA_DIR_DEFAULT}/minio" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" .secrets 2>/dev/null; then

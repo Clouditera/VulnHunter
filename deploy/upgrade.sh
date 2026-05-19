@@ -28,9 +28,9 @@ prepare_data_dirs() {
     chown -R 70:70 "$DATA_DIR/db" 2>/dev/null || echo "[upgrade] warning: could not chown Postgres data dir to uid 70" >&2
   else
     if command -v setfacl >/dev/null 2>&1; then
-      setfacl -m u:70:rwx "$DATA_DIR/db" 2>/dev/null || chmod 0777 "$DATA_DIR/db"
+      setfacl -R -m u:70:rwX -m d:u:70:rwX "$DATA_DIR/db" 2>/dev/null || chmod -R a+rwX "$DATA_DIR/db"
     else
-      chmod 0777 "$DATA_DIR/db"
+      chmod -R a+rwX "$DATA_DIR/db"
     fi
   fi
   chmod u+rwx "$DATA_DIR/minio" 2>/dev/null || true
