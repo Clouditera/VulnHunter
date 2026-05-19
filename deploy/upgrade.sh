@@ -26,7 +26,7 @@ migrate_volume_data() {
   local volume="$1" target="$2" service="$3"
   echo "[upgrade] migrating $service data from legacy volume $volume to $target"
   docker stop vulnhunt-service vulnhunt-web >/dev/null 2>&1 || true
-  if ! docker run --rm -v "$volume:/from:ro" -v "$target:/to" alpine:3.20 sh -c 'cd /from && cp -a . /to/'; then
+  if ! docker run --rm -v "$volume:/from:ro" -v "$target:/to" "${POSTGRES_IMAGE:-postgres:16-alpine}" sh -c 'cd /from && cp -a . /to/ && chmod -R u+rwX /to'; then
     echo "[upgrade] failed to migrate $service data from volume $volume; aborting to avoid empty data startup" >&2
     exit 1
   fi
@@ -50,11 +50,18 @@ protect_or_migrate_legacy_volume() {
   echo "[upgrade] migrate the correct volume manually or remove stale candidates, then retry." >&2
   exit 1
 }
+postgres_dir_rw() {
+  docker run --rm --user 70:70 -v "$DATA_DIR/db:/var/lib/postgresql/data" "${POSTGRES_IMAGE:-postgres:16-alpine}" sh -c 'test -r /var/lib/postgresql/data && touch /var/lib/postgresql/data/.perm-test && rm /var/lib/postgresql/data/.perm-test' >/dev/null 2>&1
+}
 prepare_data_dirs() {
   DATA_DIR="${DATA_DIR:-/opt/vulnhunt/data}"
   SERVICE_UID="${SERVICE_UID:-1001}"
   SERVICE_GID="${SERVICE_GID:-1001}"
   mkdir -p "$DATA_DIR/db" "$DATA_DIR/minio"
+  if postgres_dir_rw; then
+    chmod u+rwx "$DATA_DIR/minio" 2>/dev/null || true
+    return 0
+  fi
   if [[ "$(id -u)" == "0" ]]; then
     chown -R "${SERVICE_UID}:${SERVICE_GID}" "$DATA_DIR" 2>/dev/null || true
     chown -R 70:70 "$DATA_DIR/db" 2>/dev/null || echo "[upgrade] warning: could not chown Postgres data dir to uid 70" >&2
