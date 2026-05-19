@@ -33,6 +33,23 @@ describe("diagnoseModelCredential", () => {
     expect(result.summary).toContain("部分能力");
   });
 
+  it("does not count plain text mentioning tools as structured tool calls", async () => {
+    mockFetch((_url, body) => {
+      if (body.stream) return { text: "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n", contentType: "text/event-stream" };
+      return { text: JSON.stringify({ choices: [{ message: { content: body.tools ? "I will use a tool" : "ok" } }] }) };
+    });
+    const result = await diagnoseModelCredential(input);
+    expect(result.ok).toBe(true);
+    expect(result.checks.find((c) => c.id === "tool")?.status).toBe("warn");
+  });
+
+  it("returns structured config diagnostics for missing required fields", async () => {
+    const result = await diagnoseModelCredential({ ...input, apiKey: "", modelId: "" });
+    expect(result.ok).toBe(false);
+    expect(result.checks[0].id).toBe("config");
+    expect(result.checks[0].category).toBe("config");
+  });
+
   it("reports basic HTTP 200 format failures", async () => {
     mockFetch((_url, body) => body.stream ? { text: "data: {}", contentType: "text/event-stream" } : { text: "not json" });
     const result = await diagnoseModelCredential(input);

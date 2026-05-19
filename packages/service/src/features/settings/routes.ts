@@ -197,10 +197,6 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
     }
   }
 
-  if (!apiKey || !modelId) {
-    return c.json({ ok: false, error: "api_key and model_id required (provide directly or via credential_id)" }, 400);
-  }
-
   const diagnostics = await diagnoseModelCredential({ protoType, baseUrl, modelId, apiKey, thinkingEffort });
   return c.json({
     ok: diagnostics.ok,

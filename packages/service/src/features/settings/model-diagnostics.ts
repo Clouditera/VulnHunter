@@ -53,9 +53,32 @@ function classify(status: number | undefined, text: string, fallback: ModelDiagn
   return { category: fallback, suggestion: fallback === "network" ? "检查 Base URL、端口、防火墙、TLS/反向代理配置。" : undefined };
 }
 
+function parseJson(text: string): unknown | null {
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+function hasStructuredToolCall(protoType: string, text: string): boolean {
+  const data = parseJson(text);
+  if (!data || typeof data !== "object") return false;
+  const obj = data as Record<string, unknown>;
+  if (protoType === "anthropic") {
+    const content = obj.content;
+    return Array.isArray(content) && content.some((item) => (item as Record<string, unknown>)?.type === "tool_use");
+  }
+  if (protoType === "openai-responses") {
+    const output = obj.output;
+    return Array.isArray(output) && output.some((item) => ["function_call", "tool_call"].includes(String((item as Record<string, unknown>)?.type)));
+  }
+  const choices = obj.choices;
+  return Array.isArray(choices) && choices.some((choice) => {
+    const message = (choice as Record<string, unknown>)?.message as Record<string, unknown> | undefined;
+    return Array.isArray(message?.tool_calls) || !!message?.function_call;
+  });
+}
+
 function validateBasicShape(protoType: string, text: string): string | null {
-  let data: unknown;
-  try { data = JSON.parse(text); } catch { return "HTTP 200 但响应不是 JSON。"; }
+  const data = parseJson(text);
+  if (!data) return "HTTP 200 但响应不是 JSON。";
   const obj = data as Record<string, unknown>;
   if (protoType === "anthropic") {
     return Array.isArray(obj.content) || typeof obj.id === "string" ? null : "Anthropic 响应缺少 content/id。";
@@ -110,7 +133,7 @@ async function runCheck(input: ModelDiagnosticInput, id: "basic" | "stream" | "t
       if (shapeError) return fail(id, label, "format", shapeError, req, r.text, r.status, r.durationMs, "检查模型服务是否返回所选协议兼容的 JSON 结构。", input.apiKey);
     }
     if (id === "stream" && !r.text.includes("data:") && !r.contentType.includes("event-stream")) return fail(id, label, "stream", "响应不是 SSE streaming 格式", req, r.text, r.status, r.durationMs, "检查模型服务或代理是否启用了 streaming/SSE。", input.apiKey);
-    if (id === "tool" && !/tool|function_call|tool_use|function_call/i.test(r.text)) return { ...pass(id, label, "基础请求成功，但未观察到工具调用对象。", req.endpoint, r.durationMs), status: "warn", category: "tool_call", suggestion: "如果 Chat/扫描需要 Agent 工具调用，请确认模型支持 tools/tool_choice。", detail: snippet(r.text, input.apiKey) };
+    if (id === "tool" && !hasStructuredToolCall(input.protoType, r.text)) return { ...pass(id, label, "基础请求成功，但未观察到结构化工具调用对象。", req.endpoint, r.durationMs), status: "warn", category: "tool_call", suggestion: "如果 Chat/扫描需要 Agent 工具调用，请确认模型支持 tools/tool_choice。", detail: snippet(r.text, input.apiKey) };
     return pass(id, label, "通过", req.endpoint, r.durationMs);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
