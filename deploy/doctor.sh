@@ -38,7 +38,7 @@ c.on('error', () => process.exit(1));
 NODE
 }
 check_db_initialized_readable() {
-  docker run --rm --user 70:70 -v "$DATA_DIR/db:/var/lib/postgresql/data:ro" "${POSTGRES_IMAGE:-postgres:16-alpine}" sh -c 'test -r /var/lib/postgresql/data/PG_VERSION && find /var/lib/postgresql/data/base -type f -readable -print -quit | grep -q .'
+  docker run --rm --user 70:70 -v "$DATA_DIR/db:/var/lib/postgresql/data:ro" "${POSTGRES_IMAGE:-postgres:16-alpine}" sh -c 'test -r /var/lib/postgresql/data/PG_VERSION && find /var/lib/postgresql/data/base -type f | while read -r f; do test -r "$f" && exit 0; done; exit 1'
 }
 
 
@@ -54,7 +54,7 @@ check_shell "master key readable by service uid" docker run --rm --user "${SERVI
 check_shell "license public key readable and parseable by service uid" docker run --rm --user "${SERVICE_UID}:${SERVICE_GID}" -v "$LICENSE_PUBLIC_KEY_FILE:/run/secrets/license-public.pem:ro" "${SERVICE_IMAGE:-vulnhunt-service:latest}" node -e "const fs=require('node:fs'); const crypto=require('node:crypto'); crypto.createPublicKey(fs.readFileSync('/run/secrets/license-public.pem','utf8'))"
 check_shell "data dir writable by service uid" docker run --rm --user "${SERVICE_UID}:${SERVICE_GID}" -v "$DATA_DIR:$DATA_DIR" "${SERVICE_IMAGE:-vulnhunt-service:latest}" node -e "require('node:fs').writeFileSync('${DATA_DIR}/.doctor-write-test','ok'); require('node:fs').unlinkSync('${DATA_DIR}/.doctor-write-test')"
 check_shell "DATA_DIR/db writable by postgres uid" docker run --rm --user 70:70 -v "$DATA_DIR/db:/var/lib/postgresql/data" "${POSTGRES_IMAGE:-postgres:16-alpine}" sh -c 'touch /var/lib/postgresql/data/.doctor-write-test && rm /var/lib/postgresql/data/.doctor-write-test'
-check_shell "DATA_DIR/minio writable" docker run --rm -v "$DATA_DIR/minio:/data" "${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}" sh -c 'touch /data/.doctor-write-test && rm /data/.doctor-write-test'
+check_shell "DATA_DIR/minio writable" docker run --rm --entrypoint sh -v "$DATA_DIR/minio:/data" "${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}" -c 'touch /data/.doctor-write-test && rm /data/.doctor-write-test'
 identity_probe=".doctor-path-identity-$$"
 printf 'ok' > "${DATA_DIR}/${identity_probe}"
 check_shell "data dir path identity in service" docker exec vulnhunt-service test -f "${DATA_DIR}/${identity_probe}"
