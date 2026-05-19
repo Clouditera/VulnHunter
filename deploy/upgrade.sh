@@ -74,6 +74,21 @@ prepare_data_dirs() {
   fi
   chmod u+rwx "$DATA_DIR/minio" 2>/dev/null || true
 }
+sync_release_images() {
+  [[ -f .env && -f .env.example ]] || return 0
+  for key in SERVICE_IMAGE WEB_IMAGE WORKER_IMAGE EVAL_WORKER_IMAGE; do
+    local value
+    value="$(grep -E "^${key}=" .env.example | tail -n 1 | cut -d= -f2-)"
+    [[ -n "$value" ]] || continue
+    if grep -qE "^${key}=" .env; then
+      sed -i "s|^${key}=.*|${key}=${value}|" .env
+    else
+      printf '%s=%s\n' "$key" "$value" >> .env
+    fi
+    export "$key=$value"
+  done
+}
+
 migrate_container_data() {
   local container="$1" dest="$2" target="$3" service="$4"
   local src; src="$(mount_source "$container" "$dest")"
@@ -97,6 +112,7 @@ mkdir -p backups
 stamp="$(date +%Y%m%d-%H%M%S)"
 [[ -f .env ]] && cp .env "backups/.env.$stamp"
 [[ -d .secrets ]] && tar -czf "backups/secrets.$stamp.tar.gz" .secrets
+sync_release_images
 if [[ -d images ]]; then
   for img in images/*.tar; do
     [[ -f "$img" ]] || continue
