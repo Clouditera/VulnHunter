@@ -57,6 +57,28 @@ function parseJson(text: string): unknown | null {
   try { return JSON.parse(text); } catch { return null; }
 }
 
+function hasValidStreamPayload(protoType: string, text: string): boolean {
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    const data = parseJson(payload);
+    if (!data || typeof data !== "object") continue;
+    const obj = data as Record<string, unknown>;
+    if (protoType === "anthropic") {
+      const type = String(obj.type ?? "");
+      if (["content_block_delta", "message_delta", "message_stop", "content_block_stop"].includes(type)) return true;
+    } else if (protoType === "openai-responses") {
+      const type = String(obj.type ?? "");
+      if (type.startsWith("response.") || type.includes("delta") || type.includes("completed")) return true;
+    } else {
+      if (Array.isArray(obj.choices)) return true;
+    }
+  }
+  return false;
+}
+
 function hasStructuredToolCall(protoType: string, text: string): boolean {
   const data = parseJson(text);
   if (!data || typeof data !== "object") return false;
@@ -132,7 +154,7 @@ async function runCheck(input: ModelDiagnosticInput, id: "basic" | "stream" | "t
       const shapeError = validateBasicShape(input.protoType, r.text);
       if (shapeError) return fail(id, label, "format", shapeError, req, r.text, r.status, r.durationMs, "检查模型服务是否返回所选协议兼容的 JSON 结构。", input.apiKey);
     }
-    if (id === "stream" && !r.text.includes("data:") && !r.contentType.includes("event-stream")) return fail(id, label, "stream", "响应不是 SSE streaming 格式", req, r.text, r.status, r.durationMs, "检查模型服务或代理是否启用了 streaming/SSE。", input.apiKey);
+    if (id === "stream" && (!r.contentType.includes("event-stream") || !hasValidStreamPayload(input.protoType, r.text))) return fail(id, label, "stream", "响应不是有效的 SSE streaming 协议数据", req, r.text, r.status, r.durationMs, "检查模型服务或代理是否返回协议兼容的 SSE data JSON。", input.apiKey);
     if (id === "tool" && !hasStructuredToolCall(input.protoType, r.text)) return { ...pass(id, label, "基础请求成功，但未观察到结构化工具调用对象。", req.endpoint, r.durationMs), status: "warn", category: "tool_call", suggestion: "如果 Chat/扫描需要 Agent 工具调用，请确认模型支持 tools/tool_choice。", detail: snippet(r.text, input.apiKey) };
     return pass(id, label, "通过", req.endpoint, r.durationMs);
   } catch (err) {

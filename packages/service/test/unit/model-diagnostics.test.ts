@@ -57,6 +57,16 @@ describe("diagnoseModelCredential", () => {
     expect(result.checks.find((c) => c.id === "basic")?.category).toBe("format");
   });
 
+  it("reports malformed SSE payload failures", async () => {
+    mockFetch((_url, body) => {
+      if (body.stream) return { text: "data: this-is-not-json\n\n", contentType: "text/event-stream" };
+      return { text: JSON.stringify({ choices: [{ message: body.tools ? { tool_calls: [{ type: "function", function: { name: "diagnostic_echo", arguments: "{}" } }] } : { content: "ok" } }] }) };
+    });
+    const result = await diagnoseModelCredential(input);
+    expect(result.ok).toBe(false);
+    expect(result.checks.find((c) => c.id === "stream")?.category).toBe("stream");
+  });
+
   it("reports stream format failures", async () => {
     mockFetch((_url, body) => body.stream ? { text: "{}", contentType: "application/json" } : { text: "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}" });
     const result = await diagnoseModelCredential(input);
