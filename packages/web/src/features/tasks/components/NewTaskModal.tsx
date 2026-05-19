@@ -180,6 +180,9 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
               maxLength={120}
               style={{ width: "100%", height: "40px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 10px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box" }}
             />
+            <div style={{ marginTop: "6px", fontSize: "12px", color: "var(--text-muted)" }}>
+              {i18n.t("tasks.displayNameHelper")}
+            </div>
           </div>
 
           {/* Credential picker — only shown when multiple credentials exist */}
