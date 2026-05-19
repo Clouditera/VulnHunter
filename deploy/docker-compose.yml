@@ -62,7 +62,7 @@ services:
       POSTGRES_USER: vulnhunt
       POSTGRES_PASSWORD: "${DB_PASSWORD:-vulnhunt}"
     volumes:
-      - vulnhunt-db:/var/lib/postgresql/data
+      - "${DATA_DIR:-/opt/vulnhunt/data}/db:/var/lib/postgresql/data"
     networks:
       - vulnhunt-internal
     healthcheck:
@@ -80,7 +80,7 @@ services:
       MINIO_ROOT_USER: "${MINIO_ACCESS_KEY:-minioadmin}"
       MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY:-minioadmin}"
     volumes:
-      - vulnhunt-minio:/data
+      - "${DATA_DIR:-/opt/vulnhunt/data}/minio:/data"
     networks:
       - vulnhunt-internal
     healthcheck:
@@ -88,18 +88,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-
-volumes:
-  vulnhunt-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: "${DATA_DIR:-/opt/vulnhunt/data}"
-  vulnhunt-db:
-    driver: local
-  vulnhunt-minio:
-    driver: local
 
 networks:
   vulnhunt-internal:
