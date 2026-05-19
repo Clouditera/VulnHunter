@@ -19,6 +19,7 @@ describe("diagnoseModelCredential", () => {
     expect(result.ok).toBe(false);
     expect(result.checks[1].category).toBe("auth");
     expect(JSON.stringify(result)).not.toContain("Bearer secret");
+    expect(JSON.stringify(result)).not.toContain("secret");
   });
 
   it("warns when basic and stream pass but tool calls are missing", async () => {
@@ -32,8 +33,15 @@ describe("diagnoseModelCredential", () => {
     expect(result.summary).toContain("部分能力");
   });
 
+  it("reports basic HTTP 200 format failures", async () => {
+    mockFetch((_url, body) => body.stream ? { text: "data: {}", contentType: "text/event-stream" } : { text: "not json" });
+    const result = await diagnoseModelCredential(input);
+    expect(result.ok).toBe(false);
+    expect(result.checks.find((c) => c.id === "basic")?.category).toBe("format");
+  });
+
   it("reports stream format failures", async () => {
-    mockFetch((_url, body) => body.stream ? { text: "{}", contentType: "application/json" } : { text: "{\"ok\":true}" });
+    mockFetch((_url, body) => body.stream ? { text: "{}", contentType: "application/json" } : { text: "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}" });
     const result = await diagnoseModelCredential(input);
     expect(result.ok).toBe(false);
     expect(result.checks.find((c) => c.id === "stream")?.category).toBe("stream");

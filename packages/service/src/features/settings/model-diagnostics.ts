@@ -33,7 +33,11 @@ const RESP_TOOL = { type: "function", name: "diagnostic_echo", description: "ech
 const ANTH_TOOL = { name: "diagnostic_echo", description: "echo diagnostic", input_schema: { type: "object", properties: { message: { type: "string" } }, required: ["message"] } };
 
 function cleanBase(input: ModelDiagnosticInput) { return (input.baseUrl || (input.protoType === "anthropic" ? ANTHROPIC_DEFAULT : OPENAI_DEFAULT)).replace(/\/$/, ""); }
-function snippet(s: string) { return s.replace(/Bearer\s+[^\s"']+/gi, "Bearer [redacted]").slice(0, 2000); }
+function snippet(s: string, apiKey?: string) {
+  let out = s.replace(/Bearer\s+[^\s"']+/gi, "Bearer [redacted]");
+  if (apiKey) out = out.split(apiKey).join("[redacted-api-key]");
+  return out.slice(0, 2000);
+}
 function now() { return Date.now(); }
 function isReasoningOn(v?: string) { return !!v && v !== "off" && v !== "none"; }
 function reasoningPayload(input: ModelDiagnosticInput) { return isReasoningOn(input.thinkingEffort) ? { reasoning_effort: input.thinkingEffort } : {}; }
@@ -47,6 +51,20 @@ function classify(status: number | undefined, text: string, fallback: ModelDiagn
   if (lower.includes("reasoning") || lower.includes("thinking")) return { category: "reasoning", suggestion: "关闭 thinking/reasoning，或调整模型服务启动参数以兼容 reasoning 字段。" };
   if (lower.includes("stream")) return { category: "stream", suggestion: "检查模型服务或代理是否支持 SSE streaming。" };
   return { category: fallback, suggestion: fallback === "network" ? "检查 Base URL、端口、防火墙、TLS/反向代理配置。" : undefined };
+}
+
+function validateBasicShape(protoType: string, text: string): string | null {
+  let data: unknown;
+  try { data = JSON.parse(text); } catch { return "HTTP 200 但响应不是 JSON。"; }
+  const obj = data as Record<string, unknown>;
+  if (protoType === "anthropic") {
+    return Array.isArray(obj.content) || typeof obj.id === "string" ? null : "Anthropic 响应缺少 content/id。";
+  }
+  if (protoType === "openai-responses") {
+    return typeof obj.id === "string" || Array.isArray(obj.output) || typeof obj.output_text === "string" ? null : "OpenAI Responses 响应缺少 id/output/output_text。";
+  }
+  const choices = obj.choices;
+  return Array.isArray(choices) ? null : "OpenAI Chat Completions 响应缺少 choices 数组。";
 }
 
 async function post(req: Req, timeoutMs: number): Promise<{ ok: boolean; status: number; text: string; durationMs: number; contentType: string }> {
@@ -77,7 +95,7 @@ function makeReq(input: ModelDiagnosticInput, kind: "basic" | "stream" | "tool")
 }
 
 function pass(id: string, label: string, message: string, endpoint?: string, durationMs?: number): ModelDiagnosticCheck { return { id, label, status: "pass", message, endpoint, durationMs }; }
-function fail(id: string, label: string, category: ModelDiagnosticCategory, message: string, req: Req | undefined, detail?: string, httpStatus?: number, durationMs?: number, suggestion?: string): ModelDiagnosticCheck { return { id, label, status: "fail", category, message, endpoint: req?.endpoint, detail: detail ? snippet(detail) : undefined, httpStatus, durationMs, suggestion }; }
+function fail(id: string, label: string, category: ModelDiagnosticCategory, message: string, req: Req | undefined, detail?: string, httpStatus?: number, durationMs?: number, suggestion?: string, apiKey?: string): ModelDiagnosticCheck { return { id, label, status: "fail", category, message, endpoint: req?.endpoint, detail: detail ? snippet(detail, apiKey) : undefined, httpStatus, durationMs, suggestion }; }
 
 async function runCheck(input: ModelDiagnosticInput, id: "basic" | "stream" | "tool", label: string, timeout: number): Promise<ModelDiagnosticCheck> {
   const req = makeReq(input, id);
@@ -85,16 +103,20 @@ async function runCheck(input: ModelDiagnosticInput, id: "basic" | "stream" | "t
     const r = await post(req, timeout);
     if (!r.ok) {
       const c = classify(r.status, r.text, id === "stream" ? "stream" : id === "tool" ? "tool_call" : "format");
-      return fail(id, label, c.category!, `HTTP ${r.status}`, req, r.text, r.status, r.durationMs, c.suggestion);
+      return fail(id, label, c.category!, `HTTP ${r.status}`, req, r.text, r.status, r.durationMs, c.suggestion, input.apiKey);
     }
-    if (id === "stream" && !r.text.includes("data:") && !r.contentType.includes("event-stream")) return fail(id, label, "stream", "响应不是 SSE streaming 格式", req, r.text, r.status, r.durationMs, "检查模型服务或代理是否启用了 streaming/SSE。");
-    if (id === "tool" && !/tool|function_call|tool_use|function_call/i.test(r.text)) return { ...pass(id, label, "基础请求成功，但未观察到工具调用对象。", req.endpoint, r.durationMs), status: "warn", category: "tool_call", suggestion: "如果 Chat/扫描需要 Agent 工具调用，请确认模型支持 tools/tool_choice。", detail: snippet(r.text) };
+    if (id === "basic") {
+      const shapeError = validateBasicShape(input.protoType, r.text);
+      if (shapeError) return fail(id, label, "format", shapeError, req, r.text, r.status, r.durationMs, "检查模型服务是否返回所选协议兼容的 JSON 结构。", input.apiKey);
+    }
+    if (id === "stream" && !r.text.includes("data:") && !r.contentType.includes("event-stream")) return fail(id, label, "stream", "响应不是 SSE streaming 格式", req, r.text, r.status, r.durationMs, "检查模型服务或代理是否启用了 streaming/SSE。", input.apiKey);
+    if (id === "tool" && !/tool|function_call|tool_use|function_call/i.test(r.text)) return { ...pass(id, label, "基础请求成功，但未观察到工具调用对象。", req.endpoint, r.durationMs), status: "warn", category: "tool_call", suggestion: "如果 Chat/扫描需要 Agent 工具调用，请确认模型支持 tools/tool_choice。", detail: snippet(r.text, input.apiKey) };
     return pass(id, label, "通过", req.endpoint, r.durationMs);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const cat: ModelDiagnosticCategory = msg.includes("timeout") || msg.includes("aborted") ? "timeout" : "network";
     const c = classify(undefined, msg, cat);
-    return fail(id, label, c.category!, msg, req, msg, undefined, undefined, c.suggestion ?? (cat === "timeout" ? "检查模型服务并发、启动参数或响应耗时。" : undefined));
+    return fail(id, label, c.category!, msg, req, msg, undefined, undefined, c.suggestion ?? (cat === "timeout" ? "检查模型服务并发、启动参数或响应耗时。" : undefined), input.apiKey);
   }
 }
 
