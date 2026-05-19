@@ -18,6 +18,38 @@ mount_source() {
 dir_empty() {
   [[ ! -d "$1" ]] || [[ -z "$(find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]
 }
+legacy_volume_candidates() {
+  local suffix="$1"
+  docker volume ls --format '{{.Name}}' | grep -E "(^|_)vulnhunt-${suffix}$" || true
+}
+migrate_volume_data() {
+  local volume="$1" target="$2" service="$3"
+  echo "[upgrade] migrating $service data from legacy volume $volume to $target"
+  docker stop vulnhunt-service vulnhunt-web >/dev/null 2>&1 || true
+  if ! docker run --rm -v "$volume:/from:ro" -v "$target:/to" alpine:3.20 sh -c 'cd /from && cp -a . /to/'; then
+    echo "[upgrade] failed to migrate $service data from volume $volume; aborting to avoid empty data startup" >&2
+    exit 1
+  fi
+}
+protect_or_migrate_legacy_volume() {
+  local suffix="$1" target="$2" service="$3"
+  dir_empty "$target" || return 0
+  local candidates=()
+  while IFS= read -r volume; do
+    [[ -n "$volume" ]] && candidates+=("$volume")
+  done < <(legacy_volume_candidates "$suffix")
+  if (( ${#candidates[@]} == 0 )); then
+    return 0
+  fi
+  if (( ${#candidates[@]} == 1 )); then
+    migrate_volume_data "${candidates[0]}" "$target" "$service"
+    return 0
+  fi
+  echo "[upgrade] found multiple legacy $service volumes while $target is empty; refusing to start with empty data." >&2
+  printf '[upgrade] candidate volume: %s\n' "${candidates[@]}" >&2
+  echo "[upgrade] migrate the correct volume manually or remove stale candidates, then retry." >&2
+  exit 1
+}
 prepare_data_dirs() {
   DATA_DIR="${DATA_DIR:-/opt/vulnhunt/data}"
   SERVICE_UID="${SERVICE_UID:-1001}"
@@ -61,6 +93,8 @@ stamp="$(date +%Y%m%d-%H%M%S)"
 prepare_data_dirs
 migrate_container_data vulnhunt-db /var/lib/postgresql/data "${DATA_DIR:-/opt/vulnhunt/data}/db" db
 migrate_container_data vulnhunt-minio /data "${DATA_DIR:-/opt/vulnhunt/data}/minio" minio
+protect_or_migrate_legacy_volume db "${DATA_DIR:-/opt/vulnhunt/data}/db" db
+protect_or_migrate_legacy_volume minio "${DATA_DIR:-/opt/vulnhunt/data}/minio" minio
 prepare_data_dirs
 if [[ -d images ]]; then
   for img in images/*.tar; do
