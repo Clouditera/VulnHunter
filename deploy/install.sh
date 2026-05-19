@@ -23,7 +23,7 @@ compose() {
 require_cmd docker
 require_cmd openssl
 require_cmd curl
-if ! compose version >/dev/null 2>&1; then
+if ! compose version >/dev/null; then
   exit 1
 fi
 if ! docker info >/dev/null 2>&1; then
@@ -141,18 +141,24 @@ if [[ "${DATA_DIR:-$DATA_DIR_DEFAULT}" != /* ]]; then
   echo "[install] DATA_DIR must be an absolute host path: ${DATA_DIR:-$DATA_DIR_DEFAULT}" >&2
   exit 1
 fi
-mkdir -p "${DATA_DIR:-$DATA_DIR_DEFAULT}" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" .secrets
+mkdir -p "${DATA_DIR:-$DATA_DIR_DEFAULT}" "${DATA_DIR:-$DATA_DIR_DEFAULT}/db" "${DATA_DIR:-$DATA_DIR_DEFAULT}/minio" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" .secrets
 SERVICE_UID="${SERVICE_UID:-1001}"
 SERVICE_GID="${SERVICE_GID:-1001}"
 if [[ "$(id -u)" == "0" ]]; then
   chown -R "${SERVICE_UID}:${SERVICE_GID}" "${DATA_DIR:-$DATA_DIR_DEFAULT}" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" .secrets
+  chown -R 70:70 "${DATA_DIR:-$DATA_DIR_DEFAULT}/db" 2>/dev/null || echo "[install] warning: could not chown Postgres data dir to uid 70" >&2
 else
   if [[ "$SERVICE_UID" != "$(id -u)" || "$SERVICE_GID" != "$(id -g)" ]]; then
     echo "[install] non-root install requires SERVICE_UID/SERVICE_GID to match installer user. Current: $(id -u):$(id -g), configured: ${SERVICE_UID}:${SERVICE_GID}" >&2
     exit 1
   fi
+  if command -v setfacl >/dev/null 2>&1; then
+    setfacl -m u:70:rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}/db" 2>/dev/null || chmod 0777 "${DATA_DIR:-$DATA_DIR_DEFAULT}/db"
+  else
+    chmod 0777 "${DATA_DIR:-$DATA_DIR_DEFAULT}/db"
+  fi
 fi
-if ! chmod u+rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" .secrets 2>/dev/null; then
+if ! chmod u+rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}" "${DATA_DIR:-$DATA_DIR_DEFAULT}/minio" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" .secrets 2>/dev/null; then
   echo "[install] warning: could not chmod DATA_DIR/.secrets" >&2
 fi
 if [[ ! -w "${DATA_DIR:-$DATA_DIR_DEFAULT}" || ! -w "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" || ! -w .secrets ]]; then
