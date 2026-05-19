@@ -382,9 +382,10 @@ export const api = {
             base_url?: string;
             model_id: string;
             api_key: string;
+            thinking_effort?: string;
           },
     ) =>
-      request<{ ok: boolean; message?: string; error?: string }>("/api/settings/credential/test", {
+      request<{ ok: boolean; message?: string; error?: string; diagnostics?: ModelDiagnosticResult }>("/api/settings/credential/test", {
         method: "POST",
         body: JSON.stringify(params),
       }),
@@ -602,6 +603,25 @@ export interface SaveCredentialPayload {
   api_key: string;
   is_default?: boolean;
   context_window_tokens?: number;
+}
+
+export interface ModelDiagnosticCheck {
+  id: string;
+  label: string;
+  status: "pass" | "fail" | "warn" | "skip";
+  category?: string;
+  message: string;
+  detail?: string;
+  suggestion?: string;
+  httpStatus?: number;
+  endpoint?: string;
+  durationMs?: number;
+}
+
+export interface ModelDiagnosticResult {
+  ok: boolean;
+  summary: string;
+  checks: ModelDiagnosticCheck[];
 }
 
 export interface SystemConfig {

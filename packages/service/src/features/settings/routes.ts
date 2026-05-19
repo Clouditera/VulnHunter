@@ -12,6 +12,7 @@ import {
 } from "./storage.js";
 import { logger } from "../../infra/logger.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
+import { diagnoseModelCredential } from "./model-diagnostics.js";
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
 function parseContextWindowTokens(value: unknown): number {
@@ -165,12 +166,14 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
     base_url?: string;
     model_id?: string;
     api_key?: string;
+    thinking_effort?: string;
   }>();
 
   let protoType = body.proto_type ?? "";
   let baseUrl = (body.base_url ?? "").replace(/\/$/, "");
   let modelId = body.model_id ?? "";
   let apiKey = body.api_key ?? "";
+  let thinkingEffort = body.thinking_effort;
 
   // If credential_id provided, load saved credential
   if (body.credential_id) {
@@ -182,6 +185,7 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
       baseUrl = baseUrl || (cred.base_url ?? "").replace(/\/$/, "");
       modelId = modelId || cred.model_id;
       apiKey = apiKey || cred.api_key;
+      thinkingEffort = thinkingEffort ?? cred.thinking_effort;
     } catch (err) {
       if (err instanceof CredentialKeyUnavailableError) {
         return c.json({ ok: false, error: "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" }, 409);
@@ -197,53 +201,13 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
     return c.json({ ok: false, error: "api_key and model_id required (provide directly or via credential_id)" }, 400);
   }
 
-  try {
-    // Try a minimal chat completion request
-    // base_url may already include /v1 (e.g. http://host/v1), so use it as-is if present
-    const base = baseUrl || (protoType === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1");
-
-    // Use the actual API format based on proto_type — so test results match scan behavior
-    let endpoint: string;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    let reqBody: string;
-
-    if (protoType === "anthropic") {
-      endpoint = base + "/messages";
-      headers["x-api-key"] = apiKey;
-      headers["anthropic-version"] = "2023-06-01";
-      reqBody = JSON.stringify({
-        model: modelId,
-        max_tokens: 1,
-        messages: [{ role: "user", content: "hi" }],
-      });
-    } else if (protoType === "openai-responses") {
-      endpoint = base + "/responses";
-      headers["Authorization"] = `Bearer ${apiKey}`;
-      reqBody = JSON.stringify({
-        model: modelId,
-        max_output_tokens: 1,
-        input: "hi",
-      });
-    } else {
-      // openai-completions (default for most endpoints)
-      endpoint = base + "/chat/completions";
-      headers["Authorization"] = `Bearer ${apiKey}`;
-      reqBody = JSON.stringify({
-        model: modelId,
-        max_tokens: 1,
-        messages: [{ role: "user", content: "hi" }],
-      });
-    }
-
-    const res = await fetch(endpoint, { method: "POST", headers, body: reqBody, signal: AbortSignal.timeout(15000) });
-    if (res.ok) {
-      return c.json({ ok: true, message: "Connection successful" });
-    }
-    const errBody = await res.text().catch(() => "");
-    return c.json({ ok: false, error: `HTTP ${res.status}: ${errBody.slice(0, 200)}` });
-  } catch (err) {
-    return c.json({ ok: false, error: String(err) });
-  }
+  const diagnostics = await diagnoseModelCredential({ protoType, baseUrl, modelId, apiKey, thinkingEffort });
+  return c.json({
+    ok: diagnostics.ok,
+    message: diagnostics.summary,
+    error: diagnostics.ok ? undefined : diagnostics.summary,
+    diagnostics,
+  });
 });
 
 // POST /api/settings/models — list models using provided or saved credential

@@ -352,8 +352,8 @@ export function SettingsPage() {
   >({ kind: "idle" });
   const [testState, setTestState] = useState<
     { kind: "idle" | "loading" }
-    | { kind: "ok"; msg?: string }
-    | { kind: "err"; msg: string }
+    | { kind: "ok"; msg?: string; diagnostics?: import("../../../shared/api/client").ModelDiagnosticResult }
+    | { kind: "err"; msg: string; diagnostics?: import("../../../shared/api/client").ModelDiagnosticResult }
   >({ kind: "idle" });
 
   useEffect(() => {
@@ -656,14 +656,16 @@ export function SettingsPage() {
               base_url: baseUrl || undefined,
               model_id: modelId,
               api_key: apiKey,
+              thinking_effort: thinking,
             },
       );
       if (resp.ok) {
-        setTestState({ kind: "ok", msg: resp.message });
+        setTestState({ kind: "ok", msg: resp.message, diagnostics: resp.diagnostics });
       } else {
         setTestState({
           kind: "err",
           msg: resp.error ?? i18n.t("settings.model.testFail"),
+          diagnostics: resp.diagnostics,
         });
       }
     } catch (err) {
@@ -1296,6 +1298,23 @@ export function SettingsPage() {
                   {testState.kind === "ok"
                     ? testState.msg ?? ""
                     : testState.msg}
+                  {testState.diagnostics && (
+                    <div style={{ marginTop: "10px", display: "grid", gap: "6px", fontFamily: "inherit" }}>
+                      {testState.diagnostics.checks.map((check) => (
+                        <details key={check.id} style={{ borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: "6px" }}>
+                          <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+                            [{check.status}] {check.label}{check.category ? ` · ${check.category}` : ""} — {check.message}
+                          </summary>
+                          <div style={{ marginTop: "6px", fontFamily: "'SF Mono', Menlo, Consolas, monospace", whiteSpace: "pre-wrap" }}>
+                            {check.suggestion ? `建议：${check.suggestion}\n` : ""}
+                            {check.httpStatus ? `HTTP：${check.httpStatus}\n` : ""}
+                            {check.endpoint ? `Endpoint：${check.endpoint}\n` : ""}
+                            {check.detail ?? ""}
+                          </div>
+                        </details>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
