@@ -45,7 +45,8 @@ migrate_container_data() {
     exit 1
   fi
   echo "[upgrade] migrating $service data from $container:$dest to $target"
-  compose stop "$service" >/dev/null 2>&1 || true
+  docker stop vulnhunt-service vulnhunt-web >/dev/null 2>&1 || true
+  docker stop "$container" >/dev/null 2>&1 || true
   if ! docker cp "$container:$dest/." "$target/"; then
     echo "[upgrade] failed to migrate $service data; aborting to avoid empty data startup" >&2
     exit 1
