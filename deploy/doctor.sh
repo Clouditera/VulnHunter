@@ -38,7 +38,7 @@ c.on('error', () => process.exit(1));
 NODE
 }
 check_db_initialized_readable() {
-  docker run --rm --user 70:70 -v "$DATA_DIR/db:/var/lib/postgresql/data:ro" "${POSTGRES_IMAGE:-postgres:16-alpine}" sh -c 'test -r /var/lib/postgresql/data/PG_VERSION && find /var/lib/postgresql/data/base -type f | while read -r f; do test -r "$f" && exit 0; done; exit 1'
+  docker run --rm --user 70:70 -v "$DATA_DIR/db:/var/lib/postgresql/data:ro" "${POSTGRES_IMAGE:-postgres:16-alpine}" sh -c 'test -r /var/lib/postgresql/data/PG_VERSION || exit 1; for f in $(find /var/lib/postgresql/data/base -type f | head -n 20); do test -r "$f" && exit 0; done; exit 1'
 }
 
 
