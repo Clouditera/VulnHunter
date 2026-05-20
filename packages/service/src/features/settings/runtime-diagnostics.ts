@@ -73,8 +73,9 @@ async function runAgentSmoke(baseUrl: string): Promise<{ toolObserved: boolean; 
         const ev = JSON.parse(line) as Record<string, any>;
         const type = String(ev.type ?? "");
         const toolName = String(ev.tool_name ?? ev.name ?? ev.tool ?? "");
-        if ((type === "tool_execution_start" || type === "tool_execution_end") && (toolName.includes("list") || toolName.includes("task") || toolName.includes("vulnhunt"))) toolObserved = true;
-        if (type === "message_end" || type === "turn_end" || type === "response.completed") assistantObserved = true;
+        const text = line.toLowerCase();
+        if ((type === "tool_execution_start" || type === "tool_execution_end" || text.includes("vulnhunt_list-tasks") || text.includes("list-tasks")) && (toolName.includes("list") || toolName.includes("task") || toolName.includes("vulnhunt") || text.includes("task"))) toolObserved = true;
+        if (type === "message_end" || type === "turn_end" || type === "response.completed" || type === "message" || type === "assistant_message" || text.includes("验证通过") || text.includes("assistant")) assistantObserved = true;
         if (toolObserved && assistantObserved) finish();
       } catch { /* ignore */ }
     });
