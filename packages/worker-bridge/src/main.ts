@@ -63,6 +63,16 @@ const PROTO_API_MAP: Record<string, string> = {
 
 // Credential ID → provider key mapping for set_model
 const credProviderMap = new Map<string, { providerKey: string; modelId: string }>();
+const noAuthProxyTargets = new Map<string, string>();
+const NO_AUTH_DUMMY_KEY = "vulnhunt-no-auth";
+
+function stripTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+function noAuthProxyBaseUrl(targetKey: string): string {
+  return `http://127.0.0.1:${PORT}/_llm_proxy/${encodeURIComponent(targetKey)}`;
+}
 
 function setupPiConfig(): void {
   const piDir = join(process.env.HOME ?? "/root", ".pi", "agent");
@@ -79,13 +89,14 @@ function setupPiConfig(): void {
     }
     const providerKey = "vulnhunt";
     const providerConfig: Record<string, unknown> = {
-      baseUrl: BASE_URL,
+      baseUrl: API_KEY ? BASE_URL : noAuthProxyBaseUrl("primary"),
       api,
       models: [{ id: MODEL_NAME, input: ["text", "image"], contextWindow: CONTEXT_WINDOW, maxTokens: 16384 }],
     };
-    if (API_KEY) {
-      process.env.VH_LLM_API_KEY = API_KEY;
-      providerConfig.apiKey = "VH_LLM_API_KEY";
+    process.env.VH_LLM_API_KEY = API_KEY || NO_AUTH_DUMMY_KEY;
+    providerConfig.apiKey = "VH_LLM_API_KEY";
+    if (!API_KEY) {
+      noAuthProxyTargets.set("primary", stripTrailingSlash(BASE_URL));
     }
     providers[providerKey] = providerConfig;
   }
@@ -107,13 +118,14 @@ function setupPiConfig(): void {
         // Skip if same provider already registered (primary credential)
         if (!providers[providerKey]) {
           const providerConfig: Record<string, unknown> = {
-            baseUrl: cred.base_url,
+            baseUrl: cred.api_key ? cred.base_url : noAuthProxyBaseUrl(cred.id),
             api,
             models: [{ id: cred.model_id, input: ["text", "image"], contextWindow: parsePositiveInt(String(cred.context_window_tokens ?? ""), DEFAULT_CONTEXT_WINDOW_TOKENS), maxTokens: 16384 }],
           };
-          if (cred.api_key) {
-            process.env[apiKeyEnv] = cred.api_key;
-            providerConfig.apiKey = apiKeyEnv;
+          process.env[apiKeyEnv] = cred.api_key || NO_AUTH_DUMMY_KEY;
+          providerConfig.apiKey = apiKeyEnv;
+          if (!cred.api_key) {
+            noAuthProxyTargets.set(cred.id, stripTrailingSlash(cred.base_url));
           }
           providers[providerKey] = providerConfig;
         }
@@ -357,9 +369,43 @@ function generateTitle(messages: Array<{ role: string; content: string }>, crede
 
 // ─── HTTP Server ───
 
+async function proxyNoAuthRequest(req: IncomingMessage, res: ServerResponse, url: string): Promise<void> {
+  const match = url.match(/^\/_llm_proxy\/([^/]+)(\/.*)?$/);
+  const key = match ? decodeURIComponent(match[1]) : "";
+  const suffix = match?.[2] ?? "";
+  const targetBase = noAuthProxyTargets.get(key);
+  if (!targetBase) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "No no-auth proxy target" }));
+    return;
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    const lower = name.toLowerCase();
+    if (lower === "host" || lower === "authorization" || lower === "x-api-key" || lower === "content-length") continue;
+    if (Array.isArray(value)) headers.set(name, value.join(", "));
+    else if (value != null) headers.set(name, value);
+  }
+  try {
+    const upstream = await fetch(`${targetBase}${suffix}`, { method: req.method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined });
+    res.writeHead(upstream.status, Object.fromEntries(upstream.headers.entries()));
+    res.end(Buffer.from(await upstream.arrayBuffer()));
+  } catch (err) {
+    res.writeHead(502, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+  }
+}
+
 function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   const url = req.url ?? "";
   const method = req.method ?? "GET";
+
+  if (url.startsWith("/_llm_proxy/")) {
+    void proxyNoAuthRequest(req, res, url);
+    return;
+  }
 
   // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
