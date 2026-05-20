@@ -12,7 +12,8 @@ import {
 } from "./storage.js";
 import { logger } from "../../infra/logger.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
-import { diagnoseModelCredential } from "./model-diagnostics.js";
+import { diagnoseModelRuntimeCredential } from "./runtime-diagnostics.js";
+import { loadConfig } from "../../infra/config.js";
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
 function parseContextWindowTokens(value: unknown): number {
@@ -197,7 +198,20 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
     }
   }
 
-  const diagnostics = await diagnoseModelCredential({ protoType, baseUrl, modelId, apiKey, thinkingEffort });
+  const diagnostics = await diagnoseModelRuntimeCredential({
+    id: body.credential_id ?? "diagnostic",
+    tenant_id: "",
+    provider: "diagnostic",
+    proto_type: protoType,
+    base_url: baseUrl,
+    model_id: modelId,
+    thinking_effort: thinkingEffort,
+    api_key: apiKey,
+    context_window_tokens: 128000,
+    is_default: false,
+    created_at: new Date(),
+    updated_at: new Date(),
+  } as any, loadConfig());
   return c.json({
     ok: diagnostics.ok,
     message: diagnostics.summary,

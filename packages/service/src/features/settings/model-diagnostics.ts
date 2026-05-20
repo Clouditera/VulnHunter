@@ -165,6 +165,21 @@ async function runCheck(input: ModelDiagnosticInput, id: "basic" | "stream" | "t
   }
 }
 
+export async function runBasicChecks(input: ModelDiagnosticInput): Promise<ModelDiagnosticResult> {
+  const checks: ModelDiagnosticCheck[] = [];
+  const proto = input.protoType || "openai-completions";
+  if (!input.modelId || !input.apiKey) checks.push({ id: "config", label: "配置检查", status: "fail", category: "config", message: "model_id/api_key 必填", suggestion: "填写模型 ID 和 API Key，或选择已保存凭证。" });
+  else if (!["openai-completions", "openai", "openai-responses", "anthropic"].includes(proto)) checks.push({ id: "config", label: "配置检查", status: "warn", category: "config", message: `未知协议 ${proto}，按 OpenAI Chat Completions 兼容模式测试。` });
+  else checks.push({ id: "config", label: "配置检查", status: "pass", message: "配置字段完整。" });
+  if (checks.some((c) => c.status === "fail")) return { ok: false, summary: "模型配置不完整。", checks };
+  const normalized = { ...input, protoType: proto === "openai" ? "openai-completions" : proto };
+  const basic = await runCheck(normalized, "basic", "基础文本生成", 15000); checks.push(basic);
+  if (basic.status === "fail") return { ok: false, summary: `基础连通失败：${basic.message}`, checks };
+  checks.push(await runCheck(normalized, "stream", "Streaming 响应", 20000));
+  const hardFail = checks.find((c) => c.status === "fail");
+  return { ok: !hardFail, summary: hardFail ? `模型基础可用性存在问题：${hardFail.label} 失败。` : "模型基础连接和 streaming 可用。", checks };
+}
+
 export async function diagnoseModelCredential(input: ModelDiagnosticInput): Promise<ModelDiagnosticResult> {
   const checks: ModelDiagnosticCheck[] = [];
   const proto = input.protoType || "openai-completions";
