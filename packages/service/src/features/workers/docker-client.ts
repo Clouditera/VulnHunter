@@ -22,7 +22,7 @@ export const LABEL_TASK_TYPE = "vulnhunt.task_type";
 
 export interface WorkerContainerSpec {
   taskId: string;
-  taskType: "scan" | "chat" | "report" | "eval" | "poc-run";
+  taskType: "scan" | "chat" | "report" | "eval" | "poc-run" | "diagnostic";
   image: string;
   env: Record<string, string>;
   cpuQuota?: number;  // default 200000 = 2 CPU

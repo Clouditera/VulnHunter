@@ -376,19 +376,22 @@ export const api = {
      */
     testModel: (
       params:
-        | { credential_id: string }
+        | { credential_id: string; async?: boolean }
         | {
             proto_type: string;
             base_url?: string;
             model_id: string;
             api_key: string;
             thinking_effort?: string;
+            context_window_tokens?: number;
+            async?: boolean;
           },
     ) =>
-      request<{ ok: boolean; message?: string; error?: string; diagnostics?: ModelDiagnosticResult }>("/api/settings/credential/test", {
+      request<{ ok: boolean; message?: string; error?: string; run_id?: string; diagnostics?: ModelDiagnosticResult }>("/api/settings/credential/test", {
         method: "POST",
         body: JSON.stringify(params),
       }),
+    getModelTestRun: (id: string) => request<ModelDiagnosticResult & { id: string; status: "running" | "done" | "failed" }>(`/api/settings/credential/test-runs/${id}`),
     getPocSettings: () =>
       request<{ settings: PocSettingsApi }>("/api/settings/poc"),
     updatePocSettings: (body: Partial<PocSettingsApi>) =>

@@ -650,15 +650,32 @@ export function SettingsPage() {
     try {
       const resp = await api.settings.testModel(
         useStored
-          ? { credential_id: editingCredentialId as string }
+          ? { credential_id: editingCredentialId as string, async: true }
           : {
               proto_type: protoType,
               base_url: baseUrl || undefined,
               model_id: modelId,
               api_key: apiKey,
               thinking_effort: thinking,
+              context_window_tokens: contextWindowTokens,
+              async: true,
             },
       );
+      if (resp.run_id) {
+        let finalResp = resp;
+        for (let i = 0; i < 100; i++) {
+          const run = await api.settings.getModelTestRun(resp.run_id);
+          setTestState({ kind: "loading", diagnostics: run } as never);
+          if (run.status !== "running") {
+            finalResp = { ok: run.ok, message: run.summary, error: run.ok ? undefined : run.summary, diagnostics: run };
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+        if (finalResp.ok) setTestState({ kind: "ok", msg: finalResp.message, diagnostics: finalResp.diagnostics });
+        else setTestState({ kind: "err", msg: finalResp.error ?? i18n.t("settings.model.testFail"), diagnostics: finalResp.diagnostics });
+        return;
+      }
       if (resp.ok) {
         setTestState({ kind: "ok", msg: resp.message, diagnostics: resp.diagnostics });
       } else {

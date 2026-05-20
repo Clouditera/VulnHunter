@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import WebSocket from "ws";
 import { createWorkerContainer, ensureWorkDir, getDocker, removeWorkDir } from "../workers/docker-client.js";
+import { registerDiagnosticMcpContext, unregisterDiagnosticMcpContext } from "../../mcp/context.js";
 import { credentialToWorkerEnv } from "./credential-env.js";
 import { runBasicChecks, type ModelDiagnosticInput, type ModelDiagnosticCheck } from "./model-diagnostics.js";
 import type { DecryptedLlmCredential } from "./storage.js";
@@ -80,7 +81,7 @@ async function runAgentSmoke(baseUrl: string): Promise<{ toolObserved: boolean; 
   }), 60_000, "Agent 工具调用验证超时");
 }
 
-export async function diagnoseModelRuntimeCredential(cred: DecryptedLlmCredential, config: ServiceConfig): Promise<RuntimeDiagnosticResult> {
+export async function diagnoseModelRuntimeCredential(cred: DecryptedLlmCredential, config: ServiceConfig, actor?: { userId: string; tenantId: string; role: "admin" | "user" }): Promise<RuntimeDiagnosticResult> {
   const checks: ModelDiagnosticCheck[] = [];
   checks.push(check("config", "配置检查", "pass", "配置字段完整，凭证已解密。"));
 
@@ -97,7 +98,7 @@ export async function diagnoseModelRuntimeCredential(cred: DecryptedLlmCredentia
     ensureWorkDir(hostWorkDir);
     container = await createWorkerContainer({
       taskId: diagId,
-      taskType: "chat",
+      taskType: "diagnostic",
       image: config.docker.workerImage,
       network: config.docker.network,
       hostWorkDir,
@@ -115,6 +116,7 @@ export async function diagnoseModelRuntimeCredential(cred: DecryptedLlmCredentia
         ...credentialToWorkerEnv(cred),
       },
     });
+    registerDiagnosticMcpContext(diagId, { userId: actor?.userId ?? "diagnostic", tenantId: actor?.tenantId ?? "00000000-0000-0000-0000-000000000001", role: actor?.role ?? "admin", credentialId: cred.id });
     await container.start();
     checks.push(check("runtime", "启动运行时", "pass", "临时诊断 worker 已启动。"));
     const baseUrl = await getContainerUrl(container.id, config.docker.network);
@@ -126,6 +128,7 @@ export async function diagnoseModelRuntimeCredential(cred: DecryptedLlmCredentia
     const msg = err instanceof Error ? err.message : String(err);
     checks.push(check("runtime_error", "结果汇总", "fail", msg));
   } finally {
+    unregisterDiagnosticMcpContext(diagId);
     if (container) { try { await container.remove({ force: true }); } catch {} }
     removeWorkDir(hostWorkDir);
   }

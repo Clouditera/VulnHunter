@@ -4,7 +4,17 @@
  */
 import { getDb } from "../infra/db/client.js";
 
-export type McpActorType = "chat" | "report";
+export type McpActorType = "chat" | "report" | "diagnostic";
+
+const diagnosticContexts = new Map<string, Omit<McpContext, "token"> & { expiresAt: number }>();
+
+export function registerDiagnosticMcpContext(token: string, ctx: Omit<McpContext, "token" | "actorType">, ttlMs = 120_000): void {
+  diagnosticContexts.set(token, { ...ctx, actorType: "diagnostic", expiresAt: Date.now() + ttlMs });
+}
+
+export function unregisterDiagnosticMcpContext(token: string): void {
+  diagnosticContexts.delete(token);
+}
 
 export interface McpContext {
   actorType: McpActorType;
@@ -22,6 +32,11 @@ export interface McpContext {
  * Returns null if token is invalid.
  */
 export async function resolveMcpContext(token: string): Promise<McpContext | null> {
+  const diagnostic = diagnosticContexts.get(token);
+  if (diagnostic) {
+    if (diagnostic.expiresAt > Date.now()) return { ...diagnostic, token };
+    diagnosticContexts.delete(token);
+  }
   const db = getDb();
 
   // Try chat session first

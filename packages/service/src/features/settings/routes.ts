@@ -13,6 +13,7 @@ import {
 import { logger } from "../../infra/logger.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { diagnoseModelRuntimeCredential } from "./runtime-diagnostics.js";
+import { getDiagnosticRun, startDiagnosticRun } from "./diagnostic-runs.js";
 import { loadConfig } from "../../infra/config.js";
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
@@ -168,6 +169,8 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
     model_id?: string;
     api_key?: string;
     thinking_effort?: string;
+    context_window_tokens?: number;
+    async?: boolean;
   }>();
 
   let protoType = body.proto_type ?? "";
@@ -198,26 +201,38 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
     }
   }
 
-  const diagnostics = await diagnoseModelRuntimeCredential({
+  const user = c.get("user");
+  const cred = {
     id: body.credential_id ?? "diagnostic",
-    tenant_id: "",
+    tenant_id: user.tenantId,
     provider: "diagnostic",
     proto_type: protoType,
     base_url: baseUrl,
     model_id: modelId,
     thinking_effort: thinkingEffort,
     api_key: apiKey,
-    context_window_tokens: 128000,
+    context_window_tokens: body.context_window_tokens ?? 128000,
     is_default: false,
     created_at: new Date(),
     updated_at: new Date(),
-  } as any, loadConfig());
+  } as any;
+  if (body.async) {
+    const runId = startDiagnosticRun(cred, loadConfig(), { userId: user.userId, tenantId: user.tenantId, role: user.role === "admin" ? "admin" : "user" });
+    return c.json({ ok: true, run_id: runId, diagnostics: getDiagnosticRun(runId) });
+  }
+  const diagnostics = await diagnoseModelRuntimeCredential(cred, loadConfig(), { userId: user.userId, tenantId: user.tenantId, role: user.role === "admin" ? "admin" : "user" });
   return c.json({
     ok: diagnostics.ok,
     message: diagnostics.summary,
     error: diagnostics.ok ? undefined : diagnostics.summary,
     diagnostics,
   });
+});
+
+settingsRouter.get("/credential/test-runs/:id", requireAdmin, async (c) => {
+  const run = getDiagnosticRun(c.req.param("id"));
+  if (!run) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  return c.json(run);
 });
 
 // POST /api/settings/models — list models using provided or saved credential
