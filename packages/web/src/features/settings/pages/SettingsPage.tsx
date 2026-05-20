@@ -27,7 +27,6 @@ const FIELD_LABEL: CSSProperties = {
   display: "block",
   fontSize: "11px",
   fontWeight: 600,
-  textTransform: "uppercase",
   color: "var(--text-secondary)",
   marginBottom: "6px",
   letterSpacing: "0.04em",
@@ -1258,21 +1257,15 @@ export function SettingsPage() {
               }}
             >
               <div>
-                {/* Test enabled whenever:
-                    - editing a saved credential (uses stored key server-side), OR
-                    - user has typed a fresh api_key in the form.
-                    Only fully disabled when it's a brand-new draft with no key yet. */}
                 {(() => {
-                  const canUseStored =
-                    editingCredentialId != null && !isNewDraft;
-                  const canTest = canUseStored || apiKey.length > 0;
+                  const canTest = true;
                   return (
                 <button
                   type="button"
                   data-testid="settings-test-connection-btn"
                   onClick={testConnection}
-                  disabled={testState.kind === "loading" || !canTest}
-                  title={!canTest ? i18n.t("settings.model.testNeedsKey") : undefined}
+                  disabled={testState.kind === "loading"}
+                  title={undefined}
                   style={{
                     padding: "10px 16px",
                     border: "1px solid var(--border)",
@@ -1282,10 +1275,10 @@ export function SettingsPage() {
                     fontSize: "12px",
                     fontWeight: 600,
                     cursor:
-                      testState.kind === "loading" || !canTest
+                      testState.kind === "loading"
                         ? "not-allowed"
                         : "pointer",
-                    opacity: !canTest ? 0.6 : 1,
+                    opacity: 1,
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "6px",
@@ -1861,7 +1854,7 @@ export function SettingsPage() {
             <button
               type="button"
               data-testid="settings-save-btn"
-              disabled={!dirty || saving || !canSaveCred}
+              disabled={saving}
               onClick={handleSave}
               style={{
                 width: "100%",
