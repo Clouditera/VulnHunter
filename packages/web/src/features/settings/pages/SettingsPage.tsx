@@ -1812,7 +1812,7 @@ export function SettingsPage() {
               </div>
             </Field>
             <Field
-              label={i18n.t("settings.engine.agentParallel")}
+              label={<span style={{ textTransform: "none" }}>{i18n.t("settings.engine.agentParallel")}</span>}
               hint={i18n.t("settings.engine.agentParallel.hint")}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
