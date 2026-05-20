@@ -88,28 +88,37 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
 }
 
 import { mkdirSync, rmSync } from "node:fs";
-import { execSync } from "node:child_process";
 
 export function ensureWorkDir(hostPath: string): void {
   mkdirSync(hostPath, { recursive: true });
   logger.debug({ hostPath }, "Work directory ensured");
 }
 
-export function removeWorkDir(hostPath: string): void {
+export async function removeWorkDir(hostPath: string): Promise<void> {
   try {
     rmSync(hostPath, { recursive: true, force: true });
     logger.info({ hostPath }, "Work directory removed");
+    return;
   } catch (err) {
-    // Root-owned files (created by Docker containers) can't be removed by non-root service.
-    // Use a temp container to clean up.
-    logger.info({ hostPath }, "Permission denied, using Docker container for cleanup");
-    try {
-      execSync(`docker run --rm -v "${hostPath}:/cleanup" alpine sh -c "rm -rf /cleanup/*"`, { timeout: 15000 });
-      rmSync(hostPath, { recursive: true, force: true });
-      logger.info({ hostPath }, "Work directory removed via Docker cleanup");
-    } catch (dockerErr) {
-      logger.warn({ hostPath, err: dockerErr }, "Could not remove work directory");
-    }
+    logger.info({ hostPath, err }, "Permission denied, using Docker API cleanup");
+  }
+
+  try {
+    const docker = getDocker();
+    const container = await docker.createContainer({
+      Image: "vulnhunt-worker:latest",
+      Cmd: ["sh", "-c", "rm -rf /cleanup/* /cleanup/.[!.]* /cleanup/..?* 2>/dev/null || true"],
+      HostConfig: {
+        AutoRemove: true,
+        Mounts: [{ Type: "bind", Source: hostPath, Target: "/cleanup" }],
+      },
+    });
+    await container.start();
+    await container.wait();
+    rmSync(hostPath, { recursive: true, force: true });
+    logger.info({ hostPath }, "Work directory removed via Docker API cleanup");
+  } catch (dockerErr) {
+    logger.warn({ hostPath, err: dockerErr }, "Could not remove work directory");
   }
 }
 
