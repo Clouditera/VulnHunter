@@ -100,6 +100,7 @@ export class TaskScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private unsubscribeEvents: (() => void) | null = null;
   private maxParallelScan = 3;
+  private youngflowMaxParallel = 3;
   private config: ServiceConfig;
 
   constructor(config: ServiceConfig) {
@@ -221,11 +222,12 @@ export class TaskScheduler {
   private async refreshConfig(): Promise<void> {
     try {
       const db = getDb();
-      const rows = await db<{ config: { max_parallel_scan: number } }[]>`
+      const rows = await db<{ config: { max_parallel_scan: number; youngflow_max_parallel?: number } }[]>`
         SELECT config FROM system_config WHERE id = 1
       `;
       if (rows[0]) {
         this.maxParallelScan = Number(rows[0].config.max_parallel_scan) || 3;
+        this.youngflowMaxParallel = Number(rows[0].config.youngflow_max_parallel) || 3;
       }
     } catch (err) {
       logger.warn({ err }, "Could not refresh system_config, using default max_parallel_scan=3");
@@ -300,7 +302,7 @@ export class TaskScheduler {
         continue;
       }
 
-      const llmEnv = credentialToWorkerEnv(cred);
+      const llmEnv = { ...credentialToWorkerEnv(cred), YOUNGFLOW_MAX_PARALLEL: String(this.youngflowMaxParallel) };
 
       try {
         if (!isResume) {

@@ -346,10 +346,18 @@ export async function getSystemConfig(): Promise<Record<string, unknown>> {
   return rows[0]?.config ?? {};
 }
 
+function normalizeBoundedInt(value: unknown, fallback: number, min: number, max: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(n)));
+}
+
 export async function updateSystemConfig(patch: Record<string, unknown>): Promise<void> {
   const db = getDb();
   const current = await getSystemConfig();
   const merged = { ...current, ...patch };
+  merged.max_parallel_scan = normalizeBoundedInt(merged.max_parallel_scan, 3, 1, 10);
+  merged.youngflow_max_parallel = normalizeBoundedInt(merged.youngflow_max_parallel, 3, 1, 10);
   await db`
     UPDATE system_config SET config = ${JSON.stringify(merged)}, updated_at = now()
     WHERE id = 1

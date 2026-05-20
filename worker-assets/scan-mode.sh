@@ -47,12 +47,14 @@ fi
 mkdir -p /workspace/.service-logs
 rm -f "$SERVICE_LOG"
 
-echo "[scan] Running youngflow (model=$LLM_MODEL_NAME)..." >&2
+YOUNGFLOW_MAX_PARALLEL=${YOUNGFLOW_MAX_PARALLEL:-3}
+echo "[scan] Running youngflow (model=$LLM_MODEL_NAME, max_parallel=$YOUNGFLOW_MAX_PARALLEL)..." >&2
 set +e
 youngflow "$FLOW_DIR" \
   --work-dir /workspace/src \
   --output-dir /workspace/out \
   --json-log \
+  --max-parallel "$YOUNGFLOW_MAX_PARALLEL" \
   ${UNTIL:+--until "$UNTIL"} \
   $([ "${RESUME:-0}" = "1" ] && echo "--resume") \
   2>"$SERVICE_LOG"

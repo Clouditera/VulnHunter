@@ -629,6 +629,7 @@ export interface ModelDiagnosticResult {
 
 export interface SystemConfig {
   max_parallel_scan: number;
+  youngflow_max_parallel: number;
   max_parallel_chat: number;
   max_parallel_report: number;
   scan_cpu_limit: number;

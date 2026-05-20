@@ -341,6 +341,7 @@ export function SettingsPage() {
   const [showKey, setShowKey] = useState(false);
 
   const [maxParallel, setMaxParallel] = useState<number>(3);
+  const [youngflowMaxParallel, setYoungflowMaxParallel] = useState<number>(3);
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
@@ -384,6 +385,7 @@ export function SettingsPage() {
         if (cfgResp?.config) {
           setConfig(cfgResp.config);
           setMaxParallel(cfgResp.config.max_parallel_scan);
+          setYoungflowMaxParallel(cfgResp.config.youngflow_max_parallel ?? 3);
         }
         const cl = credList as { credentials: LlmCredential[] } | undefined;
         if (cl?.credentials) {
@@ -494,9 +496,9 @@ export function SettingsPage() {
           (cred.context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS) !== (parseContextWindowInput(contextWindow) ?? -1) ||
           (cred.label ?? "") !== label)) ||
       (!cred && (apiKey.length > 0 || modelId.length > 0));
-    const cfgChanged = config ? config.max_parallel_scan !== maxParallel : false;
+    const cfgChanged = config ? config.max_parallel_scan !== maxParallel || (config.youngflow_max_parallel ?? 3) !== youngflowMaxParallel : false;
     return Boolean(credChanged) || cfgChanged;
-  }, [apiKey, cred, protoType, baseUrl, modelId, thinking, contextWindow, label, config, maxParallel]);
+  }, [apiKey, cred, protoType, baseUrl, modelId, thinking, contextWindow, label, config, maxParallel, youngflowMaxParallel]);
 
   const canSaveCred = apiKey.length > 0 || Boolean(cred);
 
@@ -557,8 +559,8 @@ export function SettingsPage() {
         );
       }
 
-      if (config && config.max_parallel_scan !== maxParallel) {
-        ops.push(api.settings.updateSystemConfig({ max_parallel_scan: maxParallel }));
+      if (config && (config.max_parallel_scan !== maxParallel || (config.youngflow_max_parallel ?? 3) !== youngflowMaxParallel)) {
+        ops.push(api.settings.updateSystemConfig({ max_parallel_scan: maxParallel, youngflow_max_parallel: youngflowMaxParallel }));
       }
 
       if (ops.length === 0) {
@@ -581,7 +583,7 @@ export function SettingsPage() {
         .listCredentials()
         .catch(() => ({ credentials: [] as LlmCredential[] }));
       setCredentials(freshList.credentials);
-      if (config) setConfig({ ...config, max_parallel_scan: maxParallel });
+      if (config) setConfig({ ...config, max_parallel_scan: maxParallel, youngflow_max_parallel: youngflowMaxParallel });
       setApiKey("");
       setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
       setTimeout(() => setToast(null), 2200);
@@ -1797,6 +1799,31 @@ export function SettingsPage() {
                 </span>
               </div>
             </Field>
+            <Field
+              label="任务内 agent 并发数量限制"
+              hint="控制单个扫描任务内部同时请求模型的 agent 数量；调高会显著增加模型服务、显存和限流压力。"
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                <input
+                  type="range"
+                  data-testid="settings-youngflow-max-parallel-slider"
+                  min={1}
+                  max={10}
+                  value={youngflowMaxParallel}
+                  onChange={(e) => setYoungflowMaxParallel(Number(e.target.value))}
+                  style={{ flex: 1, height: "6px", accentColor: "var(--brand)" }}
+                />
+                <span
+                  data-testid="settings-youngflow-max-parallel-value"
+                  style={{ fontSize: "20px", fontWeight: 600, minWidth: "24px", textAlign: "center", color: "var(--text-primary)", lineHeight: 1 }}
+                >
+                  {youngflowMaxParallel}
+                </span>
+              </div>
+            </Field>
+            <div style={{ color: "var(--text-muted)", fontSize: "13px" }}>
+              预估最大模型并发：{maxParallel} × {youngflowMaxParallel} = {maxParallel * youngflowMaxParallel}
+            </div>
           </SettingsCard>
 
           {/* Save is the only bottom-level action now; Test Connection

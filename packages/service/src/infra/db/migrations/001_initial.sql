@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS system_config (
   id         INTEGER PRIMARY KEY DEFAULT 1,
   config     JSONB NOT NULL DEFAULT '{
     "max_parallel_scan": 3,
+    "youngflow_max_parallel": 3,
     "max_parallel_chat": 5,
     "max_parallel_report": 3,
     "scan_cpu_limit": 2,
