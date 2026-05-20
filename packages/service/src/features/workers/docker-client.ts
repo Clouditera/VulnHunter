@@ -87,7 +87,8 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
   return container;
 }
 
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { basename, dirname } from "node:path";
 
 export function ensureWorkDir(hostPath: string): void {
   mkdirSync(hostPath, { recursive: true });
@@ -105,18 +106,35 @@ export async function removeWorkDir(hostPath: string): Promise<void> {
 
   try {
     const docker = getDocker();
+    const parent = dirname(hostPath);
+    const target = basename(hostPath);
     const container = await docker.createContainer({
       Image: "vulnhunt-worker:latest",
-      Cmd: ["sh", "-c", "rm -rf /cleanup/* /cleanup/.[!.]* /cleanup/..?* 2>/dev/null || true"],
+      Cmd: ["sh", "-c", `set -eu; cd /cleanup-parent; rm -rf -- ${JSON.stringify(target)}`],
+      AttachStdout: true,
+      AttachStderr: true,
       HostConfig: {
-        AutoRemove: true,
-        Mounts: [{ Type: "bind", Source: hostPath, Target: "/cleanup" }],
+        AutoRemove: false,
+        Mounts: [{ Type: "bind", Source: parent, Target: "/cleanup-parent" }],
       },
     });
+    const stream = await container.attach({ stream: true, stdout: true, stderr: true });
+    const chunks: Buffer[] = [];
+    stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
     await container.start();
-    await container.wait();
-    rmSync(hostPath, { recursive: true, force: true });
-    logger.info({ hostPath }, "Work directory removed via Docker API cleanup");
+    const result = await container.wait();
+    const output = Buffer.concat(chunks).toString("utf8").trim();
+    await container.remove({ force: true }).catch(() => undefined);
+    if (result.StatusCode !== 0) {
+      throw new Error(`cleanup container exited ${result.StatusCode}: ${output}`);
+    }
+    if (existsSync(hostPath)) {
+      rmSync(hostPath, { recursive: true, force: true });
+    }
+    if (existsSync(hostPath)) {
+      throw new Error(`cleanup target still exists after container cleanup: ${hostPath}; output=${output}`);
+    }
+    logger.info({ hostPath, output }, "Work directory removed via Docker API cleanup");
   } catch (dockerErr) {
     logger.warn({ hostPath, err: dockerErr }, "Could not remove work directory");
   }
