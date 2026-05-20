@@ -571,8 +571,9 @@ export function SettingsPage() {
       await Promise.all(ops);
 
       // Refresh credential state so UI shows "saved" masked view.
+      const savedId = editingCredentialId;
       const fresh = await api.settings.getCredential().catch(() => ({ credential: cred }));
-      if (fresh?.credential) {
+      if (fresh?.credential && (!savedId || fresh.credential.id === savedId)) {
         setCred(fresh.credential);
         setEditingCredentialId(fresh.credential.id);
       }
@@ -584,6 +585,17 @@ export function SettingsPage() {
         .catch(() => ({ credentials: [] as LlmCredential[] }));
       setCredentials(freshList.credentials);
       if (config) setConfig({ ...config, max_parallel_scan: maxParallel, youngflow_max_parallel: youngflowMaxParallel });
+      if (isNewDraft) {
+        const created = freshList.credentials.find((item) =>
+          item.model_id === modelId &&
+          normalizeProtoType(item.proto_type) === protoType &&
+          (item.base_url ?? "") === baseUrl,
+        ) ?? freshList.credentials[0];
+        if (created) {
+          setCred(created);
+          setEditingCredentialId(created.id);
+        }
+      }
       setApiKey("");
       setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
       setTimeout(() => setToast(null), 2200);
