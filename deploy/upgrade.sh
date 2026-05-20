@@ -16,7 +16,15 @@ mount_source() {
   docker inspect "$1" --format "{{range .Mounts}}{{if eq .Destination \"$2\"}}{{.Source}}{{end}}{{end}}" 2>/dev/null || true
 }
 dir_empty() {
-  [[ ! -d "$1" ]] || [[ -z "$(find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]
+  local dir="$1"
+  [[ ! -d "$dir" ]] && return 0
+  # Permission denied must be treated as non-empty/unknown, not empty.
+  local probe
+  if ! probe="$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/tmp/vh-upgrade-find.err)"; then
+    echo "[upgrade] cannot fully inspect $dir; treating as non-empty to avoid data loss" >&2
+    return 1
+  fi
+  [[ -z "$probe" ]]
 }
 legacy_volume_candidates() {
   local suffix="$1"
