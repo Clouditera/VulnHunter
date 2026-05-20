@@ -110,7 +110,8 @@ export async function removeWorkDir(hostPath: string): Promise<void> {
     const target = basename(hostPath);
     const container = await docker.createContainer({
       Image: "vulnhunt-worker:latest",
-      Cmd: ["sh", "-c", `set -eu; cd /cleanup-parent; rm -rf -- ${JSON.stringify(target)}`],
+      Entrypoint: ["sh", "-c"],
+      Cmd: [`set -eu; cd /cleanup-parent; rm -rf -- ${JSON.stringify(target)}`],
       AttachStdout: true,
       AttachStderr: true,
       HostConfig: {
