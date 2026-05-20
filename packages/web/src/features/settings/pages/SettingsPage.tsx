@@ -345,6 +345,7 @@ export function SettingsPage() {
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Model enhancements
   const [modelOptions, setModelOptions] = useState<string[] | null>(null);
@@ -500,13 +501,22 @@ export function SettingsPage() {
     return Boolean(credChanged) || cfgChanged;
   }, [apiKey, cred, protoType, baseUrl, modelId, thinking, contextWindow, label, config, maxParallel, youngflowMaxParallel]);
 
-  const canSaveCred = apiKey.length > 0 || Boolean(cred);
+  const canSaveCred = true;
 
   async function handleSave() {
     if (saving) return;
     setSaving(true);
     setToast(null);
     try {
+      const errors: Record<string, string> = {};
+      if (!baseUrl.trim()) errors.baseUrl = i18n.t("settings.validation.baseUrlRequired");
+      if (!modelId.trim()) errors.modelId = i18n.t("settings.validation.modelIdRequired");
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        setSaving(false);
+        return;
+      }
+      setFieldErrors({});
       const contextWindowTokens = parseContextWindowInput(contextWindow);
       if (contextWindowTokens == null) {
         setToast({ kind: "err", msg: i18n.t("settings.model.contextWindow.invalid") });
@@ -525,7 +535,7 @@ export function SettingsPage() {
           (cred.context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS) !== contextWindowTokens ||
           (cred.label ?? "") !== label);
 
-      if (apiKey.length > 0) {
+      if (apiKey.length > 0 || isNewDraft || !cred) {
         ops.push(
           api.settings.saveCredential({
             // Include id when editing an existing credential; backend treats
@@ -656,10 +666,15 @@ export function SettingsPage() {
   async function testConnection() {
     const useStored =
       editingCredentialId != null && !isNewDraft && apiKey.length === 0;
-    if (!useStored && !apiKey) {
-      setTestState({ kind: "err", msg: i18n.t("settings.model.testNeedsKey") });
+    const errors: Record<string, string> = {};
+    if (!baseUrl.trim()) errors.baseUrl = i18n.t("settings.validation.baseUrlRequired");
+    if (!modelId.trim()) errors.modelId = i18n.t("settings.validation.modelIdRequired");
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setTestState({ kind: "err", msg: Object.values(errors)[0] });
       return;
     }
+    setFieldErrors({});
     setTestState({ kind: "loading" });
     try {
       const resp = await api.settings.testModel(
@@ -1028,7 +1043,7 @@ export function SettingsPage() {
                     data-testid="settings-model-input"
                     type="text"
                     value={modelId}
-                    onChange={(e) => setModelId(e.target.value)}
+                    onChange={(e) => { setModelId(e.target.value); setFieldErrors((prev) => ({ ...prev, modelId: "" })); }}
                     placeholder="claude-sonnet-4-5"
                     list="settings-model-datalist"
                     style={{ ...FIELD_INPUT, flex: 1, minWidth: 0 }}
@@ -1104,7 +1119,7 @@ export function SettingsPage() {
                           type="button"
                           data-testid="settings-model-suggestion"
                           data-active={active || undefined}
-                          onClick={() => setModelId(id)}
+                          onClick={() => { setModelId(id); setFieldErrors((prev) => ({ ...prev, modelId: "" })); }}
                           style={{
                             padding: "4px 10px",
                             fontSize: "11px",
@@ -1138,6 +1153,7 @@ export function SettingsPage() {
                     {modelFetchState.msg}
                   </div>
                 ) : null}
+                {fieldErrors.modelId && <div style={{ color: "#dc2626", fontSize: "12px", marginTop: "4px" }}>{fieldErrors.modelId}</div>}
               </div>
             </div>
 
@@ -1146,15 +1162,16 @@ export function SettingsPage() {
                 data-testid="settings-base-url-input"
                 type="text"
                 value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
+                onChange={(e) => { setBaseUrl(e.target.value); setFieldErrors((prev) => ({ ...prev, baseUrl: "" })); }}
                 placeholder={i18n.t("settings.model.baseUrlPlaceholder")}
                 style={FIELD_INPUT}
               />
+              {fieldErrors.baseUrl && <div style={{ color: "#dc2626", fontSize: "12px", marginTop: "4px" }}>{fieldErrors.baseUrl}</div>}
             </Field>
 
             <Field
               label={i18n.t("settings.model.apiKey")}
-              hint={cred ? i18n.t("settings.model.apiKeyLocked") : undefined}
+              hint={cred ? i18n.t("settings.model.apiKeyLocked") : i18n.t("settings.model.apiKeyOptionalHint") }
             >
               <div style={{ position: "relative" }}>
                 <input

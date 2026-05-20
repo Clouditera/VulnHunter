@@ -85,9 +85,9 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
     context_window_tokens?: number;
   }>();
 
-  if (!body.provider || !body.model_id || !body.api_key) {
+  if (!body.provider || !body.model_id || !body.base_url) {
     return c.json(
-      { error: { code: "ERR_INTERNAL", detail: "provider, model_id, api_key required" } },
+      { error: { code: "ERR_BAD_REQUEST", detail: "provider, base_url, model_id required" } },
       400,
     );
   }
@@ -109,7 +109,7 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
       modelId: body.model_id,
       thinkingEffort: body.thinking_effort,
       label: body.label,
-      apiKey: body.api_key,
+      apiKey: body.api_key ?? "",
       isDefault: body.is_default,
       contextWindowTokens,
     });
@@ -298,9 +298,9 @@ settingsRouter.post("/models", requireAdmin, async (c) => {
 
     const headers: Record<string, string> = {};
     if (protoType === "anthropic") {
-      headers["x-api-key"] = apiKey;
+      if (apiKey) headers["x-api-key"] = apiKey;
       headers["anthropic-version"] = "2023-06-01";
-    } else {
+    } else if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
     }
 

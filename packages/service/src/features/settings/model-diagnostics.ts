@@ -125,18 +125,24 @@ function makeReq(input: ModelDiagnosticInput, kind: "basic" | "stream" | "tool")
     const body: Record<string, unknown> = { model: input.modelId, max_tokens: 16, messages: [{ role: "user", content: kind === "tool" ? "Call diagnostic_echo with message ok" : "Reply ok" }] };
     if (kind === "stream") body.stream = true;
     if (kind === "tool") { body.tools = [ANTH_TOOL]; body.tool_choice = { type: "tool", name: "diagnostic_echo" }; }
-    return { endpoint: `${base}/messages`, headers: { "Content-Type": "application/json", "x-api-key": input.apiKey, "anthropic-version": "2023-06-01" }, body };
+    const headers: Record<string, string> = { "Content-Type": "application/json", "anthropic-version": "2023-06-01" };
+    if (input.apiKey) headers["x-api-key"] = input.apiKey;
+    return { endpoint: `${base}/messages`, headers, body };
   }
   if (input.protoType === "openai-responses") {
     const body: Record<string, unknown> = { model: input.modelId, max_output_tokens: 16, input: kind === "tool" ? "Call diagnostic_echo with message ok" : "Reply ok", ...reasoningPayload(input) };
     if (kind === "stream") body.stream = true;
     if (kind === "tool") body.tools = [RESP_TOOL];
-    return { endpoint: `${base}/responses`, headers: { "Content-Type": "application/json", Authorization: `Bearer ${input.apiKey}` }, body };
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (input.apiKey) headers.Authorization = `Bearer ${input.apiKey}`;
+    return { endpoint: `${base}/responses`, headers, body };
   }
   const body: Record<string, unknown> = { model: input.modelId, max_tokens: 16, messages: [{ role: "user", content: kind === "tool" ? "Call diagnostic_echo with message ok" : "Reply ok" }], ...reasoningPayload(input) };
   if (kind === "stream") body.stream = true;
   if (kind === "tool") { body.tools = [TOOL]; body.tool_choice = { type: "function", function: { name: "diagnostic_echo" } }; }
-  return { endpoint: `${base}/chat/completions`, headers: { "Content-Type": "application/json", Authorization: `Bearer ${input.apiKey}` }, body };
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (input.apiKey) headers.Authorization = `Bearer ${input.apiKey}`;
+  return { endpoint: `${base}/chat/completions`, headers, body };
 }
 
 function pass(id: string, label: string, message: string, endpoint?: string, durationMs?: number): ModelDiagnosticCheck { return { id, label, status: "pass", message, endpoint, durationMs }; }
@@ -168,7 +174,7 @@ async function runCheck(input: ModelDiagnosticInput, id: "basic" | "stream" | "t
 export async function runBasicChecks(input: ModelDiagnosticInput): Promise<ModelDiagnosticResult> {
   const checks: ModelDiagnosticCheck[] = [];
   const proto = input.protoType || "openai-completions";
-  if (!input.modelId || !input.apiKey) checks.push({ id: "config", label: "配置检查", status: "fail", category: "config", message: "model_id/api_key 必填", suggestion: "填写模型 ID 和 API Key，或选择已保存凭证。" });
+  if (!input.modelId) checks.push({ id: "config", label: "配置检查", status: "fail", category: "config", message: "model_id 必填", suggestion: "填写模型 ID。" });
   else if (!["openai-completions", "openai", "openai-responses", "anthropic"].includes(proto)) checks.push({ id: "config", label: "配置检查", status: "warn", category: "config", message: `未知协议 ${proto}，按 OpenAI Chat Completions 兼容模式测试。` });
   else checks.push({ id: "config", label: "配置检查", status: "pass", message: "配置字段完整。" });
   if (checks.some((c) => c.status === "fail")) return { ok: false, summary: "模型配置不完整。", checks };
@@ -183,7 +189,7 @@ export async function runBasicChecks(input: ModelDiagnosticInput): Promise<Model
 export async function diagnoseModelCredential(input: ModelDiagnosticInput): Promise<ModelDiagnosticResult> {
   const checks: ModelDiagnosticCheck[] = [];
   const proto = input.protoType || "openai-completions";
-  if (!input.modelId || !input.apiKey) checks.push({ id: "config", label: "配置检查", status: "fail", category: "config", message: "model_id/api_key 必填", suggestion: "填写模型 ID 和 API Key，或选择已保存凭证。" });
+  if (!input.modelId) checks.push({ id: "config", label: "配置检查", status: "fail", category: "config", message: "model_id 必填", suggestion: "填写模型 ID。" });
   else if (!["openai-completions", "openai", "openai-responses", "anthropic"].includes(proto)) checks.push({ id: "config", label: "配置检查", status: "warn", category: "config", message: `未知协议 ${proto}，按 OpenAI Chat Completions 兼容模式测试。` });
   else checks.push({ id: "config", label: "配置检查", status: "pass", message: "配置字段完整。" });
   if (checks.some((c) => c.status === "fail")) return { ok: false, summary: "模型配置不完整。", checks };

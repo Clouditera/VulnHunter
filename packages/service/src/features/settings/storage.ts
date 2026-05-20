@@ -64,9 +64,9 @@ export interface DecryptedLlmCredential extends DbLlmCredential {
 export async function getDefaultCredential(): Promise<DecryptedLlmCredential | null> {
   const db = getDb();
   const rows = await db<(DbLlmCredential & {
-    api_key_ciphertext: Buffer;
-    api_key_iv: Buffer;
-    api_key_tag: Buffer;
+    api_key_ciphertext: Buffer | null;
+    api_key_iv: Buffer | null;
+    api_key_tag: Buffer | null;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
            key_fingerprint, context_window_tokens, api_key_ciphertext, api_key_iv, api_key_tag
@@ -83,9 +83,9 @@ export async function getDefaultCredential(): Promise<DecryptedLlmCredential | n
 export async function getCredentialById(id: string): Promise<DecryptedLlmCredential | null> {
   const db = getDb();
   const rows = await db<(DbLlmCredential & {
-    api_key_ciphertext: Buffer;
-    api_key_iv: Buffer;
-    api_key_tag: Buffer;
+    api_key_ciphertext: Buffer | null;
+    api_key_iv: Buffer | null;
+    api_key_tag: Buffer | null;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
            key_fingerprint, context_window_tokens, api_key_ciphertext, api_key_iv, api_key_tag
@@ -103,9 +103,9 @@ export async function getDefaultOrFirstAvailableCredential(): Promise<DecryptedL
 
   const db = getDb();
   const rows = await db<(DbLlmCredential & {
-    api_key_ciphertext: Buffer;
-    api_key_iv: Buffer;
-    api_key_tag: Buffer;
+    api_key_ciphertext: Buffer | null;
+    api_key_iv: Buffer | null;
+    api_key_tag: Buffer | null;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
            key_fingerprint, context_window_tokens, api_key_ciphertext, api_key_iv, api_key_tag
@@ -133,9 +133,9 @@ export interface ListedLlmCredential extends DbLlmCredential {
 export async function listCredentials(): Promise<ListedLlmCredential[]> {
   const db = getDb();
   const rows = await db<(DbLlmCredential & {
-    api_key_ciphertext: Buffer;
-    api_key_iv: Buffer;
-    api_key_tag: Buffer;
+    api_key_ciphertext: Buffer | null;
+    api_key_iv: Buffer | null;
+    api_key_tag: Buffer | null;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
            key_fingerprint, context_window_tokens, api_key_ciphertext, api_key_iv, api_key_tag
@@ -165,23 +165,27 @@ export async function listCredentials(): Promise<ListedLlmCredential[]> {
       } as ListedLlmCredential;
     }
 
-    const vault = getVault();
-    let masked = "••••••••";
-    let health: ListedLlmCredential["credential_health"] = "unknown";
-    try {
-      const key = vault.decrypt({
-        ciphertext: row.api_key_ciphertext,
-        iv: row.api_key_iv,
-        tag: row.api_key_tag,
-      });
-      health = "ok";
-      if (key.length > 8) {
-        masked = `${key.slice(0, 4)}••••${key.slice(-4)}`;
-      }
-    } catch (err) {
-      if (err instanceof CredentialDecryptError) {
-        masked = "无法解密";
-        health = "decrypt_failed";
+    let masked = "未设置";
+    let health: ListedLlmCredential["credential_health"] = "ok";
+    if (row.api_key_ciphertext && row.api_key_iv && row.api_key_tag) {
+      const vault = getVault();
+      masked = "••••••••";
+      health = "unknown";
+      try {
+        const key = vault.decrypt({
+          ciphertext: row.api_key_ciphertext,
+          iv: row.api_key_iv,
+          tag: row.api_key_tag,
+        });
+        health = "ok";
+        if (key.length > 8) {
+          masked = `${key.slice(0, 4)}••••${key.slice(-4)}`;
+        }
+      } catch (err) {
+        if (err instanceof CredentialDecryptError) {
+          masked = "无法解密";
+          health = "decrypt_failed";
+        }
       }
     }
 
@@ -216,10 +220,13 @@ export async function setDefaultCredential(id: string): Promise<void> {
 }
 
 function decryptRow(row: DbLlmCredential & {
-  api_key_ciphertext: Buffer;
-  api_key_iv: Buffer;
-  api_key_tag: Buffer;
+  api_key_ciphertext: Buffer | null;
+  api_key_iv: Buffer | null;
+  api_key_tag: Buffer | null;
 }): DecryptedLlmCredential {
+  if (!row.api_key_ciphertext || !row.api_key_iv || !row.api_key_tag) {
+    return { ...row, api_key: "" };
+  }
   const apiKey = getVault().decrypt({
     ciphertext: row.api_key_ciphertext,
     iv: row.api_key_iv,
@@ -266,8 +273,8 @@ export async function upsertCredential(params: {
   contextWindowTokens?: number;
 }): Promise<string> {
   const db = getDb();
-  const vault = getVault();
-  const encrypted = vault.encrypt(params.apiKey);
+  const vault = params.apiKey ? getVault() : null;
+  const encrypted = params.apiKey && vault ? vault.encrypt(params.apiKey) : null;
   const contextWindowTokens = normalizeContextWindowTokens(params.contextWindowTokens);
 
   if (params.id) {
@@ -278,10 +285,10 @@ export async function upsertCredential(params: {
           base_url = ${params.baseUrl ?? null}, model_id = ${params.modelId},
           thinking_effort = ${params.thinkingEffort ?? "off"},
           label = ${params.label ?? ""},
-          api_key_ciphertext = ${encrypted.ciphertext},
-          api_key_iv = ${encrypted.iv},
-          api_key_tag = ${encrypted.tag},
-          key_fingerprint = ${vault.fingerprint()},
+          api_key_ciphertext = ${encrypted?.ciphertext ?? null},
+          api_key_iv = ${encrypted?.iv ?? null},
+          api_key_tag = ${encrypted?.tag ?? null},
+          key_fingerprint = ${vault?.fingerprint() ?? null},
           context_window_tokens = ${contextWindowTokens}
       WHERE id = ${params.id}
     `;
@@ -307,7 +314,7 @@ export async function upsertCredential(params: {
       ${params.provider}, ${params.protoType}, ${params.baseUrl ?? null},
       ${params.modelId}, ${params.thinkingEffort ?? "off"}, ${params.label ?? ""},
       ${makeDefault || isFirst},
-      ${encrypted.ciphertext}, ${encrypted.iv}, ${encrypted.tag}, ${vault.fingerprint()}, ${contextWindowTokens}
+      ${encrypted?.ciphertext ?? null}, ${encrypted?.iv ?? null}, ${encrypted?.tag ?? null}, ${vault?.fingerprint() ?? null}, ${contextWindowTokens}
     )
     RETURNING id
   `;

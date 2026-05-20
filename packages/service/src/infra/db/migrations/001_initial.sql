@@ -92,9 +92,9 @@ CREATE TABLE IF NOT EXISTS llm_credentials (
   label               TEXT NOT NULL DEFAULT '',
   is_default          BOOLEAN NOT NULL DEFAULT false,
   -- encrypted API key
-  api_key_ciphertext  BYTEA NOT NULL,
-  api_key_iv          BYTEA NOT NULL,
-  api_key_tag         BYTEA NOT NULL,
+  api_key_ciphertext  BYTEA,
+  api_key_iv          BYTEA,
+  api_key_tag         BYTEA,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_used_at        TIMESTAMPTZ
 );

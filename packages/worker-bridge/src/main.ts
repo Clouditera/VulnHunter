@@ -71,20 +71,23 @@ function setupPiConfig(): void {
   const providers: Record<string, unknown> = {};
 
   // Register primary credential
-  if (BASE_URL && API_KEY) {
+  if (BASE_URL) {
     const api = PROTO_API_MAP[MODEL_PROTO];
     if (!api) {
       console.error(`[bridge] Unknown MODEL_PROTO_TYPE: "${MODEL_PROTO}". Valid: ${Object.keys(PROTO_API_MAP).join(", ")}`);
       process.exit(1);
     }
     const providerKey = "vulnhunt";
-    process.env.VH_LLM_API_KEY = API_KEY;
-    providers[providerKey] = {
+    const providerConfig: Record<string, unknown> = {
       baseUrl: BASE_URL,
       api,
-      apiKey: "VH_LLM_API_KEY",
       models: [{ id: MODEL_NAME, input: ["text", "image"], contextWindow: CONTEXT_WINDOW, maxTokens: 16384 }],
     };
+    if (API_KEY) {
+      process.env.VH_LLM_API_KEY = API_KEY;
+      providerConfig.apiKey = "VH_LLM_API_KEY";
+    }
+    providers[providerKey] = providerConfig;
   }
 
   // Register all additional credentials for runtime switching
@@ -100,16 +103,19 @@ function setupPiConfig(): void {
         if (!api) continue;
         const providerKey = `vh-${cred.id.slice(0, 8)}`;
         const apiKeyEnv = `VH_KEY_${cred.id.replace(/-/g, "_").slice(0, 12).toUpperCase()}`;
-        process.env[apiKeyEnv] = cred.api_key;
 
         // Skip if same provider already registered (primary credential)
         if (!providers[providerKey]) {
-          providers[providerKey] = {
+          const providerConfig: Record<string, unknown> = {
             baseUrl: cred.base_url,
             api,
-            apiKey: apiKeyEnv,
             models: [{ id: cred.model_id, input: ["text", "image"], contextWindow: parsePositiveInt(String(cred.context_window_tokens ?? ""), DEFAULT_CONTEXT_WINDOW_TOKENS), maxTokens: 16384 }],
           };
+          if (cred.api_key) {
+            process.env[apiKeyEnv] = cred.api_key;
+            providerConfig.apiKey = apiKeyEnv;
+          }
+          providers[providerKey] = providerConfig;
         }
         credProviderMap.set(cred.id, { providerKey, modelId: cred.model_id });
       }
