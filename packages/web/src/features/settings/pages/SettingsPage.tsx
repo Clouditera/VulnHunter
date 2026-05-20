@@ -502,6 +502,14 @@ export function SettingsPage() {
 
   const canSaveCred = true;
 
+  function focusFirstCredentialError(errors: Record<string, string>) {
+    const id = errors.modelId ? "settings-model-input" : errors.baseUrl ? "settings-base-url-input" : "";
+    if (!id) return;
+    const el = document.querySelector(`[data-testid="${id}"]`) as HTMLInputElement | null;
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    setTimeout(() => el?.focus(), 0);
+  }
+
   async function handleSave() {
     if (saving) return;
     setSaving(true);
@@ -512,6 +520,7 @@ export function SettingsPage() {
       if (!modelId.trim()) errors.modelId = i18n.t("settings.validation.modelIdRequired");
       if (Object.keys(errors).length > 0) {
         setFieldErrors(errors);
+        focusFirstCredentialError(errors);
         setSaving(false);
         return;
       }
@@ -670,6 +679,7 @@ export function SettingsPage() {
     if (!modelId.trim()) errors.modelId = i18n.t("settings.validation.modelIdRequired");
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
+      focusFirstCredentialError(errors);
       setTestState({ kind: "err", msg: Object.values(errors)[0] });
       return;
     }
@@ -1546,21 +1556,21 @@ export function SettingsPage() {
                         <button
                           type="button"
                           data-testid="settings-credential-save"
-                          disabled={(!apiKey && !dirty) || saving}
+                          disabled={saving}
                           onClick={handleSave}
                           style={{
                             padding: "6px 16px",
                             border: "none",
                             borderRadius: "6px",
-                            background: (!apiKey && !dirty)
+                            background: saving
                               ? "var(--bg-disabled)"
                               : "var(--brand)",
                             color: "var(--btn-primary-text)",
                             fontSize: "12px",
                             fontWeight: 600,
                             cursor:
-                              !apiKey || saving ? "not-allowed" : "pointer",
-                            opacity: !apiKey ? 0.6 : 1,
+                              saving ? "not-allowed" : "pointer",
+                            opacity: 1,
                           }}
                         >
                           {saving
