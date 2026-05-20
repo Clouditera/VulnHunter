@@ -1800,8 +1800,8 @@ export function SettingsPage() {
               </div>
             </Field>
             <Field
-              label="任务内 agent 并发数量限制"
-              hint="控制单个扫描任务内部同时请求模型的 agent 数量；调高会显著增加模型服务、显存和限流压力。"
+              label={i18n.t("settings.engine.agentParallel")}
+              hint={i18n.t("settings.engine.agentParallel.hint")}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
                 <input
@@ -1822,7 +1822,7 @@ export function SettingsPage() {
               </div>
             </Field>
             <div style={{ color: "var(--text-muted)", fontSize: "13px" }}>
-              预估最大模型并发：{maxParallel} × {youngflowMaxParallel} = {maxParallel * youngflowMaxParallel}
+              {i18n.t("settings.engine.estimatedModelConcurrency").replace("{scan}", String(maxParallel)).replace("{agent}", String(youngflowMaxParallel)).replace("{total}", String(maxParallel * youngflowMaxParallel))}
             </div>
           </SettingsCard>
 

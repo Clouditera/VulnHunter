@@ -327,6 +327,10 @@ settingsRouter.get("/system", requireAdmin, async (c) => {
 // PATCH /api/settings/system — update system config
 settingsRouter.patch("/system", requireAdmin, async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
-  await updateSystemConfig(body);
+  try {
+    await updateSystemConfig(body);
+  } catch (err) {
+    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: err instanceof Error ? err.message : "invalid system config" } }, 400);
+  }
   return c.json({ ok: true });
 });

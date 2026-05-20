@@ -355,8 +355,11 @@ const ZH: Record<string, string> = {
   // Engine
   "settings.engine.title": "引擎配置",
   "settings.engine.desc": "调整扫描引擎行为",
-  "settings.engine.maxParallel": "最大并发任务数",
-  "settings.engine.maxParallel.hint": "同时进行的分析任务数",
+  "settings.engine.maxParallel": "扫描任务并发数量限制",
+  "settings.engine.maxParallel.hint": "同时运行的扫描任务数量。",
+  "settings.engine.agentParallel": "任务内 agent 并发数量限制",
+  "settings.engine.agentParallel.hint": "控制单个扫描任务内部同时请求模型的 agent 数量；调高会显著增加模型服务、显存和限流压力。",
+  "settings.engine.estimatedModelConcurrency": "预估最大模型并发：{scan} × {agent} = {total}",
 
   // New Task Modal
   "newTask.title": "新建任务",
@@ -976,8 +979,11 @@ const EN: Record<string, string> = {
   // Engine
   "settings.engine.title": "Engine Settings",
   "settings.engine.desc": "Tune the scanning engine behavior",
-  "settings.engine.maxParallel": "MAX PARALLEL TASKS",
-  "settings.engine.maxParallel.hint": "Number of concurrent analysis tasks.",
+  "settings.engine.maxParallel": "SCAN TASK CONCURRENCY LIMIT",
+  "settings.engine.maxParallel.hint": "Number of scan tasks running at the same time.",
+  "settings.engine.agentParallel": "IN-TASK AGENT CONCURRENCY LIMIT",
+  "settings.engine.agentParallel.hint": "Controls how many agents in one scan task can request the model concurrently. Higher values increase model, VRAM, and rate-limit pressure.",
+  "settings.engine.estimatedModelConcurrency": "Estimated max model concurrency: {scan} × {agent} = {total}",
 
   // New Task Modal
   "newTask.title": "New Task",
