@@ -340,10 +340,20 @@ export async function checkCredentialHealth(): Promise<{
 
 export async function getSystemConfig(): Promise<Record<string, unknown>> {
   const db = getDb();
-  const rows = await db<{ config: Record<string, unknown> }[]>`
+  const rows = await db<{ config: Record<string, unknown> | string }[]>`
     SELECT config FROM system_config WHERE id = 1
   `;
-  return rows[0]?.config ?? {};
+  const raw = rows[0]?.config;
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    } catch {
+      return {};
+    }
+  }
+  return raw;
 }
 
 function validateBoundedInt(key: string, value: unknown, fallback: number, min: number, max: number): number {
@@ -360,7 +370,7 @@ export async function updateSystemConfig(patch: Record<string, unknown>): Promis
   merged.max_parallel_scan = validateBoundedInt("max_parallel_scan", merged.max_parallel_scan, 3, 1, 10);
   merged.youngflow_max_parallel = validateBoundedInt("youngflow_max_parallel", merged.youngflow_max_parallel, 3, 1, 10);
   await db`
-    UPDATE system_config SET config = ${JSON.stringify(merged)}, updated_at = now()
+    UPDATE system_config SET config = ${db.json(merged as never)}::jsonb, updated_at = now()
     WHERE id = 1
   `;
 }
