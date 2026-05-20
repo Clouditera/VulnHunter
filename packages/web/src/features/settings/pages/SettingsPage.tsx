@@ -351,7 +351,7 @@ export function SettingsPage() {
     { kind: "idle" | "loading" } | { kind: "error"; msg: string }
   >({ kind: "idle" });
   const [testState, setTestState] = useState<
-    { kind: "idle" | "loading" }
+    { kind: "idle" | "loading"; diagnostics?: import("../../../shared/api/client").ModelDiagnosticResult }
     | { kind: "ok"; msg?: string; diagnostics?: import("../../../shared/api/client").ModelDiagnosticResult }
     | { kind: "err"; msg: string; diagnostics?: import("../../../shared/api/client").ModelDiagnosticResult }
   >({ kind: "idle" });
@@ -665,7 +665,7 @@ export function SettingsPage() {
         let finalResp = resp;
         for (let i = 0; i < 100; i++) {
           const run = await api.settings.getModelTestRun(resp.run_id);
-          setTestState({ kind: "loading", diagnostics: run } as never);
+          setTestState({ kind: "loading", diagnostics: run });
           if (run.status !== "running") {
             finalResp = { ok: run.ok, message: run.summary, error: run.ok ? undefined : run.summary, diagnostics: run };
             break;

@@ -13,6 +13,7 @@ export interface RuntimeDiagnosticResult {
   summary: string;
   checks: ModelDiagnosticCheck[];
 }
+export type RuntimeDiagnosticUpdate = (result: RuntimeDiagnosticResult) => void;
 
 const PROMPT = "请调用平台工具列出当前任务，最多返回 1 条，然后用一句话回答验证结果。";
 
@@ -81,13 +82,16 @@ async function runAgentSmoke(baseUrl: string): Promise<{ toolObserved: boolean; 
   }), 60_000, "Agent 工具调用验证超时");
 }
 
-export async function diagnoseModelRuntimeCredential(cred: DecryptedLlmCredential, config: ServiceConfig, actor?: { userId: string; tenantId: string; role: "admin" | "user" }): Promise<RuntimeDiagnosticResult> {
+export async function diagnoseModelRuntimeCredential(cred: DecryptedLlmCredential, config: ServiceConfig, actor?: { userId: string; tenantId: string; role: "admin" | "user" }, onUpdate?: RuntimeDiagnosticUpdate): Promise<RuntimeDiagnosticResult> {
   const checks: ModelDiagnosticCheck[] = [];
+  const emit = (summary = "模型可用性测试进行中。") => onUpdate?.({ ok: false, summary, checks: [...checks] });
   checks.push(check("config", "配置检查", "pass", "配置字段完整，凭证已解密。"));
+  emit();
 
   const input: ModelDiagnosticInput = { protoType: cred.proto_type, baseUrl: cred.base_url ?? "", modelId: cred.model_id, apiKey: cred.api_key, thinkingEffort: cred.thinking_effort };
   const preflight = await runBasicChecks(input);
   checks.push(...preflight.checks.filter((c) => c.id === "basic" || c.id === "stream"));
+  emit();
   const hard = checks.find((c) => c.status === "fail");
   if (hard) return { ok: false, summary: `${hard.label}失败：${hard.message}`, checks };
 
@@ -119,11 +123,14 @@ export async function diagnoseModelRuntimeCredential(cred: DecryptedLlmCredentia
     registerDiagnosticMcpContext(diagId, { userId: actor?.userId ?? "diagnostic", tenantId: actor?.tenantId ?? "00000000-0000-0000-0000-000000000001", role: actor?.role ?? "admin", credentialId: cred.id });
     await container.start();
     checks.push(check("runtime", "启动运行时", "pass", "临时诊断 worker 已启动。"));
+    emit();
     const baseUrl = await getContainerUrl(container.id, config.docker.network);
     await waitHealth(baseUrl);
     checks.push(check("pi", "pi 初始化", "pass", "worker bridge 与 pi 已就绪。"));
+    emit();
     const smoke = await runAgentSmoke(baseUrl);
     checks.push(check("agent_tool", "Agent 工具调用", smoke.toolObserved && smoke.assistantObserved ? "pass" : "fail", smoke.toolObserved && smoke.assistantObserved ? "观察到 MCP 工具调用和最终回复。" : "未观察到完整 MCP 工具调用和最终回复。", smoke.detail));
+    emit();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     checks.push(check("runtime_error", "结果汇总", "fail", msg));

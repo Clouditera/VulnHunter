@@ -31,7 +31,7 @@ function createToolServer(ctx: McpContext): McpServer {
     { capabilities: { tools: {} } },
   );
 
-  if (ctx.actorType === "chat") {
+  if (ctx.actorType === "chat" || ctx.actorType === "diagnostic") {
     registerChatTools(server, ctx);
   } else {
     registerReportTools(server, ctx);

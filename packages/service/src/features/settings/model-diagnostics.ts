@@ -10,7 +10,7 @@ export type ModelDiagnosticCategory = "config" | "network" | "auth" | "model" | 
 export interface ModelDiagnosticCheck {
   id: string;
   label: string;
-  status: "pass" | "fail" | "warn" | "skip";
+  status: "pass" | "fail" | "warn" | "skip" | "pending" | "running";
   category?: ModelDiagnosticCategory;
   message: string;
   detail?: string;

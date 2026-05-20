@@ -145,6 +145,11 @@ export class TaskScheduler {
         return;
       }
 
+      if (event.taskType === "diagnostic") {
+        logger.debug({ action, taskId, exitCode }, "Ignoring diagnostic container lifecycle event");
+        return;
+      }
+
       if (event.taskType !== "scan") return;
 
       logger.debug({ action, taskId, exitCode }, "Docker event");

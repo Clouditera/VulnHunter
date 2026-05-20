@@ -8,12 +8,14 @@ interface RunState extends RuntimeDiagnosticResult { id: string; status: "runnin
 const runs = new Map<string, RunState>();
 
 const initialLabels = ["配置检查", "基础连接", "启动运行时", "pi 初始化", "Agent 工具调用", "结果汇总"];
-function pendingChecks(): ModelDiagnosticCheck[] { return initialLabels.map((label, i) => ({ id: `stage-${i}`, label, status: i === 0 ? "running" : "pending" as any, message: i === 0 ? "正在测试..." : "等待中" })); }
+function pendingChecks(): ModelDiagnosticCheck[] { return initialLabels.map((label, i) => ({ id: `stage-${i}`, label, status: i === 0 ? "running" : "pending", message: i === 0 ? "正在测试..." : "等待中" })); }
 
 export function startDiagnosticRun(cred: DecryptedLlmCredential, config: ServiceConfig, actor: { userId: string; tenantId: string; role: "admin" | "user" }): string {
   const id = randomUUID();
   runs.set(id, { id, status: "running", ok: false, summary: "模型可用性测试进行中。", checks: pendingChecks(), createdAt: Date.now() });
-  void diagnoseModelRuntimeCredential(cred, config, actor).then((result) => {
+  void diagnoseModelRuntimeCredential(cred, config, actor, (partial) => {
+    runs.set(id, { id, status: "running", ...partial, createdAt: runs.get(id)?.createdAt ?? Date.now() });
+  }).then((result) => {
     runs.set(id, { id, status: "done", ...result, createdAt: runs.get(id)?.createdAt ?? Date.now() });
   }).catch((err) => {
     const msg = err instanceof Error ? err.message : String(err);
