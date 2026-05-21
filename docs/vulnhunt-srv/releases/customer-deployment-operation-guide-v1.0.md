@@ -116,9 +116,23 @@ docker compose logs -f web
 
 ![新建扫描任务](assets/release-new-task.png)
 
-### 5.6 查看任务状态、漏洞和报告
+### 5.6 查看任务状态
 
-任务创建后会经历队列中、运行中、已完成/失败。进入任务详情页可查看 Overview、Findings、Reports、Workspace、POC 等标签页。报告生成依赖任务完成情况和模型服务可用性。
+任务创建后会经历队列中、运行中、已完成/失败。任务列表会展示状态、漏洞数量、风险评分、耗时和创建时间。
+
+![任务状态列表](assets/release-task-status.png)
+
+### 5.7 查看漏洞结果
+
+进入任务详情页的 Findings 标签页，可查看漏洞列表、严重性、文件位置、函数名、详情说明和修复建议。
+
+![漏洞结果查看](assets/release-findings.png)
+
+### 5.8 查看报告
+
+进入任务详情页的 Reports 标签页，可查看已生成报告、预览报告内容，并下载交付文件。报告生成依赖任务完成情况和模型服务可用性。
+
+![报告查看](assets/release-reports.png)
 
 ## 6. 升级与备份
 

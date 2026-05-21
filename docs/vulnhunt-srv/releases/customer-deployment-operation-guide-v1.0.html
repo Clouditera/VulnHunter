@@ -36,7 +36,9 @@ cd vulnhunt-release-1.0.3</code></pre>
 <h3>4.3 仪表板</h3><p>登录成功后进入仪表板，可查看扫描数、漏洞统计、Token 用量和近期扫描。</p><img src="assets/release-dashboard.png" alt="仪表板" />
 <h3>4.4 模型凭证</h3><p>进入“设置 → 模型凭证”，填写模型名称、API Base URL、模型 ID、API Key（自托管模型如允许可留空），保存后执行连接/运行时验证。</p><img src="assets/release-settings.png" alt="模型凭证设置" />
 <h3>4.5 创建扫描任务</h3><p>进入“任务 → 新建任务”。可上传源码包或填写 Git URL，选择模型凭证后点击“开始扫描”。</p><img src="assets/release-new-task.png" alt="新建扫描任务" />
-<h3>4.6 查看结果和报告</h3><p>任务详情页包含 Overview、Findings、Reports、Workspace、POC 等标签页。任务完成后可查看漏洞结果和报告入口。</p>
+<h3>4.6 查看任务状态</h3><p>任务列表展示队列中、运行中、已完成/失败状态，以及漏洞数量、风险评分、耗时和创建时间。</p><img src="assets/release-task-status.png" alt="任务状态列表" />
+<h3>4.7 查看漏洞结果</h3><p>进入任务详情页的 Findings 标签页，可查看漏洞列表、严重性、文件位置、函数名、详情说明和修复建议。</p><img src="assets/release-findings.png" alt="漏洞结果查看" />
+<h3>4.8 查看报告</h3><p>进入任务详情页的 Reports 标签页，可查看已生成报告、预览报告内容，并下载交付文件。</p><img src="assets/release-reports.png" alt="报告查看" />
 <h2>5. 升级、备份和排障</h2>
 <pre><code>./upgrade.sh
 ./doctor.sh
