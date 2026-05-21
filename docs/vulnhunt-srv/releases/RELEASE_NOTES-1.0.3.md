@@ -42,6 +42,6 @@ docker compose logs -f web
 
 ## 已知前提
 
-- 客户现场需提供有效 License。
+- 部署环境需配置有效 License。
 - 扫描任务依赖可用模型服务；模型不可达或限流会影响任务完成。
-- 必须备份 `DATA_DIR` 和 `$DATA_DIR/.secrets/vulnhunt-master.key`。
+- 需备份 `DATA_DIR` 和 `$DATA_DIR/.secrets/vulnhunt-master.key`。

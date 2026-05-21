@@ -1,10 +1,10 @@
 ---
-title: VulnHunt 1.0.3 客户离线部署与基础操作手册
+title: VulnHunt 1.0.3 离线部署与基础操作帮助手册
 ---
 
-# VulnHunt 1.0.3 客户离线部署与基础操作手册
+# VulnHunt 1.0.3 离线部署与基础操作帮助手册
 
-本文面向客户现场部署工程师。安装包为离线包，沿用一键 `install.sh`，安装后按本文完成 License 激活、管理员初始化、模型配置、创建扫描任务和查看结果。
+本文用于离线环境中的平台部署、初始化和基础操作。安装包为离线包，沿用一键 `install.sh`，安装后按本文完成 License 激活、管理员初始化、模型配置、创建扫描任务和查看结果。
 
 ## 1. 部署前准备
 
@@ -14,7 +14,7 @@ title: VulnHunt 1.0.3 客户离线部署与基础操作手册
 - Docker Engine + Docker Compose v2，或 legacy `docker-compose`
 - 当前用户可执行 `docker ps`
 - 建议内存 ≥ 32GB，磁盘可用空间 ≥ 100GB
-- 可访问模型服务地址（公网 API 或客户内网自托管模型）
+- 可访问模型服务地址（公网 API 或内网自托管模型）
 
 检查命令：
 
@@ -136,7 +136,7 @@ docker compose logs -f web
 
 ## 6. 升级与备份
 
-升级前务必备份：
+升级前需备份：
 
 - 整个 `DATA_DIR`
 - `$DATA_DIR/.secrets/vulnhunt-master.key`
@@ -165,7 +165,7 @@ master key 丢失后，已保存的模型凭证无法解密。不要删除或重
 ./uninstall.sh --purge
 ```
 
-`--purge` 不会自动删除外部 `DATA_DIR`，如需彻底清理请人工确认后删除。
+`--purge` 不会自动删除外部 `DATA_DIR`，如需彻底清理，需人工确认后删除。
 
 ## 8. 常见问题
 
@@ -194,7 +194,7 @@ docker ps
 
 ### 模型验证失败
 
-检查 API Base URL、模型 ID、API Key、网络连通性和客户侧模型限流策略。自托管模型如支持无 Key，可按现场模型服务要求留空。
+检查 API Base URL、模型 ID、API Key、网络连通性和模型服务限流策略。自托管模型如支持无 Key，可按现场模型服务要求留空。
 
 ## 9. 验收清单
 
