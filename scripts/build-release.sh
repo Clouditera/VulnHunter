@@ -34,8 +34,12 @@ JSON
 
 pnpm turbo run build --filter=@vulnhunt/service --filter=@vulnhunt/web
 pnpm --filter @vulnhunt/worker-bridge build
+if [[ ! -f flows/vulnhunt/flow.yaml ]]; then
+  echo "missing flows/vulnhunt/flow.yaml; run git submodule update --init --recursive" >&2
+  exit 1
+fi
 if [[ ! -x submodules/youngflow/release/youngflow-linux-x64 ]]; then
-  echo "missing submodules/youngflow/release/youngflow-linux-x64" >&2
+  echo "missing submodules/youngflow/release/youngflow-linux-x64; run git submodule update --init --recursive" >&2
   exit 1
 fi
 
@@ -65,14 +69,15 @@ sed -i "s|^SERVICE_IMAGE=.*|SERVICE_IMAGE=vulnhunt-service:$VERSION|" "$OUT/.env
 sed -i "s|^WEB_IMAGE=.*|WEB_IMAGE=vulnhunt-web:$VERSION|" "$OUT/.env.example"
 sed -i "s|^WORKER_IMAGE=.*|WORKER_IMAGE=vulnhunt-worker:$VERSION|" "$OUT/.env.example"
 sed -i "s|^EVAL_WORKER_IMAGE=.*|EVAL_WORKER_IMAGE=vulnhunt-eval-worker:$VERSION|" "$OUT/.env.example"
-cp -r docs/vulnhunt-srv/releases "$OUT/docs/releases" 2>/dev/null || true
+cp -r docs/vulnhunt-srv/releases/. "$OUT/docs/"
 cp deploy/README.md "$OUT/docs/install.md" 2>/dev/null || true
 chmod +x "$OUT"/*.sh
 
 (
   cd "$OUT"
   find images -type f -name '*.tar' -print | sort
-  printf '%s\n' docker-compose.yml .env.example install.sh doctor.sh upgrade.sh uninstall.sh VERSION.json docs/install.md .secrets/license-public.pem
+  printf '%s\n' docker-compose.yml .env.example install.sh doctor.sh upgrade.sh uninstall.sh VERSION.json .secrets/license-public.pem
+  find docs -type f -print | sort
 ) | while IFS= read -r file; do
   [[ -f "$OUT/$file" ]] && sha256sum "$OUT/$file"
 done | sed "s|  $OUT/|  |" > "$OUT/checksums.sha256"
