@@ -6,6 +6,7 @@ dist/
 .turbo/
 coverage/
 .data/
+release/
 submodules/DevEye/
 
 # Removed local/test artifacts
