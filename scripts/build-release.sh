@@ -10,6 +10,8 @@ GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 YOUNGFLOW_VERSION="${YOUNGFLOW_VERSION:-0.2.5}"
 
+git submodule update --init --recursive
+
 rm -rf "$OUT"
 mkdir -p "$OUT/images" "$OUT/docs"
 
@@ -36,6 +38,10 @@ pnpm turbo run build --filter=@vulnhunt/service --filter=@vulnhunt/web
 pnpm --filter @vulnhunt/worker-bridge build
 if [[ ! -f flows/vulnhunt/flow.yaml ]]; then
   echo "missing flows/vulnhunt/flow.yaml; run git submodule update --init --recursive" >&2
+  exit 1
+fi
+if [[ ! -f flows/vulnhunt/extensions/pi-subagents/package.json ]]; then
+  echo "missing flows/vulnhunt/extensions/pi-subagents/package.json; run git submodule update --init --recursive" >&2
   exit 1
 fi
 if [[ ! -x submodules/youngflow/release/youngflow-linux-x64 ]]; then

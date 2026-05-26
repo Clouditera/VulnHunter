@@ -18,6 +18,8 @@ RUN chmod +x /usr/local/bin/youngflow \
 
 # vulnhunt flow assets (separate from youngflow submodule)
 COPY flows/vulnhunt /opt/vulnhunt/flows/vulnhunt
+RUN cd /opt/vulnhunt/flows/vulnhunt/extensions/output-contract \
+    && npm install --omit=dev --no-audit --no-fund
 COPY flows/vulnhunt-report /opt/vulnhunt/flows/vulnhunt-report
 COPY flows/vulnhunt-chat /opt/vulnhunt/flows/vulnhunt-chat
 
