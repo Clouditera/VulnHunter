@@ -95,7 +95,7 @@ export function ensureWorkDir(hostPath: string): void {
   logger.debug({ hostPath }, "Work directory ensured");
 }
 
-export async function removeWorkDir(hostPath: string): Promise<void> {
+export async function removeWorkDir(hostPath: string, cleanupImage = "vulnhunt-worker:latest"): Promise<void> {
   try {
     rmSync(hostPath, { recursive: true, force: true });
     logger.info({ hostPath }, "Work directory removed");
@@ -109,7 +109,7 @@ export async function removeWorkDir(hostPath: string): Promise<void> {
     const parent = dirname(hostPath);
     const target = basename(hostPath);
     const container = await docker.createContainer({
-      Image: "vulnhunt-worker:latest",
+      Image: cleanupImage,
       Entrypoint: ["sh", "-c"],
       Cmd: [`set -eu; cd /cleanup-parent; rm -rf -- ${JSON.stringify(target)}`],
       AttachStdout: true,

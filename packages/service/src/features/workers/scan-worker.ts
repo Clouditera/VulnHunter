@@ -85,6 +85,6 @@ export async function stopScanWorker(taskId: string): Promise<void> {
   }
 }
 
-export function cleanupScanWorkDir(dataDir: string, taskId: string): void {
-  removeWorkDir(getHostWorkDir(dataDir, taskId));
+export function cleanupScanWorkDir(dataDir: string, taskId: string, cleanupImage?: string): void {
+  removeWorkDir(getHostWorkDir(dataDir, taskId), cleanupImage);
 }

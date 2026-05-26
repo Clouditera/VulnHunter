@@ -177,7 +177,7 @@ tasksRouter.delete("/:id", async (c) => {
   }
 
   // Cleanup local workspace (best-effort)
-  cleanupScanWorkDir(config.dataDir, task.id);
+  cleanupScanWorkDir(config.dataDir, task.id, config.docker.workerImage);
 
   return c.json({ ok: true });
 });

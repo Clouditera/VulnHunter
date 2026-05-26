@@ -138,7 +138,7 @@ export async function diagnoseModelRuntimeCredential(cred: DecryptedLlmCredentia
   } finally {
     unregisterDiagnosticMcpContext(diagId);
     if (container) { try { await container.remove({ force: true }); } catch {} }
-    await removeWorkDir(hostWorkDir);
+    await removeWorkDir(hostWorkDir, config.docker.workerImage);
   }
   const failed = checks.find((c) => c.status === "fail");
   checks.push(check("summary", "结果汇总", failed ? "fail" : "pass", failed ? "模型基础可能可用，但 Agent 运行时验证失败。" : "模型可用，Agent 运行时验证通过。"));

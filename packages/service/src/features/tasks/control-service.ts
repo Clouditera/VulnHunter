@@ -99,7 +99,7 @@ export async function restartTask(
   await assertScanNotBusy(task.id);
 
   await resetTaskForRestart(task.id);
-  cleanupScanWorkDir(config.dataDir, task.id);
+  cleanupScanWorkDir(config.dataDir, task.id, config.docker.workerImage);
 
   try {
     const minio = getMinio();

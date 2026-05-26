@@ -19,7 +19,7 @@ vi.mock("../../src/features/tasks/storage.js", () => ({
 
 vi.mock("../../src/features/workers/scan-worker.js", () => ({
   stopScanWorker: vi.fn(async (taskId: string) => state.stopped.push(taskId)),
-  cleanupScanWorkDir: vi.fn((dataDir: string, taskId: string) => state.cleaned.push(`${dataDir}:${taskId}`)),
+  cleanupScanWorkDir: vi.fn((dataDir: string, taskId: string, cleanupImage?: string) => state.cleaned.push(`${dataDir}:${taskId}:${cleanupImage ?? ""}`)),
 }));
 
 vi.mock("../../src/features/notifications/index.js", () => ({
@@ -99,10 +99,11 @@ describe("task control service", () => {
     const result = await restartTask("task-1", {
       dataDir: "/tmp/vh",
       minio: { bucket: "vulnhunt" },
+      docker: { workerImage: "vulnhunt-worker:1.0.3" },
     } as any);
     expect(result.state).toBe("queued");
     expect(state.reset).toEqual(["task-1"]);
-    expect(state.cleaned).toEqual(["/tmp/vh:task-1"]);
+    expect(state.cleaned).toEqual(["/tmp/vh:task-1:vulnhunt-worker:1.0.3"]);
   });
 
   it("cancels a queued task without stopping a worker", async () => {
