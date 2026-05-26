@@ -18,7 +18,7 @@ RUN pnpm deploy --filter=@vulnhunt/service --prod /prod/service
 
 FROM base AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      unzip zip ca-certificates \
+      unzip zip ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 vulnhunt

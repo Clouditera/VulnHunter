@@ -62,6 +62,7 @@ rm -f "${DATA_DIR}/${identity_probe}"
 check_shell "web root" curl -fsS "http://127.0.0.1:${WEB_PORT}/"
 check_shell "system status API" curl -fsS "http://127.0.0.1:${WEB_PORT}/api/system/status"
 check_shell "service health" docker exec vulnhunt-service node -e "fetch('http://127.0.0.1:28080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+check_shell "service git available" docker exec vulnhunt-service git --version
 check_shell "database health" sh -c "docker inspect --format='{{.State.Health.Status}}' vulnhunt-db | grep -qx healthy"
 check_shell "minio health" sh -c "docker inspect --format='{{.State.Health.Status}}' vulnhunt-minio | grep -qx healthy"
 check_shell "DATA_DIR/db initialized files readable by postgres uid" check_db_initialized_readable
