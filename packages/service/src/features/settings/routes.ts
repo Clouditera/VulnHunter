@@ -178,7 +178,13 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
   let modelId = body.model_id ?? "";
   let apiKey = body.api_key ?? "";
   let thinkingEffort = body.thinking_effort;
-  let contextWindowTokens = body.context_window_tokens ?? 128000;
+  const hasContextWindowOverride = body.context_window_tokens !== undefined;
+  let contextWindowTokens: number;
+  try {
+    contextWindowTokens = parseContextWindowTokens(body.context_window_tokens);
+  } catch {
+    return c.json({ ok: false, error: "invalid context_window_tokens" }, 400);
+  }
 
   // If credential_id provided, load saved credential
   if (body.credential_id) {
@@ -191,7 +197,7 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
       modelId = modelId || cred.model_id;
       apiKey = apiKey || cred.api_key;
       thinkingEffort = thinkingEffort ?? cred.thinking_effort;
-      contextWindowTokens = cred.context_window_tokens ?? contextWindowTokens;
+      contextWindowTokens = hasContextWindowOverride ? contextWindowTokens : (cred.context_window_tokens ?? contextWindowTokens);
     } catch (err) {
       if (err instanceof CredentialKeyUnavailableError) {
         return c.json({ ok: false, error: "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" }, 409);

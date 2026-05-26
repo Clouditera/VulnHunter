@@ -376,7 +376,7 @@ export const api = {
      */
     testModel: (
       params:
-        | { credential_id: string; async?: boolean }
+        | { credential_id: string; context_window_tokens?: number; async?: boolean }
         | {
             proto_type: string;
             base_url?: string;

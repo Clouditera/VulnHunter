@@ -683,12 +683,18 @@ export function SettingsPage() {
       setTestState({ kind: "err", msg: Object.values(errors)[0] });
       return;
     }
+    const contextWindowTokens = parseContextWindowInput(contextWindow);
+    if (contextWindowTokens == null) {
+      setFieldErrors({ contextWindow: i18n.t("settings.model.contextWindow.invalid") });
+      setTestState({ kind: "err", msg: i18n.t("settings.model.contextWindow.invalid") });
+      return;
+    }
     setFieldErrors({});
     setTestState({ kind: "loading" });
     try {
       const resp = await api.settings.testModel(
         useStored
-          ? { credential_id: editingCredentialId as string, async: true }
+          ? { credential_id: editingCredentialId as string, context_window_tokens: contextWindowTokens, async: true }
           : {
               proto_type: protoType,
               base_url: baseUrl || undefined,
