@@ -1,8 +1,8 @@
 ---
-title: VulnHunt 1.0.3 环境要求
+title: VulnHunt 1.0.4 环境要求
 ---
 
-# VulnHunt 1.0.3 环境要求
+# VulnHunt 1.0.4 环境要求
 
 ## 服务器
 
