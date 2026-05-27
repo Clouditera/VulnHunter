@@ -79,15 +79,15 @@ export function ProfileSection() {
       <p style={DESC}>{i18n.t("profile.desc")}</p>
 
       {/* Email (readonly) */}
-      <div style={{ marginTop: "16px" }}>
+      <div style={{ ...FORM_COLUMN, marginTop: "16px" }}>
         <label style={LABEL}>{i18n.t("userModal.email")}</label>
         <input value={user?.email ?? ""} readOnly style={{ ...INPUT, background: "var(--bg-page)" }} />
       </div>
 
       {/* Display name (editable) */}
-      <div style={{ marginTop: "12px" }}>
+      <div style={{ ...FORM_COLUMN, marginTop: "12px" }}>
         <label style={LABEL}>{i18n.t("userModal.displayName")}</label>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", maxWidth: "360px" }}>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", width: "100%" }}>
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
@@ -110,7 +110,7 @@ export function ProfileSection() {
       <h4 style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", margin: "0 0 12px" }}>
         {i18n.t("profile.savePassword")}
       </h4>
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "360px" }}>
+      <div style={{ ...FORM_COLUMN, display: "flex", flexDirection: "column", gap: "12px" }}>
         <PwdField label={i18n.t("profile.currentPassword")} value={currentPwd} onChange={setCurrentPwd} show={showCurrent} onToggle={() => setShowCurrent(!showCurrent)} />
         <div>
           <PwdField label={i18n.t("profile.newPassword")} value={newPwd} onChange={setNewPwd} show={showNew} onToggle={() => setShowNew(!showNew)} />
@@ -163,5 +163,6 @@ const CARD: CSSProperties = { background: "var(--bg-card)", border: "1px solid v
 const TITLE: CSSProperties = { fontSize: "15px", fontWeight: 600, margin: "0 0 4px", display: "flex", alignItems: "center", gap: "8px", color: "var(--text-primary)" };
 const DESC: CSSProperties = { fontSize: "13px", color: "var(--text-secondary)", opacity: 0.85, margin: 0 };
 const LABEL: CSSProperties = { display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "6px" };
+const FORM_COLUMN: CSSProperties = { width: "100%", maxWidth: "560px" };
 const INPUT: CSSProperties = { width: "100%", padding: "9px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", background: "var(--bg-card)", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", boxSizing: "border-box" };
 const PRIMARY_BTN: CSSProperties = { padding: "8px 18px", border: "none", borderRadius: "6px", background: "var(--brand)", color: "var(--btn-primary-text, #fff)", fontSize: "13px", fontWeight: 600, cursor: "pointer" };
