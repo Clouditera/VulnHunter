@@ -87,13 +87,13 @@ export function ProfileSection() {
       {/* Display name (editable) */}
       <div style={{ ...FORM_COLUMN, marginTop: "12px" }}>
         <label style={LABEL}>{i18n.t("userModal.displayName")}</label>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", width: "100%" }}>
-          <input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            maxLength={64}
-            style={{ ...INPUT, flex: 1 }}
-          />
+        <input
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          maxLength={64}
+          style={INPUT}
+        />
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
           <button
             onClick={() => saveNameMut.mutate()}
             disabled={saveNameMut.isPending}
