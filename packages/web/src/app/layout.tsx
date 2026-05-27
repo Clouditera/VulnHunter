@@ -39,7 +39,7 @@ export function AppLayout() {
 
   async function handleLogout() {
     await api.auth.logout();
-    qc.invalidateQueries({ queryKey: ["system-status"] });
+    qc.clear();
     navigate("/login");
   }
 

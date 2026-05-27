@@ -21,7 +21,7 @@ export function LoginPage() {
     setLoading(true);
     try {
       const res = await api.auth.login(email, password);
-      qc.invalidateQueries({ queryKey: ["system-status"] });
+      qc.clear();
       if (res.user?.mustChangePassword) {
         navigate("/change-password");
       } else {

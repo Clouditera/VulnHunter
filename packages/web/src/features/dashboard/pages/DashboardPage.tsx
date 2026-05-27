@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { api } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
@@ -120,8 +121,7 @@ export function DashboardPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard"],
-    queryFn: () =>
-      fetch("/api/dashboard?range=30d", { credentials: "include" }).then((r) => r.json()),
+    queryFn: () => api.dashboard.get("30d"),
     // No refetchInterval: server SSE invalidates ["dashboard"] on every
     // task_state and findings_indexed event (see useNotifications).
   });
