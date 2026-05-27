@@ -4,22 +4,8 @@ import { SessionList } from "../components/SessionList.js";
 import { MessageFlow } from "../components/MessageFlow.js";
 import { ArtifactWorkspace } from "../components/ArtifactWorkspace.js";
 import { Splitter, useResizableWidth } from "../../../shared/components/Splitter.js";
-import { useChatMock } from "../hooks/useChatMock.js";
 import { useChat } from "../hooks/useChat.js";
 import type { ChatArtifact } from "../types.js";
-
-/**
- * Toggle between the real backend-backed hook and the in-memory mock.
- * Controlled by `localStorage.setItem('vh.chat.mock', '1')` so we can
- * fall back to seeded demo sessions when the backend is unavailable
- * (useful during Phase 6 rollout, demos, and e2e tests).
- *
- * Default is real backend — assumes Developer's 6B API is up.
- */
-function useMockFromStorage(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem("vh.chat.mock") === "1";
-}
 
 /**
  * Three-column chat layout:
@@ -31,9 +17,7 @@ function useMockFromStorage(): boolean {
  * `height: 100vh + overflow: auto`, so we just use `height: 100%` and
  * let each column manage its own internal scroll).
  *
- * Data source is currently `useChatMock` because the backend (6A/6B)
- * isn't ready yet. When it ships we'll swap to `useChat` (real WS +
- * REST) without changing any component below.
+ * Data source is the real backend-backed chat hook.
  */
 
 export function ChatPage() {
@@ -41,16 +25,11 @@ export function ChatPage() {
   const [, force] = useState(0);
   useEffect(() => i18n.onChange(() => force((n) => n + 1)), []);
 
-  const useMock = useMockFromStorage();
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const [artifactWidth, setArtifactWidth] = useResizableWidth("chat-artifact-width", 440, { min: 360, max: 640 });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const isNarrow = useNarrowViewport(1180);
-  // Both hooks expose the same surface area; React rules require we always
-  // call the same hook, so we branch at module scope via a small wrapper.
-  const real = useChat();
-  const mock = useChatMock();
   const {
     sessions,
     activeId,
@@ -64,7 +43,7 @@ export function ChatPage() {
     deleteSession,
     sendPrompt,
     abort,
-  } = useMock ? mock : real;
+  } = useChat();
 
   const handleArtifactSelect = (artifact: ChatArtifact) => {
     setSelectedArtifactId(artifact.artifact_id);

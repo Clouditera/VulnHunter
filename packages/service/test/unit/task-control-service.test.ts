@@ -52,7 +52,7 @@ const { cancelTask, pauseTask, resumeTask, restartTask, TaskControlError } = awa
 function makeTask(overrides: Record<string, unknown> = {}) {
   return {
     id: "task-1",
-    project_name: "demo",
+    project_name: "example",
     state: "running",
     created_by: "user-1",
     ...overrides,

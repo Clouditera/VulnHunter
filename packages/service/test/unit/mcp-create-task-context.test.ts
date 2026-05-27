@@ -58,7 +58,7 @@ describe("createMcpTask context binding", () => {
     vi.clearAllMocks();
     artifactRows = [];
     sqlCalls.length = 0;
-    createTaskMock.mockResolvedValue({ id: "task-1", project_name: "demo", state: "queued" });
+    createTaskMock.mockResolvedValue({ id: "task-1", project_name: "example", state: "queued" });
     cloneAndUploadMock.mockResolvedValue(undefined);
     getDefaultCredentialMock.mockResolvedValue({ id: "cred-1", label: "Default" });
     getCredentialByIdMock.mockImplementation(async (id: string) => ({ id, label: "Selected" }));
@@ -74,13 +74,13 @@ describe("createMcpTask context binding", () => {
   it("creates git tasks with ctx.userId and ctx credential, not fake MCP users", async () => {
     const { createMcpTask } = await import("../../src/mcp/tools.js");
 
-    const result = await createMcpTask({ git_url: "https://example.com/demo.git" }, { ...ctx, credentialId: "cred-session" });
+    const result = await createMcpTask({ git_url: "https://example.com/project.git" }, { ...ctx, credentialId: "cred-session" });
 
     expect(result.content[0].text).toContain("Task created successfully");
     expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
       createdBy: "user-1",
       sourceType: "git",
-      sourceMeta: expect.objectContaining({ git_url: "https://example.com/demo.git" }),
+      sourceMeta: expect.objectContaining({ git_url: "https://example.com/project.git" }),
       credentialId: "cred-session",
     }));
     expect(getCredentialByIdMock).toHaveBeenCalledWith("cred-session");
@@ -89,7 +89,7 @@ describe("createMcpTask context binding", () => {
   it("falls back to default credential when chat session has no credential", async () => {
     const { createMcpTask } = await import("../../src/mcp/tools.js");
 
-    const result = await createMcpTask({ git_url: "https://example.com/demo.git" }, { ...ctx, credentialId: null });
+    const result = await createMcpTask({ git_url: "https://example.com/project.git" }, { ...ctx, credentialId: null });
 
     expect(result.content[0].text).toContain("Task created successfully");
     expect(getDefaultCredentialMock).toHaveBeenCalled();
@@ -100,7 +100,7 @@ describe("createMcpTask context binding", () => {
     const { createMcpTask } = await import("../../src/mcp/tools.js");
     getDefaultCredentialMock.mockResolvedValueOnce(null);
 
-    const result = await createMcpTask({ git_url: "https://example.com/demo.git" }, { ...ctx, credentialId: null });
+    const result = await createMcpTask({ git_url: "https://example.com/project.git" }, { ...ctx, credentialId: null });
 
     expect(result.content[0].text).toContain("当前会话没有可用模型凭证");
     expect(createTaskMock).not.toHaveBeenCalled();

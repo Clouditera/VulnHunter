@@ -1175,7 +1175,7 @@ function GenerateModal({
             <textarea
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              placeholder="如：管理员账号 admin/admin123、需要先登录后访问 /admin..."
+              placeholder="如：需要先登录后访问 /admin、目标环境限制、复现注意事项..."
               style={{ ...INPUT, minHeight: "72px", resize: "vertical" }}
             />
           </div>

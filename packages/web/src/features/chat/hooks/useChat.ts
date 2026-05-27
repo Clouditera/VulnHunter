@@ -14,9 +14,6 @@ import { mapToolActivity, respondingActivity, stoppedActivity, thinkingActivity,
  * Real-data version of the chat hook — talks to the backend via REST +
  * WS (proxied by the service to the in-container pi bridge).
  *
- * Same surface area as `useChatMock` so ChatPage can swap one import for
- * the other. The mock stays in the tree for demos / offline dev.
- *
  * ## Actual event shape (verified against live backend)
  *
  * The shape the bridge emits differs from the flat `{message_id, delta}`

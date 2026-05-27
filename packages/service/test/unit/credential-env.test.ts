@@ -9,13 +9,13 @@ describe("credentialToWorkerEnv", () => {
       provider: "openai",
       proto_type: "openai-completions",
       base_url: "https://llm.example/v1/",
-      model_id: "demo-model",
+      model_id: "example-model",
       thinking_effort: "medium",
-      label: "Demo",
+      label: "Example",
       is_default: true,
       key_fingerprint: "fp",
       context_window_tokens: 256000,
-      api_key: "sk-demo",
+      api_key: "sk-test",
     };
 
     expect(credentialToWorkerEnv(cred)).toMatchObject({

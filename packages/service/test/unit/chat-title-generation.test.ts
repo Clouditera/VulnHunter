@@ -6,7 +6,7 @@ describe("chat title generation helpers", () => {
     expect(isDefaultChatTitle("New Chat")).toBe(true);
     expect(isDefaultChatTitle("新对话")).toBe(true);
     expect(isDefaultChatTitle(" ")).toBe(true);
-    expect(isDefaultChatTitle("DataEase H2 RCE 复现")).toBe(false);
+    expect(isDefaultChatTitle("第三方系统 H2 RCE 复现")).toBe(false);
   });
 
   it("cleans generated titles", () => {

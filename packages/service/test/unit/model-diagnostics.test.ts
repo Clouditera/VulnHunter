@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { diagnoseModelCredential } from "../../src/features/settings/model-diagnostics.js";
 
-const input = { protoType: "openai-completions", baseUrl: "http://model.local/v1", modelId: "demo", apiKey: "secret" };
+const input = { protoType: "openai-completions", baseUrl: "http://model.local/v1", modelId: "example", apiKey: "secret" };
 
 afterEach(() => vi.restoreAllMocks());
 

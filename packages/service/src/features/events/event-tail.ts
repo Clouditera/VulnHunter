@@ -142,7 +142,7 @@ export class FileTail {
         // Detect format: canonical (has 'type') vs youngflow (has 'event')
         let event: LiveLogEvent | null;
         if (raw.type) {
-          // Canonical format (mock worker or already translated)
+          // Canonical format (already translated by the producer)
           event = raw as unknown as LiveLogEvent;
         } else if (raw.event) {
           // youngflow --json-log format, needs translation
