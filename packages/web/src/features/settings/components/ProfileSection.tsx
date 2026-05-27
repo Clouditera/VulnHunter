@@ -163,6 +163,6 @@ const CARD: CSSProperties = { background: "var(--bg-card)", border: "1px solid v
 const TITLE: CSSProperties = { fontSize: "15px", fontWeight: 600, margin: "0 0 4px", display: "flex", alignItems: "center", gap: "8px", color: "var(--text-primary)" };
 const DESC: CSSProperties = { fontSize: "13px", color: "var(--text-secondary)", opacity: 0.85, margin: 0 };
 const LABEL: CSSProperties = { display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "6px" };
-const FORM_COLUMN: CSSProperties = { width: "100%", maxWidth: "560px" };
+const FORM_COLUMN: CSSProperties = { width: "100%" };
 const INPUT: CSSProperties = { width: "100%", padding: "9px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", background: "var(--bg-card)", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", boxSizing: "border-box" };
 const PRIMARY_BTN: CSSProperties = { padding: "8px 18px", border: "none", borderRadius: "6px", background: "var(--brand)", color: "var(--btn-primary-text, #fff)", fontSize: "13px", fontWeight: 600, cursor: "pointer" };
