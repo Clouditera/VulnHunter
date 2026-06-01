@@ -33,7 +33,7 @@ vi.mock("../../src/infra/minio/client.js", () => ({
   uploadFile: vi.fn(),
 }));
 vi.mock("../../src/infra/config.js", () => ({
-  loadConfig: vi.fn(() => ({ minio: { bucket: "vulnhunt" } })),
+  loadConfig: vi.fn(() => ({ minio: { bucket: "vulnagent" } })),
 }));
 vi.mock("../../src/features/notifications/index.js", () => ({
   notify: vi.fn(),
@@ -128,7 +128,7 @@ describe("createMcpTask context binding", () => {
       sourceType: "upload",
       credentialId: "cred-1",
     }));
-    expect(copyObjectMock).toHaveBeenCalledWith("vulnhunt", "code-packages/task-1.zip", "/vulnhunt/chat-artifacts/sess-1/project.zip");
+    expect(copyObjectMock).toHaveBeenCalledWith("vulnagent", "code-packages/task-1.zip", "/vulnagent/chat-artifacts/sess-1/project.zip");
   });
 
   it("rejects inaccessible attachment ids", async () => {

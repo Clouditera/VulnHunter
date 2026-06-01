@@ -3,7 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 VERSION="${VERSION:-$(node -p "require('./package.json').version")}" 
-OUT="${OUT:-$ROOT/release/vulnhunt-release-$VERSION}"
+OUT="${OUT:-$ROOT/release/vulnagent-release-$VERSION}"
 MINIO_IMAGE="${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:16-alpine}"
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -17,31 +17,31 @@ mkdir -p "$OUT/images" "$OUT/docs"
 
 cat > "$OUT/VERSION.json" << JSON
 {
-  "product": "vulnhunt",
+  "product": "vulnagent",
   "version": "$VERSION",
   "buildTime": "$BUILD_TIME",
   "gitCommit": "$GIT_COMMIT",
   "youngflowVersion": "$YOUNGFLOW_VERSION",
   "licenseSchema": "v1",
   "images": {
-    "service": "vulnhunt-service:$VERSION",
-    "web": "vulnhunt-web:$VERSION",
-    "worker": "vulnhunt-worker:$VERSION",
-    "evalWorker": "vulnhunt-eval-worker:$VERSION",
+    "service": "vulnagent-service:$VERSION",
+    "web": "vulnagent-web:$VERSION",
+    "worker": "vulnagent-worker:$VERSION",
+    "evalWorker": "vulnagent-eval-worker:$VERSION",
     "postgres": "$POSTGRES_IMAGE",
     "minio": "$MINIO_IMAGE"
   }
 }
 JSON
 
-pnpm turbo run build --filter=@vulnhunt/service --filter=@vulnhunt/web
-pnpm --filter @vulnhunt/worker-bridge build
-if [[ ! -f flows/vulnhunt/flow.yaml ]]; then
-  echo "missing flows/vulnhunt/flow.yaml; run git submodule update --init --recursive" >&2
+pnpm turbo run build --filter=@vulnagent/service --filter=@vulnagent/web
+pnpm --filter @vulnagent/worker-bridge build
+if [[ ! -f flows/vulnagent/flow.yaml ]]; then
+  echo "missing flows/vulnagent/flow.yaml; run git submodule update --init --recursive" >&2
   exit 1
 fi
-if [[ ! -f flows/vulnhunt/extensions/pi-subagents/package.json ]]; then
-  echo "missing flows/vulnhunt/extensions/pi-subagents/package.json; run git submodule update --init --recursive" >&2
+if [[ ! -f flows/vulnagent/extensions/pi-subagents/package.json ]]; then
+  echo "missing flows/vulnagent/extensions/pi-subagents/package.json; run git submodule update --init --recursive" >&2
   exit 1
 fi
 if [[ ! -x submodules/youngflow/release/youngflow-linux-x64 ]]; then
@@ -50,39 +50,37 @@ if [[ ! -x submodules/youngflow/release/youngflow-linux-x64 ]]; then
 fi
 
 docker build -f deploy/dockerfiles/service.Dockerfile \
-  --build-arg VULNHUNT_VERSION="$VERSION" \
-  --build-arg VULNHUNT_BUILD_TIME="$BUILD_TIME" \
-  --build-arg VULNHUNT_GIT_COMMIT="$GIT_COMMIT" \
+  --build-arg VULNAGENT_VERSION="$VERSION" \
+  --build-arg VULNAGENT_BUILD_TIME="$BUILD_TIME" \
+  --build-arg VULNAGENT_GIT_COMMIT="$GIT_COMMIT" \
   --build-arg YOUNGFLOW_VERSION="$YOUNGFLOW_VERSION" \
-  -t "vulnhunt-service:$VERSION" -t vulnhunt-service:latest .
-docker build -f deploy/dockerfiles/web.Dockerfile -t "vulnhunt-web:$VERSION" -t vulnhunt-web:latest .
-docker build -f deploy/dockerfiles/worker.Dockerfile -t "vulnhunt-worker:$VERSION" -t vulnhunt-worker:latest .
-docker build -f deploy/dockerfiles/eval-worker.Dockerfile -t "vulnhunt-eval-worker:$VERSION" -t vulnhunt-eval-worker:latest .
+  -t "vulnagent-service:$VERSION" -t vulnagent-service:latest .
+docker build -f deploy/dockerfiles/web.Dockerfile -t "vulnagent-web:$VERSION" -t vulnagent-web:latest .
+docker build -f deploy/dockerfiles/worker.Dockerfile -t "vulnagent-worker:$VERSION" -t vulnagent-worker:latest .
+docker build -f deploy/dockerfiles/eval-worker.Dockerfile -t "vulnagent-eval-worker:$VERSION" -t vulnagent-eval-worker:latest .
 docker pull "$POSTGRES_IMAGE"
 docker pull "$MINIO_IMAGE"
 
-docker save "vulnhunt-service:$VERSION" -o "$OUT/images/vulnhunt-service.tar"
-docker save "vulnhunt-web:$VERSION" -o "$OUT/images/vulnhunt-web.tar"
-docker save "vulnhunt-worker:$VERSION" -o "$OUT/images/vulnhunt-worker.tar"
-docker save "vulnhunt-eval-worker:$VERSION" -o "$OUT/images/vulnhunt-eval-worker.tar"
+docker save "vulnagent-service:$VERSION" -o "$OUT/images/vulnagent-service.tar"
+docker save "vulnagent-web:$VERSION" -o "$OUT/images/vulnagent-web.tar"
+docker save "vulnagent-worker:$VERSION" -o "$OUT/images/vulnagent-worker.tar"
+docker save "vulnagent-eval-worker:$VERSION" -o "$OUT/images/vulnagent-eval-worker.tar"
 docker save "$POSTGRES_IMAGE" -o "$OUT/images/postgres-16-alpine.tar"
 docker save "$MINIO_IMAGE" -o "$OUT/images/minio.tar"
 
 cp deploy/docker-compose.yml deploy/.env.example deploy/install.sh deploy/upgrade.sh deploy/uninstall.sh deploy/doctor.sh "$OUT/"
-mkdir -p "$OUT/.secrets"
-cp deploy/license-public.pem "$OUT/.secrets/license-public.pem"
-sed -i "s|^SERVICE_IMAGE=.*|SERVICE_IMAGE=vulnhunt-service:$VERSION|" "$OUT/.env.example"
-sed -i "s|^WEB_IMAGE=.*|WEB_IMAGE=vulnhunt-web:$VERSION|" "$OUT/.env.example"
-sed -i "s|^WORKER_IMAGE=.*|WORKER_IMAGE=vulnhunt-worker:$VERSION|" "$OUT/.env.example"
-sed -i "s|^EVAL_WORKER_IMAGE=.*|EVAL_WORKER_IMAGE=vulnhunt-eval-worker:$VERSION|" "$OUT/.env.example"
-cp -r docs/vulnhunt-srv/releases/. "$OUT/docs/"
+sed -i "s|^SERVICE_IMAGE=.*|SERVICE_IMAGE=vulnagent-service:$VERSION|" "$OUT/.env.example"
+sed -i "s|^WEB_IMAGE=.*|WEB_IMAGE=vulnagent-web:$VERSION|" "$OUT/.env.example"
+sed -i "s|^WORKER_IMAGE=.*|WORKER_IMAGE=vulnagent-worker:$VERSION|" "$OUT/.env.example"
+sed -i "s|^EVAL_WORKER_IMAGE=.*|EVAL_WORKER_IMAGE=vulnagent-eval-worker:$VERSION|" "$OUT/.env.example"
+cp -r docs/vulnagent-srv/releases/. "$OUT/docs/"
 cp deploy/README.md "$OUT/docs/install.md" 2>/dev/null || true
 chmod +x "$OUT"/*.sh
 
 (
   cd "$OUT"
   find images -type f -name '*.tar' -print | sort
-  printf '%s\n' docker-compose.yml .env.example install.sh doctor.sh upgrade.sh uninstall.sh VERSION.json .secrets/license-public.pem
+  printf '%s\n' docker-compose.yml .env.example install.sh doctor.sh upgrade.sh uninstall.sh VERSION.json
   find docs -type f -print | sort
 ) | while IFS= read -r file; do
   [[ -f "$OUT/$file" ]] && sha256sum "$OUT/$file"

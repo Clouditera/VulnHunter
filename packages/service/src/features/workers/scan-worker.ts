@@ -33,7 +33,7 @@ export async function spawnScanWorker(
   // Remove stale container with same name if it exists (e.g. from previous failed run)
   try {
     const docker = getDocker();
-    const old = docker.getContainer(`vh-scan-${task.id}`);
+    const old = docker.getContainer(`va-scan-${task.id}`);
     await old.remove({ force: true });
   } catch { /* ok, doesn't exist */ }
 
@@ -53,7 +53,7 @@ export async function spawnScanWorker(
       MINIO_ACCESS_KEY: config.minio.accessKey,
       MINIO_SECRET_KEY: config.minio.secretKey,
       MINIO_BUCKET: config.minio.bucket,
-      SERVICE_URL: `http://vulnhunt-service:${config.port}`,
+      SERVICE_URL: `http://vulnagent-service:${config.port}`,
       ...llmEnv,
     },
   });

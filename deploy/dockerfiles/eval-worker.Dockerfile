@@ -1,5 +1,5 @@
 FROM node:20-slim AS base
-WORKDIR /opt/vulnhunt
+WORKDIR /opt/vulnagent
 
 # System dependencies — includes Docker CLI for auto-deploy mode
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -29,8 +29,8 @@ COPY submodules/DevEye/packages/cli/binaries/index-linux /usr/local/bin/deveye
 RUN chmod +x /usr/local/bin/deveye
 
 # Flow assets
-COPY flows/vulnhunt-poc /opt/vulnhunt/flows/vulnhunt-poc
-COPY flows/vulnhunt-report /opt/vulnhunt/flows/vulnhunt-report
+COPY flows/vulnagent-poc /opt/vulnagent/flows/vulnagent-poc
+COPY flows/vulnagent-report /opt/vulnagent/flows/vulnagent-report
 
 # Worker bridge (for chat fallback — not primary for eval)
 COPY packages/worker-bridge/dist/bundle.js /opt/bridge/bundle.js

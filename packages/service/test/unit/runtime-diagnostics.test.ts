@@ -30,7 +30,7 @@ describe("diagnoseModelRuntimeCredential", () => {
   });
 
   it("stops before worker startup when basic preflight fails", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "vh-runtime-diag-"));
+    const dataDir = mkdtempSync(join(tmpdir(), "va-runtime-diag-"));
     const result = await diagnoseModelRuntimeCredential({
       id: "cred-1",
       tenant_id: "tenant",

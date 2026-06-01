@@ -1,4 +1,4 @@
-// @vulnhunt/shared — cross-process contracts (types, schemas, error codes)
+// @vulnagent/shared — cross-process contracts (types, schemas, error codes)
 // NO runtime dependencies allowed in this package.
 
 export * from "./domain/index.js";

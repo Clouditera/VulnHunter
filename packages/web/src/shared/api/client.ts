@@ -1,4 +1,4 @@
-import type { SystemStatus } from "@vulnhunt/shared";
+import type { SystemStatus } from "@vulnagent/shared";
 
 const BASE = "";
 

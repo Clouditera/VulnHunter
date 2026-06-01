@@ -5,7 +5,7 @@ import {
   getAllEvents,
   clearTaskBuffer,
 } from "../../src/features/events/event-store.js";
-import type { ToolCallEvent } from "@vulnhunt/shared";
+import type { ToolCallEvent } from "@vulnagent/shared";
 
 function makeToolCall(tool: string, seq = 0): ToolCallEvent {
   return {

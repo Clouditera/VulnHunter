@@ -115,7 +115,7 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
     });
   } catch (err) {
     if (err instanceof CredentialKeyUnavailableError) {
-      return c.json({ error: { code: "ERR_CREDENTIAL_KEY_UNAVAILABLE", message: "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" } }, 409);
+      return c.json({ error: { code: "ERR_CREDENTIAL_KEY_UNAVAILABLE", message: "凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" } }, 409);
     }
     throw err;
   }
@@ -200,7 +200,7 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
       contextWindowTokens = hasContextWindowOverride ? contextWindowTokens : (cred.context_window_tokens ?? contextWindowTokens);
     } catch (err) {
       if (err instanceof CredentialKeyUnavailableError) {
-        return c.json({ ok: false, error: "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" }, 409);
+        return c.json({ ok: false, error: "凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" }, 409);
       }
       if (err instanceof CredentialDecryptError) {
         return c.json({ ok: false, error: "Credential cannot be decrypted with current master key. Re-enter and save the API key." }, 409);
@@ -263,7 +263,7 @@ settingsRouter.post("/models", requireAdmin, async (c) => {
       protoType = body.proto_type ?? saved.proto_type;
     } catch (err) {
       if (err instanceof CredentialKeyUnavailableError) {
-        return c.json({ models: [], error: "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" }, 409);
+        return c.json({ models: [], error: "凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" }, 409);
       }
       if (err instanceof CredentialDecryptError) {
         return c.json({ models: [], error: "Credential cannot be decrypted with current master key. Re-enter and save the API key." }, 409);
@@ -289,7 +289,7 @@ settingsRouter.post("/models", requireAdmin, async (c) => {
       protoType = cred.proto_type;
     } catch (err) {
       if (err instanceof CredentialKeyUnavailableError) {
-        return c.json({ models: [], error: "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" }, 409);
+        return c.json({ models: [], error: "凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" }, 409);
       }
       if (err instanceof CredentialDecryptError) {
         return c.json({ models: [], error: "Credential cannot be decrypted with current master key. Re-enter and save the API key." }, 409);

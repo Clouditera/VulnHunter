@@ -1,6 +1,6 @@
 import { getDb } from "../../infra/db/client.js";
-import type { Severity, FindingReviewStatus } from "@vulnhunt/shared";
-import { FINDING_REVIEW_STATUSES } from "@vulnhunt/shared";
+import type { Severity, FindingReviewStatus } from "@vulnagent/shared";
+import { FINDING_REVIEW_STATUSES } from "@vulnagent/shared";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 

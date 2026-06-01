@@ -20,7 +20,7 @@ dir_empty() {
   [[ ! -d "$dir" ]] && return 0
   # Permission denied must be treated as non-empty/unknown, not empty.
   local probe
-  if ! probe="$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/tmp/vh-upgrade-find.err)"; then
+  if ! probe="$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/tmp/va-upgrade-find.err)"; then
     echo "[upgrade] cannot fully inspect $dir; treating as non-empty to avoid data loss" >&2
     return 1
   fi
@@ -28,12 +28,12 @@ dir_empty() {
 }
 legacy_volume_candidates() {
   local suffix="$1"
-  docker volume ls --format '{{.Name}}' | grep -E "(^|_)vulnhunt-${suffix}$" || true
+  docker volume ls --format '{{.Name}}' | grep -E "(^|_)vulnagent-${suffix}$" || true
 }
 migrate_volume_data() {
   local volume="$1" target="$2" service="$3"
   echo "[upgrade] migrating $service data from legacy volume $volume to $target"
-  docker stop vulnhunt-service vulnhunt-web >/dev/null 2>&1 || true
+  docker stop vulnagent-service vulnagent-web >/dev/null 2>&1 || true
   if ! docker run --rm -v "$volume:/from:ro" -v "$target:/to" "${POSTGRES_IMAGE:-postgres:16-alpine}" sh -c 'cd /from && cp -a . /to/ && chmod -R u+rwX /to'; then
     echo "[upgrade] failed to migrate $service data from volume $volume; aborting to avoid empty data startup" >&2
     exit 1
@@ -62,7 +62,7 @@ postgres_dir_rw() {
   docker run --rm --user 70:70 -v "$DATA_DIR/db:/var/lib/postgresql/data" "${POSTGRES_IMAGE:-postgres:16-alpine}" sh -c 'test -r /var/lib/postgresql/data && touch /var/lib/postgresql/data/.perm-test && rm /var/lib/postgresql/data/.perm-test' >/dev/null 2>&1
 }
 prepare_data_dirs() {
-  DATA_DIR="${DATA_DIR:-/opt/vulnhunt/data}"
+  DATA_DIR="${DATA_DIR:-/opt/vulnagent/data}"
   SERVICE_UID="${SERVICE_UID:-1001}"
   SERVICE_GID="${SERVICE_GID:-1001}"
   mkdir -p "$DATA_DIR/db" "$DATA_DIR/minio"
@@ -107,7 +107,7 @@ migrate_container_data() {
     exit 1
   fi
   echo "[upgrade] migrating $service data from $container:$dest to $target"
-  docker stop vulnhunt-service vulnhunt-web >/dev/null 2>&1 || true
+  docker stop vulnagent-service vulnagent-web >/dev/null 2>&1 || true
   docker stop "$container" >/dev/null 2>&1 || true
   if ! docker cp "$container:$dest/." "$target/"; then
     echo "[upgrade] failed to migrate $service data; aborting to avoid empty data startup" >&2
@@ -129,11 +129,11 @@ if [[ -d images ]]; then
   done
 fi
 prepare_data_dirs
-migrate_container_data vulnhunt-db /var/lib/postgresql/data "${DATA_DIR:-/opt/vulnhunt/data}/db" db
-migrate_container_data vulnhunt-minio /data "${DATA_DIR:-/opt/vulnhunt/data}/minio" minio
-protect_or_migrate_legacy_volume db "${DATA_DIR:-/opt/vulnhunt/data}/db" db
-protect_or_migrate_legacy_volume minio "${DATA_DIR:-/opt/vulnhunt/data}/minio" minio
+migrate_container_data vulnagent-db /var/lib/postgresql/data "${DATA_DIR:-/opt/vulnagent/data}/db" db
+migrate_container_data vulnagent-minio /data "${DATA_DIR:-/opt/vulnagent/data}/minio" minio
+protect_or_migrate_legacy_volume db "${DATA_DIR:-/opt/vulnagent/data}/db" db
+protect_or_migrate_legacy_volume minio "${DATA_DIR:-/opt/vulnagent/data}/minio" minio
 prepare_data_dirs
-docker rm -f vulnhunt-web vulnhunt-service vulnhunt-db vulnhunt-minio >/dev/null 2>&1 || true
+docker rm -f vulnagent-web vulnagent-service vulnagent-db vulnagent-minio >/dev/null 2>&1 || true
 compose up -d
 "$ROOT/doctor.sh"

@@ -1,10 +1,12 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
-import type { ChatArtifact, ChatImageAttachment, ChatMessage } from "../types.js";
+import type { ChatArtifactUnion, ChatImageAttachment, ChatMessage } from "../types.js";
+import { isFileArtifact } from "../types.js";
 import { ToolCallBlock } from "./ToolCallBlock.js";
 import { Markdown } from "./Markdown.js";
 import { ArtifactCard } from "./ArtifactCard.js";
-import { extractChatArtifacts, stripChatArtifactJson } from "../artifacts.js";
+import { ReferenceCard } from "./ReferenceCard.js";
+import { extractAllArtifacts, stripChatArtifactJson } from "../artifacts.js";
 
 /**
  * A single message rendered inside the MessageFlow stream.
@@ -85,7 +87,10 @@ const AGENT_BUBBLE: CSSProperties = {
   maxWidth: "100%",
 };
 
-export function MessageBubble({ message, onArtifactSelect }: { message: ChatMessage; onArtifactSelect?: (artifact: ChatArtifact) => void }) {
+export function MessageBubble({
+  message,
+  onArtifactSelect,
+}: { message: ChatMessage; onArtifactSelect?: (artifact: ChatArtifactUnion) => void }) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   if (message.role === "user") {
@@ -97,28 +102,30 @@ export function MessageBubble({ message, onArtifactSelect }: { message: ChatMess
         data-message-id={message.id}
         style={{ marginBottom: "20px", display: "flex", justifyContent: "flex-end" }}
       >
-        <div style={{ maxWidth: "720px", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+        <div
+          style={{
+            maxWidth: "720px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: "6px",
+          }}
+        >
           {imgs.length > 0 ? (
             <div data-testid="chat-message-images" style={IMG_GRID}>
               {imgs.map((img, i) => (
-                <ImageThumb
-                  key={i}
-                  img={img}
-                  onOpen={() => setLightboxSrc(img.preview ?? null)}
-                />
+                <ImageThumb key={i} img={img} onOpen={() => setLightboxSrc(img.preview ?? null)} />
               ))}
             </div>
           ) : null}
           {message.content ? <div style={USER_BUBBLE}>{message.content}</div> : null}
         </div>
-        {lightboxSrc ? (
-          <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
-        ) : null}
+        {lightboxSrc ? <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} /> : null}
       </div>
     );
   }
 
-  const artifacts = extractChatArtifacts([message]);
+  const artifacts = extractAllArtifacts([message]);
   const visibleContent = stripChatArtifactJson(message.content);
 
   return (
@@ -134,15 +141,21 @@ export function MessageBubble({ message, onArtifactSelect }: { message: ChatMess
         <div style={AGENT_BODY}>
           {/* Tool calls render first, then the text. This matches pi rpc
               timing — tool calls happen before / during text generation. */}
-          {isDebugToolsEnabled() ? (message.tool_calls ?? []).map((call, i) => (
-            <ToolCallBlock key={i} call={call} />
-          )) : null}
+          {isDebugToolsEnabled()
+            ? (message.tool_calls ?? []).map((call, i) => <ToolCallBlock key={i} call={call} />)
+            : null}
           <div
             data-testid="chat-message-content"
             style={visibleContent || artifacts.length ? AGENT_BUBBLE : undefined}
           >
             {visibleContent ? <Markdown content={visibleContent} /> : null}
-            {artifacts.map((a) => <ArtifactCard key={a.artifact_id} artifact={a} onSelect={onArtifactSelect} />)}
+            {artifacts.map((a) =>
+              isFileArtifact(a) ? (
+                <ArtifactCard key={a.artifact_id} artifact={a} onSelect={onArtifactSelect} />
+              ) : (
+                <ReferenceCard key={a.ref_id} artifact={a} onSelect={onArtifactSelect} />
+              ),
+            )}
             {message.streaming ? (
               <span
                 aria-hidden
@@ -153,7 +166,7 @@ export function MessageBubble({ message, onArtifactSelect }: { message: ChatMess
                   marginLeft: "3px",
                   background: "var(--text-primary)",
                   verticalAlign: "-2px",
-                  animation: "vh-caret-blink 1s steps(2) infinite",
+                  animation: "va-caret-blink 1s steps(2) infinite",
                 }}
               />
             ) : null}
@@ -240,5 +253,5 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
 }
 
 function isDebugToolsEnabled(): boolean {
-  return typeof window !== "undefined" && window.localStorage.getItem("vh.chat.debugTools") === "1";
+  return typeof window !== "undefined" && window.localStorage.getItem("va.chat.debugTools") === "1";
 }

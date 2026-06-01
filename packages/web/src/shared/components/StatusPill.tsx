@@ -47,7 +47,7 @@ export function StatusPill({ state, size = "md" }: { state: string; size?: "sm" 
             borderRadius: "50%",
             background: style.fg,
             display: "inline-block",
-            animation: "vh-pulse 1.4s ease-in-out infinite",
+            animation: "va-pulse 1.4s ease-in-out infinite",
           }}
         />
       )}
@@ -57,9 +57,9 @@ export function StatusPill({ state, size = "md" }: { state: string; size?: "sm" 
 }
 
 // Keyframes injected once globally — safe to include inline in a shared module.
-if (typeof document !== "undefined" && !document.getElementById("vh-pulse-keyframes")) {
+if (typeof document !== "undefined" && !document.getElementById("va-pulse-keyframes")) {
   const styleTag = document.createElement("style");
-  styleTag.id = "vh-pulse-keyframes";
-  styleTag.textContent = `@keyframes vh-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }`;
+  styleTag.id = "va-pulse-keyframes";
+  styleTag.textContent = `@keyframes va-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }`;
   document.head.appendChild(styleTag);
 }

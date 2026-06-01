@@ -1,6 +1,6 @@
 [submodule "submodules/youngflow"]
 	path = submodules/youngflow
 	url = https://github.com/Clouditera/Youngflow.git
-[submodule "flows/vulnhunt"]
-	path = flows/vulnhunt
-	url = https://github.com/Clouditera/Vulnhunt-flow.git
+[submodule "flows/vulnagent"]
+	path = flows/vulnagent
+	url = https://github.com/Clouditera/VulnAgent-flow.git

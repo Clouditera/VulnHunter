@@ -22,11 +22,11 @@ function readJson(path: string): Partial<VersionInfo> | null {
 
 export function getVersionInfo(): VersionInfo {
   if (cached) return cached;
-  const envVersion = process.env.VULNHUNT_VERSION;
+  const envVersion = process.env.VULNAGENT_VERSION;
   const manifest = readJson("/app/VERSION.json") ?? readJson(join(process.cwd(), "VERSION.json"));
   const pkg = readJson(join(process.cwd(), "../../package.json")) ?? readJson(join(process.cwd(), "package.json"));
   cached = {
-    product: manifest?.product ?? "vulnhunt",
+    product: manifest?.product ?? "vulnagent",
     version: envVersion ?? manifest?.version ?? pkg?.version ?? "unknown",
     buildTime: manifest?.buildTime,
     gitCommit: manifest?.gitCommit,

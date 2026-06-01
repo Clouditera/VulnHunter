@@ -52,11 +52,11 @@ function sourceColor(src: string): string {
  */
 function ensureLiveLogKeyframes() {
   if (typeof document === "undefined") return;
-  if (document.getElementById("vh-livelog-keyframes")) return;
+  if (document.getElementById("va-livelog-keyframes")) return;
   const style = document.createElement("style");
-  style.id = "vh-livelog-keyframes";
+  style.id = "va-livelog-keyframes";
   style.textContent =
-    "@keyframes vh-livelog-slide-in { from { transform: translateY(70%); opacity: 0 } to { transform: translateY(0); opacity: 1 } }";
+    "@keyframes va-livelog-slide-in { from { transform: translateY(70%); opacity: 0 } to { transform: translateY(0); opacity: 1 } }";
   document.head.appendChild(style);
 }
 
@@ -351,7 +351,7 @@ export function LiveLog({ taskId, taskState }: Props) {
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              animation: "vh-livelog-slide-in 0.35s cubic-bezier(0.2,0.8,0.2,1)",
+              animation: "va-livelog-slide-in 0.35s cubic-bezier(0.2,0.8,0.2,1)",
             }}
           >
             {toolParts ? (

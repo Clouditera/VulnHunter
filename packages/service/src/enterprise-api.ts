@@ -1,0 +1,11 @@
+export { logger } from "./infra/logger.js";
+export { getVersionInfo } from "./infra/version.js";
+export type { ServiceConfig } from "./infra/config.js";
+export { getDb } from "./infra/db/client.js";
+export { setLicenseGuard } from "./middleware/license-guard.js";
+export { requireAdmin } from "./middleware/auth.js";
+export { getInstallationId } from "./features/system/installation.js";
+export { setLicenseStatusGetter } from "./features/system/license-status.js";
+export type { CoreLicenseStatus } from "./features/system/license-status.js";
+export { createUserAccount } from "./features/auth/service.js";
+export { listUsers, findUserByEmail, getUserById, updateUser, countAdmins, deleteUser } from "./features/auth/storage.js";

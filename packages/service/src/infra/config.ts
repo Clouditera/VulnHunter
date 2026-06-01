@@ -13,6 +13,7 @@ function optionalEnv(key: string, defaultValue: string): string {
 export interface ServiceConfig {
   port: number;
   dataDir: string;
+  edition: "community" | "enterprise";
   db: {
     url: string;
   };
@@ -36,11 +37,17 @@ export interface ServiceConfig {
 }
 
 export function loadConfig(): ServiceConfig {
+  const edition = optionalEnv("EDITION", "community");
+  if (edition !== "community" && edition !== "enterprise") {
+    throw new Error(`Invalid EDITION: ${edition}`);
+  }
+
   return {
     port: Number(optionalEnv("PORT", "28080")),
-    dataDir: optionalEnv("DATA_DIR", "/data/vulnhunt"),
+    dataDir: optionalEnv("DATA_DIR", "/data/vulnagent"),
+    edition,
     db: {
-      url: optionalEnv("DATABASE_URL", "postgresql://vulnhunt:vulnhunt@localhost:25432/vulnhunt"),
+      url: optionalEnv("DATABASE_URL", "postgresql://vulnagent:vulnagent@localhost:25432/vulnagent"),
     },
     minio: {
       endpoint: optionalEnv("MINIO_ENDPOINT", "localhost"),
@@ -48,13 +55,13 @@ export function loadConfig(): ServiceConfig {
       useSSL: optionalEnv("MINIO_USE_SSL", "false") === "true",
       accessKey: optionalEnv("MINIO_ACCESS_KEY", "minioadmin"),
       secretKey: optionalEnv("MINIO_SECRET_KEY", "minioadmin"),
-      bucket: optionalEnv("MINIO_BUCKET", "vulnhunt"),
+      bucket: optionalEnv("MINIO_BUCKET", "vulnagent"),
     },
     docker: {
       socketPath: optionalEnv("DOCKER_SOCKET", "/var/run/docker.sock"),
-      workerImage: optionalEnv("WORKER_IMAGE", "vulnhunt-worker:latest"),
-      evalWorkerImage: optionalEnv("EVAL_WORKER_IMAGE", "vulnhunt-eval-worker:latest"),
-      network: optionalEnv("DOCKER_NETWORK", "vulnhunt-internal"),
+      workerImage: optionalEnv("WORKER_IMAGE", "vulnagent-worker:latest"),
+      evalWorkerImage: optionalEnv("EVAL_WORKER_IMAGE", "vulnagent-eval-worker:latest"),
+      network: optionalEnv("DOCKER_NETWORK", "vulnagent-internal"),
     },
     log: {
       level: optionalEnv("LOG_LEVEL", "info"),

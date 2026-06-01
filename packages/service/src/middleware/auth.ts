@@ -3,7 +3,7 @@ import { getCookie } from "hono/cookie";
 import { resolveSession } from "../features/auth/service.js";
 import type { SessionUser } from "../features/auth/types.js";
 
-const SESSION_COOKIE = "vh_session";
+const SESSION_COOKIE = "va_session";
 
 /** Inject user into context if session cookie is valid. Does NOT reject — use requireAuth for that. */
 export const injectUser: MiddlewareHandler = async (c, next) => {

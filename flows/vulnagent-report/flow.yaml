@@ -1,0 +1,79 @@
+# VulnAgent Report Flow — 安全审计报告生成流水线
+version: "1.0"
+
+artifacts:
+  agents: agents/
+  skills: skills/
+  tasks: tasks/
+  env_file: .env
+
+defaults:
+  model: anthropic/claude-sonnet-4-6:medium
+  max_parallel: 1
+  agent: report-writer.md
+  tools:
+    - read
+    - bash
+    - write
+  extensions:
+    - output-contract
+
+inputs:
+  work_dir: { type: path }
+  output_dir: { type: path }
+  task_id: { type: str, required: true }
+  report_id: { type: str, required: true }
+  context_file: { type: str, default: /workspace/context/report-context.json }
+  reports_dir: { type: str, default: /workspace/reports }
+
+stages:
+  # ====================================================================
+  # Stage 1: 读取报告上下文
+  # ====================================================================
+  - id: prepare-report-context
+    name: 准备报告上下文
+    skills:
+      - report-runtime
+      - uploaded-report-skill
+    task: prepare-report-context.md
+    prompt: |
+      上下文文件: ${flow_inputs.context_file}
+      报告输出目录: ${flow_inputs.reports_dir}
+      任务 ID: ${flow_inputs.task_id}
+      报告 ID: ${flow_inputs.report_id}
+    timeout: 300
+    routes:
+      - to: generate-report
+
+  # ====================================================================
+  # Stage 2: 生成报告
+  # ====================================================================
+  - id: generate-report
+    name: 生成安全审计报告
+    skills:
+      - report-runtime
+      - uploaded-report-skill
+    task: generate-report.md
+    prompt: |
+      上下文文件: ${flow_inputs.context_file}
+      上下文摘要: ${output_dir}/prepare-report-context/context-summary.txt
+      报告输出目录: ${flow_inputs.reports_dir}
+      任务 ID: ${flow_inputs.task_id}
+    timeout: 900
+    routes:
+      - to: package-report
+
+  # ====================================================================
+  # Stage 3: 打包报告 manifest
+  # ====================================================================
+  - id: package-report
+    name: 打包报告
+    skills:
+      - report-runtime
+    task: package-report.md
+    prompt: |
+      报告目录: ${flow_inputs.reports_dir}
+      报告 ID: ${flow_inputs.report_id}
+      任务 ID: ${flow_inputs.task_id}
+      输出 manifest: ${output_dir}/report-manifest.json
+    timeout: 120

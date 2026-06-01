@@ -4,7 +4,7 @@ set -euo pipefail
 : "${TASK_ID:?TASK_ID is required}"
 : "${POC_JOB_ID:?POC_JOB_ID is required}"
 
-FLOW_DIR="/opt/vulnhunt/flows/vulnhunt-poc"
+FLOW_DIR="/opt/vulnagent/flows/vulnagent-poc"
 SERVICE_LOG="/workspace/.service-logs/youngflow.service.jsonl"
 
 finish_log() {

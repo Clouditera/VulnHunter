@@ -8,8 +8,8 @@ const sqlValues: unknown[][] = [];
 
 vi.mock("../../src/infra/config.js", () => ({
   loadConfig: vi.fn(() => ({
-    dataDir: "/tmp/vh-chat-artifact-test",
-    minio: { bucket: "vulnhunt" },
+    dataDir: "/tmp/va-chat-artifact-test",
+    minio: { bucket: "vulnagent" },
   })),
 }));
 vi.mock("../../src/infra/minio/client.js", () => ({
@@ -61,7 +61,7 @@ describe("presentArtifact", () => {
     expect(payload.download_url).toContain(`/api/chat/sessions/${ctx.sessionId}/artifacts/`);
 
     expect(putObjectMock).toHaveBeenCalledWith(
-      "vulnhunt",
+      "vulnagent",
       expect.stringMatching(/^chat-artifacts\/sess-1\/presented\/.+\/high-findings\.md$/),
       Buffer.from("# High\nhello"),
     );

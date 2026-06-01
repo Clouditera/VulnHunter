@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { CSSProperties } from "react";
-import type { SystemStatus } from "@vulnhunt/shared";
+import type { SystemStatus } from "@vulnagent/shared";
 import { i18n } from "../../../shared/i18n/index.js";
 import { theme as themeStore } from "../../../shared/theme/index.js";
 import { Icon, type IconName } from "../../../shared/components/Icon.js";
@@ -302,11 +302,11 @@ function licenseStatusColor(s: string | undefined): { bg: string; fg: string; do
 // doesn't duplicate it.
 function ensureSpinKeyframes() {
   if (typeof document === "undefined") return;
-  if (document.getElementById("vh-spin-keyframes")) return;
+  if (document.getElementById("va-spin-keyframes")) return;
   const style = document.createElement("style");
-  style.id = "vh-spin-keyframes";
+  style.id = "va-spin-keyframes";
   style.textContent =
-    "@keyframes vh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }";
+    "@keyframes va-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }";
   document.head.appendChild(style);
 }
 
@@ -631,6 +631,7 @@ export function SettingsPage() {
   }
 
   const isDark = themeStore.current() === "dark";
+  const isEnterprise = (status?.edition ?? sysStatus?.edition) === "enterprise";
   const licColor = licenseStatusColor(status?.license?.status);
 
   /** Pull `/v1/models` using current form values (or saved credential as fallback). */
@@ -739,10 +740,10 @@ export function SettingsPage() {
 
   const SUB_NAV_SECTIONS: Array<{ id: string; labelKey: string }> = isAdmin
     ? [
-        { id: "license", labelKey: "settings.nav.license" },
+        ...(isEnterprise ? [{ id: "license", labelKey: "settings.nav.license" }] : []),
         { id: "credentials", labelKey: "settings.nav.credentials" },
         { id: "poc", labelKey: "settings.nav.poc" },
-        { id: "users", labelKey: "settings.nav.users" },
+        ...(isEnterprise ? [{ id: "users", labelKey: "settings.nav.users" }] : []),
         { id: "skills", labelKey: "settings.nav.skills" },
         { id: "appearance", labelKey: "settings.nav.appearance" },
         { id: "engine", labelKey: "settings.nav.engine" },
@@ -868,7 +869,7 @@ export function SettingsPage() {
           {/* ============================================================= */}
           {/*  License Information (admin only)                              */}
           {/* ============================================================= */}
-          {isAdmin && <>
+          {isAdmin && isEnterprise && <>
           <div id="license" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
             icon="key"
@@ -1098,7 +1099,7 @@ export function SettingsPage() {
                       style={{
                         animation:
                           modelFetchState.kind === "loading"
-                            ? "vh-spin 0.9s linear infinite"
+                            ? "va-spin 0.9s linear infinite"
                             : undefined,
                       }}
                     />
@@ -1307,7 +1308,7 @@ export function SettingsPage() {
                     style={{
                       animation:
                         testState.kind === "loading"
-                          ? "vh-spin 0.9s linear infinite"
+                          ? "va-spin 0.9s linear infinite"
                           : undefined,
                     }}
                   />
@@ -1673,7 +1674,7 @@ export function SettingsPage() {
                   </div>
                   {(c.credential_health === "decrypt_failed" || c.credential_health === "key_unavailable") && (
                     <span
-                      title={c.credential_health === "key_unavailable" ? "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE。" : "凭证无法用当前 master key 解密，请重新输入 API Key 并保存。"}
+                      title={c.credential_health === "key_unavailable" ? "凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE。" : "凭证无法用当前 master key 解密，请重新输入 API Key 并保存。"}
                       style={{
                         fontSize: "11px",
                         color: "#b45309",
@@ -1739,8 +1740,12 @@ export function SettingsPage() {
               <div id="poc" style={{ scrollMarginTop: "20px" }} />
               <PocSettingsSection />
 
-              <div id="users" style={{ scrollMarginTop: "20px" }} />
-              <UsersSection />
+              {isEnterprise ? (
+                <>
+                  <div id="users" style={{ scrollMarginTop: "20px" }} />
+                  <UsersSection />
+                </>
+              ) : null}
 
               <div id="skills" style={{ scrollMarginTop: "20px" }} />
               <SkillsSection />

@@ -7,7 +7,7 @@ import { load as yamlLoad } from "js-yaml";
 import { getDb } from "../../infra/db/client.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
-import type { Severity } from "@vulnhunt/shared";
+import type { Severity } from "@vulnagent/shared";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 

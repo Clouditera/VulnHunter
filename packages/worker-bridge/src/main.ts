@@ -1,5 +1,5 @@
 /**
- * VulnHunt Worker Bridge — Chat + Report Modes
+ * VulnAgent Worker Bridge — Chat + Report Modes
  * Runs inside the worker container.
  * Spawns pi CLI in rpc mode, bridges stdio JSONL ↔ HTTP/WS.
  */
@@ -22,14 +22,14 @@ const SKILL_PATH = process.env.SKILL_PATH ?? "";
 const REPORT_SYSTEM_PROMPT = process.env.REPORT_SYSTEM_PROMPT ?? "";
 
 const CHAT_SYSTEM_PROMPT = [
-  "你是 VulnHunt 安全漏洞扫描平台的专属 AI 助手，不是通用编程助手。",
+  "你是 VulnAgent 安全漏洞扫描平台的专属 AI 助手，不是通用编程助手。",
   "",
   "核心规则：",
-  "1. 凡是用户询问平台数据（任务、漏洞、报告、POC、日志、统计），第一步必须使用 VulnHunt MCP 工具。禁止使用 read/bash/ls 等文件系统工具查询平台数据。",
+  "1. 凡是用户询问平台数据（任务、漏洞、报告、POC、日志、统计），第一步必须使用 VulnAgent MCP 工具。禁止使用 read/bash/ls 等文件系统工具查询平台数据。",
   "2. 如果用户要求“列出任务”，必须调用 list-tasks。",
   "3. 如果用户询问“任务进度”，必须调用 get-task-detail 和 get-task-events。",
   "4. 如果用户询问“漏洞详情”，必须调用 read-finding。",
-  "5. 如果用户询问“平台能做什么”，直接回答 VulnHunt 平台能力，不需要调用工具。",
+  "5. 如果用户询问“平台能做什么”，直接回答 VulnAgent 平台能力，不需要调用工具。",
   "6. 危险操作（取消任务、重启任务）前必须向用户确认。",
   "7. 当前 Chat 会话的前文就是你的可用上下文。用户问“刚才/此前/我们聊了什么/你还记得吗”时，必须直接根据当前对话上下文总结，不要调用 MCP，也不要调用 mcp action=ui-messages；只有用户明确要求查询其他历史会话时，才说明不能访问其他会话。",
   "8. 创建扫描任务时不要向用户索要 credential_id、user_id、tenant_id 或 session_id。create-task 会使用当前 Chat 会话选择的模型凭证。",
@@ -64,7 +64,7 @@ const PROTO_API_MAP: Record<string, string> = {
 // Credential ID → provider key mapping for set_model
 const credProviderMap = new Map<string, { providerKey: string; modelId: string }>();
 const noAuthProxyTargets = new Map<string, string>();
-const NO_AUTH_DUMMY_KEY = "vulnhunt-no-auth";
+const NO_AUTH_DUMMY_KEY = "vulnagent-no-auth";
 
 function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "");
@@ -87,7 +87,7 @@ function setupPiConfig(): void {
       console.error(`[bridge] Unknown MODEL_PROTO_TYPE: "${MODEL_PROTO}". Valid: ${Object.keys(PROTO_API_MAP).join(", ")}`);
       process.exit(1);
     }
-    const providerKey = "vulnhunt";
+    const providerKey = "vulnagent";
     const providerConfig: Record<string, unknown> = {
       baseUrl: API_KEY ? BASE_URL : noAuthProxyBaseUrl("primary"),
       api,
@@ -112,7 +112,7 @@ function setupPiConfig(): void {
       for (const cred of allCreds) {
         const api = PROTO_API_MAP[cred.proto_type];
         if (!api) continue;
-        const providerKey = `vh-${cred.id.slice(0, 8)}`;
+        const providerKey = `va-${cred.id.slice(0, 8)}`;
         const apiKeyEnv = `VH_KEY_${cred.id.replace(/-/g, "_").slice(0, 12).toUpperCase()}`;
 
         // Skip if same provider already registered (primary credential)
@@ -148,7 +148,7 @@ function setupPiConfig(): void {
   if (SERVICE_URL && MCP_TOKEN) {
     const mcpConfig = {
       mcpServers: {
-        vulnhunt: {
+        vulnagent: {
           url: `${SERVICE_URL}/mcp`,
           headers: { Authorization: `Bearer ${MCP_TOKEN}` },
           directTools: true,
@@ -165,7 +165,7 @@ function spawnPi(): ChildProcess {
   const sessionFile = join(SESSION_DIR, "session.jsonl");
 
   const modelStr = BASE_URL
-    ? `vulnhunt/${MODEL_NAME}`
+    ? `vulnagent/${MODEL_NAME}`
     : `${MODEL_PROTO}/${MODEL_NAME}`;
 
   const args = [
@@ -184,7 +184,7 @@ function spawnPi(): ChildProcess {
   }
 
   // Chat mode: inject platform assistant skill + system prompt for strong identity binding
-  const CHAT_SKILL_PATH = process.env.CHAT_SKILL_PATH ?? "/opt/vulnhunt/flows/vulnhunt-chat/skills/platform-assistant";
+  const CHAT_SKILL_PATH = process.env.CHAT_SKILL_PATH ?? "/opt/vulnagent/flows/vulnagent-chat/skills/platform-assistant";
   if (MODE === "chat") {
     args.push("--skill", CHAT_SKILL_PATH);
     args.push("--system-prompt", CHAT_SYSTEM_PROMPT);
@@ -316,10 +316,10 @@ function generateTitle(messages: Array<{ role: string; content: string }>, crede
     const modelStr = mapping
       ? `${mapping.providerKey}/${mapping.modelId}`
       : BASE_URL
-        ? `vulnhunt/${MODEL_NAME}`
+        ? `vulnagent/${MODEL_NAME}`
         : `${MODEL_PROTO}/${MODEL_NAME}`;
     const piDir = join(process.env.HOME ?? "/root", ".pi", "agent");
-    const tmpSession = join(mkdtempSync(join(tmpdir(), "vh-chat-title-")), "session.jsonl");
+    const tmpSession = join(mkdtempSync(join(tmpdir(), "va-chat-title-")), "session.jsonl");
     const prompt = [
       "请根据下面第一轮对话生成一个会话标题。",
       "要求：中文优先，8到20个字；只输出标题本身；不要引号、编号、解释或句末标点；不要写泛泛的“安全分析”“问题咨询”。",

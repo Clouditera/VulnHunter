@@ -1,5 +1,5 @@
 #!/bin/bash
-# DeVeye Server Setup Script — VulnHunt v1.0
+# DeVeye Server Setup Script — VulnAgent v1.0
 # Run this on a machine with desktop + Chrome
 
 set -e
@@ -68,6 +68,6 @@ echo "    --token <your-token> \\"
 echo "    --extension-path $SCRIPT_DIR/extension-dist \\"
 echo "    --daemon"
 echo ""
-echo "Then in VulnHunt Settings → POC/EXP:"
+echo "Then in VulnAgent Settings → POC/EXP:"
 echo "  Server URL: ws://<this-machine-ip>:9888"
 echo "  Token: <your-token>"

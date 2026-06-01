@@ -29,10 +29,10 @@ describe("removeWorkDir", () => {
   });
 
   it("uses the configured cleanup image for Docker fallback", async () => {
-    await removeWorkDir("/data/workspaces/task-1", "vulnhunt-worker:1.0.3");
+    await removeWorkDir("/data/workspaces/task-1", "vulnagent-worker:1.0.3");
 
     expect(createContainer).toHaveBeenCalledWith(
-      expect.objectContaining({ Image: "vulnhunt-worker:1.0.3" }),
+      expect.objectContaining({ Image: "vulnagent-worker:1.0.3" }),
     );
   });
 });

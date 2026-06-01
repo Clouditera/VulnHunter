@@ -10,7 +10,7 @@ import { stream } from "hono/streaming";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { logger } from "../../infra/logger.js";
-import type { TaskState, FindingReviewStatus } from "@vulnhunt/shared";
+import type { TaskState, FindingReviewStatus } from "@vulnagent/shared";
 
 // ─── Event types ───
 

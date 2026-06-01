@@ -1,5 +1,5 @@
 import { getDb } from "../../infra/db/client.js";
-import type { TaskState } from "@vulnhunt/shared";
+import type { TaskState } from "@vulnagent/shared";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 

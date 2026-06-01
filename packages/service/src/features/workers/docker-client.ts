@@ -16,9 +16,9 @@ export function initDocker(socketPath = "/var/run/docker.sock"): Dockerode {
   return _docker;
 }
 
-export const LABEL_MANAGED = "vulnhunt.managed";
-export const LABEL_TASK_ID = "vulnhunt.task_id";
-export const LABEL_TASK_TYPE = "vulnhunt.task_type";
+export const LABEL_MANAGED = "vulnagent.managed";
+export const LABEL_TASK_ID = "vulnagent.task_id";
+export const LABEL_TASK_TYPE = "vulnagent.task_type";
 
 export interface WorkerContainerSpec {
   taskId: string;
@@ -36,7 +36,7 @@ export interface WorkerContainerSpec {
 
 export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<Dockerode.Container> {
   const docker = getDocker();
-  const name = `vh-${spec.taskType}-${spec.taskId}`;
+  const name = `va-${spec.taskType}-${spec.taskId}`;
 
   const env = Object.entries(spec.env).map(([k, v]) => `${k}=${v}`);
 
@@ -70,15 +70,15 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
       [LABEL_MANAGED]: "true",
       [LABEL_TASK_ID]: spec.taskId,
       [LABEL_TASK_TYPE]: spec.taskType,
-      "vulnhunt.created_at": new Date().toISOString(),
+      "vulnagent.created_at": new Date().toISOString(),
     },
     HostConfig: {
       CpuQuota: spec.cpuQuota ?? 200000,
       Memory: spec.memoryBytes ?? 4 * 1024 * 1024 * 1024,
       MemorySwap: spec.memoryBytes ?? 4 * 1024 * 1024 * 1024,
-      NetworkMode: spec.network ?? "vulnhunt-internal",
+      NetworkMode: spec.network ?? "vulnagent-internal",
       Mounts: mounts,
-      ExtraHosts: ["vulnhunt-service:host-gateway"],
+      ExtraHosts: ["vulnagent-service:host-gateway"],
       ...(spec.autoRemove ? { AutoRemove: true } : {}),
     },
   });
@@ -95,7 +95,7 @@ export function ensureWorkDir(hostPath: string): void {
   logger.debug({ hostPath }, "Work directory ensured");
 }
 
-export async function removeWorkDir(hostPath: string, cleanupImage = "vulnhunt-worker:latest"): Promise<void> {
+export async function removeWorkDir(hostPath: string, cleanupImage = "vulnagent-worker:latest"): Promise<void> {
   try {
     rmSync(hostPath, { recursive: true, force: true });
     logger.info({ hostPath }, "Work directory removed");

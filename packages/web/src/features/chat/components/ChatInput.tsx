@@ -1,10 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type {
-  CSSProperties,
-  ClipboardEvent,
-  DragEvent,
-  KeyboardEvent,
-} from "react";
+import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { api } from "../../../shared/api/client.js";
@@ -208,6 +203,20 @@ export function ChatInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const onSuggest = (event: Event) => {
+      const value = (event as CustomEvent<{ text?: string }>).detail?.text;
+      if (!value) return;
+      setText(value);
+      requestAnimationFrame(() => {
+        resizeTextarea();
+        taRef.current?.focus();
+      });
+    };
+    window.addEventListener("vh:chat-suggest", onSuggest);
+    return () => window.removeEventListener("vh:chat-suggest", onSuggest);
+  }, []);
+
   function resizeTextarea() {
     const el = taRef.current;
     if (!el) return;
@@ -240,9 +249,7 @@ export function ChatInput({
     }
     const slots = MAX_ATTACHMENTS - pending.length;
     if (slots <= 0) {
-      setAttachError(
-        i18n.t("chat.attach.errTooMany").replace("{n}", String(MAX_ATTACHMENTS)),
-      );
+      setAttachError(i18n.t("chat.attach.errTooMany").replace("{n}", String(MAX_ATTACHMENTS)));
       return;
     }
     const next: PendingFile[] = incoming.slice(0, slots).map((f) => {
@@ -349,9 +356,7 @@ export function ChatInput({
       } catch (err) {
         setUploading(false);
         setAttachError(
-          i18n
-            .t("chat.attach.errUpload")
-            .replace("{msg}", (err as Error)?.message ?? "unknown"),
+          i18n.t("chat.attach.errUpload").replace("{msg}", (err as Error)?.message ?? "unknown"),
         );
         return;
       }
@@ -369,10 +374,7 @@ export function ChatInput({
   }
 
   const canSend =
-    !streaming &&
-    !disabled &&
-    !uploading &&
-    (text.trim().length > 0 || pending.length > 0);
+    !streaming && !disabled && !uploading && (text.trim().length > 0 || pending.length > 0);
 
   const attachBtnDisabled = disabled || streaming || uploading;
 
@@ -389,11 +391,7 @@ export function ChatInput({
       {pending.length > 0 ? (
         <div data-testid="chat-attachments" style={THUMB_ROW}>
           {pending.map((pf, i) => (
-            <div
-              key={i}
-              style={pf.isImage ? THUMB : THUMB_NON_IMAGE}
-              title={pf.name}
-            >
+            <div key={i} style={pf.isImage ? THUMB : THUMB_NON_IMAGE} title={pf.name}>
               {pf.isImage ? (
                 <img
                   src={pf.preview}
@@ -478,9 +476,7 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder={
-            uploading
-              ? i18n.t("chat.attach.uploading")
-              : i18n.t("chat.inputPlaceholder")
+            uploading ? i18n.t("chat.attach.uploading") : i18n.t("chat.inputPlaceholder")
           }
           rows={1}
           disabled={disabled || uploading}
@@ -501,9 +497,7 @@ export function ChatInput({
               color: "var(--brand)",
               border: "1px solid rgba(220,38,38,0.3)",
             }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = "rgba(220,38,38,0.18)")
-            }
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(220,38,38,0.18)")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-error)")}
           >
             <Icon name="x" size={16} strokeWidth={2.5} />
@@ -533,10 +527,7 @@ export function ChatInput({
       </div>
 
       {attachError ? (
-        <div
-          data-testid="chat-attach-error"
-          style={{ ...HINT, color: "var(--brand)" }}
-        >
+        <div data-testid="chat-attach-error" style={{ ...HINT, color: "var(--brand)" }}>
           {attachError}
         </div>
       ) : uploading ? (
@@ -544,9 +535,7 @@ export function ChatInput({
           {i18n.t("chat.attach.uploading")}
         </div>
       ) : dragOver ? (
-        <div style={{ ...HINT, color: "var(--brand)" }}>
-          {i18n.t("chat.attach.dropHint")}
-        </div>
+        <div style={{ ...HINT, color: "var(--brand)" }}>{i18n.t("chat.attach.dropHint")}</div>
       ) : null}
     </div>
   );

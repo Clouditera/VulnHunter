@@ -1,4 +1,4 @@
-const STORAGE_KEY = "vh-theme";
+const STORAGE_KEY = "va-theme";
 type Theme = "light" | "dark";
 
 const listeners: Array<() => void> = [];

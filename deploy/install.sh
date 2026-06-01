@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 WEB_PORT="${WEB_PORT:-23000}"
-DATA_DIR_DEFAULT="/opt/vulnhunt/data"
+DATA_DIR_DEFAULT="/opt/vulnagent/data"
 
 rand_hex() { openssl rand -hex "$1"; }
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "[install] missing command: $1" >&2; exit 1; }; }
@@ -47,7 +47,7 @@ default_data_dir() {
   if [[ "$(id -u)" == "0" ]]; then
     printf '%s\n' "$DATA_DIR_DEFAULT"
   else
-    printf '%s\n' "${HOME:-/tmp}/vulnhunt-data"
+    printf '%s\n' "${HOME:-/tmp}/vulnagent-data"
   fi
 }
 port_available() {
@@ -62,7 +62,7 @@ port_available() {
 if [[ ! -f .env ]]; then
   if [[ -z "${DATA_DIR:-}" ]] && ! is_tty; then
     echo "[install] DATA_DIR is required in non-interactive first install." >&2
-    echo "Example: DATA_DIR=/opt/vulnhunt/data WEB_PORT=23000 ./install.sh" >&2
+    echo "Example: DATA_DIR=/opt/vulnagent/data WEB_PORT=23000 ./install.sh" >&2
     exit 1
   fi
 
@@ -70,7 +70,7 @@ if [[ ! -f .env ]]; then
   web_port="${WEB_PORT:-23000}"
 
   if [[ -z "${DATA_DIR:-}" ]] && is_tty; then
-    echo "VulnHunt 安装向导"
+    echo "VulnAgent 安装向导"
     echo ""
     echo "数据目录会保存数据库、扫描工作区、报告、对象存储和授权状态。"
     echo "请使用持久化磁盘路径，不建议使用 /tmp。"
@@ -101,7 +101,7 @@ if [[ ! -f .env ]]; then
   fi
   if ! mkdir -p "$data_dir" 2>/dev/null || [[ ! -w "$data_dir" ]]; then
     echo "[install] 当前用户无法写入数据目录：$data_dir" >&2
-    echo "请选择其他目录，例如：${HOME:-/tmp}/vulnhunt-data" >&2
+    echo "请选择其他目录，例如：${HOME:-/tmp}/vulnagent-data" >&2
     exit 1
   fi
   if ! port_available "$web_port"; then
@@ -115,9 +115,9 @@ if [[ ! -f .env ]]; then
   sed -i "s|^MINIO_ACCESS_KEY=.*|MINIO_ACCESS_KEY=vh$(rand_hex 8)|" .env
   sed -i "s|^MINIO_SECRET_KEY=.*|MINIO_SECRET_KEY=$(rand_hex 24)|" .env
   sed -i "s|^WEB_PORT=.*|WEB_PORT=$web_port|" .env
-  master_key_file="$data_dir/.secrets/vulnhunt-master.key"
+  master_key_file="$data_dir/.secrets/vulnagent-master.key"
   sed -i "s|^MASTER_KEY_FILE=.*|MASTER_KEY_FILE=$master_key_file|" .env
-  sed -i "s|^VULNHUNT_MASTER_KEY_FILE=.*|VULNHUNT_MASTER_KEY_FILE=$master_key_file|" .env
+  sed -i "s|^VULNAGENT_MASTER_KEY_FILE=.*|VULNAGENT_MASTER_KEY_FILE=$master_key_file|" .env
   if [[ "$(id -u)" == "0" ]]; then
     sed -i "s|^SERVICE_UID=.*|SERVICE_UID=1001|" .env
     sed -i "s|^SERVICE_GID=.*|SERVICE_GID=1001|" .env
@@ -141,11 +141,11 @@ if [[ "${DATA_DIR:-$DATA_DIR_DEFAULT}" != /* ]]; then
   echo "[install] DATA_DIR must be an absolute host path: ${DATA_DIR:-$DATA_DIR_DEFAULT}" >&2
   exit 1
 fi
-mkdir -p "${DATA_DIR:-$DATA_DIR_DEFAULT}" "${DATA_DIR:-$DATA_DIR_DEFAULT}/db" "${DATA_DIR:-$DATA_DIR_DEFAULT}/minio" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" .secrets
+mkdir -p "${DATA_DIR:-$DATA_DIR_DEFAULT}" "${DATA_DIR:-$DATA_DIR_DEFAULT}/db" "${DATA_DIR:-$DATA_DIR_DEFAULT}/minio" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}")" .secrets
 SERVICE_UID="${SERVICE_UID:-1001}"
 SERVICE_GID="${SERVICE_GID:-1001}"
 if [[ "$(id -u)" == "0" ]]; then
-  chown -R "${SERVICE_UID}:${SERVICE_GID}" "${DATA_DIR:-$DATA_DIR_DEFAULT}" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" .secrets
+  chown -R "${SERVICE_UID}:${SERVICE_GID}" "${DATA_DIR:-$DATA_DIR_DEFAULT}" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}")" .secrets
   chown -R 70:70 "${DATA_DIR:-$DATA_DIR_DEFAULT}/db" 2>/dev/null || echo "[install] warning: could not chown Postgres data dir to uid 70" >&2
 else
   if [[ "$SERVICE_UID" != "$(id -u)" || "$SERVICE_GID" != "$(id -g)" ]]; then
@@ -158,39 +158,26 @@ else
     chmod -R a+rwX "${DATA_DIR:-$DATA_DIR_DEFAULT}/db"
   fi
 fi
-if ! chmod u+rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}" "${DATA_DIR:-$DATA_DIR_DEFAULT}/minio" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" .secrets 2>/dev/null; then
+if ! chmod u+rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}" "${DATA_DIR:-$DATA_DIR_DEFAULT}/minio" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}")" .secrets 2>/dev/null; then
   echo "[install] warning: could not chmod DATA_DIR/.secrets" >&2
 fi
-if [[ ! -w "${DATA_DIR:-$DATA_DIR_DEFAULT}" || ! -w "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}")" || ! -w .secrets ]]; then
+if [[ ! -w "${DATA_DIR:-$DATA_DIR_DEFAULT}" || ! -w "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}")" || ! -w .secrets ]]; then
   echo "[install] DATA_DIR, master key directory, or .secrets is not writable by service/install user" >&2
   exit 1
 fi
-if [[ -d "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}" ]]; then
+if [[ -d "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}" ]]; then
   echo "[install] master key path is a directory: ${MASTER_KEY_FILE}" >&2
   exit 1
 fi
-if [[ ! -f "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}" ]]; then
-  openssl rand -hex 32 > "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}"
-  chmod 0400 "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}"
-  echo "[install] generated master key: ${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}"
+if [[ ! -f "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}" ]]; then
+  openssl rand -hex 32 > "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}"
+  chmod 0400 "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}"
+  echo "[install] generated master key: ${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}"
 fi
 if [[ "$(id -u)" == "0" ]]; then
-  chown "${SERVICE_UID}:${SERVICE_GID}" "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}"
+  chown "${SERVICE_UID}:${SERVICE_GID}" "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}"
 fi
-chmod 0400 "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}"
-if [[ ! -f "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}" ]]; then
-  echo "[install] license public key missing: ${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}" >&2
-  echo "[install] restore .secrets/license-public.pem from the release package or configure LICENSE_PUBLIC_KEY_FILE" >&2
-  exit 1
-fi
-if ! openssl pkey -pubin -in "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}" -noout >/dev/null 2>&1; then
-  echo "[install] license public key is invalid: ${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}" >&2
-  exit 1
-fi
-if [[ "$(id -u)" == "0" ]]; then
-  chown "${SERVICE_UID}:${SERVICE_GID}" "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}"
-fi
-chmod 0444 "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}"
+chmod 0400 "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}"
 
 if [[ -f checksums.sha256 ]]; then
   echo "[install] verifying release files..."
@@ -205,7 +192,7 @@ if [[ -d images ]]; then
   done
 fi
 
-echo "[install] starting VulnHunt..."
+echo "[install] starting VulnAgent..."
 compose up -d
 
 url="http://127.0.0.1:${WEB_PORT}/api/system/status"
@@ -224,7 +211,7 @@ done
 
 machine_code="$(curl -fsS "$url" | sed -n 's/.*"installationId":"\([^"]*\)".*/\1/p')"
 echo ""
-echo "VulnHunt installed."
+echo "VulnAgent installed."
 echo "URL: http://$(hostname -I 2>/dev/null | awk '{print $1}'):${WEB_PORT}/"
 echo "Local URL: http://127.0.0.1:${WEB_PORT}/"
 [[ -n "$machine_code" ]] && echo "Machine code: $machine_code"

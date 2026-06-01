@@ -1,4 +1,4 @@
-# VulnHunt Development Guide
+# VulnAgent Development Guide
 
 **Reference**: Architecture discussion (8 scenes), Project Structure spec
 **Enforced via**: Biome lint rules + code review
@@ -8,7 +8,7 @@
 ## Core Principles
 
 1. **Organize by domain, not by layer** — `features/tasks/`, `features/findings/`, etc. Not `controllers/ services/ repositories/`
-2. **Cross-process contracts in shared only** — Types, error codes, event schemas defined ONCE in `@vulnhunt/shared`
+2. **Cross-process contracts in shared only** — Types, error codes, event schemas defined ONCE in `@vulnagent/shared`
 3. **Dependencies flow down, never sideways** — `shared` has zero runtime deps; features don't import each other's internals
 4. **Separate publishable units** — `service`, `web`, `worker-bridge` are three independent deliverables
 5. **Config separate from code** — Dockerfiles, compose, SQL migrations, i18n dicts live in `deploy/` or package `resources/`
@@ -22,7 +22,7 @@
 | Feature imports another feature's internal file | Import only from `../other-feature` (index.ts) | Boundary enforcement |
 | Business logic in `routes.ts` | Business logic in `service.ts`; routes = IO + validation + call service | Separation of concerns |
 | `infra/` importing from `features/` | `features/` → `infra/` only | Dependency direction |
-| Frontend `fetch("/api/tasks")` literal | Use `@vulnhunt/shared` DTO + `api-client.ts` | Type safety |
+| Frontend `fetch("/api/tasks")` literal | Use `@vulnagent/shared` DTO + `api-client.ts` | Type safety |
 | `throw new Error("some string")` | `throw new AppError("ERR_TASK_NOT_FOUND")` | Use shared error codes |
 | Sensitive fields in logs | pino `redact` config covers api_key/password/session_token | Security |
 | `SELECT * WHERE task_id = ?` without `tenant_id` | Always filter by `tenant_id` for business data | Multi-tenant readiness |
@@ -44,7 +44,7 @@ features/<domain>/
 ├── service.ts      Business logic (no HTTP, no direct DB calls)
 ├── storage.ts      DB access layer (SQL queries, drizzle models)
 ├── events.ts       (optional) WS subscriptions / event emitters
-├── types.ts        (optional) Feature-internal types; public types go in @vulnhunt/shared
+├── types.ts        (optional) Feature-internal types; public types go in @vulnagent/shared
 └── index.ts        Public exports: router, service instance, types
 ```
 
@@ -58,7 +58,7 @@ All errors use shared `ERROR_CATALOG`:
 
 ```typescript
 // In service.ts:
-import { type ErrorCode } from "@vulnhunt/shared";
+import { type ErrorCode } from "@vulnagent/shared";
 
 class AppError extends Error {
   constructor(public readonly code: ErrorCode, public readonly context?: Record<string, unknown>) {
@@ -67,7 +67,7 @@ class AppError extends Error {
 }
 
 // In middleware/error-handler.ts:
-import { ERROR_CATALOG } from "@vulnhunt/shared";
+import { ERROR_CATALOG } from "@vulnagent/shared";
 
 // Catch AppError → format as ApiError response
 ```
@@ -87,7 +87,7 @@ import { ERROR_CATALOG } from "@vulnhunt/shared";
 ## submodules
 
 - `submodules/youngflow` — Youngflow CLI (github.com/Clouditera/Youngflow)
-- The `vulnhunt-flow` directory lives at `~/dev/llm/youngflow/flows/vulnhunt/` locally
+- The `vulnagent-flow` directory lives at `~/dev/llm/youngflow/flows/vulnagent/` locally
   - For the worker image build, copy it to `worker-assets/` or reference via build script
   - `scripts/build-worker-bin.sh` handles the copy
 
@@ -116,7 +116,7 @@ No lateral dependencies between packages.
 Run tests:
 ```bash
 pnpm test                     # all packages
-pnpm --filter @vulnhunt/service test   # specific package
+pnpm --filter @vulnagent/service test   # specific package
 ```
 
 ---

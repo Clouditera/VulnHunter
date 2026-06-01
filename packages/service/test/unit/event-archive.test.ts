@@ -9,7 +9,7 @@ const archiveLines = [
 ].join("\n");
 
 vi.mock("../../src/infra/config.js", () => ({
-  loadConfig: vi.fn(() => ({ dataDir: "/tmp/vh", minio: { bucket: "vulnhunt" } })),
+  loadConfig: vi.fn(() => ({ dataDir: "/tmp/vh", minio: { bucket: "vulnagent" } })),
 }));
 
 vi.mock("../../src/infra/minio/client.js", () => ({

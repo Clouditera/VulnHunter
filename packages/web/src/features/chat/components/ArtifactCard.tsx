@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { i18n } from "../../../shared/i18n/index.js";
 import type { ChatArtifact } from "../types.js";
 
 const CARD: CSSProperties = {
@@ -25,22 +26,41 @@ const BTN: CSSProperties = {
   cursor: "pointer",
 };
 
-export function ArtifactCard({ artifact, onSelect }: { artifact: ChatArtifact; onSelect?: (artifact: ChatArtifact) => void }) {
+export function ArtifactCard({
+  artifact,
+  onSelect,
+}: { artifact: ChatArtifact; onSelect?: (artifact: ChatArtifact) => void }) {
   const size = formatBytes(artifact.size_bytes);
 
   return (
-    <div data-testid="chat-artifact-card" style={{ ...CARD, cursor: onSelect ? "pointer" : undefined }} onClick={() => onSelect?.(artifact)}>
+    <div
+      data-testid="chat-artifact-card"
+      style={{ ...CARD, cursor: onSelect ? "pointer" : undefined }}
+      onClick={() => onSelect?.(artifact)}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", gap: "10px" }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: "13px", color: "var(--text-primary)" }}>{artifact.title}</div>
-          <div style={META}>{artifact.filename} · {artifact.mime_type} · {size}</div>
+          <div style={{ fontWeight: 700, fontSize: "13px", color: "var(--text-primary)" }}>
+            {artifact.title}
+          </div>
+          <div style={META}>
+            {artifact.filename} · {artifact.mime_type} · {size}
+          </div>
         </div>
         <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
-          <span style={{ ...BTN, borderColor: "transparent" }}>在右侧预览</span>
-          <a style={{ ...BTN, textDecoration: "none" }} href={artifact.download_url} download={artifact.filename} onClick={(e) => e.stopPropagation()}>Download</a>
+          <span style={{ ...BTN, borderColor: "transparent" }}>
+            {i18n.t("chat.ref.viewInPanel")}
+          </span>
+          <a
+            style={{ ...BTN, textDecoration: "none" }}
+            href={artifact.download_url}
+            download={artifact.filename}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {i18n.t("reports.download")}
+          </a>
         </div>
       </div>
-
     </div>
   );
 }

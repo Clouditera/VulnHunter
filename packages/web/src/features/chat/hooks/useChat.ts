@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type ChatArtifactApi, type ChatMessageApi, type ChatSessionApi } from "../../../shared/api/client.js";
+import {
+  api,
+  type ChatArtifactApi,
+  type ChatMessageApi,
+  type ChatSessionApi,
+} from "../../../shared/api/client.js";
 import type {
   ChatActivity,
   ChatArtifact,
@@ -8,7 +13,14 @@ import type {
   ChatSession,
   ChatToolCall,
 } from "../types.js";
-import { mapToolActivity, respondingActivity, stoppedActivity, thinkingActivity, warningActivity, type ActivityDraft } from "../activity.js";
+import {
+  mapToolActivity,
+  respondingActivity,
+  stoppedActivity,
+  thinkingActivity,
+  warningActivity,
+  type ActivityDraft,
+} from "../activity.js";
 
 /**
  * Real-data version of the chat hook — talks to the backend via REST +
@@ -55,14 +67,15 @@ import { mapToolActivity, respondingActivity, stoppedActivity, thinkingActivity,
 export function useChat() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [messagesBySession, setMessagesBySession] =
-    useState<Record<string, ChatMessage[]>>({});
-  const [artifactsBySession, setArtifactsBySession] =
-    useState<Record<string, ChatArtifact[]>>({});
+  const [messagesBySession, setMessagesBySession] = useState<Record<string, ChatMessage[]>>({});
+  const [artifactsBySession, setArtifactsBySession] = useState<Record<string, ChatArtifact[]>>({});
   const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastError, setLastError] = useState<string | null>(null);
-  const [activitiesBySession, setActivitiesBySession] = useState<Record<string, ChatActivity[]>>({});
+  const [draftSession, setDraftSession] = useState<ChatSession | null>(null);
+  const [activitiesBySession, setActivitiesBySession] = useState<Record<string, ChatActivity[]>>(
+    {},
+  );
   // Id of the assistant message currently being streamed (one at a time).
   const currentAssistantId = useRef<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -78,12 +91,21 @@ export function useChat() {
       created_at: now,
       expires_at: draft.ttlMs ? now + draft.ttlMs : undefined,
     };
-    setActivitiesBySession((prev) => ({ ...prev, [sid]: [...(prev[sid] ?? []).filter((a) => !a.expires_at || a.expires_at > now), activity].slice(-5) }));
+    setActivitiesBySession((prev) => ({
+      ...prev,
+      [sid]: [
+        ...(prev[sid] ?? []).filter((a) => !a.expires_at || a.expires_at > now),
+        activity,
+      ].slice(-5),
+    }));
   }, []);
 
   const expireActivities = useCallback((sid: string, ttlMs: number) => {
     const expiresAt = Date.now() + ttlMs;
-    setActivitiesBySession((prev) => ({ ...prev, [sid]: (prev[sid] ?? []).map((a) => a.expires_at ? a : { ...a, expires_at: expiresAt }) }));
+    setActivitiesBySession((prev) => ({
+      ...prev,
+      [sid]: (prev[sid] ?? []).map((a) => (a.expires_at ? a : { ...a, expires_at: expiresAt })),
+    }));
   }, []);
 
   const refreshArtifacts = useCallback(async (sid: string) => {
@@ -133,9 +155,17 @@ export function useChat() {
         }
         if (evt.type === "chat_artifact_created" && evt.sessionId) {
           refreshArtifacts(evt.sessionId).catch(() => {});
-          pushActivity(evt.sessionId, { status: "success", label: evt.title ? `文件已生成：${String(evt.title).split(/[\\/]/).pop()?.slice(0, 48)}` : "文件已生成", ttlMs: 2500 });
+          pushActivity(evt.sessionId, {
+            status: "success",
+            label: evt.title
+              ? `文件已生成：${String(evt.title).split(/[\\/]/).pop()?.slice(0, 48)}`
+              : "文件已生成",
+            ttlMs: 2500,
+          });
         }
-      } catch { /* ignore malformed SSE */ }
+      } catch {
+        /* ignore malformed SSE */
+      }
     };
     return () => es.close();
   }, [refreshArtifacts, pushActivity]);
@@ -195,13 +225,16 @@ export function useChat() {
       .filter((v): v is number => typeof v === "number" && v > now)
       .sort((a, b) => a - b)[0];
     if (!nextExpiry) return;
-    const timer = window.setTimeout(() => {
-      const t = Date.now();
-      setActivitiesBySession((prev) => ({
-        ...prev,
-        [activeId]: (prev[activeId] ?? []).filter((a) => !a.expires_at || a.expires_at > t),
-      }));
-    }, Math.max(0, nextExpiry - now + 25));
+    const timer = window.setTimeout(
+      () => {
+        const t = Date.now();
+        setActivitiesBySession((prev) => ({
+          ...prev,
+          [activeId]: (prev[activeId] ?? []).filter((a) => !a.expires_at || a.expires_at > t),
+        }));
+      },
+      Math.max(0, nextExpiry - now + 25),
+    );
     return () => window.clearTimeout(timer);
   }, [activeId, activitiesBySession]);
 
@@ -250,251 +283,272 @@ export function useChat() {
   /*  Event reducer                                                         */
   /* --------------------------------------------------------------------- */
 
-  const applyEvent = useCallback((sid: string, evt: PiWsEvent) => {
-    switch (evt.type) {
-      case "session_title":
-        if (typeof evt.title === "string" && evt.title.trim()) {
+  const applyEvent = useCallback(
+    (sid: string, evt: PiWsEvent) => {
+      switch (evt.type) {
+        case "session_title":
+          if (typeof evt.title === "string" && evt.title.trim()) {
+            setSessions((s) =>
+              s.map((x) => (x.id === sid ? { ...x, title: evt.title!.trim() } : x)),
+            );
+          }
+          return;
+
+        case "agent_start":
+        case "turn_start":
+          pushActivity(sid, thinkingActivity());
+          setStreaming(true);
           setSessions((s) =>
-            s.map((x) => (x.id === sid ? { ...x, title: evt.title!.trim() } : x)),
+            s.map((x) => (x.id === sid ? { ...x, worker_state: "running" as const } : x)),
           );
+          return;
+
+        case "agent_end":
+        case "turn_end":
+          expireActivities(sid, 2500);
+          setStreaming(false);
+          return;
+
+        case "message_start": {
+          const role = evt.message?.role;
+          if (role !== "assistant") return; // user echoes are ignored
+          // Dedup 1: if an assistant message is already in flight, keep
+          // streaming into it rather than creating a second bubble.
+          if (currentAssistantId.current) return;
+          // Dedup 2 (belt-and-braces): if the tail of the session is already
+          // a completed assistant message that was added within the last
+          // second, treat this `message_start` as a replayed stale event
+          // (bridge-proxy event-buffer race) and skip it. This protects
+          // against the "切换 session 后消息累积" class of bugs even if
+          // the backend buffer flush ever regresses.
+          setMessagesBySession((prev) => {
+            const arr = prev[sid] ?? [];
+            const tail = arr[arr.length - 1];
+            if (
+              tail &&
+              tail.role === "assistant" &&
+              tail.streaming === false &&
+              Date.now() - Date.parse(tail.created_at) < 1500
+            ) {
+              // Just loaded from DB or recently settled — don't double-add.
+              return prev;
+            }
+            const id = `asst-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            currentAssistantId.current = id;
+            const newMsg: ChatMessage = {
+              id,
+              role: "assistant",
+              content: "",
+              seq: arr.length + 1,
+              created_at: new Date().toISOString(),
+              streaming: true,
+              tool_calls: [],
+            };
+            return { ...prev, [sid]: [...arr, newMsg] };
+          });
+          return;
         }
-        return;
 
-      case "agent_start":
-      case "turn_start":
-        pushActivity(sid, thinkingActivity());
-        setStreaming(true);
-        setSessions((s) =>
-          s.map((x) =>
-            x.id === sid ? { ...x, worker_state: "running" as const } : x,
-          ),
-        );
-        return;
+        case "message_update": {
+          const inner = evt.assistantMessageEvent;
+          if (!inner) return;
+          const id = currentAssistantId.current;
+          if (!id) return;
 
-      case "agent_end":
-      case "turn_end":
-        expireActivities(sid, 2500);
-        setStreaming(false);
-        return;
-
-      case "message_start": {
-        const role = evt.message?.role;
-        if (role !== "assistant") return; // user echoes are ignored
-        // Dedup 1: if an assistant message is already in flight, keep
-        // streaming into it rather than creating a second bubble.
-        if (currentAssistantId.current) return;
-        // Dedup 2 (belt-and-braces): if the tail of the session is already
-        // a completed assistant message that was added within the last
-        // second, treat this `message_start` as a replayed stale event
-        // (bridge-proxy event-buffer race) and skip it. This protects
-        // against the "切换 session 后消息累积" class of bugs even if
-        // the backend buffer flush ever regresses.
-        setMessagesBySession((prev) => {
-          const arr = prev[sid] ?? [];
-          const tail = arr[arr.length - 1];
-          if (
-            tail &&
-            tail.role === "assistant" &&
-            tail.streaming === false &&
-            Date.now() - Date.parse(tail.created_at) < 1500
-          ) {
-            // Just loaded from DB or recently settled — don't double-add.
-            return prev;
-          }
-          const id = `asst-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-          currentAssistantId.current = id;
-          const newMsg: ChatMessage = {
-            id,
-            role: "assistant",
-            content: "",
-            seq: arr.length + 1,
-            created_at: new Date().toISOString(),
-            streaming: true,
-            tool_calls: [],
-          };
-          return { ...prev, [sid]: [...arr, newMsg] };
-        });
-        return;
-      }
-
-      case "message_update": {
-        const inner = evt.assistantMessageEvent;
-        if (!inner) return;
-        const id = currentAssistantId.current;
-        if (!id) return;
-
-        // Extract text content from the full partial snapshot — idempotent
-        // under duplicate events. `partial.content` is an array of
-        // `{type: 'thinking'|'text', ...}` blocks.
-        const blocks = inner.partial?.content ?? [];
-        const textBlock = blocks.find(
-          (b): b is { type: "text"; text: string } => b?.type === "text",
-        );
-        const thinkingBlock = blocks.find(
-          (b): b is { type: "thinking"; thinking: string } =>
-            b?.type === "thinking",
-        );
-
-        if (textBlock?.text) pushActivity(sid, respondingActivity());
-
-        setMessagesBySession((prev) => {
-          const arr = prev[sid] ?? [];
-          const idx = arr.findIndex((m) => m.id === id);
-          if (idx < 0) return prev;
-          const next: ChatMessage = {
-            ...arr[idx],
-            content: textBlock?.text ?? arr[idx].content,
-            // Stash thinking for the future "Show thinking" toggle.
-            // v1.0 UI never reads this field.
-            thinking: thinkingBlock?.thinking ?? arr[idx].thinking,
-          };
-          const copy = arr.slice();
-          copy[idx] = next;
-          return { ...prev, [sid]: copy };
-        });
-        return;
-      }
-
-      case "message_end": {
-        const role = evt.message?.role;
-        if (role !== "assistant") return;
-        const id = currentAssistantId.current;
-        if (!id) return;
-
-        // Reconcile against the final snapshot just in case we missed a
-        // delta. Same "partial = truth" approach.
-        const blocks = evt.message?.content ?? [];
-        const textBlock = blocks.find(
-          (b: { type?: string }): b is { type: "text"; text: string } =>
-            b?.type === "text",
-        );
-
-        setMessagesBySession((prev) => {
-          const arr = prev[sid] ?? [];
-          const idx = arr.findIndex((m) => m.id === id);
-          if (idx < 0) return prev;
-          const finalText = (textBlock?.text ?? arr[idx].content ?? "").trim();
-          const hasToolCalls = (arr[idx].tool_calls ?? []).length > 0;
-
-          // B16 fix: pi emits multiple message_start → message_end cycles
-          // during multi-turn tool use. Some of those messages contain
-          // only a `thinking` block and no `text` block, which surfaces as
-          // an empty avatar bubble. When the final message has neither
-          // text content nor tool calls attached, drop it entirely.
-          if (!finalText && !hasToolCalls) {
-            const copy = arr.slice();
-            copy.splice(idx, 1);
-            return { ...prev, [sid]: copy };
-          }
-
-          const next: ChatMessage = {
-            ...arr[idx],
-            content: textBlock?.text ?? arr[idx].content,
-            streaming: false,
-          };
-          const copy = arr.slice();
-          copy[idx] = next;
-          return { ...prev, [sid]: copy };
-        });
-        currentAssistantId.current = null;
-        return;
-      }
-
-      case "tool_execution_start": {
-        const id = currentAssistantId.current;
-        if (!id) return;
-        const tcId = evt.tool_call_id ?? `tc-${Date.now()}`;
-        const tool = evt.tool ?? evt.name ?? "tool";
-        const args =
-          typeof evt.args === "string" ? evt.args : JSON.stringify(evt.args ?? {});
-        pushActivity(sid, mapToolActivity(tool, "start"));
-        setMessagesBySession((prev) => {
-          const arr = prev[sid] ?? [];
-          const idx = arr.findIndex((m) => m.id === id);
-          if (idx < 0) return prev;
-          const existing = arr[idx].tool_calls ?? [];
-          const call: ChatToolCall & { __id: string } = {
-            __id: tcId,
-            tool,
-            args,
-            status: "pending",
-          };
-          const copy = arr.slice();
-          copy[idx] = { ...arr[idx], tool_calls: [...existing, call] };
-          return { ...prev, [sid]: copy };
-        });
-        return;
-      }
-
-      case "tool_execution_end": {
-        const id = currentAssistantId.current;
-        if (!id) return;
-        const tcId = evt.tool_call_id;
-        const tool = evt.tool ?? evt.name;
-        pushActivity(sid, mapToolActivity(tool, evt.error ? "error" : "success", evt.result));
-        setMessagesBySession((prev) => {
-          const arr = prev[sid] ?? [];
-          const idx = arr.findIndex((m) => m.id === id);
-          if (idx < 0) return prev;
-          const calls = (arr[idx].tool_calls ?? []).slice();
-          const ci = calls.findIndex(
-            (c) => (c as unknown as { __id?: string }).__id === tcId,
+          // Extract text content from the full partial snapshot — idempotent
+          // under duplicate events. `partial.content` is an array of
+          // `{type: 'thinking'|'text', ...}` blocks.
+          const blocks = inner.partial?.content ?? [];
+          const textBlock = blocks.find(
+            (b): b is { type: "text"; text: string } => b?.type === "text",
           );
-          if (ci < 0) return prev;
-          calls[ci] = {
-            ...calls[ci],
-            status: evt.error ? "err" : "ok",
-            result: evt.result ?? null,
-            error: evt.error,
-          };
-          const copy = arr.slice();
-          copy[idx] = { ...arr[idx], tool_calls: calls };
-          return { ...prev, [sid]: copy };
-        });
-        return;
-      }
+          const thinkingBlock = blocks.find(
+            (b): b is { type: "thinking"; thinking: string } => b?.type === "thinking",
+          );
 
-      case "error": {
-        pushActivity(sid, warningActivity());
-        setLastError(evt.error ?? "pi error");
-        setStreaming(false);
-        return;
-      }
+          if (textBlock?.text) pushActivity(sid, respondingActivity());
 
-      default:
-        return; // agent_end, turn_start, thinking_* handled above or ignored
-    }
-  }, [expireActivities, pushActivity]);
+          setMessagesBySession((prev) => {
+            const arr = prev[sid] ?? [];
+            const idx = arr.findIndex((m) => m.id === id);
+            if (idx < 0) return prev;
+            const next: ChatMessage = {
+              ...arr[idx],
+              content: textBlock?.text ?? arr[idx].content,
+              // Stash thinking for the future "Show thinking" toggle.
+              // v1.0 UI never reads this field.
+              thinking: thinkingBlock?.thinking ?? arr[idx].thinking,
+            };
+            const copy = arr.slice();
+            copy[idx] = next;
+            return { ...prev, [sid]: copy };
+          });
+          return;
+        }
+
+        case "message_end": {
+          const role = evt.message?.role;
+          if (role !== "assistant") return;
+          const id = currentAssistantId.current;
+          if (!id) return;
+
+          // Reconcile against the final snapshot just in case we missed a
+          // delta. Same "partial = truth" approach.
+          const blocks = evt.message?.content ?? [];
+          const textBlock = blocks.find(
+            (b: { type?: string }): b is { type: "text"; text: string } => b?.type === "text",
+          );
+
+          setMessagesBySession((prev) => {
+            const arr = prev[sid] ?? [];
+            const idx = arr.findIndex((m) => m.id === id);
+            if (idx < 0) return prev;
+            const finalText = (textBlock?.text ?? arr[idx].content ?? "").trim();
+            const hasToolCalls = (arr[idx].tool_calls ?? []).length > 0;
+
+            // B16 fix: pi emits multiple message_start → message_end cycles
+            // during multi-turn tool use. Some of those messages contain
+            // only a `thinking` block and no `text` block, which surfaces as
+            // an empty avatar bubble. When the final message has neither
+            // text content nor tool calls attached, drop it entirely.
+            if (!finalText && !hasToolCalls) {
+              const copy = arr.slice();
+              copy.splice(idx, 1);
+              return { ...prev, [sid]: copy };
+            }
+
+            const next: ChatMessage = {
+              ...arr[idx],
+              content: textBlock?.text ?? arr[idx].content,
+              streaming: false,
+            };
+            const copy = arr.slice();
+            copy[idx] = next;
+            return { ...prev, [sid]: copy };
+          });
+          currentAssistantId.current = null;
+          return;
+        }
+
+        case "tool_execution_start": {
+          const id = currentAssistantId.current;
+          if (!id) return;
+          const tcId = evt.tool_call_id ?? `tc-${Date.now()}`;
+          const tool = evt.tool ?? evt.name ?? "tool";
+          const args = typeof evt.args === "string" ? evt.args : JSON.stringify(evt.args ?? {});
+          pushActivity(sid, mapToolActivity(tool, "start"));
+          setMessagesBySession((prev) => {
+            const arr = prev[sid] ?? [];
+            const idx = arr.findIndex((m) => m.id === id);
+            if (idx < 0) return prev;
+            const existing = arr[idx].tool_calls ?? [];
+            const call: ChatToolCall & { __id: string } = {
+              __id: tcId,
+              tool,
+              args,
+              status: "pending",
+            };
+            const copy = arr.slice();
+            copy[idx] = { ...arr[idx], tool_calls: [...existing, call] };
+            return { ...prev, [sid]: copy };
+          });
+          return;
+        }
+
+        case "tool_execution_end": {
+          const id = currentAssistantId.current;
+          if (!id) return;
+          const tcId = evt.tool_call_id;
+          const tool = evt.tool ?? evt.name;
+          pushActivity(sid, mapToolActivity(tool, evt.error ? "error" : "success", evt.result));
+          setMessagesBySession((prev) => {
+            const arr = prev[sid] ?? [];
+            const idx = arr.findIndex((m) => m.id === id);
+            if (idx < 0) return prev;
+            const calls = (arr[idx].tool_calls ?? []).slice();
+            const ci = calls.findIndex((c) => (c as unknown as { __id?: string }).__id === tcId);
+            if (ci < 0) return prev;
+            calls[ci] = {
+              ...calls[ci],
+              status: evt.error ? "err" : "ok",
+              result: evt.result ?? null,
+              error: evt.error,
+            };
+            const copy = arr.slice();
+            copy[idx] = { ...arr[idx], tool_calls: calls };
+            return { ...prev, [sid]: copy };
+          });
+          return;
+        }
+
+        case "error": {
+          pushActivity(sid, warningActivity());
+          setLastError(evt.error ?? "pi error");
+          setStreaming(false);
+          return;
+        }
+
+        default:
+          return; // agent_end, turn_start, thinking_* handled above or ignored
+      }
+    },
+    [expireActivities, pushActivity],
+  );
 
   /* --------------------------------------------------------------------- */
   /*  Derived state                                                         */
   /* --------------------------------------------------------------------- */
 
   const now = Date.now();
-  const activeActivities = activeId ? (activitiesBySession[activeId] ?? []).filter((a) => !a.expires_at || a.expires_at > now) : [];
+  const activeActivities = activeId
+    ? (activitiesBySession[activeId] ?? []).filter((a) => !a.expires_at || a.expires_at > now)
+    : [];
   const activity = activeActivities[activeActivities.length - 1] ?? null;
-  const messages = activeId ? messagesBySession[activeId] ?? [] : [];
-  const artifacts = activeId ? artifactsBySession[activeId] ?? [] : [];
+  const messages = activeId ? (messagesBySession[activeId] ?? []) : [];
+  const artifacts = activeId ? (artifactsBySession[activeId] ?? []) : [];
   const activeSession = useMemo(
-    () => sessions.find((s) => s.id === activeId) ?? null,
-    [sessions, activeId],
+    () =>
+      draftSession && activeId === draftSession.id
+        ? draftSession
+        : (sessions.find((s) => s.id === activeId) ?? null),
+    [sessions, activeId, draftSession],
   );
 
   /* --------------------------------------------------------------------- */
   /*  Actions                                                               */
   /* --------------------------------------------------------------------- */
 
-  const selectSession = useCallback((id: string) => setActiveId(id), []);
+  const selectSession = useCallback((id: string) => {
+    setDraftSession(null);
+    setActiveId(id);
+  }, []);
+
+  const startDraftSession = useCallback(() => {
+    const draft: ChatSession = {
+      id: "draft",
+      title: "New Chat",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      worker_state: "idle",
+      credential_id: null,
+    };
+    setDraftSession(draft);
+    setMessagesBySession((prev) => ({ ...prev, [draft.id]: [] }));
+    setActiveId(draft.id);
+  }, []);
 
   const createSession = useCallback(async () => {
     try {
       const res = await api.chat.sessions.create();
       const s = toDomainSession(res.session);
+      setDraftSession(null);
       setSessions((prev) => [s, ...prev]);
       setMessagesBySession((prev) => ({ ...prev, [s.id]: [] }));
       setActiveId(s.id);
+      return s;
     } catch (err) {
       setLastError((err as Error)?.message ?? "ERR_INTERNAL");
+      return null;
     }
   }, []);
 
@@ -526,7 +580,13 @@ export function useChat() {
       // (mirrors ChatGPT / Claude behaviour — "describe this image").
       const hasImages = !!images && images.length > 0;
       if (!activeId || (!text.trim() && !hasImages) || streaming) return;
-      const sid = activeId;
+      let sid = activeId;
+      if (draftSession && activeId === draftSession.id) {
+        const created = await createSession();
+        if (!created) return;
+        sid = created.id;
+        window.dispatchEvent(new CustomEvent("vh:sessions-changed"));
+      }
       // Optimistic user message (the service does not echo user messages
       // back over WS — only assistant/tool events).
       const optimistic: ChatMessage = {
@@ -555,10 +615,11 @@ export function useChat() {
         // Keep the user's message on screen. Append a visible error card
         // so the retry affordance is obvious.
         const code = (err as Error)?.message ?? "ERR_INTERNAL";
+        const userMessage = formatChatSendError(code);
         const errMsg: ChatMessage = {
           id: `e-${Date.now()}`,
           role: "assistant",
-          content: `⚠️ ${code}`,
+          content: userMessage,
           seq: (messagesBySession[sid]?.length ?? 0) + 2,
           created_at: new Date().toISOString(),
           streaming: false,
@@ -567,12 +628,12 @@ export function useChat() {
           ...prev,
           [sid]: [...(prev[sid] ?? []), errMsg],
         }));
-        pushActivity(sid, warningActivity(code));
+        pushActivity(sid, warningActivity(userMessage));
         setStreaming(false);
         setLastError(code);
       }
     },
-    [activeId, streaming, messagesBySession, pushActivity],
+    [activeId, streaming, messagesBySession, pushActivity, draftSession, createSession],
   );
 
   const abort = useCallback(() => {
@@ -596,6 +657,7 @@ export function useChat() {
     lastError,
     selectSession,
     createSession,
+    startDraftSession,
     deleteSession,
     sendPrompt,
     abort,
@@ -681,6 +743,16 @@ function toDomainMessage(m: ChatMessageApi): ChatMessage {
 }
 
 /** Build a ws:// or wss:// URL from a path. */
+function formatChatSendError(raw: string): string {
+  if (raw.includes("VULNAGENT_MASTER_KEY_FILE") || raw.includes("凭证加密 key 未配置")) {
+    return "Chat 暂时无法响应：模型凭证加密 key 未配置。请管理员检查服务端 master key 配置后重试。";
+  }
+  if (raw.includes("无法解密") || raw.includes("cannot be decrypted")) {
+    return "Chat 暂时无法响应：当前模型凭证无法解密。请在 Settings 重新保存模型凭证后重试。";
+  }
+  return raw;
+}
+
 function buildWsUrl(path: string): string {
   if (typeof window === "undefined") return path;
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";

@@ -45,7 +45,7 @@ export async function spawnReportWorker(params: {
       : await getDefaultCredential();
   } catch (err) {
     if (err instanceof CredentialKeyUnavailableError) {
-      throw new Error("凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。");
+      throw new Error("凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。");
     }
     if (err instanceof CredentialDecryptError) {
       throw new Error("LLM credential cannot be decrypted with current master key. Re-save the credential in Settings or restore the original master key.");
@@ -138,7 +138,7 @@ export async function spawnReportWorker(params: {
   logger.info({ reportId, findingCount: findingsDetail.length }, "Report context generated");
 
   // Container
-  const containerName = `vh-report-${reportId}`;
+  const containerName = `va-report-${reportId}`;
   try {
     const docker = getDocker();
     await docker.getContainer(containerName).remove({ force: true });

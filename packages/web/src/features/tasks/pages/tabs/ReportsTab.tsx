@@ -427,7 +427,7 @@ function StatusDot({ status }: { status: UserReport["status"] }) {
         flexShrink: 0,
         animation:
           status === "generating"
-            ? "vh-caret-blink 1.2s steps(2) infinite"
+            ? "va-caret-blink 1.2s steps(2) infinite"
             : undefined,
       }}
     />

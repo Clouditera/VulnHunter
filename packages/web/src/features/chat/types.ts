@@ -199,3 +199,26 @@ export interface ChatArtifact {
   download_url: string;
   created_at?: string;
 }
+
+export type ArtifactRefType = "task_ref" | "finding_ref" | "wiki_ref" | "report_ref";
+
+export interface ChatReferenceArtifact {
+  type: ArtifactRefType;
+  ref_id: string;
+  task_id: string;
+  finding_key?: string;
+  report_id?: string;
+  section?: string;
+  title?: string;
+  summary?: string;
+}
+
+export type ChatArtifactUnion = ChatArtifact | ChatReferenceArtifact;
+
+export function isFileArtifact(artifact: ChatArtifactUnion): artifact is ChatArtifact {
+  return artifact.type === "chat_artifact";
+}
+
+export function isRefArtifact(artifact: ChatArtifactUnion): artifact is ChatReferenceArtifact {
+  return artifact.type !== "chat_artifact";
+}

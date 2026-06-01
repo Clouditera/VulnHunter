@@ -53,7 +53,7 @@ function isBinary(buf: Buffer): boolean {
 async function downloadZipToTmp(bucket: string, key: string): Promise<string> {
   const minio = getMinio();
   const stream = await minio.getObject(bucket, key);
-  const tmpPath = join(tmpdir(), `vh-zip-${randomUUID()}.zip`);
+  const tmpPath = join(tmpdir(), `va-zip-${randomUUID()}.zip`);
 
   const chunks: Buffer[] = [];
   await new Promise<void>((resolve, reject) => {

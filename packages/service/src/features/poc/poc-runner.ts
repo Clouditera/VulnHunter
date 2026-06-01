@@ -48,7 +48,7 @@ export async function spawnPocRunner(
   const timeout = pocSettings?.poc_timeout_s ?? 300;
 
   // Remove stale container
-  const containerName = `vh-poc-run-${run.id}`;
+  const containerName = `va-poc-run-${run.id}`;
   try {
     const docker = getDocker();
     await docker.getContainer(containerName).remove({ force: true });

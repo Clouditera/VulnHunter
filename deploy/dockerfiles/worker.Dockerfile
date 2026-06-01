@@ -1,5 +1,5 @@
 FROM node:20-slim AS base
-WORKDIR /opt/vulnhunt
+WORKDIR /opt/vulnagent
 
 # System dependencies (python3 + pyyaml needed by feature-aggregator, project-profiler)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -16,12 +16,12 @@ COPY submodules/youngflow/release/youngflow-linux-x64 /usr/local/bin/youngflow
 RUN chmod +x /usr/local/bin/youngflow \
     && youngflow --version
 
-# vulnhunt flow assets (separate from youngflow submodule)
-COPY flows/vulnhunt /opt/vulnhunt/flows/vulnhunt
-RUN cd /opt/vulnhunt/flows/vulnhunt/extensions/output-contract \
+# vulnagent flow assets (separate from youngflow submodule)
+COPY flows/vulnagent /opt/vulnagent/flows/vulnagent
+RUN cd /opt/vulnagent/flows/vulnagent/extensions/output-contract \
     && npm install --omit=dev --no-audit --no-fund
-COPY flows/vulnhunt-report /opt/vulnhunt/flows/vulnhunt-report
-COPY flows/vulnhunt-chat /opt/vulnhunt/flows/vulnhunt-chat
+COPY flows/vulnagent-report /opt/vulnagent/flows/vulnagent-report
+COPY flows/vulnagent-chat /opt/vulnagent/flows/vulnagent-chat
 
 # Worker bridge (for chat/report modes)
 COPY packages/worker-bridge/dist/bundle.js /opt/bridge/bundle.js

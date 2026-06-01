@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
 /**
- * VulnHunt icon set — inline SVG, stroke-based.
+ * VulnAgent icon set — inline SVG, stroke-based.
  * All icons use `currentColor` for stroke so they inherit from parent.
  * Size defaults to 20px. Override via size prop or style.
  */
@@ -52,7 +52,8 @@ export type IconName =
   | "users"
   | "user"
   | "info"
-  | "image";
+  | "image"
+  | "book-open";
 
 interface IconProps {
   name: IconName;
@@ -85,9 +86,7 @@ const PATHS: Record<IconName, JSX.Element> = {
       <circle cx="4" cy="18" r="1.2" />
     </>
   ),
-  chat: (
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-  ),
+  chat: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
   settings: (
     <>
       <circle cx="12" cy="12" r="3" />
@@ -124,9 +123,7 @@ const PATHS: Record<IconName, JSX.Element> = {
       <path d="M8 13h8M8 17h5" />
     </>
   ),
-  shield: (
-    <path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z" />
-  ),
+  shield: <path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z" />,
   clock: (
     <>
       <circle cx="12" cy="12" r="9" />
@@ -317,6 +314,12 @@ const PATHS: Record<IconName, JSX.Element> = {
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <circle cx="8.5" cy="8.5" r="1.5" />
       <path d="M21 15l-5-5L5 21" />
+    </>
+  ),
+  "book-open": (
+    <>
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
     </>
   ),
 };

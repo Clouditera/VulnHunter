@@ -4,7 +4,7 @@
  * Seq numbers are monotonically increasing per task.
  */
 
-import type { LiveLogEvent } from "@vulnhunt/shared";
+import type { LiveLogEvent } from "@vulnagent/shared";
 
 interface EventEntry {
   seq: number;

@@ -200,7 +200,7 @@ export class TaskScheduler {
             durationMs,
             failureReason: ok ? undefined : `Worker exited with code ${exitCode}`,
           }).catch((err) => logger.error({ err, taskId }, "Failed to update task on die"));
-          notify({ type: "task_state", taskId, state: newState as import("@vulnhunt/shared").TaskState });
+          notify({ type: "task_state", taskId, state: newState as import("@vulnagent/shared").TaskState });
         }
       }
     });
@@ -270,13 +270,13 @@ export class TaskScheduler {
           : await getDefaultCredential();
       } catch (err) {
         if (err instanceof CredentialKeyUnavailableError) {
-          const reason = "凭证加密 key 未配置。请管理员设置 VULNHUNT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。";
+          const reason = "凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。";
           logger.error({ err, taskId: task.id, credId }, reason);
           await updateTaskState(task.id, "failed", {
             completedAt: new Date(),
             failureReason: reason,
           });
-          notify({ type: "task_state", taskId: task.id, state: "failed" as import("@vulnhunt/shared").TaskState });
+          notify({ type: "task_state", taskId: task.id, state: "failed" as import("@vulnagent/shared").TaskState });
           continue;
         }
         if (err instanceof CredentialDecryptError) {
@@ -286,7 +286,7 @@ export class TaskScheduler {
             completedAt: new Date(),
             failureReason: reason,
           });
-          notify({ type: "task_state", taskId: task.id, state: "failed" as import("@vulnhunt/shared").TaskState });
+          notify({ type: "task_state", taskId: task.id, state: "failed" as import("@vulnagent/shared").TaskState });
           continue;
         }
         throw err;
@@ -298,7 +298,7 @@ export class TaskScheduler {
           completedAt: new Date(),
           failureReason: reason,
         });
-        notify({ type: "task_state", taskId: task.id, state: "failed" as import("@vulnhunt/shared").TaskState });
+        notify({ type: "task_state", taskId: task.id, state: "failed" as import("@vulnagent/shared").TaskState });
         continue;
       }
 

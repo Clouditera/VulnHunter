@@ -16,7 +16,7 @@ mkdir -p /workspace/events
 chmod +x "$SCRIPT" 2>/dev/null || true
 
 # Use run_poc.py for consistent event streaming
-python3 /opt/vulnhunt/flows/vulnhunt-poc/skills/poc-executor/run_poc.py \
+python3 /opt/vulnagent/flows/vulnagent-poc/skills/poc-executor/run_poc.py \
   --bug-id "${FINDING_KEY}" \
   --script "$SCRIPT" \
   --target-url "${TARGET_URL}" \

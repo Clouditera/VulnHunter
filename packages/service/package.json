@@ -1,5 +1,5 @@
 {
-  "name": "@vulnhunt/service",
+  "name": "@vulnagent/service",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@vulnhunt/shared": "workspace:*",
+    "@vulnagent/shared": "workspace:*",
     "hono": "^4.7.4",
     "@hono/node-server": "^1.13.7",
     "postgres": "^3.4.5",
@@ -37,5 +37,9 @@
     "@types/node": "^22.10.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.9"
+  },
+  "exports": {
+    ".": "./dist/main.js",
+    "./enterprise-api": "./dist/enterprise-api.js"
   }
 }

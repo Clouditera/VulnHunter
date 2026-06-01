@@ -18,7 +18,7 @@ export async function cloneAndUpload(
   branch: string,
   bucket: string,
 ): Promise<void> {
-  const tmpDir = mkdtempSync(join(tmpdir(), `vh-git-${taskId}-`));
+  const tmpDir = mkdtempSync(join(tmpdir(), `va-git-${taskId}-`));
   const repoDir = join(tmpDir, "repo");
   const zipPath = join(tmpDir, "source.zip");
 

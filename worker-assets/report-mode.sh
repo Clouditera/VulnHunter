@@ -17,7 +17,7 @@ trap finish_log EXIT
 
 echo "[report] Starting report worker: task=$TASK_ID report=$REPORT_ID"
 
-FLOW_DIR="/opt/vulnhunt/flows/vulnhunt-report"
+FLOW_DIR="/opt/vulnagent/flows/vulnagent-report"
 
 mkdir -p /workspace/reports /workspace/context
 

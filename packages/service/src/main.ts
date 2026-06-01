@@ -1,20 +1,32 @@
 /**
- * VulnHunt Service — entry point
+ * VulnAgent Service — entry point
  */
 
 import { loadConfig } from "./infra/config.js";
 import { initDb, runMigrations } from "./infra/db/index.js";
 import { initMinio } from "./infra/minio/index.js";
 import { logger } from "./infra/logger.js";
-import { init as initLicense, tick as tickLicense } from "./features/license/index.js";
 import { initVault, checkCredentialHealth } from "./features/settings/index.js";
 import { initDocker, TaskScheduler, reconcileWorkers } from "./features/workers/index.js";
-import { startServer } from "./server.js";
+import { createApp, startServer } from "./server.js";
+import { initInstallation } from "./features/system/index.js";
+
+type EnterpriseModule = typeof import("@vulnagent/enterprise");
+
+async function loadEnterpriseModule(): Promise<EnterpriseModule> {
+  try {
+    return await import("@vulnagent/enterprise");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ERR_MODULE_NOT_FOUND") throw err;
+    const enterprisePath = "../../enterprise/dist/index.js";
+    return await import(enterprisePath) as EnterpriseModule;
+  }
+}
 
 async function main(): Promise<void> {
   const config = loadConfig();
 
-  logger.info("VulnHunt Service starting...");
+  logger.info("VulnAgent Service starting...");
 
   // Initialize DB
   await initDb(config.db.url);
@@ -25,8 +37,20 @@ async function main(): Promise<void> {
     logger.warn({ err }, "MinIO not available — continuing (workers will fail)");
   });
 
-  // Initialize License
-  initLicense(config.dataDir);
+  // Initialize installation identity (community and enterprise both need it)
+  initInstallation(config.dataDir);
+
+  const app = createApp();
+  let tickEnterpriseLicense: (() => Promise<void>) | null = null;
+  if (config.edition === "enterprise") {
+    try {
+      const enterpriseModule = await loadEnterpriseModule();
+      const enterprise = await enterpriseModule.initEnterprise(app, config);
+      tickEnterpriseLicense = enterprise.tickLicense;
+    } catch (err) {
+      logger.warn({ err }, "Enterprise module not found — running community edition");
+    }
+  }
 
   // Initialize crypto vault
   initVault(config.dataDir);
@@ -37,7 +61,7 @@ async function main(): Promise<void> {
   if (credentialHealth?.keyUnavailable) {
     logger.warn(
       { total: credentialHealth.total },
-      "Credential encryption key unavailable. Configure VULNHUNT_MASTER_KEY_FILE; credential operations will fail until configured.",
+      "Credential encryption key unavailable. Configure VULNAGENT_MASTER_KEY_FILE; credential operations will fail until configured.",
     );
   } else if (credentialHealth?.failed) {
     logger.error(
@@ -48,7 +72,7 @@ async function main(): Promise<void> {
         currentKeyFingerprint: credentialHealth.currentKeyFingerprint,
         failedCredentials: credentialHealth.failedCredentials,
       },
-      "Credential decrypt health degraded. Re-save credentials or restore the original master key file referenced by VULNHUNT_MASTER_KEY_FILE.",
+      "Credential decrypt health degraded. Re-save credentials or restore the original master key file referenced by VULNAGENT_MASTER_KEY_FILE.",
     );
   }
 
@@ -64,10 +88,11 @@ async function main(): Promise<void> {
   const scheduler = new TaskScheduler(config);
   await scheduler.start();
 
-  // Start hourly license tick
-  setInterval(() => {
-    tickLicense().catch((err) => logger.error({ err }, "License tick failed"));
-  }, 60 * 60 * 1000);
+  if (tickEnterpriseLicense) {
+    setInterval(() => {
+      tickEnterpriseLicense?.().catch((err) => logger.error({ err }, "License tick failed"));
+    }, 60 * 60 * 1000);
+  }
 
   // Graceful shutdown
   process.on("SIGTERM", () => {
@@ -76,7 +101,7 @@ async function main(): Promise<void> {
   });
 
   // Start HTTP server
-  startServer(config.port);
+  startServer(config.port, app);
 }
 
 main().catch((err) => {

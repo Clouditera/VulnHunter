@@ -1,5 +1,5 @@
 -- Migration 001: Initial schema
--- Creates core tables for VulnHunt v1.0
+-- Creates core tables for VulnAgent v1.0
 
 -- ── Tenants ──────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS tenants (

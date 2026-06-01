@@ -23,26 +23,39 @@ function RootGuard() {
 
   if (isLoading) return <LoadingScreen />;
 
-  if (error || !status) return <Navigate to="/activate" replace />;
-  if (status.license.status === "expired") return <Navigate to="/expired" replace />;
-  if (status.license.status !== "active") return <Navigate to="/activate" replace />;
+  if (error || !status) return <Navigate to="/login" replace />;
+  if (status.edition !== "community") {
+    if (status.license.status === "expired") return <Navigate to="/expired" replace />;
+    if (status.license.status !== "active") return <Navigate to="/activate" replace />;
+  }
   if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
   if (!status.is_authenticated) return <Navigate to="/login" replace />;
-  return <Navigate to="/dashboard" replace />;
+  return <Navigate to="/chat" replace />;
 }
 
 function LoadingScreen() {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--bg-page)", color: "var(--text-secondary)", fontSize: "14px" }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100vh",
+        background: "var(--bg-page)",
+        color: "var(--text-secondary)",
+        fontSize: "14px",
+      }}
+    >
       Loading…
     </div>
   );
 }
 
 function licenseTarget(status: ReturnType<typeof useSystemStatus>["data"]): string | null {
-  if (!status) return "/activate";
+  if (!status || status.edition === "community") return null;
   if (status.license.status === "expired") return "/expired";
-  if (status.license.status === "invalid" && status.license.invalid_reason === "version_mismatch") return "/expired";
+  if (status.license.status === "invalid" && status.license.invalid_reason === "version_mismatch")
+    return "/expired";
   if (status.license.status !== "active") return "/activate";
   return null;
 }
@@ -50,44 +63,53 @@ function licenseTarget(status: ReturnType<typeof useSystemStatus>["data"]): stri
 function ActivateGuard() {
   const { data: status, isLoading } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
-  if (status?.license.status === "active") return <Navigate to="/" replace />;
-  if (status?.license.status === "expired" || (status?.license.status === "invalid" && status.license.invalid_reason === "version_mismatch")) return <Navigate to="/expired" replace />;
+  if (status?.edition === "community" || status?.license.status === "active") return <Navigate to="/" replace />;
+  if (
+    status?.license.status === "expired" ||
+    (status?.license.status === "invalid" && status.license.invalid_reason === "version_mismatch")
+  )
+    return <Navigate to="/expired" replace />;
   return <ActivatePage />;
 }
 
 function ExpiredGuard() {
   const { data: status, isLoading } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
-  if (status?.license.status === "active") return <Navigate to="/" replace />;
-  if (status?.license.status !== "expired" && !(status?.license.status === "invalid" && status.license.invalid_reason === "version_mismatch")) return <Navigate to="/activate" replace />;
+  if (status?.edition === "community" || status?.license.status === "active") return <Navigate to="/" replace />;
+  if (
+    status?.license.status !== "expired" &&
+    !(status?.license.status === "invalid" && status.license.invalid_reason === "version_mismatch")
+  )
+    return <Navigate to="/activate" replace />;
   return <ExpiredPage />;
 }
 
 function BootstrapGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
-  if (error || !status) return <Navigate to="/activate" replace />;
+  if (error || !status) return <Navigate to="/login" replace />;
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
-  if (status.has_admin) return <Navigate to={status.is_authenticated ? "/dashboard" : "/login"} replace />;
+  if (status.has_admin)
+    return <Navigate to={status.is_authenticated ? "/chat" : "/login"} replace />;
   return <BootstrapPage />;
 }
 
 function LoginGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
-  if (error || !status) return <Navigate to="/activate" replace />;
+  if (error || !status) return <Navigate to="/login" replace />;
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
   if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
-  if (status.is_authenticated) return <Navigate to="/dashboard" replace />;
+  if (status.is_authenticated) return <Navigate to="/chat" replace />;
   return <LoginPage />;
 }
 
 function AuthGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
-  if (error || !status) return <Navigate to="/activate" replace />;
+  if (error || !status) return <Navigate to="/login" replace />;
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
   if (!status.has_admin) return <Navigate to="/bootstrap" replace />;

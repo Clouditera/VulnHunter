@@ -3,7 +3,13 @@ import type { CSSProperties } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential } from "../../../shared/api/client.js";
-import type { ChatActivity, ChatArtifact, ChatImageAttachment, ChatMessage, ChatSession } from "../types.js";
+import type {
+  ChatActivity,
+  ChatArtifactUnion,
+  ChatImageAttachment,
+  ChatMessage,
+  ChatSession,
+} from "../types.js";
 import { ChatActivityBar } from "./ChatActivityBar.js";
 import { MessageBubble } from "./MessageBubble.js";
 import { ChatInput } from "./ChatInput.js";
@@ -49,14 +55,16 @@ export function MessageFlow({
   onAbort,
   onArtifactSelect,
   activity,
+  onSuggest,
 }: {
   session: ChatSession | null;
   messages: ChatMessage[];
   streaming: boolean;
   onSend: (text: string, images?: ChatImageAttachment[]) => void;
   onAbort: () => void;
-  onArtifactSelect?: (artifact: ChatArtifact) => void;
+  onArtifactSelect?: (artifact: ChatArtifactUnion) => void;
   activity?: ChatActivity | null;
+  onSuggest?: (text: string) => void;
 }) {
   const streamRef = useRef<HTMLDivElement | null>(null);
 
@@ -92,11 +100,10 @@ export function MessageFlow({
   // Inject keyframes for the streaming caret blink animation.
   useEffect(() => {
     if (typeof document === "undefined") return;
-    if (document.getElementById("vh-chat-keyframes")) return;
+    if (document.getElementById("va-chat-keyframes")) return;
     const style = document.createElement("style");
-    style.id = "vh-chat-keyframes";
-    style.textContent =
-      "@keyframes vh-caret-blink { 50% { opacity: 0; } }";
+    style.id = "va-chat-keyframes";
+    style.textContent = "@keyframes va-caret-blink { 50% { opacity: 0; } }";
     document.head.appendChild(style);
   }, []);
 
@@ -104,18 +111,10 @@ export function MessageFlow({
     return (
       <section data-testid="chat-center" style={CENTER}>
         <div
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--text-secondary)",
-            fontSize: "13px",
-            padding: "24px",
-            textAlign: "center",
-          }}
+          data-testid="chat-message-stream"
+          style={{ ...STREAM, display: "flex", alignItems: "center", justifyContent: "center" }}
         >
-          {i18n.t("chat.noSession")}
+          <WelcomeState onSuggest={onSuggest} />
         </div>
       </section>
     );
@@ -141,30 +140,20 @@ export function MessageFlow({
         >
           {session.title}
         </h2>
-        <ModelChip sessionId={session.id} credentials={credentials} credentialId={session.credential_id ?? null} />
+        <ModelChip
+          sessionId={session.id}
+          credentials={credentials}
+          credentialId={session.credential_id ?? null}
+        />
         <WorkerBadge state={session.worker_state ?? "idle"} />
       </header>
+
+      <ChatActivityBar activity={activity} />
 
       {/* Scrollable message stream */}
       <div data-testid="chat-message-stream" ref={streamRef} style={STREAM}>
         {messages.length === 0 ? (
-          <div
-            style={{
-              padding: "80px 24px",
-              textAlign: "center",
-              color: "var(--text-secondary)",
-              fontSize: "14px",
-            }}
-          >
-            <Icon
-              name="chat"
-              size={40}
-              style={{ opacity: 0.35, marginBottom: "16px" }}
-            />
-            <div style={{ maxWidth: "420px", margin: "0 auto", lineHeight: 1.6 }}>
-              {i18n.t("chat.emptyMessages")}
-            </div>
-          </div>
+          <WelcomeState onSuggest={onSuggest} />
         ) : (
           <>
             {messages
@@ -179,8 +168,7 @@ export function MessageFlow({
               .map((m) => (
                 <MessageBubble key={m.id} message={m} onArtifactSelect={onArtifactSelect} />
               ))}
-            {streaming &&
-            messages[messages.length - 1]?.role !== "assistant" ? (
+            {streaming && messages[messages.length - 1]?.role !== "assistant" ? (
               <div
                 data-testid="chat-thinking-indicator"
                 style={{
@@ -202,8 +190,6 @@ export function MessageFlow({
         )}
       </div>
 
-      <ChatActivityBar activity={activity} />
-
       {/* Input bar */}
       <ChatInput
         sessionId={session?.id ?? null}
@@ -218,6 +204,115 @@ export function MessageFlow({
 /* -------------------------------------------------------------------------- */
 /*  Bits                                                                      */
 /* -------------------------------------------------------------------------- */
+
+function WelcomeState({ onSuggest }: { onSuggest?: (text: string) => void }) {
+  const zh = i18n.locale() === "zh";
+  const prompts: Array<{
+    icon: "git-branch" | "tasks" | "file-text";
+    title: string;
+    desc: string;
+    text: string;
+  }> = [
+    {
+      icon: "git-branch",
+      title: i18n.t("chat.welcome.prompt1.title"),
+      desc: i18n.t("chat.welcome.prompt1.desc"),
+      text: zh ? "帮我扫描一个 Git 仓库" : "Help me scan a Git repository",
+    },
+    {
+      icon: "tasks",
+      title: i18n.t("chat.welcome.prompt2.title"),
+      desc: i18n.t("chat.welcome.prompt2.desc"),
+      text: zh ? "绑定一个已有的扫描任务" : "Bind an existing scan task",
+    },
+    {
+      icon: "file-text",
+      title: i18n.t("chat.welcome.prompt3.title"),
+      desc: i18n.t("chat.welcome.prompt3.desc"),
+      text: zh ? "帮我生成漏洞报告" : "Help me generate a vulnerability report",
+    },
+  ];
+
+  return (
+    <div style={{ padding: "80px 24px", textAlign: "center", width: "100%" }}>
+      <Icon
+        name="chat"
+        size={48}
+        style={{ opacity: 0.3, marginBottom: "20px", color: "var(--text-secondary)" }}
+      />
+      <h2
+        style={{
+          fontSize: "20px",
+          fontWeight: 700,
+          color: "var(--text-primary)",
+          margin: "0 0 6px",
+        }}
+      >
+        {i18n.t("chat.welcome.title")}
+      </h2>
+      <div style={{ fontSize: "14px", color: "var(--text-secondary)", marginBottom: "32px" }}>
+        {i18n.t("chat.welcome.subtitle")}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          gap: "12px",
+          justifyContent: "center",
+          flexWrap: "wrap",
+          maxWidth: "520px",
+          margin: "0 auto",
+        }}
+      >
+        {prompts.map((prompt) => (
+          <button
+            key={prompt.title}
+            type="button"
+            onClick={() => onSuggest?.(prompt.text)}
+            style={{
+              width: "150px",
+              padding: "16px 14px",
+              borderRadius: "10px",
+              border: "1px solid var(--border)",
+              background: "var(--bg-card)",
+              cursor: "pointer",
+              textAlign: "left",
+              transition: "all 0.15s",
+              fontFamily: "inherit",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "var(--brand)";
+              e.currentTarget.style.boxShadow = "0 2px 8px rgba(220,38,38,0.08)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "var(--border)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
+            <Icon
+              name={prompt.icon}
+              size={20}
+              strokeWidth={1.75}
+              style={{ color: "var(--text-secondary)", marginBottom: "8px" }}
+            />
+            <div
+              style={{
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "var(--text-primary)",
+                marginBottom: "3px",
+              }}
+            >
+              {prompt.title}
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.4 }}>
+              {prompt.desc}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function ModelChip({
   sessionId,
@@ -240,8 +335,7 @@ function ModelChip({
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node))
-        setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -251,7 +345,7 @@ function ModelChip({
     (activeId ? credentials.find((c) => c.id === activeId) : null) ??
     credentials.find((c) => c.is_default) ??
     null;
-  const label = resolved ? (resolved.model_id || resolved.label || resolved.provider) : "未选择模型";
+  const label = resolved ? resolved.model_id || resolved.label || resolved.provider : "未选择模型";
   const canSwitch = credentials.length > 0;
 
   async function handleSelect(cred: LlmCredential) {
@@ -271,10 +365,7 @@ function ModelChip({
   }
 
   return (
-    <div
-      ref={wrapRef}
-      style={{ position: "relative", display: "inline-flex" }}
-    >
+    <div ref={wrapRef} style={{ position: "relative", display: "inline-flex" }}>
       <button
         type="button"
         data-testid="chat-model-chip"
@@ -373,13 +464,10 @@ function ModelChip({
                   transition: "background 0.1s",
                 }}
                 onMouseEnter={(e) => {
-                  if (!isActive)
-                    e.currentTarget.style.background = "var(--bg-hover)";
+                  if (!isActive) e.currentTarget.style.background = "var(--bg-hover)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = isActive
-                    ? "var(--bg-page)"
-                    : "transparent";
+                  e.currentTarget.style.background = isActive ? "var(--bg-page)" : "transparent";
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -409,11 +497,7 @@ function ModelChip({
                   </div>
                 </div>
                 {isActive ? (
-                  <Icon
-                    name="check"
-                    size={14}
-                    style={{ color: "var(--brand)", flexShrink: 0 }}
-                  />
+                  <Icon name="check" size={14} style={{ color: "var(--brand)", flexShrink: 0 }} />
                 ) : null}
               </button>
             );
@@ -473,7 +557,7 @@ function WorkerBadge({
           height: "6px",
           borderRadius: "50%",
           background: cfg.dot,
-          animation: state === "spawning" ? "vh-caret-blink 1s infinite" : undefined,
+          animation: state === "spawning" ? "va-caret-blink 1s infinite" : undefined,
         }}
       />
       {i18n.t(cfg.key)}
@@ -497,7 +581,7 @@ function PulsingDots() {
             height: "5px",
             borderRadius: "50%",
             background: "var(--text-secondary)",
-            animation: `vh-caret-blink 1s infinite`,
+            animation: `va-caret-blink 1s infinite`,
             animationDelay: `${d}s`,
           }}
         />

@@ -1,5 +1,5 @@
 import type { ErrorHandler } from "hono";
-import { ERROR_CATALOG, type ErrorCode } from "@vulnhunt/shared";
+import { ERROR_CATALOG, type ErrorCode } from "@vulnagent/shared";
 import { logger } from "../infra/logger.js";
 
 export class AppError extends Error {

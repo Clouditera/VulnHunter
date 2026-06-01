@@ -2,20 +2,20 @@ version: "3.9"
 
 services:
   web:
-    image: ${WEB_IMAGE:-vulnhunt-web:latest}
-    container_name: vulnhunt-web
+    image: ${WEB_IMAGE:-vulnagent-web:latest}
+    container_name: vulnagent-web
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-23000}:80"
     networks:
-      - vulnhunt-internal
+      - vulnagent-internal
     depends_on:
       service:
         condition: service_started
 
   service:
-    image: ${SERVICE_IMAGE:-vulnhunt-service:latest}
-    container_name: vulnhunt-service
+    image: ${SERVICE_IMAGE:-vulnagent-service:latest}
+    container_name: vulnagent-service
     restart: unless-stopped
     user: "${SERVICE_UID:-1001}:${SERVICE_GID:-1001}"
     ports:
@@ -23,30 +23,28 @@ services:
     environment:
       NODE_ENV: "production"
       PORT: "28080"
-      DATABASE_URL: "postgresql://vulnhunt:${DB_PASSWORD:-vulnhunt}@db:5432/vulnhunt"
+      DATABASE_URL: "postgresql://vulnagent:${DB_PASSWORD:-vulnagent}@db:5432/vulnagent"
       MINIO_ENDPOINT: "minio"
       MINIO_PORT: "9000"
       MINIO_USE_SSL: "false"
       MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
       MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
-      MINIO_BUCKET: "vulnhunt"
+      MINIO_BUCKET: "vulnagent"
       DOCKER_SOCKET: "/var/run/docker.sock"
-      WORKER_IMAGE: "${WORKER_IMAGE:-vulnhunt-worker:latest}"
-      EVAL_WORKER_IMAGE: "${EVAL_WORKER_IMAGE:-vulnhunt-eval-worker:latest}"
-      DOCKER_NETWORK: "vulnhunt-internal"
-      DATA_DIR: "${DATA_DIR:-/opt/vulnhunt/data}"
-      VULNHUNT_MASTER_KEY_FILE: "${VULNHUNT_MASTER_KEY_FILE:-/run/secrets/vulnhunt-master.key}"
-      VULNHUNT_LICENSE_PUBLIC_KEY_FILE: "${VULNHUNT_LICENSE_PUBLIC_KEY_FILE:-/run/secrets/license-public.pem}"
+      WORKER_IMAGE: "${WORKER_IMAGE:-vulnagent-worker:latest}"
+      EVAL_WORKER_IMAGE: "${EVAL_WORKER_IMAGE:-vulnagent-eval-worker:latest}"
+      DOCKER_NETWORK: "vulnagent-internal"
+      DATA_DIR: "${DATA_DIR:-/opt/vulnagent/data}"
+      VULNAGENT_MASTER_KEY_FILE: "${VULNAGENT_MASTER_KEY_FILE:-/run/secrets/vulnagent-master.key}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
     group_add:
       - "${DOCKER_GID:-0}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - "${DATA_DIR:-/opt/vulnhunt/data}:${DATA_DIR:-/opt/vulnhunt/data}"
-      - "${MASTER_KEY_FILE:-./.secrets/vulnhunt-master.key}:/run/secrets/vulnhunt-master.key:ro"
-      - "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}:/run/secrets/license-public.pem:ro"
+      - "${DATA_DIR:-/opt/vulnagent/data}:${DATA_DIR:-/opt/vulnagent/data}"
+      - "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}:/run/secrets/vulnagent-master.key:ro"
     networks:
-      - vulnhunt-internal
+      - vulnagent-internal
     depends_on:
       db:
         condition: service_healthy
@@ -55,34 +53,34 @@ services:
 
   db:
     image: ${POSTGRES_IMAGE:-postgres:16-alpine}
-    container_name: vulnhunt-db
+    container_name: vulnagent-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: vulnhunt
-      POSTGRES_USER: vulnhunt
-      POSTGRES_PASSWORD: "${DB_PASSWORD:-vulnhunt}"
+      POSTGRES_DB: vulnagent
+      POSTGRES_USER: vulnagent
+      POSTGRES_PASSWORD: "${DB_PASSWORD:-vulnagent}"
     volumes:
-      - "${DATA_DIR:-/opt/vulnhunt/data}/db:/var/lib/postgresql/data"
+      - "${DATA_DIR:-/opt/vulnagent/data}/db:/var/lib/postgresql/data"
     networks:
-      - vulnhunt-internal
+      - vulnagent-internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vulnhunt -d vulnhunt"]
+      test: ["CMD-SHELL", "pg_isready -U vulnagent -d vulnagent"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   minio:
     image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}
-    container_name: vulnhunt-minio
+    container_name: vulnagent-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: "${MINIO_ACCESS_KEY:-minioadmin}"
       MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY:-minioadmin}"
     volumes:
-      - "${DATA_DIR:-/opt/vulnhunt/data}/minio:/data"
+      - "${DATA_DIR:-/opt/vulnagent/data}/minio:/data"
     networks:
-      - vulnhunt-internal
+      - vulnagent-internal
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -90,6 +88,11 @@ services:
       retries: 10
 
 networks:
-  vulnhunt-internal:
+  vulnagent-internal:
     driver: bridge
-    name: vulnhunt-internal
+    name: vulnagent-internal
+    # Pin the Docker bridge subnet to avoid collisions with customer LAN/VPN routes.
+    # Override DOCKER_SUBNET in .env if 10.177.0.0/24 conflicts in the target environment.
+    ipam:
+      config:
+        - subnet: ${DOCKER_SUBNET:-10.177.0.0/24}

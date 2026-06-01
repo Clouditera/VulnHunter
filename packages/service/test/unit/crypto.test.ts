@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 
 function makeKeyFile(): string {
-  const dir = mkdtempSync(join(tmpdir(), "vh-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "va-test-"));
   const path = join(dir, "master.key");
   writeFileSync(path, randomBytes(32).toString("hex"), { mode: 0o400 });
   return path;
@@ -57,11 +57,11 @@ describe("MasterKeyVault", () => {
   });
 
   it("fails fast when key file is missing", () => {
-    expect(() => new MasterKeyVault(join(tmpdir(), "missing-vulnhunt-master.key"))).toThrow(/Master key file not found/);
+    expect(() => new MasterKeyVault(join(tmpdir(), "missing-vulnagent-master.key"))).toThrow(/Master key file not found/);
   });
 
   it("fails fast when key file format is invalid", () => {
-    const dir = mkdtempSync(join(tmpdir(), "vh-test-"));
+    const dir = mkdtempSync(join(tmpdir(), "va-test-"));
     const path = join(dir, "master.key");
     writeFileSync(path, "not-a-64-char-hex-key");
     expect(() => new MasterKeyVault(path)).toThrow(/64 hex chars/);

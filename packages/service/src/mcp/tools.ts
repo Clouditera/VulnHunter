@@ -1,5 +1,5 @@
 /**
- * MCP tool implementations for the VulnHunt platform.
+ * MCP tool implementations for the VulnAgent platform.
  * These tools allow Chat agents to query platform data.
  */
 

@@ -77,7 +77,7 @@ export function AuthSplitLayout({ children, testid }: { children: ReactNode; tes
           V
         </div>
         <div style={{ fontSize: "28px", fontWeight: 700, marginTop: "8px", letterSpacing: "0.08em" }}>
-          VulnHunt
+          VulnAgent
         </div>
         <div style={{ fontSize: "15px", opacity: 0.82, marginTop: "6px" }}>
           AI-Powered Security Audit
