@@ -395,6 +395,7 @@ const ZH: Record<string, string> = {
   "settings.users.col.email": "邮箱",
   "settings.users.col.name": "显示名",
   "settings.users.col.role": "角色",
+  "settings.users.col.taskLimit": "任务限额",
   "settings.users.col.lastLogin": "最近登录",
   "settings.users.never": "从未",
   "settings.users.menu.edit": "编辑",
@@ -411,6 +412,7 @@ const ZH: Record<string, string> = {
   "userModal.role": "角色",
   "userModal.role.admin": "管理员",
   "userModal.role.user": "普通用户",
+  "userModal.taskLimit": "任务限额（0 = 不限制）",
   "userModal.initialPassword": "初始密码",
   "userModal.passwordHint": "至少 8 位",
   "userModal.cancel": "取消",
@@ -494,6 +496,9 @@ const ZH: Record<string, string> = {
   "settings.credentials.collapse": "收起",
   "settings.credentials.create": "创建凭证",
   "settings.credentials.update": "保存修改",
+  "filters.user": "用户",
+  "filters.allUsers": "全部用户",
+  "taskLimit.exceeded": "已达到任务创建上限，请联系管理员扩容。",
   "newTask.cancel": "取消",
 
   // Chat
@@ -1066,6 +1071,7 @@ const EN: Record<string, string> = {
   "settings.users.col.email": "Email",
   "settings.users.col.name": "Name",
   "settings.users.col.role": "Role",
+  "settings.users.col.taskLimit": "Task limit",
   "settings.users.col.lastLogin": "Last login",
   "settings.users.never": "Never",
   "settings.users.menu.edit": "Edit",
@@ -1082,6 +1088,7 @@ const EN: Record<string, string> = {
   "userModal.role": "Role",
   "userModal.role.admin": "Admin",
   "userModal.role.user": "User",
+  "userModal.taskLimit": "Task limit (0 = unlimited)",
   "userModal.initialPassword": "Initial password",
   "userModal.passwordHint": "Min 8 characters",
   "userModal.cancel": "Cancel",
@@ -1165,6 +1172,9 @@ const EN: Record<string, string> = {
   "settings.credentials.collapse": "Collapse",
   "settings.credentials.create": "Create credential",
   "settings.credentials.update": "Save changes",
+  "filters.user": "User",
+  "filters.allUsers": "All users",
+  "taskLimit.exceeded": "Task creation limit reached. Contact an administrator to increase your quota.",
   "newTask.cancel": "Cancel",
 
   // Chat

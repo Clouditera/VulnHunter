@@ -179,13 +179,14 @@ export const api = {
       }),
   },
   tasks: {
-    list: (filters?: string | { state?: string; reviewStatus?: string }) => {
+    list: (filters?: string | { state?: string; reviewStatus?: string; userId?: string }) => {
       const params = new URLSearchParams();
       if (typeof filters === "string") {
         params.set("state", filters);
       } else if (filters) {
         if (filters.state) params.set("state", filters.state);
         if (filters.reviewStatus) params.set("review_status", filters.reviewStatus);
+        if (filters.userId) params.set("user_id", filters.userId);
       }
       const qs = params.toString();
       return request<{ tasks: Task[] }>(`/api/tasks${qs ? `?${qs}` : ""}`);
@@ -407,9 +408,9 @@ export const api = {
   },
   users: {
     list: () => request<{ users: UserApi[] }>("/api/users"),
-    create: (data: { email: string; password: string; display_name?: string; role?: string; must_change_password?: boolean }) =>
+    create: (data: { email: string; password: string; display_name?: string; role?: string; must_change_password?: boolean; task_limit?: number }) =>
       request<{ user: UserApi }>("/api/users", { method: "POST", body: JSON.stringify(data) }),
-    update: (id: string, data: { display_name?: string; role?: string; status?: string; reset_password?: string }) =>
+    update: (id: string, data: { display_name?: string; role?: string; status?: string; reset_password?: string; task_limit?: number }) =>
       request<{ ok: boolean }>(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<{ ok: boolean }>(`/api/users/${id}`, { method: "DELETE" }),
@@ -438,8 +439,13 @@ export const api = {
       }),
   },
   dashboard: {
-    get: (range?: string) =>
-      request<DashboardData>(`/api/dashboard${range ? `?range=${range}` : ""}`),
+    get: (range?: string, userId?: string) => {
+      const params = new URLSearchParams();
+      if (range) params.set("range", range);
+      if (userId) params.set("user_id", userId);
+      const qs = params.toString();
+      return request<DashboardData>(`/api/dashboard${qs ? `?${qs}` : ""}`);
+    },
   },
   chat: {
     sessions: {
@@ -732,6 +738,8 @@ export interface UserApi {
   must_change_password: boolean;
   last_login_at: string | null;
   created_at: string;
+  task_limit?: number;
+  task_count?: number;
 }
 
 export interface PocSettingsApi {

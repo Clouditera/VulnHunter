@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../../shared/api/client.js";
+import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
@@ -119,9 +120,18 @@ export function DashboardPage() {
   const [, forceUpdate] = useState(0);
   useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
 
+  const { data: status } = useSystemStatus();
+  const isAdmin = status?.user?.role === "admin";
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const { data: usersData } = useQuery({
+    queryKey: ["users", "dashboard-filter"],
+    queryFn: () => api.users.list(),
+    enabled: isAdmin,
+  });
+
   const { data, isLoading } = useQuery({
-    queryKey: ["dashboard"],
-    queryFn: () => api.dashboard.get("30d"),
+    queryKey: ["dashboard", selectedUserId],
+    queryFn: () => api.dashboard.get("30d", selectedUserId || undefined),
     // No refetchInterval: server SSE invalidates ["dashboard"] on every
     // task_state and findings_indexed event (see useNotifications).
   });
@@ -160,7 +170,8 @@ export function DashboardPage() {
       data-testid="dashboard-page"
       style={{ padding: "32px 40px 48px", minHeight: "100vh", background: "var(--bg-page)" }}
     >
-      <div style={{ marginBottom: "24px" }}>
+      <div style={{ marginBottom: "24px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px" }}>
+        <div>
         <h1
           style={{
             fontSize: "24px",
@@ -174,6 +185,16 @@ export function DashboardPage() {
         <p style={{ fontSize: "14px", color: "var(--text-secondary)", margin: "4px 0 0" }}>
           {i18n.locale() === "zh" ? "安全审计总览与统计" : "Security audit overview"}
         </p>
+        </div>
+        {isAdmin && (
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
+            {i18n.t("filters.user")}
+            <select data-testid="dashboard-user-filter" value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ height: "34px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 10px", background: "var(--bg-card)", color: "var(--text-primary)" }}>
+              <option value="">{i18n.t("filters.allUsers")}</option>
+              {(usersData?.users ?? []).map((u) => <option key={u.id} value={u.id}>{u.display_name || u.email}</option>)}
+            </select>
+          </label>
+        )}
       </div>
 
       {/* Stat cards */}
