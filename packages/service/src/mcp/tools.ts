@@ -16,8 +16,13 @@ import { loadConfig } from "../infra/config.js";
 import { notify } from "../features/notifications/index.js";
 import { logger } from "../infra/logger.js";
 import type { McpContext } from "./context.js";
+import type { QueryContext } from "../infra/query-context.js";
 
 type ToolResult = { content: Array<{ type: "text"; text: string }> };
+
+function toQueryContext(ctx: McpContext): QueryContext {
+  return { tenantId: ctx.tenantId, userId: ctx.userId, role: ctx.role === "admin" ? "admin" : "member" };
+}
 
 // ─── list-findings ───
 
@@ -31,8 +36,12 @@ export async function listFindings(args: {
   task_id: string;
   severity?: "high" | "medium" | "low" | "info";
   limit?: number;
-}): Promise<ToolResult> {
+}, ctx?: McpContext): Promise<ToolResult> {
   logger.debug({ args }, "MCP list-findings");
+  if (ctx) {
+    const task = await taskStorage.getTaskById(toQueryContext(ctx), args.task_id);
+    if (!task) return { content: [{ type: "text", text: `Task ${args.task_id} not found.` }] };
+  }
 
   const findings = await findingsStorage.listFindings({
     taskId: args.task_id,
@@ -64,8 +73,12 @@ export const readFindingSchema = {
 export async function readFinding(args: {
   task_id: string;
   finding_key: string;
-}): Promise<ToolResult> {
+}, ctx?: McpContext): Promise<ToolResult> {
   logger.debug({ args }, "MCP read-finding");
+  if (ctx) {
+    const task = await taskStorage.getTaskById(toQueryContext(ctx), args.task_id);
+    if (!task) return { content: [{ type: "text", text: `Task ${args.task_id} not found.` }] };
+  }
 
   const meta = await findingsStorage.getFindingByKey(args.task_id, args.finding_key);
   if (!meta) {
@@ -177,10 +190,10 @@ export const readTaskMetadataSchema = {
 
 export async function readTaskMetadata(args: {
   task_id: string;
-}): Promise<ToolResult> {
+}, ctx?: McpContext): Promise<ToolResult> {
   logger.debug({ args }, "MCP read-task-metadata");
 
-  const task = await taskStorage.getTaskById(args.task_id);
+  const task = ctx ? await taskStorage.getTaskById(toQueryContext(ctx), args.task_id) : await taskStorage.getTaskById(args.task_id);
   if (!task) {
     return {
       content: [{ type: "text", text: `Task ${args.task_id} not found.` }],
@@ -230,10 +243,13 @@ export const listTasksSchema = {
 export async function listTasks(args: {
   state?: string;
   limit?: number;
-}): Promise<ToolResult> {
+}, ctx?: McpContext): Promise<ToolResult> {
   logger.debug({ args }, "MCP list-tasks");
 
-  const tasks = await taskStorage.listTasks({
+  const tasks = ctx ? await taskStorage.listTasks(toQueryContext(ctx), {
+    state: args.state as never,
+    limit: args.limit ?? 10,
+  }) : await taskStorage.listTasks({
     state: args.state as never,
     limit: args.limit ?? 10,
   });
@@ -256,8 +272,9 @@ export async function listTasks(args: {
 
 async function resolveTaskCredential(ctx: McpContext) {
   const { getDefaultCredential, getCredentialById } = await import("../features/settings/storage.js");
-  if (ctx.actorType === "chat" && ctx.credentialId) return getCredentialById(ctx.credentialId);
-  return getDefaultCredential();
+  const queryCtx = toQueryContext(ctx);
+  if (ctx.actorType === "chat" && ctx.credentialId) return getCredentialById(queryCtx, ctx.credentialId);
+  return getDefaultCredential(queryCtx);
 }
 
 // ─── cancel-task ───
@@ -271,8 +288,10 @@ export async function cancelTask(args: {
 }, _ctx?: McpContext): Promise<ToolResult> {
   logger.debug({ args }, "MCP cancel-task");
 
+  const task = _ctx ? await taskStorage.getTaskById(toQueryContext(_ctx), args.task_id) : await taskStorage.getTaskById(args.task_id);
+  if (!task) return { content: [{ type: "text", text: "Task not found." }] };
   try {
-    const result = await cancelTaskControl(args.task_id);
+    const result = await cancelTaskControl(task.id);
     return {
       content: [{ type: "text", text: `Task ${result.task.project_name} (${result.task.id}) has been cancelled.` }],
     };

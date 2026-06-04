@@ -65,7 +65,7 @@ tasksRouter.get("/:id", async (c) => {
   // Enrich with credential label if set
   let credential_label: string | null = null;
   if (task.credential_id) {
-    const creds = await listCredentials();
+    const creds = await listCredentials(ctx);
     const cred = creds.find((c) => c.id === task.credential_id);
     credential_label = cred ? `${cred.label || cred.provider} — ${cred.model_id}` : null;
   }
@@ -149,7 +149,7 @@ tasksRouter.patch("/:id", async (c) => {
   if (body.credential_id !== undefined) {
     // Validate credential exists (unless null = clear)
     if (body.credential_id !== null) {
-      const creds = await listCredentials();
+      const creds = await listCredentials(ctx);
       if (!creds.find((cr) => cr.id === body.credential_id)) {
         return c.json({ error: { code: "ERR_NOT_FOUND", detail: "Credential not found" } }, 404);
       }

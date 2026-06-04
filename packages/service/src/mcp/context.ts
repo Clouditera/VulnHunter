@@ -23,7 +23,7 @@ export interface McpContext {
   reportId?: string;
   userId: string;
   tenantId: string;
-  role: "admin" | "user";
+  role: "admin" | "member";
   credentialId?: string | null;
 }
 
@@ -57,7 +57,7 @@ export async function resolveMcpContext(token: string): Promise<McpContext | nul
       sessionId: session.id,
       userId: session.user_id,
       tenantId: session.tenant_id,
-      role: (userRows[0]?.role as "admin" | "user") ?? "user",
+      role: userRows[0]?.role === "admin" ? "admin" : "member",
       credentialId: session.credential_id,
     };
   }
@@ -80,7 +80,7 @@ export async function resolveMcpContext(token: string): Promise<McpContext | nul
       reportId: report.id,
       userId: report.created_by,
       tenantId: report.tenant_id,
-      role: (userRows[0]?.role as "admin" | "user") ?? "user",
+      role: userRows[0]?.role === "admin" ? "admin" : "member",
     };
   }
 

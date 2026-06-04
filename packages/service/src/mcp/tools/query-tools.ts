@@ -6,6 +6,8 @@ import * as taskStorage from "../../features/tasks/storage.js";
 import * as findingsStorage from "../../features/findings/storage.js";
 import { getDashboard } from "../../features/dashboard/service.js";
 import { logger } from "../../infra/logger.js";
+import type { McpContext } from "../context.js";
+import type { QueryContext } from "../../infra/query-context.js";
 
 type ToolResult = { content: Array<{ type: "text"; text: string }> };
 
@@ -13,12 +15,16 @@ function text(t: string): ToolResult {
   return { content: [{ type: "text", text: t }] };
 }
 
+function toQueryContext(ctx: McpContext): QueryContext {
+  return { tenantId: ctx.tenantId, userId: ctx.userId, role: ctx.role === "admin" ? "admin" : "member" };
+}
+
 // ─── get-platform-overview ───
 
 export const getPlatformOverviewSchema = {};
 
-export async function getPlatformOverview(): Promise<ToolResult> {
-  const dashboard = await getDashboard("all");
+export async function getPlatformOverview(ctx: McpContext): Promise<ToolResult> {
+  const dashboard = await getDashboard(toQueryContext(ctx), "all");
   const lines = [
     "# Platform Overview",
     "",
@@ -55,8 +61,8 @@ export const getTaskDetailSchema = {
   task_id: z.string().describe("The task ID to get details for"),
 };
 
-export async function getTaskDetail(args: { task_id: string }): Promise<ToolResult> {
-  const task = await taskStorage.getTaskById(args.task_id);
+export async function getTaskDetail(args: { task_id: string }, ctx: McpContext): Promise<ToolResult> {
+  const task = await taskStorage.getTaskById(toQueryContext(ctx), args.task_id);
   if (!task) return text("Task not found.");
 
   const sevCounts = await findingsStorage.countFindingsBySeverity(args.task_id);
@@ -102,9 +108,9 @@ export async function getTaskEvents(args: {
   task_id: string;
   source?: string;
   limit?: number;
-}): Promise<ToolResult> {
+}, ctx: McpContext): Promise<ToolResult> {
   try {
-    const task = await taskStorage.getTaskById(args.task_id);
+    const task = await taskStorage.getTaskById(toQueryContext(ctx), args.task_id);
     if (!task) return text("Task not found.");
 
     const { loadTaskEvents } = await import("../../features/events/event-archive.js");
@@ -146,8 +152,10 @@ export const readWikiSchema = {
     .describe("Wiki section"),
 };
 
-export async function readWiki(args: { task_id: string; section?: string }): Promise<ToolResult> {
+export async function readWiki(args: { task_id: string; section?: string }, ctx: McpContext): Promise<ToolResult> {
   try {
+    const task = await taskStorage.getTaskById(toQueryContext(ctx), args.task_id);
+    if (!task) return text("Task not found.");
     const config = (await import("../../infra/config.js")).loadConfig();
     const minio = (await import("../../infra/minio/client.js")).getMinio();
 
@@ -178,7 +186,9 @@ export const readReportSchema = {
 export async function readReport(args: {
   task_id: string;
   report_id?: string;
-}): Promise<ToolResult> {
+}, ctx: McpContext): Promise<ToolResult> {
+  const task = await taskStorage.getTaskById(toQueryContext(ctx), args.task_id);
+  if (!task) return text("Task not found.");
   const reportStorage = await import("../../features/reports/storage.js");
   const reports = await reportStorage.listReports(args.task_id);
 
@@ -239,8 +249,8 @@ export async function emitReference(args: {
   section?: string;
   title?: string;
   summary?: string;
-}): Promise<ToolResult> {
-  const task = await taskStorage.getTaskById(args.task_id);
+}, ctx: McpContext): Promise<ToolResult> {
+  const task = await taskStorage.getTaskById(toQueryContext(ctx), args.task_id);
   if (!task) return text("Task not found.");
 
   let title = args.title;
@@ -300,7 +310,9 @@ export const getPocResultsSchema = {
 export async function getPocResults(args: {
   task_id: string;
   finding_key?: string;
-}): Promise<ToolResult> {
+}, ctx: McpContext): Promise<ToolResult> {
+  const task = await taskStorage.getTaskById(toQueryContext(ctx), args.task_id);
+  if (!task) return text("Task not found.");
   const pocStorage = await import("../../features/poc/storage.js");
   const results = await pocStorage.listPocResults(args.task_id);
 

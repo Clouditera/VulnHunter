@@ -38,13 +38,13 @@ chatRouter.post("/sessions", async (c) => {
   let credentialId: string | undefined;
   try {
     if (body.credential_id) {
-      const credential = await getCredentialById(body.credential_id);
+      const credential = await getCredentialById(ctx, body.credential_id);
       if (!credential) {
         return c.json({ error: { code: "ERR_NO_LLM_CREDENTIAL", detail: "选择的模型凭证不可用。请重新选择模型，或在 Settings 重新配置后重试。" } }, 409);
       }
       credentialId = credential.id;
     } else {
-      const credential = await getDefaultOrFirstAvailableCredential();
+      const credential = await getDefaultOrFirstAvailableCredential(ctx);
       credentialId = credential?.id;
     }
   } catch (err) {

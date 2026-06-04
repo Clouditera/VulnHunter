@@ -83,7 +83,7 @@ async function runAgentSmoke(baseUrl: string): Promise<{ toolObserved: boolean; 
   }), 60_000, "Agent 工具调用验证超时");
 }
 
-export async function diagnoseModelRuntimeCredential(cred: DecryptedLlmCredential, config: ServiceConfig, actor?: { userId: string; tenantId: string; role: "admin" | "user" }, onUpdate?: RuntimeDiagnosticUpdate): Promise<RuntimeDiagnosticResult> {
+export async function diagnoseModelRuntimeCredential(cred: DecryptedLlmCredential, config: ServiceConfig, actor?: { userId: string; tenantId: string; role: "admin" | "member" }, onUpdate?: RuntimeDiagnosticUpdate): Promise<RuntimeDiagnosticResult> {
   const checks: ModelDiagnosticCheck[] = [];
   const emit = (summary = "模型可用性测试进行中。") => onUpdate?.({ ok: false, summary, checks: [...checks] });
   checks.push(check("config", "配置检查", "pass", "配置字段完整，凭证已解密。"));

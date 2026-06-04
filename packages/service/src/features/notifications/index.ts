@@ -10,22 +10,25 @@ import { stream } from "hono/streaming";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { logger } from "../../infra/logger.js";
+import { getDb } from "../../infra/db/client.js";
 import type { TaskState, FindingReviewStatus } from "@vulnagent/shared";
 
 // ─── Event types ───
 
 export type NotificationEvent =
-  | { type: "task_state"; taskId: string; state: TaskState; prevState?: string }
-  | { type: "findings_indexed"; taskId: string; count: number }
-  | { type: "chat_worker_state"; sessionId: string; state: string }
-  | { type: "chat_session_title"; sessionId: string; title: string }
-  | { type: "chat_artifact_created"; sessionId: string; artifactId: string }
-  | { type: "finding_review_updated"; taskId: string; findingKeys: string[]; reviewStatus: FindingReviewStatus };
+  | { type: "task_state"; taskId: string; state: TaskState; prevState?: string; ownerId?: string | null }
+  | { type: "findings_indexed"; taskId: string; count: number; ownerId?: string | null }
+  | { type: "chat_worker_state"; sessionId: string; state: string; ownerId?: string | null }
+  | { type: "chat_session_title"; sessionId: string; title: string; ownerId?: string | null }
+  | { type: "chat_artifact_created"; sessionId: string; artifactId: string; ownerId?: string | null }
+  | { type: "finding_review_updated"; taskId: string; findingKeys: string[]; reviewStatus: FindingReviewStatus; ownerId?: string | null };
 
 // ─── In-memory subscriber list ───
 
 interface Subscriber {
   id: string;
+  userId: string;
+  role: "admin" | "member";
   write: (data: string) => void;
   close: () => void;
 }
@@ -38,15 +41,35 @@ const subscribers = new Set<Subscriber>();
  */
 export function notify(event: NotificationEvent): void {
   if (subscribers.size === 0) return;
+  void resolveOwnerId(event).then((ownerId) => broadcast({ ...event, ownerId } as NotificationEvent));
+}
+
+function broadcast(event: NotificationEvent): void {
   const data = JSON.stringify(event);
   const payload = `data: ${data}\n\n`;
+  const ownerId = "ownerId" in event ? event.ownerId : undefined;
   for (const sub of subscribers) {
+    if (ownerId && sub.role !== "admin" && sub.userId !== ownerId) continue;
     try {
       sub.write(payload);
     } catch {
       subscribers.delete(sub);
     }
   }
+}
+
+async function resolveOwnerId(event: NotificationEvent): Promise<string | null | undefined> {
+  if ("ownerId" in event && event.ownerId !== undefined) return event.ownerId;
+  const db = getDb();
+  if ("taskId" in event) {
+    const rows = await db<{ created_by: string | null }[]>`SELECT created_by FROM tasks WHERE id = ${event.taskId} LIMIT 1`;
+    return rows[0]?.created_by ?? null;
+  }
+  if ("sessionId" in event) {
+    const rows = await db<{ user_id: string | null }[]>`SELECT user_id FROM chat_sessions WHERE id = ${event.sessionId} LIMIT 1`;
+    return rows[0]?.user_id ?? null;
+  }
+  return undefined;
 }
 
 // ─── Hono router ───
@@ -57,6 +80,7 @@ notificationRouter.use("*", requireAuth);
 
 notificationRouter.get("/notifications", (c) => {
   const subId = `sse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const user = c.get("user");
 
   return stream(c, async (s) => {
     // Set SSE headers
@@ -66,6 +90,8 @@ notificationRouter.get("/notifications", (c) => {
 
     const sub: Subscriber = {
       id: subId,
+      userId: user.userId,
+      role: user.role === "admin" ? "admin" : "member",
       write: (data: string) => {
         s.write(data).catch(() => {});
       },
