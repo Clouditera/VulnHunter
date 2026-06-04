@@ -9,3 +9,4 @@ export { setLicenseStatusGetter } from "./features/system/license-status.js";
 export type { CoreLicenseStatus } from "./features/system/license-status.js";
 export { createUserAccount } from "./features/auth/service.js";
 export { listUsers, findUserByEmail, getUserById, updateUser, countAdmins, deleteUser } from "./features/auth/storage.js";
+export { countTasksForUser } from "./features/tasks/storage.js";

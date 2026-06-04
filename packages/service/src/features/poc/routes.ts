@@ -8,9 +8,10 @@ import { licenseGuard } from "../../middleware/license-guard.js";
 import { loadConfig } from "../../infra/config.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
+import { queryContextFromUser } from "../../infra/query-context.js";
+import { getAccessibleTask } from "../tasks/access.js";
 import { assertNoActiveOperation } from "../tasks/operation-lock.js";
 import * as pocStorage from "./storage.js";
-import * as taskStorage from "../tasks/storage.js";
 
 export const pocRouter = new Hono();
 pocRouter.use("*", licenseGuard);
@@ -21,7 +22,7 @@ pocRouter.use("*", requireAuth);
 // GET /api/tasks/:taskId/poc — per-finding POC status list
 pocRouter.get("/:taskId/poc", async (c) => {
   const taskId = c.req.param("taskId");
-  const task = await taskStorage.getTaskById(taskId);
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
   if (!task) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
 
   const results = await pocStorage.listPocResults(taskId);
@@ -48,9 +49,9 @@ pocRouter.get("/:taskId/poc", async (c) => {
 // POST /api/tasks/:taskId/poc/generate
 pocRouter.post("/:taskId/poc/generate", async (c) => {
   const taskId = c.req.param("taskId");
-  const user = c.get("user");
-  const task = await taskStorage.getTaskById(taskId);
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
   if (!task) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  const user = c.get("user");
 
   try { await assertNoActiveOperation(taskId, "poc"); } catch (err: any) {
     if (err.code === "ERR_TASK_BUSY") return c.json({ error: { code: "ERR_TASK_BUSY", message: err.message, active: err.active } }, 409);
@@ -125,6 +126,8 @@ pocRouter.get("/:taskId/poc/jobs/:jobId", async (c) => {
 // GET /api/tasks/:taskId/poc/:findingKey
 pocRouter.get("/:taskId/poc/:findingKey", async (c) => {
   const taskId = c.req.param("taskId");
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   const findingKey = c.req.param("findingKey");
 
   // Avoid matching "jobs", "generate" etc as findingKey
@@ -188,6 +191,8 @@ pocRouter.get("/:taskId/poc/:findingKey/script", async (c) => {
 // Returns the latest run log (poc_runs first, then poc_results fallback)
 pocRouter.get("/:taskId/poc/:findingKey/log", async (c) => {
   const taskId = c.req.param("taskId");
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   const findingKey = c.req.param("findingKey");
 
   // Check latest run first
@@ -249,6 +254,8 @@ pocRouter.get("/:taskId/poc/:findingKey/screenshots/:name", async (c) => {
 // POST /api/tasks/:taskId/poc/:findingKey/run
 pocRouter.post("/:taskId/poc/:findingKey/run", async (c) => {
   const taskId = c.req.param("taskId");
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   const findingKey = c.req.param("findingKey");
   const user = c.get("user");
 

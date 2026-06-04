@@ -2,10 +2,11 @@ import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { uploadFile } from "../../infra/minio/client.js";
-import { createTask } from "../tasks/storage.js";
+import { checkTaskLimit, createTask } from "../tasks/storage.js";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "../../infra/config.js";
 import { cloneAndUpload } from "./git-clone.js";
+import { queryContextFromUser } from "../../infra/query-context.js";
 
 export const filesRouter = new Hono();
 
@@ -16,7 +17,12 @@ filesRouter.use("*", requireAuth);
 // (Unified create endpoint, not in files/ conceptually, but wired here for Phase 2)
 filesRouter.post("/tasks", async (c) => {
   const user = c.get("user");
+  const ctx = queryContextFromUser(user);
   const config = loadConfig();
+  const limit = await checkTaskLimit(ctx);
+  if (!limit.allowed) {
+    return c.json({ error: { code: "ERR_TASK_LIMIT_EXCEEDED", message: `Task limit reached (${limit.used}/${limit.limit})`, used: limit.used, limit: limit.limit } }, 403);
+  }
 
   const contentType = c.req.header("content-type") ?? "";
 
@@ -40,6 +46,7 @@ filesRouter.post("/tasks", async (c) => {
     await uploadFile(config.minio.bucket, minioKey, Buffer.from(arrayBuffer), file.size);
 
     const task = await createTask({
+      tenantId: ctx.tenantId,
       createdBy: user.userId,
       projectName: file.name.replace(/\.(zip|tar\.gz|tar\.bz2)$/, ""),
       displayName,
@@ -66,6 +73,7 @@ filesRouter.post("/tasks", async (c) => {
   }
 
   const task = await createTask({
+    tenantId: ctx.tenantId,
     createdBy: user.userId,
     projectName: body.project_name ?? new URL(body.git_url).pathname.split("/").pop() ?? "project",
     displayName: body.display_name,

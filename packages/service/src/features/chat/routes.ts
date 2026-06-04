@@ -12,26 +12,28 @@ import { isPreviewableMime, readMinioPreview } from "./artifact-preview.js";
 import { getCredentialById, getDefaultOrFirstAvailableCredential } from "../settings/storage.js";
 import { ChatCredentialUnavailableError } from "./errors.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
+import { queryContextFromUser } from "../../infra/query-context.js";
 
 export const chatRouter = new Hono();
 chatRouter.use("*", licenseGuard);
 chatRouter.use("*", requireAuth);
 
 async function getOwnedSession(c: any) {
-  const user = c.get("user");
-  return chatStorage.getSessionForUser(c.req.param("id"), user.userId);
+  const ctx = queryContextFromUser(c.get("user"));
+  return chatStorage.getSessionForContext(c.req.param("id"), ctx);
 }
 
 // GET /api/chat/sessions
 chatRouter.get("/sessions", async (c) => {
-  const user = c.get("user");
-  const sessions = await chatStorage.listSessions(user.userId);
+  const ctx = queryContextFromUser(c.get("user"));
+  const sessions = await chatStorage.listSessions(ctx);
   return c.json({ sessions });
 });
 
 // POST /api/chat/sessions — create new session
 chatRouter.post("/sessions", async (c) => {
   const user = c.get("user");
+  const ctx = queryContextFromUser(user);
   const body = await c.req.json<{ name?: string; credential_id?: string }>().catch(() => ({} as { name?: string; credential_id?: string }));
   let credentialId: string | undefined;
   try {
@@ -52,7 +54,7 @@ chatRouter.post("/sessions", async (c) => {
       throw err;
     }
   }
-  const session = await chatStorage.createSession(user.userId, body.name, credentialId);
+  const session = await chatStorage.createSession(user.userId, body.name, credentialId, ctx.tenantId);
   return c.json({ session }, 201);
 });
 

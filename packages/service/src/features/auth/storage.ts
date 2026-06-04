@@ -11,6 +11,7 @@ export interface DbUser {
   status: string;
   display_name: string;
   must_change_password: boolean;
+  task_limit: number;
   last_login_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -40,17 +41,19 @@ export async function createUser(params: {
   role: "admin" | "member";
   displayName?: string;
   mustChangePassword?: boolean;
+  taskLimit?: number;
 }): Promise<DbUser> {
   const db = getDb();
   const rows = await db<DbUser[]>`
-    INSERT INTO users (tenant_id, email, password_hash, role, display_name, must_change_password)
+    INSERT INTO users (tenant_id, email, password_hash, role, display_name, must_change_password, task_limit)
     VALUES (
       ${DEFAULT_TENANT_ID},
       ${params.email},
       ${params.passwordHash},
       ${params.role},
       ${params.displayName ?? params.email.split("@")[0]},
-      ${params.mustChangePassword ?? false}
+      ${params.mustChangePassword ?? false},
+      ${params.taskLimit ?? 0}
     )
     RETURNING *
   `;
@@ -129,6 +132,7 @@ export async function updateUser(
     status?: string;
     passwordHash?: string;
     mustChangePassword?: boolean;
+    taskLimit?: number;
   },
 ): Promise<void> {
   const db = getDb();
@@ -139,6 +143,7 @@ export async function updateUser(
       status = COALESCE(${fields.status ?? null}, status),
       password_hash = COALESCE(${fields.passwordHash ?? null}, password_hash),
       must_change_password = COALESCE(${fields.mustChangePassword ?? null}, must_change_password),
+      task_limit = COALESCE(${fields.taskLimit ?? null}, task_limit),
       updated_at = now()
     WHERE id = ${id}
   `;

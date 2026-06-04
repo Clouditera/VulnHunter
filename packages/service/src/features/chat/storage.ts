@@ -1,4 +1,6 @@
 import { getDb } from "../../infra/db/client.js";
+import type { QueryContext } from "../../infra/query-context.js";
+import { shouldFilterByUser } from "../../infra/query-context.js";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -25,21 +27,39 @@ export interface DbChatMessage {
   created_at: Date;
 }
 
-export async function createSession(userId: string, title?: string, credentialId?: string): Promise<DbChatSession> {
+export async function createSession(userId: string, title?: string, credentialId?: string, tenantId = DEFAULT_TENANT_ID): Promise<DbChatSession> {
   const db = getDb();
   const rows = await db<DbChatSession[]>`
     INSERT INTO chat_sessions (tenant_id, user_id, title, credential_id)
-    VALUES (${DEFAULT_TENANT_ID}, ${userId}, ${title ?? "New Chat"}, ${credentialId ?? null})
+    VALUES (${tenantId}, ${userId}, ${title ?? "New Chat"}, ${credentialId ?? null})
     RETURNING *
   `;
   return rows[0];
 }
 
-export async function listSessions(userId: string): Promise<DbChatSession[]> {
+export async function listSessions(ctx: QueryContext): Promise<DbChatSession[]>;
+export async function listSessions(userId: string): Promise<DbChatSession[]>;
+export async function listSessions(ctxOrUserId: QueryContext | string): Promise<DbChatSession[]> {
   const db = getDb();
+  if (typeof ctxOrUserId === "string") {
+    return db<DbChatSession[]>`
+      SELECT * FROM chat_sessions
+      WHERE user_id = ${ctxOrUserId}
+      ORDER BY updated_at DESC
+      LIMIT 50
+    `;
+  }
+  if (shouldFilterByUser(ctxOrUserId)) {
+    return db<DbChatSession[]>`
+      SELECT * FROM chat_sessions
+      WHERE tenant_id = ${ctxOrUserId.tenantId} AND user_id = ${ctxOrUserId.userId}
+      ORDER BY updated_at DESC
+      LIMIT 50
+    `;
+  }
   return db<DbChatSession[]>`
     SELECT * FROM chat_sessions
-    WHERE user_id = ${userId}
+    WHERE tenant_id = ${ctxOrUserId.tenantId}
     ORDER BY updated_at DESC
     LIMIT 50
   `;
@@ -48,6 +68,22 @@ export async function listSessions(userId: string): Promise<DbChatSession[]> {
 export async function getSession(id: string): Promise<DbChatSession | null> {
   const db = getDb();
   const rows = await db<DbChatSession[]>`SELECT * FROM chat_sessions WHERE id = ${id}`;
+  return rows[0] ?? null;
+}
+
+export async function getSessionForContext(id: string, ctx: QueryContext): Promise<DbChatSession | null> {
+  const db = getDb();
+  const rows = shouldFilterByUser(ctx)
+    ? await db<DbChatSession[]>`
+      SELECT * FROM chat_sessions
+      WHERE id = ${id} AND tenant_id = ${ctx.tenantId} AND user_id = ${ctx.userId}
+      LIMIT 1
+    `
+    : await db<DbChatSession[]>`
+      SELECT * FROM chat_sessions
+      WHERE id = ${id} AND tenant_id = ${ctx.tenantId}
+      LIMIT 1
+    `;
   return rows[0] ?? null;
 }
 
