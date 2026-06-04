@@ -11,11 +11,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    const error = (body as { error?: { code?: string; detail?: string; message?: string } })?.error;
+    const error = (body as { error?: { code?: string; detail?: string; message?: string; used?: number; limit?: number } })?.error;
     const code = error?.code ?? "ERR_INTERNAL";
     const detail = error?.detail ?? error?.message ?? code;
-    const err = new Error(detail);
-    (err as Error & { code: string }).code = code;
+    const err = new Error(detail) as Error & { code: string; used?: number; limit?: number };
+    err.code = code;
+    err.used = error?.used;
+    err.limit = error?.limit;
     throw err;
   }
 
@@ -229,7 +231,14 @@ export const api = {
             let msg = `HTTP ${xhr.status}`;
             try {
               const parsed = JSON.parse(xhr.responseText);
-              msg = parsed?.error?.message ?? parsed?.error?.code ?? msg;
+              const error = parsed?.error;
+              msg = error?.message ?? error?.code ?? msg;
+              const err = new Error(msg) as Error & { code?: string; used?: number; limit?: number };
+              err.code = error?.code;
+              err.used = error?.used;
+              err.limit = error?.limit;
+              reject(err);
+              return;
             } catch {}
             reject(new Error(msg));
           }
