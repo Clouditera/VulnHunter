@@ -8,6 +8,8 @@ import { licenseGuard } from "../../middleware/license-guard.js";
 import { loadConfig } from "../../infra/config.js";
 import { uploadFile, getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
+import { queryContextFromUser } from "../../infra/query-context.js";
+import { getAccessibleTask } from "../tasks/access.js";
 import * as reportStorage from "./storage.js";
 import { spawnReportWorker } from "./report-worker.js";
 
@@ -88,6 +90,8 @@ reportsRouter.delete("/settings/skills/:id", requireAdmin, async (c) => {
 // GET /api/tasks/:taskId/reports
 reportsRouter.get("/tasks/:taskId/reports", async (c) => {
   const { taskId } = c.req.param();
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   const reports = await reportStorage.listReports(taskId);
   return c.json({ reports });
 });
@@ -95,6 +99,8 @@ reportsRouter.get("/tasks/:taskId/reports", async (c) => {
 // POST /api/tasks/:taskId/reports/generate
 reportsRouter.post("/tasks/:taskId/reports/generate", async (c) => {
   const { taskId } = c.req.param();
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   const user = c.get("user");
 
   try {

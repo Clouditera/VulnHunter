@@ -1,4 +1,6 @@
 import { getDb } from "../../infra/db/client.js";
+import type { QueryContext } from "../../infra/query-context.js";
+import { shouldFilterByUser } from "../../infra/query-context.js";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
@@ -26,14 +28,25 @@ interface DashboardData {
 
 const cache = new Map<string, { data: DashboardData; computedAt: number }>();
 
-export async function getDashboard(range: "30d" | "90d" | "all" = "30d"): Promise<DashboardData> {
-  const cacheKey = `${DEFAULT_TENANT_ID}:${range}`;
+export async function getDashboard(range?: "30d" | "90d" | "all"): Promise<DashboardData>;
+export async function getDashboard(ctx: QueryContext, range?: "30d" | "90d" | "all", filterUserId?: string): Promise<DashboardData>;
+export async function getDashboard(
+  a: QueryContext | "30d" | "90d" | "all" = "30d",
+  b: "30d" | "90d" | "all" = "30d",
+  filterUserId?: string,
+): Promise<DashboardData> {
+  const hasCtx = typeof a !== "string";
+  const ctx = hasCtx ? a : undefined;
+  const range = hasCtx ? b : a;
+  const tenantId = ctx?.tenantId ?? DEFAULT_TENANT_ID;
+  const effectiveUserId = ctx && shouldFilterByUser(ctx) ? ctx.userId : filterUserId;
+  const cacheKey = `${tenantId}:${effectiveUserId ?? "all"}:${range}`;
   const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.computedAt < CACHE_TTL_MS) {
     return cached.data;
   }
 
-  const data = await computeDashboard(range);
+  const data = await computeDashboard(tenantId, effectiveUserId, range);
   cache.set(cacheKey, { data, computedAt: Date.now() });
   return data;
 }
@@ -42,7 +55,7 @@ export function invalidateDashboardCache(): void {
   cache.clear();
 }
 
-async function computeDashboard(range: string): Promise<DashboardData> {
+async function computeDashboard(tenantId: string, userId: string | undefined, range: string): Promise<DashboardData> {
   const db = getDb();
 
   const since =
@@ -52,54 +65,85 @@ async function computeDashboard(range: string): Promise<DashboardData> {
         ? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
         : new Date(0);
 
-  const [scansRows, sevRows, vulnTypeRows, recentRows, durationRows] = await Promise.all([
-    // Total scans
-    db<{ count: string }[]>`
+  const scansRows = userId
+    ? await db<{ count: string }[]>`
       SELECT COUNT(*) as count FROM tasks
-      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND state = 'completed'
+      WHERE tenant_id = ${tenantId} AND created_by = ${userId} AND state = 'completed'
         AND created_at >= ${since}
-    `,
-    // Severity distribution
-    db<{ severity: string; count: string }[]>`
+    `
+    : await db<{ count: string }[]>`
+      SELECT COUNT(*) as count FROM tasks
+      WHERE tenant_id = ${tenantId} AND state = 'completed'
+        AND created_at >= ${since}
+    `;
+
+  const sevRows = userId
+    ? await db<{ severity: string; count: string }[]>`
+      SELECT f.severity, COUNT(*) as count FROM findings_meta f
+      JOIN tasks t ON t.id = f.task_id
+      WHERE f.tenant_id = ${tenantId} AND t.created_by = ${userId}
+        AND f.indexed_at >= ${since}
+      GROUP BY f.severity
+    `
+    : await db<{ severity: string; count: string }[]>`
       SELECT severity, COUNT(*) as count FROM findings_meta
-      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE tenant_id = ${tenantId}
         AND indexed_at >= ${since}
       GROUP BY severity
-    `,
-    // Vulnerability Type Top 5
-    db<{ vuln_type: string; count: string }[]>`
+    `;
+
+  const vulnTypeRows = userId
+    ? await db<{ vuln_type: string; count: string }[]>`
       SELECT vuln_type, COUNT(*) as count FROM (
-        SELECT COALESCE(NULLIF(vuln_type_full, ''), NULLIF(vuln_type, '')) as vuln_type
-        FROM findings_meta
-        WHERE tenant_id = ${DEFAULT_TENANT_ID}
-          AND indexed_at >= ${since}
-          AND COALESCE(NULLIF(vuln_type_full, ''), NULLIF(vuln_type, '')) IS NOT NULL
-      ) t
+        SELECT COALESCE(NULLIF(f.vuln_type_full, ''), NULLIF(f.vuln_type, '')) as vuln_type
+        FROM findings_meta f
+        JOIN tasks t ON t.id = f.task_id
+        WHERE f.tenant_id = ${tenantId} AND t.created_by = ${userId}
+          AND f.indexed_at >= ${since}
+          AND COALESCE(NULLIF(f.vuln_type_full, ''), NULLIF(f.vuln_type, '')) IS NOT NULL
+      ) x
       GROUP BY vuln_type
       ORDER BY count DESC
       LIMIT 5
-    `,
-    // Recent scans
-    db<{
-      id: string;
-      project_name: string;
-      state: string;
-      risk_score: number | null;
-      duration_ms: number | null;
-      created_at: Date;
-    }[]>`
+    `
+    : await db<{ vuln_type: string; count: string }[]>`
+      SELECT vuln_type, COUNT(*) as count FROM (
+        SELECT COALESCE(NULLIF(vuln_type_full, ''), NULLIF(vuln_type, '')) as vuln_type
+        FROM findings_meta
+        WHERE tenant_id = ${tenantId}
+          AND indexed_at >= ${since}
+          AND COALESCE(NULLIF(vuln_type_full, ''), NULLIF(vuln_type, '')) IS NOT NULL
+      ) x
+      GROUP BY vuln_type
+      ORDER BY count DESC
+      LIMIT 5
+    `;
+
+  const recentRows = userId
+    ? await db<{ id: string; project_name: string; state: string; risk_score: number | null; duration_ms: number | null; created_at: Date }[]>`
       SELECT id, project_name, state, risk_score, duration_ms, created_at
       FROM tasks
-      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE tenant_id = ${tenantId} AND created_by = ${userId}
       ORDER BY created_at DESC LIMIT 5
-    `,
-    // Avg duration
-    db<{ avg_duration: string | null }[]>`
+    `
+    : await db<{ id: string; project_name: string; state: string; risk_score: number | null; duration_ms: number | null; created_at: Date }[]>`
+      SELECT id, project_name, state, risk_score, duration_ms, created_at
+      FROM tasks
+      WHERE tenant_id = ${tenantId}
+      ORDER BY created_at DESC LIMIT 5
+    `;
+
+  const durationRows = userId
+    ? await db<{ avg_duration: string | null }[]>`
       SELECT AVG(duration_ms) as avg_duration FROM tasks
-      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND state = 'completed'
+      WHERE tenant_id = ${tenantId} AND created_by = ${userId} AND state = 'completed'
         AND created_at >= ${since}
-    `,
-  ]);
+    `
+    : await db<{ avg_duration: string | null }[]>`
+      SELECT AVG(duration_ms) as avg_duration FROM tasks
+      WHERE tenant_id = ${tenantId} AND state = 'completed'
+        AND created_at >= ${since}
+    `;
 
   const totalScans = Number(scansRows[0]?.count ?? 0);
   const avgDurationMs = Number(durationRows[0]?.avg_duration ?? 0);
@@ -115,19 +159,24 @@ async function computeDashboard(range: string): Promise<DashboardData> {
     }
   }
 
-  // Review status distribution
-  const reviewRows = await db<{ review_status: string; count: string }[]>`
-    SELECT review_status, COUNT(*) as count FROM findings_meta
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
-    GROUP BY review_status
-  `;
+  const reviewRows = userId
+    ? await db<{ review_status: string; count: string }[]>`
+      SELECT f.review_status, COUNT(*) as count FROM findings_meta f
+      JOIN tasks t ON t.id = f.task_id
+      WHERE f.tenant_id = ${tenantId} AND t.created_by = ${userId}
+      GROUP BY f.review_status
+    `
+    : await db<{ review_status: string; count: string }[]>`
+      SELECT review_status, COUNT(*) as count FROM findings_meta
+      WHERE tenant_id = ${tenantId}
+      GROUP BY review_status
+    `;
   const reviewStatusDist = { pending: 0, confirmed: 0, false_positive: 0, ignored: 0 };
   for (const r of reviewRows) {
     const s = r.review_status as keyof typeof reviewStatusDist;
     if (s in reviewStatusDist) reviewStatusDist[s] = Number(r.count);
   }
 
-  // Get severity counts per recent task
   const recentWithCounts = await Promise.all(
     recentRows.map(async (task) => {
       const rows = await db<{ severity: string; count: string }[]>`
@@ -145,8 +194,7 @@ async function computeDashboard(range: string): Promise<DashboardData> {
     }),
   );
 
-  // Compute delta vs previous period
-  const deltas = await computeDeltas(db, range, since, totalScans, totalVulns, avgDurationMin);
+  const deltas = await computeDeltas(tenantId, userId, range, since, totalScans, totalVulns, avgDurationMin);
 
   return {
     range,
@@ -162,37 +210,55 @@ async function computeDashboard(range: string): Promise<DashboardData> {
   };
 }
 
-/** Compute "vs previous period" delta strings (e.g. "+25%", "-10%", "—") */
 async function computeDeltas(
-  db: ReturnType<typeof getDb>,
+  tenantId: string,
+  userId: string | undefined,
   range: string,
   since: Date,
   currentScans: number,
   currentVulns: number,
   currentAvgMin: number,
 ): Promise<{ scans: string; vulns: string; duration: string }> {
+  const db = getDb();
   if (range === "all") return { scans: "", vulns: "", duration: "" };
 
   const periodMs = range === "30d" ? 30 * 86400_000 : 90 * 86400_000;
   const prevSince = new Date(since.getTime() - periodMs);
 
-  const [prevScansRows, prevVulnsRows, prevDurRows] = await Promise.all([
-    db<{ count: string }[]>`
+  const prevScansRows = userId
+    ? await db<{ count: string }[]>`
       SELECT COUNT(*) as count FROM tasks
-      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND state = 'completed'
+      WHERE tenant_id = ${tenantId} AND created_by = ${userId} AND state = 'completed'
         AND created_at >= ${prevSince} AND created_at < ${since}
-    `,
-    db<{ count: string }[]>`
+    `
+    : await db<{ count: string }[]>`
+      SELECT COUNT(*) as count FROM tasks
+      WHERE tenant_id = ${tenantId} AND state = 'completed'
+        AND created_at >= ${prevSince} AND created_at < ${since}
+    `;
+  const prevVulnsRows = userId
+    ? await db<{ count: string }[]>`
+      SELECT COUNT(*) as count FROM findings_meta f
+      JOIN tasks t ON t.id = f.task_id
+      WHERE f.tenant_id = ${tenantId} AND t.created_by = ${userId}
+        AND f.indexed_at >= ${prevSince} AND f.indexed_at < ${since}
+    `
+    : await db<{ count: string }[]>`
       SELECT COUNT(*) as count FROM findings_meta
-      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE tenant_id = ${tenantId}
         AND indexed_at >= ${prevSince} AND indexed_at < ${since}
-    `,
-    db<{ avg_duration: string | null }[]>`
+    `;
+  const prevDurRows = userId
+    ? await db<{ avg_duration: string | null }[]>`
       SELECT AVG(duration_ms) as avg_duration FROM tasks
-      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND state = 'completed'
+      WHERE tenant_id = ${tenantId} AND created_by = ${userId} AND state = 'completed'
         AND created_at >= ${prevSince} AND created_at < ${since}
-    `,
-  ]);
+    `
+    : await db<{ avg_duration: string | null }[]>`
+      SELECT AVG(duration_ms) as avg_duration FROM tasks
+      WHERE tenant_id = ${tenantId} AND state = 'completed'
+        AND created_at >= ${prevSince} AND created_at < ${since}
+    `;
 
   const prevScans = Number(prevScansRows[0]?.count ?? 0);
   const prevVulns = Number(prevVulnsRows[0]?.count ?? 0);

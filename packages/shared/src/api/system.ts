@@ -28,5 +28,7 @@ export interface SystemStatus {
     email: string;
     role: "admin" | "member";
     displayName: string;
+    task_limit?: number;
+    task_count?: number;
   } | null;
 }

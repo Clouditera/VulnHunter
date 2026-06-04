@@ -9,6 +9,7 @@ import { cancelTask, pauseTask, restartTask, resumeTask, TaskControlError } from
 import { loadConfig } from "../../infra/config.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
+import { queryContextFromUser } from "../../infra/query-context.js";
 
 export const tasksRouter = new Hono();
 
@@ -37,7 +38,9 @@ tasksRouter.get("/", async (c) => {
     }
   }
 
-  const tasks = await taskStorage.listTasks({ state: state as never, reviewStatus, limit, offset });
+  const ctx = queryContextFromUser(c.get("user"));
+  const filterUserId = ctx.role === "admin" ? c.req.query("user_id") : undefined;
+  const tasks = await taskStorage.listTasks(ctx, { state: state as never, reviewStatus, limit, offset, userId: filterUserId });
 
   // Enrich with findings severity counts
   const taskIds = tasks.map((t) => t.id);
@@ -55,7 +58,8 @@ tasksRouter.get("/", async (c) => {
 
 // GET /api/tasks/:id
 tasksRouter.get("/:id", async (c) => {
-  const task = await taskStorage.getTaskById(c.req.param("id"));
+  const ctx = queryContextFromUser(c.get("user"));
+  const task = await taskStorage.getTaskById(ctx, c.req.param("id"));
   if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
 
   // Enrich with credential label if set
@@ -71,8 +75,11 @@ tasksRouter.get("/:id", async (c) => {
 
 // POST /api/tasks/:id/cancel
 tasksRouter.post("/:id/cancel", async (c) => {
+  const ctx = queryContextFromUser(c.get("user"));
+  const task = await taskStorage.getTaskById(ctx, c.req.param("id"));
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   try {
-    await cancelTask(c.req.param("id"));
+    await cancelTask(task.id);
     return c.json({ ok: true });
   } catch (err) {
     return controlErrorResponse(c, err);
@@ -81,8 +88,11 @@ tasksRouter.post("/:id/cancel", async (c) => {
 
 // POST /api/tasks/:id/pause
 tasksRouter.post("/:id/pause", async (c) => {
+  const ctx = queryContextFromUser(c.get("user"));
+  const task = await taskStorage.getTaskById(ctx, c.req.param("id"));
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   try {
-    await pauseTask(c.req.param("id"));
+    await pauseTask(task.id);
     return c.json({ ok: true });
   } catch (err) {
     return controlErrorResponse(c, err);
@@ -91,8 +101,11 @@ tasksRouter.post("/:id/pause", async (c) => {
 
 // POST /api/tasks/:id/resume
 tasksRouter.post("/:id/resume", async (c) => {
+  const ctx = queryContextFromUser(c.get("user"));
+  const task = await taskStorage.getTaskById(ctx, c.req.param("id"));
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   try {
-    await resumeTask(c.req.param("id"));
+    await resumeTask(task.id);
     return c.json({ ok: true });
   } catch (err) {
     return controlErrorResponse(c, err);
@@ -101,8 +114,11 @@ tasksRouter.post("/:id/resume", async (c) => {
 
 // POST /api/tasks/:id/restart — full reset per architecture spec §3
 tasksRouter.post("/:id/restart", async (c) => {
+  const ctx = queryContextFromUser(c.get("user"));
+  const task = await taskStorage.getTaskById(ctx, c.req.param("id"));
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   try {
-    await restartTask(c.req.param("id"));
+    await restartTask(task.id);
     return c.json({ ok: true });
   } catch (err) {
     return controlErrorResponse(c, err);
@@ -111,17 +127,19 @@ tasksRouter.post("/:id/restart", async (c) => {
 
 // PATCH /api/tasks/:id/display-name — update user-facing task label
 tasksRouter.patch("/:id/display-name", async (c) => {
-  const task = await taskStorage.getTaskById(c.req.param("id"));
+  const ctx = queryContextFromUser(c.get("user"));
+  const task = await taskStorage.getTaskById(ctx, c.req.param("id"));
   if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   const body = await c.req.json<{ display_name?: string | null }>().catch(() => ({} as { display_name?: string | null }));
-  const updated = await taskStorage.updateTaskDisplayName(task.id, body.display_name ?? null);
+  const updated = await taskStorage.updateTaskDisplayName(ctx, task.id, body.display_name ?? null);
   return c.json({ task: updated });
 });
 
 // PATCH /api/tasks/:id — update task properties (credential_id)
 const EDITABLE_STATES = new Set(["paused", "cancelled", "failed", "completed"]);
 tasksRouter.patch("/:id", async (c) => {
-  const task = await taskStorage.getTaskById(c.req.param("id"));
+  const ctx = queryContextFromUser(c.get("user"));
+  const task = await taskStorage.getTaskById(ctx, c.req.param("id"));
   if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   if (!EDITABLE_STATES.has(task.state)) {
     return c.json({ error: { code: "ERR_INVALID_STATE", detail: `Cannot edit task in '${task.state}' state` } }, 409);
@@ -139,13 +157,14 @@ tasksRouter.patch("/:id", async (c) => {
     await taskStorage.updateTaskCredential(task.id, body.credential_id);
   }
 
-  const updated = await taskStorage.getTaskById(task.id);
+  const updated = await taskStorage.getTaskById(ctx, task.id);
   return c.json(updated);
 });
 
 // DELETE /api/tasks/:id
 tasksRouter.delete("/:id", async (c) => {
-  const task = await taskStorage.getTaskById(c.req.param("id"));
+  const ctx = queryContextFromUser(c.get("user"));
+  const task = await taskStorage.getTaskById(ctx, c.req.param("id"));
   if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   if (["running", "queued"].includes(task.state)) {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "Cancel or wait for task to finish before deleting" } }, 409);
@@ -187,7 +206,8 @@ tasksRouter.delete("/:id", async (c) => {
 
 // GET /api/tasks/:id/events — live log events (archive + memory via event-archive)
 tasksRouter.get("/:id/events", async (c) => {
-  const task = await taskStorage.getTaskById(c.req.param("id"));
+  const ctx = queryContextFromUser(c.get("user"));
+  const task = await taskStorage.getTaskById(ctx, c.req.param("id"));
   if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
 
   const source = c.req.query("source") ?? c.req.query("source_filter") ?? "all";

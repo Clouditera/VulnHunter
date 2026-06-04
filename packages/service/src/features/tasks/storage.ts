@@ -1,5 +1,7 @@
 import { getDb } from "../../infra/db/client.js";
 import type { TaskState } from "@vulnagent/shared";
+import type { QueryContext } from "../../infra/query-context.js";
+import { shouldFilterByUser } from "../../infra/query-context.js";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -33,7 +35,21 @@ export interface DbTask {
   credential_id: string | null;
 }
 
+function tenantIdOf(ctx?: QueryContext): string {
+  return ctx?.tenantId ?? DEFAULT_TENANT_ID;
+}
+
+function needsUserFilter(ctx?: QueryContext): ctx is QueryContext {
+  return !!ctx && shouldFilterByUser(ctx);
+}
+
+function normalizeDisplayName(name?: string | null): string | null {
+  const trimmed = name?.trim();
+  return trimmed ? trimmed.slice(0, 120) : null;
+}
+
 export async function createTask(params: {
+  tenantId?: string;
   createdBy: string;
   projectName: string;
   displayName?: string | null;
@@ -45,7 +61,7 @@ export async function createTask(params: {
   const db = getDb();
   const rows = await db<DbTask[]>`
     INSERT INTO tasks (tenant_id, created_by, project_name, display_name, source_type, source_meta, auto_skill_ids, credential_id)
-    VALUES (${DEFAULT_TENANT_ID}, ${params.createdBy}, ${params.projectName}, ${normalizeDisplayName(params.displayName)},
+    VALUES (${params.tenantId ?? DEFAULT_TENANT_ID}, ${params.createdBy}, ${params.projectName}, ${normalizeDisplayName(params.displayName)},
             ${params.sourceType}, ${db.json(params.sourceMeta)}::jsonb,
             ${params.autoSkillIds ?? []}, ${params.credentialId ?? null})
     RETURNING *
@@ -53,46 +69,91 @@ export async function createTask(params: {
   return rows[0];
 }
 
-function normalizeDisplayName(name?: string | null): string | null {
-  const trimmed = name?.trim();
-  return trimmed ? trimmed.slice(0, 120) : null;
-}
-
-export async function updateTaskDisplayName(id: string, displayName: string | null): Promise<DbTask | null> {
+export async function updateTaskDisplayName(ctx: QueryContext, id: string, displayName: string | null): Promise<DbTask | null>;
+export async function updateTaskDisplayName(id: string, displayName: string | null): Promise<DbTask | null>;
+export async function updateTaskDisplayName(a: QueryContext | string, b: string | null, c?: string | null): Promise<DbTask | null> {
   const db = getDb();
-  const rows = await db<DbTask[]>`
-    UPDATE tasks
-    SET display_name = ${normalizeDisplayName(displayName)}
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
-    RETURNING *
-  `;
+  const hasCtx = typeof a !== "string";
+  const ctx = hasCtx ? a : undefined;
+  const id = hasCtx ? b as string : a;
+  const displayName = hasCtx ? c ?? null : b;
+  const rows = needsUserFilter(ctx)
+    ? await db<DbTask[]>`
+      UPDATE tasks
+      SET display_name = ${normalizeDisplayName(displayName)}
+      WHERE id = ${id} AND tenant_id = ${ctx!.tenantId} AND created_by = ${ctx!.userId}
+      RETURNING *
+    `
+    : await db<DbTask[]>`
+      UPDATE tasks
+      SET display_name = ${normalizeDisplayName(displayName)}
+      WHERE id = ${id} AND tenant_id = ${tenantIdOf(ctx)}
+      RETURNING *
+    `;
   return rows[0] ?? null;
 }
 
-export async function getTaskById(id: string): Promise<DbTask | null> {
+export async function getTaskById(ctx: QueryContext, id: string): Promise<DbTask | null>;
+export async function getTaskById(id: string): Promise<DbTask | null>;
+export async function getTaskById(a: QueryContext | string, b?: string): Promise<DbTask | null> {
   const db = getDb();
-  const rows = await db<DbTask[]>`
-    SELECT * FROM tasks
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
-    LIMIT 1
-  `;
+  const hasCtx = typeof a !== "string";
+  const ctx = hasCtx ? a : undefined;
+  const id = hasCtx ? b! : a;
+  const rows = needsUserFilter(ctx)
+    ? await db<DbTask[]>`
+      SELECT * FROM tasks
+      WHERE id = ${id} AND tenant_id = ${ctx!.tenantId} AND created_by = ${ctx!.userId}
+      LIMIT 1
+    `
+    : await db<DbTask[]>`
+      SELECT * FROM tasks
+      WHERE id = ${id} AND tenant_id = ${tenantIdOf(ctx)}
+      LIMIT 1
+    `;
   return rows[0] ?? null;
 }
 
-export async function listTasks(params: {
-  state?: TaskState;
-  reviewStatus?: string;
-  limit?: number;
-  offset?: number;
-}): Promise<DbTask[]> {
+export async function listTasks(
+  ctx: QueryContext,
+  params: { state?: TaskState; reviewStatus?: string; limit?: number; offset?: number; userId?: string },
+): Promise<DbTask[]>;
+export async function listTasks(params: { state?: TaskState; reviewStatus?: string; limit?: number; offset?: number }): Promise<DbTask[]>;
+export async function listTasks(
+  a: QueryContext | { state?: TaskState; reviewStatus?: string; limit?: number; offset?: number },
+  b?: { state?: TaskState; reviewStatus?: string; limit?: number; offset?: number; userId?: string },
+): Promise<DbTask[]> {
   const db = getDb();
+  const hasCtx = "tenantId" in a;
+  const ctx = hasCtx ? a as QueryContext : undefined;
+  const params = (hasCtx ? b ?? {} : a) as { state?: TaskState; reviewStatus?: string; limit?: number; offset?: number; userId?: string };
   const limit = params.limit ?? 50;
   const offset = params.offset ?? 0;
+  const tenantId = tenantIdOf(ctx);
+  const filteredUserId = ctx && shouldFilterByUser(ctx) ? ctx.userId : (ctx?.role === "admin" ? params.userId : undefined);
 
+  if (params.state && params.reviewStatus && filteredUserId) {
+    return db<DbTask[]>`
+      SELECT t.* FROM tasks t
+      WHERE t.tenant_id = ${tenantId} AND t.created_by = ${filteredUserId} AND t.state = ${params.state}
+        AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
+      ORDER BY t.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+  }
   if (params.state && params.reviewStatus) {
     return db<DbTask[]>`
       SELECT t.* FROM tasks t
-      WHERE t.tenant_id = ${DEFAULT_TENANT_ID} AND t.state = ${params.state}
+      WHERE t.tenant_id = ${tenantId} AND t.state = ${params.state}
+        AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
+      ORDER BY t.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+  }
+  if (params.reviewStatus && filteredUserId) {
+    return db<DbTask[]>`
+      SELECT t.* FROM tasks t
+      WHERE t.tenant_id = ${tenantId} AND t.created_by = ${filteredUserId}
         AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
       ORDER BY t.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
@@ -101,24 +162,39 @@ export async function listTasks(params: {
   if (params.reviewStatus) {
     return db<DbTask[]>`
       SELECT t.* FROM tasks t
-      WHERE t.tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE t.tenant_id = ${tenantId}
         AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
       ORDER BY t.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+  }
+  if (params.state && filteredUserId) {
+    return db<DbTask[]>`
+      SELECT * FROM tasks
+      WHERE tenant_id = ${tenantId} AND created_by = ${filteredUserId} AND state = ${params.state}
+      ORDER BY created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
   }
   if (params.state) {
     return db<DbTask[]>`
       SELECT * FROM tasks
-      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND state = ${params.state}
+      WHERE tenant_id = ${tenantId} AND state = ${params.state}
       ORDER BY created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
   }
-
+  if (filteredUserId) {
+    return db<DbTask[]>`
+      SELECT * FROM tasks
+      WHERE tenant_id = ${tenantId} AND created_by = ${filteredUserId}
+      ORDER BY created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+  }
   return db<DbTask[]>`
     SELECT * FROM tasks
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId}
     ORDER BY created_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `;
@@ -167,11 +243,7 @@ export async function queueTaskForResume(id: string): Promise<void> {
   `;
 }
 
-/** Full reset for restart — clears timestamps, metadata, findings so scheduler treats it as fresh */
-export async function updateTaskCredential(
-  id: string,
-  credentialId: string | null,
-): Promise<void> {
+export async function updateTaskCredential(id: string, credentialId: string | null): Promise<void> {
   const db = getDb();
   await db`UPDATE tasks SET credential_id = ${credentialId} WHERE id = ${id}`;
 }
@@ -192,12 +264,22 @@ export async function resetTaskForRestart(id: string): Promise<void> {
   await db`DELETE FROM findings_meta WHERE task_id = ${id}`;
 }
 
-export async function countTasksByState(state: TaskState): Promise<number> {
+export async function countTasksByState(ctx: QueryContext, state: TaskState): Promise<number>;
+export async function countTasksByState(state: TaskState): Promise<number>;
+export async function countTasksByState(a: QueryContext | TaskState, b?: TaskState): Promise<number> {
   const db = getDb();
-  const rows = await db<{ count: string }[]>`
-    SELECT COUNT(*) as count FROM tasks
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND state = ${state}
-  `;
+  const hasCtx = typeof a !== "string";
+  const ctx = hasCtx ? a as QueryContext : undefined;
+  const state = hasCtx ? b! : a as TaskState;
+  const rows = needsUserFilter(ctx)
+    ? await db<{ count: string }[]>`
+      SELECT COUNT(*) as count FROM tasks
+      WHERE tenant_id = ${ctx!.tenantId} AND created_by = ${ctx!.userId} AND state = ${state}
+    `
+    : await db<{ count: string }[]>`
+      SELECT COUNT(*) as count FROM tasks
+      WHERE tenant_id = ${tenantIdOf(ctx)} AND state = ${state}
+    `;
   return Number(rows[0].count);
 }
 
@@ -239,4 +321,28 @@ export async function getFindingsSeverityCounts(
     counts[row.severity] = row.count;
   }
   return result;
+}
+
+export async function checkTaskLimit(ctx: QueryContext): Promise<{ allowed: boolean; used: number; limit: number }> {
+  const db = getDb();
+  const users = await db<{ task_limit: number }[]>`
+    SELECT task_limit FROM users WHERE tenant_id = ${ctx.tenantId} AND id = ${ctx.userId}
+  `;
+  const limit = users[0]?.task_limit ?? 0;
+  if (limit <= 0) return { allowed: true, used: 0, limit: 0 };
+  const rows = await db<{ count: string }[]>`
+    SELECT COUNT(*) as count FROM tasks
+    WHERE tenant_id = ${ctx.tenantId} AND created_by = ${ctx.userId}
+  `;
+  const used = Number(rows[0]?.count ?? 0);
+  return { allowed: used < limit, used, limit };
+}
+
+export async function countTasksForUser(ctx: QueryContext): Promise<number> {
+  const db = getDb();
+  const rows = await db<{ count: string }[]>`
+    SELECT COUNT(*) as count FROM tasks
+    WHERE tenant_id = ${ctx.tenantId} AND created_by = ${ctx.userId}
+  `;
+  return Number(rows[0]?.count ?? 0);
 }

@@ -15,6 +15,8 @@ import { loadConfig } from "../../infra/config.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { notify } from "../notifications/index.js";
 import type { Severity, FindingReviewStatus } from "@vulnagent/shared";
+import { queryContextFromUser } from "../../infra/query-context.js";
+import { getAccessibleTask } from "../tasks/access.js";
 
 export const findingsRouter = new Hono();
 findingsRouter.use("*", licenseGuard);
@@ -23,6 +25,8 @@ findingsRouter.use("*", requireAuth);
 // GET /api/tasks/:taskId/findings
 findingsRouter.get("/:taskId/findings", async (c) => {
   const { taskId } = c.req.param();
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   const severity = c.req.query("severity") as Severity | undefined;
   const search = c.req.query("search");
   const limit = Math.min(Number(c.req.query("limit") ?? 500), 1000);
@@ -47,6 +51,8 @@ findingsRouter.get("/:taskId/findings", async (c) => {
 // GET /api/tasks/:taskId/findings/:key  — full YAML detail
 findingsRouter.get("/:taskId/findings/:key", async (c) => {
   const { taskId, key } = c.req.param();
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   const config = loadConfig();
 
   const meta = await getFindingByKey(taskId, key);
@@ -69,6 +75,8 @@ findingsRouter.get("/:taskId/findings/:key", async (c) => {
 // PATCH /api/tasks/:taskId/findings/:key/review — single review
 findingsRouter.patch("/:taskId/findings/:key/review", async (c) => {
   const { taskId, key } = c.req.param();
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   const user = c.get("user");
   const body = await c.req.json<{ review_status: string; note?: string }>();
 
@@ -105,6 +113,8 @@ findingsRouter.patch("/:taskId/findings/:key/review", async (c) => {
 // POST /api/tasks/:taskId/findings/review/bulk — bulk review
 findingsRouter.post("/:taskId/findings/review/bulk", async (c) => {
   const { taskId } = c.req.param();
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   const user = c.get("user");
   const body = await c.req.json<{ finding_keys: string[]; review_status: string; note?: string }>();
 
@@ -143,6 +153,8 @@ findingsRouter.post("/:taskId/findings/review/bulk", async (c) => {
 // GET /api/tasks/:taskId/findings/:key/review-events — audit history
 findingsRouter.get("/:taskId/findings/:key/review-events", async (c) => {
   const { taskId, key } = c.req.param();
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   const events = await listFindingReviewEvents(taskId, key);
   return c.json({ events });
 });
@@ -150,6 +162,8 @@ findingsRouter.get("/:taskId/findings/:key/review-events", async (c) => {
 // POST /api/tasks/:taskId/findings/reindex  — (admin only in production)
 findingsRouter.post("/:taskId/findings/reindex", async (c) => {
   const { taskId } = c.req.param();
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   const config = loadConfig();
 
   const indexed = await indexFindings(taskId, config.minio.bucket);
