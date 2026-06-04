@@ -232,17 +232,17 @@ const PROTOCOLS: ReadonlyArray<{
   {
     value: "openai-completions",
     labelKey: "settings.model.proto.openaiCompletions",
-    defaultModel: "mimo-v2-pro",
+    defaultModel: "",
   },
   {
     value: "openai-responses",
     labelKey: "settings.model.proto.openaiResponses",
-    defaultModel: "gpt-4o",
+    defaultModel: "",
   },
   {
     value: "anthropic",
     labelKey: "settings.model.proto.anthropic",
-    defaultModel: "claude-sonnet-4-5",
+    defaultModel: "",
   },
 ];
 
