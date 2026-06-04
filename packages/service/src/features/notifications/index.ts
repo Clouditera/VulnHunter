@@ -75,8 +75,14 @@ async function resolveOwnerId(event: NotificationEvent): Promise<string | null |
 // ─── Hono router ───
 
 export const notificationRouter = new Hono();
-notificationRouter.use("*", licenseGuard);
-notificationRouter.use("*", requireAuth);
+notificationRouter.use("*", async (c, next) => {
+  if (c.req.path === "/api/system/activate") return next();
+  return licenseGuard(c, next);
+});
+notificationRouter.use("*", async (c, next) => {
+  if (c.req.path === "/api/system/activate") return next();
+  return requireAuth(c, next);
+});
 
 notificationRouter.get("/notifications", (c) => {
   const subId = `sse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;

@@ -22,6 +22,7 @@ services:
       - "${SERVICE_PORT:-28080}:28080"
     environment:
       NODE_ENV: "production"
+      EDITION: "${EDITION:-community}"
       PORT: "28080"
       DATABASE_URL: "postgresql://vulnagent:${DB_PASSWORD:-vulnagent}@db:5432/vulnagent"
       MINIO_ENDPOINT: "minio"
@@ -36,6 +37,7 @@ services:
       DOCKER_NETWORK: "vulnagent-internal"
       DATA_DIR: "${DATA_DIR:-/opt/vulnagent/data}"
       VULNAGENT_MASTER_KEY_FILE: "${VULNAGENT_MASTER_KEY_FILE:-/run/secrets/vulnagent-master.key}"
+      VULNAGENT_LICENSE_PUBLIC_KEY_FILE: "${VULNAGENT_LICENSE_PUBLIC_KEY_FILE:-/run/secrets/license-public.pem}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
     group_add:
       - "${DOCKER_GID:-0}"
@@ -43,6 +45,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - "${DATA_DIR:-/opt/vulnagent/data}:${DATA_DIR:-/opt/vulnagent/data}"
       - "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}:/run/secrets/vulnagent-master.key:ro"
+      - "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}:/run/secrets/license-public.pem:ro"
     networks:
       - vulnagent-internal
     depends_on:

@@ -377,7 +377,7 @@ function UserAvatarPopover({
   const initial = (user?.displayName?.[0] || user?.email?.[0] || "U").toUpperCase();
 
   return (
-    <div style={{ position: "relative", width: "100%" }}>
+    <div style={{ position: "relative", width: collapsed ? "40px" : "100%" }}>
       <button
         data-testid="nav-avatar"
         onClick={() => setOpen(!open)}
@@ -399,7 +399,7 @@ function UserAvatarPopover({
             onClick={() => setOpen(false)}
             style={{ position: "fixed", inset: 0, zIndex: 998 }}
           />
-          <div style={POPOVER}>
+          <div style={popoverStyle(collapsed)}>
             <div style={{ padding: "10px 12px" }}>
               <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
                 {displayName}
@@ -798,18 +798,20 @@ const USER_NAME: CSSProperties = {
   whiteSpace: "nowrap",
   textAlign: "left",
 };
-const POPOVER: CSSProperties = {
-  position: "absolute",
-  left: "calc(100% + 8px)",
-  bottom: 0,
-  width: "220px",
-  background: "var(--bg-card)",
-  border: "1px solid var(--border)",
-  borderRadius: "10px",
-  boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
-  padding: "6px",
-  zIndex: 999,
-};
+function popoverStyle(collapsed: boolean): CSSProperties {
+  return {
+    position: "fixed",
+    left: collapsed ? "72px" : "296px",
+    bottom: "16px",
+    width: "220px",
+    background: "var(--bg-card)",
+    border: "1px solid var(--border)",
+    borderRadius: "10px",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
+    padding: "6px",
+    zIndex: 999,
+  };
+}
 const popoverItem: CSSProperties = {
   display: "flex",
   alignItems: "center",
