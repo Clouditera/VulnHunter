@@ -429,7 +429,7 @@ export function SettingsPage() {
     const first = PROTOCOLS[0];
     setProtoType(first.value);
     setBaseUrl("");
-    setModelId(first.defaultModel);
+    setModelId("");
     setThinking("medium");
     setContextWindow("128k");
     setLabel("");
@@ -1035,14 +1035,8 @@ export function SettingsPage() {
                   value={protoType}
                   onChange={(v) => {
                     setProtoType(v);
-                    // If the user has never typed a custom model id (or is
-                    // still on a known default), swap to the new protocol's
-                    // recommended default. Otherwise leave their input alone.
-                    const knownDefaults = PROTOCOLS.map((p) => p.defaultModel);
-                    if (!modelId || knownDefaults.includes(modelId)) {
-                      const next = PROTOCOLS.find((p) => p.value === v);
-                      if (next) setModelId(next.defaultModel);
-                    }
+                    // Keep model id user-controlled; new credentials should not
+                    // prefill provider-specific defaults.
                   }}
                   options={PROTOCOLS.map((p) => ({
                     value: p.value,
@@ -1058,7 +1052,7 @@ export function SettingsPage() {
                     type="text"
                     value={modelId}
                     onChange={(e) => { setModelId(e.target.value); setFieldErrors((prev) => ({ ...prev, modelId: "" })); }}
-                    placeholder="claude-sonnet-4-5"
+                    placeholder="e.g. deepseek-v4-flash"
                     list="settings-model-datalist"
                     style={{ ...FIELD_INPUT, flex: 1, minWidth: 0 }}
                   />

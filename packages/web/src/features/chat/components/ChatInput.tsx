@@ -205,8 +205,17 @@ export function ChatInput({
 
   useEffect(() => {
     const onSuggest = (event: Event) => {
-      const value = (event as CustomEvent<{ text?: string }>).detail?.text;
+      const detail = (event as CustomEvent<{ text?: string; submit?: boolean }>).detail;
+      const value = detail?.text;
       if (!value) return;
+      if (detail?.submit) {
+        onSend(value);
+        setText("");
+        requestAnimationFrame(() => {
+          if (taRef.current) taRef.current.style.height = "40px";
+        });
+        return;
+      }
       setText(value);
       requestAnimationFrame(() => {
         resizeTextarea();
@@ -215,7 +224,7 @@ export function ChatInput({
     };
     window.addEventListener("vh:chat-suggest", onSuggest);
     return () => window.removeEventListener("vh:chat-suggest", onSuggest);
-  }, []);
+  }, [onSend]);
 
   function resizeTextarea() {
     const el = taRef.current;
