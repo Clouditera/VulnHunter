@@ -15,6 +15,7 @@ import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../inf
 import { diagnoseModelRuntimeCredential } from "./runtime-diagnostics.js";
 import { getDiagnosticRun, startDiagnosticRun } from "./diagnostic-runs.js";
 import { loadConfig } from "../../infra/config.js";
+import { queryContextFromUser } from "../../infra/query-context.js";
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
 function parseContextWindowTokens(value: unknown): number {
@@ -32,7 +33,8 @@ settingsRouter.use("*", requireAuth);
 // GET /api/settings/credential — show active LLM credential (no api_key)
 settingsRouter.get("/credential", async (c) => {
   try {
-    const cred = await getDefaultCredential();
+    const ctx = queryContextFromUser(c.get("user"));
+    const cred = await getDefaultCredential(ctx);
     if (!cred) return c.json({ credential: null });
     const key = cred.api_key;
     const masked_key = key.length > 8 ? `${key.slice(0, 4)}••••${key.slice(-4)}` : "••••••••";
@@ -50,28 +52,31 @@ settingsRouter.get("/credential", async (c) => {
 });
 
 // GET /api/settings/credentials — list all credentials (no api_key)
-settingsRouter.get("/credentials", requireAdmin, async (c) => {
-  const creds = await listCredentials();
+settingsRouter.get("/credentials", async (c) => {
+  const ctx = queryContextFromUser(c.get("user"));
+  const creds = await listCredentials(ctx);
   return c.json({ credentials: creds });
 });
 
 // DELETE /api/settings/credentials/:id — delete a credential
-settingsRouter.delete("/credentials/:id", requireAdmin, async (c) => {
+settingsRouter.delete("/credentials/:id", async (c) => {
+  const ctx = queryContextFromUser(c.get("user"));
   const id = c.req.param("id");
-  const ok = await deleteCredential(id);
+  const ok = await deleteCredential(ctx, id);
   if (!ok) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   return c.json({ ok: true });
 });
 
 // POST /api/settings/credentials/:id/default — set as default
-settingsRouter.post("/credentials/:id/default", requireAdmin, async (c) => {
+settingsRouter.post("/credentials/:id/default", async (c) => {
+  const ctx = queryContextFromUser(c.get("user"));
   const id = c.req.param("id");
-  await setDefaultCredential(id);
+  await setDefaultCredential(ctx, id);
   return c.json({ ok: true });
 });
 
-// PUT /api/settings/credential — save/update LLM credential (admin only)
-settingsRouter.put("/credential", requireAdmin, async (c) => {
+// PUT /api/settings/credential — save/update LLM credential
+settingsRouter.put("/credential", async (c) => {
   const body = await c.req.json<{
     id?: string;
     provider: string;
@@ -83,6 +88,7 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
     api_key: string;
     is_default?: boolean;
     context_window_tokens?: number;
+    owner_id?: string | null;
   }>();
 
   if (!body.provider || !body.model_id || !body.base_url) {
@@ -99,6 +105,7 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
     return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "invalid context_window_tokens" } }, 400);
   }
 
+  const ctx = queryContextFromUser(c.get("user"));
   let id: string;
   try {
     id = await upsertCredential({
@@ -112,6 +119,8 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
       apiKey: body.api_key ?? "",
       isDefault: body.is_default,
       contextWindowTokens,
+      ownerId: ctx.role === "admin" ? (body.owner_id ?? null) : undefined,
+      ctx,
     });
   } catch (err) {
     if (err instanceof CredentialKeyUnavailableError) {
@@ -120,11 +129,12 @@ settingsRouter.put("/credential", requireAdmin, async (c) => {
     throw err;
   }
 
+  if (body.id && !id) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   return c.json({ id });
 });
 
 // PATCH /api/settings/credential/:id — update metadata without re-entering API key
-settingsRouter.patch("/credential/:id", requireAdmin, async (c) => {
+settingsRouter.patch("/credential/:id", async (c) => {
   const { id } = c.req.param();
   const body = await c.req.json<{
     provider?: string;
@@ -134,6 +144,7 @@ settingsRouter.patch("/credential/:id", requireAdmin, async (c) => {
     thinking_effort?: string;
     label?: string;
     context_window_tokens?: number;
+    owner_id?: string | null;
   }>();
 
   let contextWindowTokens: number | undefined;
@@ -145,8 +156,9 @@ settingsRouter.patch("/credential/:id", requireAdmin, async (c) => {
     }
   }
 
+  const ctx = queryContextFromUser(c.get("user"));
   const { updateCredentialMeta } = await import("./storage.js");
-  await updateCredentialMeta({
+  const ok = await updateCredentialMeta({
     id,
     provider: body.provider,
     protoType: body.proto_type,
@@ -155,13 +167,16 @@ settingsRouter.patch("/credential/:id", requireAdmin, async (c) => {
     thinkingEffort: body.thinking_effort,
     label: body.label,
     contextWindowTokens,
+    ownerId: ctx.role === "admin" ? body.owner_id : undefined,
+    ctx,
   });
 
+  if (!ok) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   return c.json({ ok: true });
 });
 
 // POST /api/settings/credential/test — test LLM connection
-settingsRouter.post("/credential/test", requireAdmin, async (c) => {
+settingsRouter.post("/credential/test", async (c) => {
   const body = await c.req.json<{
     credential_id?: string; // test using saved credential
     proto_type?: string;
@@ -190,7 +205,8 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
   if (body.credential_id) {
     const { getCredentialById } = await import("./storage.js");
     try {
-      const cred = await getCredentialById(body.credential_id);
+      const ctx = queryContextFromUser(c.get("user"));
+      const cred = await getCredentialById(ctx, body.credential_id);
       if (!cred) return c.json({ ok: false, error: "Credential not found" }, 404);
       protoType = protoType || cred.proto_type;
       baseUrl = baseUrl || (cred.base_url ?? "").replace(/\/$/, "");
@@ -225,10 +241,10 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
     updated_at: new Date(),
   } as any;
   if (body.async) {
-    const runId = startDiagnosticRun(cred, loadConfig(), { userId: user.userId, tenantId: user.tenantId, role: user.role === "admin" ? "admin" : "user" });
+    const runId = startDiagnosticRun(cred, loadConfig(), { userId: user.userId, tenantId: user.tenantId, role: user.role === "admin" ? "admin" : "member" });
     return c.json({ ok: true, run_id: runId, diagnostics: getDiagnosticRun(runId) });
   }
-  const diagnostics = await diagnoseModelRuntimeCredential(cred, loadConfig(), { userId: user.userId, tenantId: user.tenantId, role: user.role === "admin" ? "admin" : "user" });
+  const diagnostics = await diagnoseModelRuntimeCredential(cred, loadConfig(), { userId: user.userId, tenantId: user.tenantId, role: user.role === "admin" ? "admin" : "member" });
   return c.json({
     ok: diagnostics.ok,
     message: diagnostics.summary,
@@ -237,14 +253,14 @@ settingsRouter.post("/credential/test", requireAdmin, async (c) => {
   });
 });
 
-settingsRouter.get("/credential/test-runs/:id", requireAdmin, async (c) => {
+settingsRouter.get("/credential/test-runs/:id", async (c) => {
   const run = getDiagnosticRun(c.req.param("id"));
   if (!run) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   return c.json(run);
 });
 
 // POST /api/settings/models — list models using provided or saved credential
-settingsRouter.post("/models", requireAdmin, async (c) => {
+settingsRouter.post("/models", async (c) => {
   const body = await c.req.json<{ base_url?: string; api_key?: string; proto_type?: string; credential_id?: string }>().catch(() => ({} as { base_url?: string; api_key?: string; proto_type?: string; credential_id?: string }));
 
   // Use form values if provided, otherwise fall back to saved/default credential
@@ -256,7 +272,8 @@ settingsRouter.post("/models", requireAdmin, async (c) => {
     // Editing existing credential: use saved api_key, override base_url if provided
     const { getCredentialById } = await import("./storage.js");
     try {
-      const saved = await getCredentialById(body.credential_id);
+      const ctx = queryContextFromUser(c.get("user"));
+      const saved = await getCredentialById(ctx, body.credential_id);
       if (!saved) return c.json({ models: [], error: "Credential not found" });
       baseUrl = (body.base_url ?? saved.base_url ?? "").replace(/\/$/, "");
       apiKey = body.api_key ?? saved.api_key;
@@ -282,7 +299,8 @@ settingsRouter.post("/models", requireAdmin, async (c) => {
     protoType = body.proto_type ?? "openai";
   } else {
     try {
-      const cred = await getDefaultCredential();
+      const ctx = queryContextFromUser(c.get("user"));
+      const cred = await getDefaultCredential(ctx);
       if (!cred) return c.json({ models: [], error: "No credential configured" });
       baseUrl = (cred.base_url ?? "").replace(/\/$/, "");
       apiKey = cred.api_key;

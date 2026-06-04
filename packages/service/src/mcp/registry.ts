@@ -52,27 +52,27 @@ import {
  * Register Chat Agent tools (excludes report-worker-only tools).
  */
 export function registerChatTools(server: McpServer, ctx: McpContext): void {
-  server.tool("list-findings", listFindingsSchema, async (args) => listFindings(args as any));
-  server.tool("read-finding", readFindingSchema, async (args) => readFinding(args as any));
-  server.tool("list-tasks", listTasksSchema, async (args) => listTasks(args as any));
+  server.tool("list-findings", listFindingsSchema, async (args) => listFindings(args as any, ctx));
+  server.tool("read-finding", readFindingSchema, async (args) => readFinding(args as any, ctx));
+  server.tool("list-tasks", listTasksSchema, async (args) => listTasks(args as any, ctx));
   server.tool("read-task-metadata", readTaskMetadataSchema, async (args) =>
-    readTaskMetadata(args as any),
+    readTaskMetadata(args as any, ctx),
   );
   server.tool("cancel-task", cancelTaskSchema, async (args) => cancelTask(args as any, ctx));
   server.tool("create-task", createTaskSchema, async (args) => createMcpTask(args as any, ctx));
 
   // P0 query tools
   server.tool("get-platform-overview", getPlatformOverviewSchema, async () =>
-    getPlatformOverview(),
+    getPlatformOverview(ctx),
   );
-  server.tool("get-task-detail", getTaskDetailSchema, async (args) => getTaskDetail(args as any));
-  server.tool("get-task-events", getTaskEventsSchema, async (args) => getTaskEvents(args as any));
+  server.tool("get-task-detail", getTaskDetailSchema, async (args) => getTaskDetail(args as any, ctx));
+  server.tool("get-task-events", getTaskEventsSchema, async (args) => getTaskEvents(args as any, ctx));
 
   // P1 query tools
-  server.tool("read-wiki", readWikiSchema, async (args) => readWiki(args as any));
-  server.tool("read-report", readReportSchema, async (args) => readReport(args as any));
-  server.tool("get-poc-results", getPocResultsSchema, async (args) => getPocResults(args as any));
-  server.tool("emit-reference", emitReferenceSchema, async (args) => emitReference(args as any));
+  server.tool("read-wiki", readWikiSchema, async (args) => readWiki(args as any, ctx));
+  server.tool("read-report", readReportSchema, async (args) => readReport(args as any, ctx));
+  server.tool("get-poc-results", getPocResultsSchema, async (args) => getPocResults(args as any, ctx));
+  server.tool("emit-reference", emitReferenceSchema, async (args) => emitReference(args as any, ctx));
 
   // P1 action tools
   server.tool("control-task", controlTaskSchema, async (args) => controlTask(args as any, ctx));

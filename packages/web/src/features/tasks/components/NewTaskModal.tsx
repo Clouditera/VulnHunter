@@ -218,14 +218,24 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                   cursor: "pointer",
                 }}
               >
-                {credentials.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {(c.label || c.provider) +
-                      " — " +
-                      c.model_id +
-                      (c.is_default ? " ★" : "")}
-                  </option>
-                ))}
+                {credentials.some((c) => c.scope === "global" || !c.scope) && (
+                  <optgroup label="全局凭证">
+                    {credentials.filter((c) => c.scope === "global" || !c.scope).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {(c.label || c.provider) + " — " + c.model_id + (c.is_default ? " ★" : "")}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {credentials.some((c) => c.scope === "personal") && (
+                  <optgroup label="我的凭证">
+                    {credentials.filter((c) => c.scope === "personal").map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {(c.label || c.provider) + " — " + c.model_id + (c.is_default ? " ★" : "")}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
           )}

@@ -19,6 +19,7 @@ import { ChatCredentialUnavailableError } from "./errors.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { credentialToWorkerEnv } from "../settings/credential-env.js";
 import { getSession, appendMessage } from "./storage.js";
+import { getUserById } from "../auth/storage.js";
 import { maybeGenerateTitle } from "./title-generation.js";
 import { loadConfig } from "../../infra/config.js";
 import { notify } from "../notifications/index.js";
@@ -193,10 +194,17 @@ export class ChatSession {
 
       // Get credentials
       const session = await getSession(this.sessionId);
-      const credId = session?.credential_id;
+      if (!session) throw new Error("Chat session not found");
+      const sessionUser = await getUserById(session.user_id);
+      const queryCtx = {
+        tenantId: session.tenant_id,
+        userId: session.user_id,
+        role: sessionUser?.role === "admin" ? "admin" as const : "member" as const,
+      };
+      const credId = session.credential_id;
       let cred;
       try {
-        cred = credId ? await getCredentialById(credId) : await getDefaultOrFirstAvailableCredential();
+        cred = credId ? await getCredentialById(queryCtx, credId) : await getDefaultOrFirstAvailableCredential(queryCtx);
       } catch (err) {
         if (err instanceof CredentialKeyUnavailableError) {
           throw new ChatCredentialUnavailableError("凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。");
@@ -219,11 +227,11 @@ export class ChatSession {
       ensureWorkDir(hostWorkDir);
 
       // Serialize all credentials for runtime model switching
-      const listedCreds = await listCredentials();
+      const listedCreds = await listCredentials(queryCtx);
       const decryptedCreds = await Promise.all(
         listedCreds
           .filter((c) => c.credential_health !== "decrypt_failed")
-          .map((c) => getCredentialById(c.id).catch((err) => {
+          .map((c) => getCredentialById(queryCtx, c.id).catch((err) => {
             if (err instanceof CredentialKeyUnavailableError) return null;
             if (err instanceof CredentialDecryptError) return null;
             throw err;
@@ -245,6 +253,9 @@ export class ChatSession {
         ALL_CREDENTIALS: allCredsJson,
         SERVICE_URL: `http://vulnagent-service:${config.port}`,
         CHAT_WORKER_TOKEN: this.sessionId,
+        CHAT_USER_ID: queryCtx.userId,
+        CHAT_USER_ROLE: queryCtx.role,
+        CHAT_TENANT_ID: queryCtx.tenantId,
         IDLE_TIMEOUT_MIN: "10",
       };
 

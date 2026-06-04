@@ -8,6 +8,7 @@ import { basename, join, normalize, resolve } from "node:path";
 import * as taskStorage from "../../features/tasks/storage.js";
 import { cancelTask, pauseTask, restartTask, resumeTask, TaskControlError } from "../../features/tasks/control-service.js";
 import type { McpContext } from "../context.js";
+import type { QueryContext } from "../../infra/query-context.js";
 import { buildBufferPreview } from "../../features/chat/artifact-preview.js";
 
 
@@ -15,6 +16,10 @@ type ToolResult = { content: Array<{ type: "text"; text: string }> };
 
 function text(t: string): ToolResult {
   return { content: [{ type: "text", text: t }] };
+}
+
+function toQueryContext(ctx: McpContext): QueryContext {
+  return { tenantId: ctx.tenantId, userId: ctx.userId, role: ctx.role === "admin" ? "admin" : "member" };
 }
 
 // ─── control-task ───
@@ -25,7 +30,7 @@ export const controlTaskSchema = {
 };
 
 export async function controlTask(args: { task_id: string; action: string }, _ctx?: McpContext): Promise<ToolResult> {
-  const task = await taskStorage.getTaskById(args.task_id);
+  const task = _ctx ? await taskStorage.getTaskById(toQueryContext(_ctx), args.task_id) : await taskStorage.getTaskById(args.task_id);
   if (!task) return text("Task not found.");
 
   try {
@@ -64,7 +69,7 @@ export const generateReportSchema = {
 };
 
 export async function generateReport(args: { task_id: string; skill_id?: string; finding_keys?: string[] }, ctx: McpContext): Promise<ToolResult> {
-  const task = await taskStorage.getTaskById(args.task_id);
+  const task = await taskStorage.getTaskById(toQueryContext(ctx), args.task_id);
   if (!task) return text("Task not found.");
 
   try {
@@ -128,7 +133,7 @@ export async function generatePoc(args: {
   target_url: string;
   custom_instructions?: string;
 }, ctx: McpContext): Promise<ToolResult> {
-  const task = await taskStorage.getTaskById(args.task_id);
+  const task = await taskStorage.getTaskById(toQueryContext(ctx), args.task_id);
   if (!task) return text("Task not found.");
   if (!args.finding_keys.length) return text("No finding keys provided.");
 
@@ -226,7 +231,7 @@ export async function presentArtifact(args: {
   `;
 
   const { notify } = await import("../../features/notifications/index.js");
-  notify({ type: "chat_artifact_created", sessionId: ctx.sessionId, artifactId });
+  notify({ type: "chat_artifact_created", sessionId: ctx.sessionId, artifactId, ownerId: ctx.userId });
 
   return text(JSON.stringify({
     type: "chat_artifact",

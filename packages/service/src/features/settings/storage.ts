@@ -1,6 +1,8 @@
 import { getDb } from "../../infra/db/client.js";
 import { MasterKeyVault, CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { join } from "node:path";
+import type { QueryContext } from "../../infra/query-context.js";
+import { shouldFilterByUser } from "../../infra/query-context.js";
 
 let _vault: MasterKeyVault | null = null;
 
@@ -55,50 +57,85 @@ export interface DbLlmCredential {
   is_default: boolean;
   key_fingerprint: string | null;
   context_window_tokens: number;
+  owner_id: string | null;
 }
 
 export interface DecryptedLlmCredential extends DbLlmCredential {
   api_key: string;
+  scope: "global" | "personal";
 }
 
-export async function getDefaultCredential(): Promise<DecryptedLlmCredential | null> {
+export async function getDefaultCredential(): Promise<DecryptedLlmCredential | null>;
+export async function getDefaultCredential(ctx: QueryContext): Promise<DecryptedLlmCredential | null>;
+export async function getDefaultCredential(ctx?: QueryContext): Promise<DecryptedLlmCredential | null> {
   const db = getDb();
-  const rows = await db<(DbLlmCredential & {
-    api_key_ciphertext: Buffer | null;
-    api_key_iv: Buffer | null;
-    api_key_tag: Buffer | null;
-  })[]>`
-    SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-           key_fingerprint, context_window_tokens, api_key_ciphertext, api_key_iv, api_key_tag
-    FROM llm_credentials
-    WHERE is_default = true
-    ORDER BY created_at DESC
-    LIMIT 1
-  `;
+  const rows = ctx && shouldFilterByUser(ctx)
+    ? await db<(DbLlmCredential & {
+      api_key_ciphertext: Buffer | null;
+      api_key_iv: Buffer | null;
+      api_key_tag: Buffer | null;
+    })[]>`
+      SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
+      FROM llm_credentials
+      WHERE is_default = true AND (owner_id = ${ctx.userId} OR owner_id IS NULL)
+      ORDER BY owner_id NULLS LAST, created_at DESC
+      LIMIT 1
+    `
+    : await db<(DbLlmCredential & {
+      api_key_ciphertext: Buffer | null;
+      api_key_iv: Buffer | null;
+      api_key_tag: Buffer | null;
+    })[]>`
+      SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
+      FROM llm_credentials
+      WHERE is_default = true
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
 
   if (!rows[0]) return null;
   return decryptRow(rows[0]);
 }
 
-export async function getCredentialById(id: string): Promise<DecryptedLlmCredential | null> {
+export async function getCredentialById(id: string): Promise<DecryptedLlmCredential | null>;
+export async function getCredentialById(ctx: QueryContext, id: string): Promise<DecryptedLlmCredential | null>;
+export async function getCredentialById(ctxOrId: QueryContext | string, maybeId?: string): Promise<DecryptedLlmCredential | null> {
   const db = getDb();
-  const rows = await db<(DbLlmCredential & {
-    api_key_ciphertext: Buffer | null;
-    api_key_iv: Buffer | null;
-    api_key_tag: Buffer | null;
-  })[]>`
-    SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-           key_fingerprint, context_window_tokens, api_key_ciphertext, api_key_iv, api_key_tag
-    FROM llm_credentials
-    WHERE id = ${id}
-    LIMIT 1
-  `;
+  const ctx = typeof ctxOrId === "string" ? undefined : ctxOrId;
+  const id = typeof ctxOrId === "string" ? ctxOrId : maybeId!;
+  const rows = ctx && shouldFilterByUser(ctx)
+    ? await db<(DbLlmCredential & {
+      api_key_ciphertext: Buffer | null;
+      api_key_iv: Buffer | null;
+      api_key_tag: Buffer | null;
+    })[]>`
+      SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
+      FROM llm_credentials
+      WHERE id = ${id} AND (owner_id = ${ctx.userId} OR owner_id IS NULL)
+      LIMIT 1
+    `
+    : await db<(DbLlmCredential & {
+      api_key_ciphertext: Buffer | null;
+      api_key_iv: Buffer | null;
+      api_key_tag: Buffer | null;
+    })[]>`
+      SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
+      FROM llm_credentials
+      WHERE id = ${id}
+      LIMIT 1
+    `;
   if (!rows[0]) return null;
   return decryptRow(rows[0]);
 }
 
-export async function getDefaultOrFirstAvailableCredential(): Promise<DecryptedLlmCredential | null> {
-  const defaultCredential = await getDefaultCredential();
+export async function getDefaultOrFirstAvailableCredential(): Promise<DecryptedLlmCredential | null>;
+export async function getDefaultOrFirstAvailableCredential(ctx: QueryContext): Promise<DecryptedLlmCredential | null>;
+export async function getDefaultOrFirstAvailableCredential(ctx?: QueryContext): Promise<DecryptedLlmCredential | null> {
+  const defaultCredential = await getDefaultCredential(ctx as any);
   if (defaultCredential) return defaultCredential;
 
   const db = getDb();
@@ -108,12 +145,13 @@ export async function getDefaultOrFirstAvailableCredential(): Promise<DecryptedL
     api_key_tag: Buffer | null;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-           key_fingerprint, context_window_tokens, api_key_ciphertext, api_key_iv, api_key_tag
+           key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
     FROM llm_credentials
     ORDER BY is_default DESC, created_at DESC
   `;
 
-  for (const row of rows) {
+  const visibleRows = ctx && shouldFilterByUser(ctx) ? rows.filter((row) => row.owner_id === null || row.owner_id === ctx.userId) : rows;
+  for (const row of visibleRows) {
     try {
       return decryptRow(row);
     } catch (err) {
@@ -128,20 +166,37 @@ export interface ListedLlmCredential extends DbLlmCredential {
   masked_key: string;
   credential_health: "ok" | "decrypt_failed" | "key_unavailable" | "unknown";
   current_key_fingerprint: string;
+  owner_id: string | null;
+  scope: "global" | "personal";
+  can_edit: boolean;
 }
 
-export async function listCredentials(): Promise<ListedLlmCredential[]> {
+export async function listCredentials(): Promise<ListedLlmCredential[]>;
+export async function listCredentials(ctx: QueryContext): Promise<ListedLlmCredential[]>;
+export async function listCredentials(ctx?: QueryContext): Promise<ListedLlmCredential[]> {
   const db = getDb();
-  const rows = await db<(DbLlmCredential & {
-    api_key_ciphertext: Buffer | null;
-    api_key_iv: Buffer | null;
-    api_key_tag: Buffer | null;
-  })[]>`
-    SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-           key_fingerprint, context_window_tokens, api_key_ciphertext, api_key_iv, api_key_tag
-    FROM llm_credentials
-    ORDER BY is_default DESC, created_at DESC
-  `;
+  const rows = ctx && shouldFilterByUser(ctx)
+    ? await db<(DbLlmCredential & {
+      api_key_ciphertext: Buffer | null;
+      api_key_iv: Buffer | null;
+      api_key_tag: Buffer | null;
+    })[]>`
+      SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
+      FROM llm_credentials
+      WHERE owner_id IS NULL OR owner_id = ${ctx.userId}
+      ORDER BY is_default DESC, owner_id NULLS FIRST, created_at DESC
+    `
+    : await db<(DbLlmCredential & {
+      api_key_ciphertext: Buffer | null;
+      api_key_iv: Buffer | null;
+      api_key_tag: Buffer | null;
+    })[]>`
+      SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
+      FROM llm_credentials
+      ORDER BY is_default DESC, owner_id NULLS FIRST, created_at DESC
+    `;
 
   const cryptoStatus = getCredentialCryptoStatus();
   const currentKeyFingerprint = cryptoStatus.state === "available" ? cryptoStatus.currentKeyFingerprint : "";
@@ -162,6 +217,9 @@ export async function listCredentials(): Promise<ListedLlmCredential[]> {
         masked_key: "key 未配置",
         credential_health: "key_unavailable",
         current_key_fingerprint: currentKeyFingerprint,
+        owner_id: row.owner_id,
+        scope: row.owner_id ? "personal" : "global",
+        can_edit: !ctx || ctx.role === "admin" || row.owner_id === ctx.userId,
       } as ListedLlmCredential;
     }
 
@@ -203,18 +261,36 @@ export async function listCredentials(): Promise<ListedLlmCredential[]> {
       masked_key: masked,
       credential_health: health,
       current_key_fingerprint: currentKeyFingerprint,
+      owner_id: row.owner_id,
+      scope: row.owner_id ? "personal" : "global",
+      can_edit: !ctx || ctx.role === "admin" || row.owner_id === ctx.userId,
     };
   });
 }
 
-export async function deleteCredential(id: string): Promise<boolean> {
+export async function deleteCredential(id: string): Promise<boolean>;
+export async function deleteCredential(ctx: QueryContext, id: string): Promise<boolean>;
+export async function deleteCredential(ctxOrId: QueryContext | string, maybeId?: string): Promise<boolean> {
   const db = getDb();
-  const rows = await db`DELETE FROM llm_credentials WHERE id = ${id} RETURNING id`;
+  const ctx = typeof ctxOrId === "string" ? undefined : ctxOrId;
+  const id = typeof ctxOrId === "string" ? ctxOrId : maybeId!;
+  const rows = ctx && shouldFilterByUser(ctx)
+    ? await db`DELETE FROM llm_credentials WHERE id = ${id} AND owner_id = ${ctx.userId} RETURNING id`
+    : await db`DELETE FROM llm_credentials WHERE id = ${id} RETURNING id`;
   return rows.length > 0;
 }
 
-export async function setDefaultCredential(id: string): Promise<void> {
+export async function setDefaultCredential(id: string): Promise<void>;
+export async function setDefaultCredential(ctx: QueryContext, id: string): Promise<void>;
+export async function setDefaultCredential(ctxOrId: QueryContext | string, maybeId?: string): Promise<void> {
   const db = getDb();
+  const ctx = typeof ctxOrId === "string" ? undefined : ctxOrId;
+  const id = typeof ctxOrId === "string" ? ctxOrId : maybeId!;
+  if (ctx && shouldFilterByUser(ctx)) {
+    await db`UPDATE llm_credentials SET is_default = false WHERE owner_id = ${ctx.userId}`;
+    await db`UPDATE llm_credentials SET is_default = true WHERE id = ${id} AND owner_id = ${ctx.userId}`;
+    return;
+  }
   await db`UPDATE llm_credentials SET is_default = false WHERE is_default = true`;
   await db`UPDATE llm_credentials SET is_default = true WHERE id = ${id}`;
 }
@@ -225,14 +301,14 @@ function decryptRow(row: DbLlmCredential & {
   api_key_tag: Buffer | null;
 }): DecryptedLlmCredential {
   if (!row.api_key_ciphertext || !row.api_key_iv || !row.api_key_tag) {
-    return { ...row, api_key: "" };
+    return { ...row, scope: row.owner_id ? "personal" : "global", api_key: "" };
   }
   const apiKey = getVault().decrypt({
     ciphertext: row.api_key_ciphertext,
     iv: row.api_key_iv,
     tag: row.api_key_tag,
   });
-  return { ...row, api_key: apiKey };
+  return { ...row, scope: row.owner_id ? "personal" : "global", api_key: apiKey };
 }
 
 /** Update credential metadata without changing the API key */
@@ -245,9 +321,11 @@ export async function updateCredentialMeta(params: {
   thinkingEffort?: string;
   label?: string;
   contextWindowTokens?: number;
-}): Promise<void> {
+  ownerId?: string | null;
+  ctx?: QueryContext;
+}): Promise<boolean> {
   const db = getDb();
-  await db`
+  const rows = await db<{ id: string }[]>`
     UPDATE llm_credentials
     SET provider = COALESCE(${params.provider ?? null}, provider),
         proto_type = COALESCE(${params.protoType ?? null}, proto_type),
@@ -257,7 +335,10 @@ export async function updateCredentialMeta(params: {
         label = COALESCE(${params.label ?? null}, label),
         context_window_tokens = COALESCE(${params.contextWindowTokens ?? null}, context_window_tokens)
     WHERE id = ${params.id}
+      AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
+    RETURNING id
   `;
+  return rows.length > 0;
 }
 
 export async function upsertCredential(params: {
@@ -271,15 +352,18 @@ export async function upsertCredential(params: {
   apiKey: string;
   isDefault?: boolean;
   contextWindowTokens?: number;
+  ownerId?: string | null;
+  ctx?: QueryContext;
 }): Promise<string> {
   const db = getDb();
   const vault = params.apiKey ? getVault() : null;
   const encrypted = params.apiKey && vault ? vault.encrypt(params.apiKey) : null;
   const contextWindowTokens = normalizeContextWindowTokens(params.contextWindowTokens);
+  const ownerId = params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : (params.ownerId ?? null);
 
   if (params.id) {
     // Update existing credential
-    await db`
+    const rows = await db<{ id: string }[]>`
       UPDATE llm_credentials
       SET provider = ${params.provider}, proto_type = ${params.protoType},
           base_url = ${params.baseUrl ?? null}, model_id = ${params.modelId},
@@ -289,17 +373,28 @@ export async function upsertCredential(params: {
           api_key_iv = ${encrypted?.iv ?? null},
           api_key_tag = ${encrypted?.tag ?? null},
           key_fingerprint = ${vault?.fingerprint() ?? null},
-          context_window_tokens = ${contextWindowTokens}
+          context_window_tokens = ${contextWindowTokens},
+          owner_id = ${ownerId}
       WHERE id = ${params.id}
+        AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
+      RETURNING id
     `;
-    if (params.isDefault) await setDefaultCredential(params.id);
+    if (rows.length === 0) return "";
+    if (params.isDefault) {
+      if (params.ctx) await setDefaultCredential(params.ctx, params.id);
+      else await setDefaultCredential(params.id);
+    }
     return params.id;
   }
 
   // Create new credential
   const makeDefault = params.isDefault ?? false;
   if (makeDefault) {
-    await db`UPDATE llm_credentials SET is_default = false WHERE is_default = true`;
+    if (params.ctx && shouldFilterByUser(params.ctx)) {
+      await db`UPDATE llm_credentials SET is_default = false WHERE owner_id = ${params.ctx.userId}`;
+    } else {
+      await db`UPDATE llm_credentials SET is_default = false WHERE is_default = true`;
+    }
   }
 
   // If this is the first credential, auto-set as default
@@ -308,12 +403,12 @@ export async function upsertCredential(params: {
 
   const rows = await db<{ id: string }[]>`
     INSERT INTO llm_credentials (
-      provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
+      provider, proto_type, base_url, model_id, thinking_effort, label, is_default, owner_id,
       api_key_ciphertext, api_key_iv, api_key_tag, key_fingerprint, context_window_tokens
     ) VALUES (
       ${params.provider}, ${params.protoType}, ${params.baseUrl ?? null},
       ${params.modelId}, ${params.thinkingEffort ?? "off"}, ${params.label ?? ""},
-      ${makeDefault || isFirst},
+      ${makeDefault || isFirst}, ${ownerId},
       ${encrypted?.ciphertext ?? null}, ${encrypted?.iv ?? null}, ${encrypted?.tag ?? null}, ${vault?.fingerprint() ?? null}, ${contextWindowTokens}
     )
     RETURNING id

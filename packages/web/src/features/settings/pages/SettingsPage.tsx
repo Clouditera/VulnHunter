@@ -362,35 +362,31 @@ export function SettingsPage() {
     const adminRole = sysStatus?.user?.role === "admin";
     const fetches: Promise<unknown>[] = [
       api.system.status().catch(() => null),
+      api.settings.getCredential().catch(() => ({ credential: null as LlmCredential | null })),
+      adminRole ? api.settings.getSystemConfig().catch(() => null as { config: SystemConfig } | null) : Promise.resolve(null),
+      api.settings.listCredentials().catch(() => ({ credentials: [] as LlmCredential[] })),
     ];
-    if (adminRole) {
-      fetches.push(
-        api.settings.getCredential().catch(() => ({ credential: null as LlmCredential | null })),
-        api.settings.getSystemConfig().catch(() => null as { config: SystemConfig } | null),
-        api.settings.listCredentials().catch(() => ({ credentials: [] as LlmCredential[] })),
-      );
-    }
     Promise.all(fetches).then(([s, credResp, cfg, credList]) => {
       if (!mounted) return;
       if (s) setStatus(s as typeof status);
+      const cr = credResp as { credential: LlmCredential | null } | undefined;
+      if (cr?.credential) {
+        // Don't auto-expand — just store as reference for dirty checks
+        setCred(cr.credential);
+      }
+      // Start with no credential expanded
+      setEditingCredentialId(null);
       if (adminRole) {
-        const cr = credResp as { credential: LlmCredential | null } | undefined;
-        if (cr?.credential) {
-          // Don't auto-expand — just store as reference for dirty checks
-          setCred(cr.credential);
-        }
-        // Start with no credential expanded
-        setEditingCredentialId(null);
         const cfgResp = cfg as { config: SystemConfig } | null | undefined;
         if (cfgResp?.config) {
           setConfig(cfgResp.config);
           setMaxParallel(cfgResp.config.max_parallel_scan);
           setYoungflowMaxParallel(cfgResp.config.youngflow_max_parallel ?? 3);
         }
-        const cl = credList as { credentials: LlmCredential[] } | undefined;
-        if (cl?.credentials) {
-          setCredentials(cl.credentials);
-        }
+      }
+      const cl = credList as { credentials: LlmCredential[] } | undefined;
+      if (cl?.credentials) {
+        setCredentials(cl.credentials);
       }
       setLoading(false);
     });
@@ -750,6 +746,7 @@ export function SettingsPage() {
       ]
     : [
         { id: "profile", labelKey: "settings.nav.profile" },
+        { id: "credentials", labelKey: "settings.nav.credentials" },
         { id: "appearance", labelKey: "settings.nav.appearance" },
       ];
 
@@ -946,6 +943,7 @@ export function SettingsPage() {
               </InfoRow>
             ) : null}
           </SettingsCard>
+          </>}
 
           {/* ============================================================= */}
           {/*  Credentials — unified list + inline editor (Phase 9)         */}
@@ -1535,7 +1533,7 @@ export function SettingsPage() {
                           alignItems: "center",
                         }}
                       >
-                        {!isDraft && c && !c.is_default && (
+                        {!isDraft && c && c.can_edit !== false && !c.is_default && (
                           <button
                             type="button"
                             data-testid="settings-credential-setdefault"
@@ -1545,7 +1543,7 @@ export function SettingsPage() {
                             {i18n.t("settings.credentials.setDefault")}
                           </button>
                         )}
-                        {!isDraft && c && (
+                        {!isDraft && c && c.can_edit !== false && (
                           <button
                             type="button"
                             data-testid="settings-credential-delete"
@@ -1563,7 +1561,7 @@ export function SettingsPage() {
                         <button
                           type="button"
                           data-testid="settings-credential-save"
-                          disabled={saving}
+                          disabled={saving || (!isDraft && c?.can_edit === false)}
                           onClick={handleSave}
                           style={{
                             padding: "6px 16px",
@@ -1584,7 +1582,9 @@ export function SettingsPage() {
                             ? i18n.t("settings.saving")
                             : isDraft
                               ? i18n.t("settings.credentials.create")
-                              : i18n.t("settings.credentials.update")}
+                              : c?.can_edit === false
+                                ? "只读"
+                                : i18n.t("settings.credentials.update")}
                         </button>
                       </div>
                     </div>
@@ -1720,17 +1720,26 @@ export function SettingsPage() {
                       {i18n.t("settings.credentials.empty")}
                     </div>
                   ) : (
-                    credentials.map((c) =>
-                      editingCredentialId === c.id
-                        ? renderExpandedRow({ isDraft: false, c })
-                        : renderCollapsedRow(c),
-                    )
+                    [
+                      { label: "全局凭证", items: credentials.filter((c) => c.scope === "global" || !c.scope) },
+                      { label: "我的凭证", items: credentials.filter((c) => c.scope === "personal") },
+                    ].filter((group) => group.items.length > 0).map((group) => (
+                      <div key={group.label} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", padding: "4px 2px" }}>
+                          {group.label}
+                        </div>
+                        {group.items.map((c) =>
+                          editingCredentialId === c.id
+                            ? renderExpandedRow({ isDraft: false, c })
+                            : renderCollapsedRow(c),
+                        )}
+                      </div>
+                    ))
                   )}
                 </div>
               );
             })()}
           </SettingsCard>
-          </>}
 
           {/* ============================================================= */}
           {/*  Language & Appearance                                          */}

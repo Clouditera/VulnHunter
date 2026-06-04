@@ -592,6 +592,9 @@ export interface LlmCredential {
   key_fingerprint?: string | null;
   current_key_fingerprint?: string;
   context_window_tokens: number;
+  owner_id?: string | null;
+  scope?: "global" | "personal";
+  can_edit?: boolean;
 }
 
 export interface SaveCredentialPayload {
@@ -606,6 +609,7 @@ export interface SaveCredentialPayload {
   api_key: string;
   is_default?: boolean;
   context_window_tokens?: number;
+  owner_id?: string | null;
 }
 
 export interface ModelDiagnosticCheck {
