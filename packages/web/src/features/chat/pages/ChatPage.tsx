@@ -45,6 +45,7 @@ function ChatPageInner() {
     artifacts,
     streaming,
     activity,
+    loading,
     selectSession,
     startDraftSession,
     sendPrompt,
@@ -61,6 +62,10 @@ function ChatPageInner() {
     }
     navigate(location.pathname, { replace: true, state: null });
   }, [location.key, location.pathname, location.state, navigate, selectSession, startDraftSession]);
+
+  useEffect(() => {
+    if (!loading && !activeId) startDraftSession();
+  }, [activeId, loading, startDraftSession]);
 
   const closeReferencePanel = () => {
     setDrawerOpen(false);

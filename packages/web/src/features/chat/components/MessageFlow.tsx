@@ -206,8 +206,6 @@ export function MessageFlow({
 /* -------------------------------------------------------------------------- */
 
 function WelcomeState({ onSuggest }: { onSuggest?: (text: string, submit?: boolean) => void }) {
-  const [draft, setDraft] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const zh = i18n.locale() === "zh";
   const prompts: Array<{
     icon: "git-branch" | "tasks" | "file-text";
@@ -234,15 +232,6 @@ function WelcomeState({ onSuggest }: { onSuggest?: (text: string, submit?: boole
       text: zh ? "帮我生成漏洞报告" : "Help me generate a vulnerability report",
     },
   ];
-
-  function submitWelcomePrompt() {
-    const text = draft.trim();
-    if (!text || submitting) return;
-    setSubmitting(true);
-    onSuggest?.(text, true);
-    setDraft("");
-    window.setTimeout(() => setSubmitting(false), 1200);
-  }
 
   return (
     <div style={{ padding: "80px 24px", textAlign: "center", width: "100%" }}>
@@ -320,71 +309,6 @@ function WelcomeState({ onSuggest }: { onSuggest?: (text: string, submit?: boole
             </div>
           </button>
         ))}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-end",
-          gap: "10px",
-          maxWidth: "620px",
-          margin: "28px auto 0",
-          padding: "10px",
-          border: "1px solid var(--border)",
-          borderRadius: "12px",
-          background: "var(--bg-card)",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.04)",
-        }}
-      >
-        <textarea
-          data-testid="chat-welcome-input"
-          value={draft}
-          disabled={submitting}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              submitWelcomePrompt();
-            }
-          }}
-          placeholder={i18n.t("chat.inputPlaceholder")}
-          rows={1}
-          style={{
-            flex: 1,
-            minHeight: "40px",
-            maxHeight: "120px",
-            padding: "10px 12px",
-            border: "none",
-            outline: "none",
-            resize: "none",
-            background: "transparent",
-            color: "var(--text-primary)",
-            fontSize: "14px",
-            lineHeight: 1.5,
-            fontFamily: "inherit",
-          }}
-        />
-        <button
-          type="button"
-          data-testid="chat-welcome-send"
-          onClick={submitWelcomePrompt}
-          disabled={submitting || !draft.trim()}
-          style={{
-            width: "40px",
-            height: "40px",
-            border: "none",
-            borderRadius: "8px",
-            background: submitting || !draft.trim() ? "var(--border)" : "var(--brand)",
-            color: "#fff",
-            cursor: submitting || !draft.trim() ? "not-allowed" : "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-          title={i18n.t("chat.send")}
-        >
-          {submitting ? "…" : <Icon name="send" size={16} strokeWidth={2.2} />}
-        </button>
       </div>
     </div>
   );
