@@ -1812,6 +1812,7 @@ export function SettingsPage() {
             </Field>
           </SettingsCard>
 
+          {isAdmin && <>
           {/* ============================================================= */}
           {/*  Engine Settings                                                */}
           {/* ============================================================= */}
@@ -1903,6 +1904,7 @@ export function SettingsPage() {
               {saving ? i18n.t("settings.saving") : i18n.t("settings.saveBtn")}
             </button>
           </div>
+          </>}
         </>
       )}
       </div>

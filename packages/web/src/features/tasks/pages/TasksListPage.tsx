@@ -5,6 +5,7 @@ import { api, type Task, type FindingReviewStatus } from "../../../shared/api/cl
 import { NewTaskModal } from "../components/NewTaskModal.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
+import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
 import { SeverityBadges } from "../../../shared/components/SeverityBadges.js";
 import {
@@ -61,11 +62,21 @@ export function TasksListPage() {
   const [, forceUpdate] = useState(0);
   useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
 
+  const { data: status } = useSystemStatus();
+  const isAdmin = status?.user?.role === "admin";
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const { data: usersData } = useQuery({
+    queryKey: ["users", "tasks-filter"],
+    queryFn: () => api.users.list(),
+    enabled: isAdmin,
+  });
+
   const { data, isLoading } = useQuery({
-    queryKey: ["tasks", stateFilter, reviewStatusParam],
+    queryKey: ["tasks", stateFilter, reviewStatusParam, selectedUserId],
     queryFn: () => api.tasks.list({
       state: stateFilter === "all" ? undefined : stateFilter,
       reviewStatus: reviewStatusParam ?? undefined,
+      userId: selectedUserId || undefined,
     }),
     // Server SSE (`task_state`) invalidates ["tasks"] on every state change.
   });
@@ -227,6 +238,15 @@ export function TasksListPage() {
             <option value="name">{i18n.t("tasks.sort.name")}</option>
           </select>
         </div>
+        {isAdmin && (
+          <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            {i18n.t("filters.user")}
+            <select data-testid="tasks-user-filter" value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ height: "34px", padding: "0 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", background: "var(--bg-card)", color: "var(--text-primary)", cursor: "pointer", outline: "none" }}>
+              <option value="">{i18n.t("filters.allUsers")}</option>
+              {(usersData?.users ?? []).map((u) => <option key={u.id} value={u.id}>{u.display_name || u.email}</option>)}
+            </select>
+          </label>
+        )}
         <span
           data-testid="tasks-count"
           style={{

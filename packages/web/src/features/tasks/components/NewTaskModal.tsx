@@ -68,7 +68,12 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
       }
       onCreated();
     } catch (err) {
-      setError(String(err));
+      const e = err as Error & { code?: string };
+      if (e.code === "ERR_TASK_LIMIT_EXCEEDED" || e.message.includes("ERR_TASK_LIMIT_EXCEEDED") || e.message.includes("任务创建上限")) {
+        setError(e.message || i18n.t("taskLimit.exceeded"));
+      } else {
+        setError(e.message || String(err));
+      }
     } finally {
       setLoading(false);
       setUploadPct(null);

@@ -66,6 +66,7 @@ export function UsersSection() {
           <div style={{ flex: 1 }}>{i18n.t("settings.users.col.email")}</div>
           <div style={{ width: "120px" }}>{i18n.t("settings.users.col.name")}</div>
           <div style={{ width: "100px" }}>{i18n.t("settings.users.col.role")}</div>
+          <div style={{ width: "110px" }}>{i18n.t("settings.users.col.taskLimit")}</div>
           <div style={{ width: "100px" }}>{i18n.t("settings.users.col.lastLogin")}</div>
           <div style={{ width: "40px" }} />
         </div>
@@ -95,6 +96,7 @@ export function UsersSection() {
             <div style={{ width: "100px" }}>
               <RoleBadge role={u.role} />
             </div>
+            <div style={{ width: "110px", fontSize: "12px", color: "var(--text-secondary)" }}>{formatTaskLimit(u)}</div>
             <div style={{ width: "100px", fontSize: "12px", color: "var(--text-secondary)" }}>{relativeTime(u.last_login_at)}</div>
             <div style={{ width: "40px", position: "relative" }}>
               <button
@@ -124,6 +126,12 @@ export function UsersSection() {
       {deleteTarget && <ConfirmDeleteModal user={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { deleteMut.mutate(deleteTarget.id); setDeleteTarget(null); }} />}
     </section>
   );
+}
+
+function formatTaskLimit(user: UserApi): string {
+  const used = user.task_count ?? 0;
+  const limit = user.task_limit ?? 0;
+  return limit > 0 ? `${used}/${limit}` : `${used}/∞`;
 }
 
 function RoleBadge({ role }: { role: string }) {
@@ -173,10 +181,11 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [forceChange, setForceChange] = useState(true);
+  const [taskLimit, setTaskLimit] = useState("0");
   const [error, setError] = useState("");
 
   const mut = useMutation({
-    mutationFn: () => api.users.create({ email, password, display_name: displayName || undefined, role, must_change_password: forceChange }),
+    mutationFn: () => api.users.create({ email, password, display_name: displayName || undefined, role, must_change_password: forceChange, task_limit: Math.max(0, Number(taskLimit) || 0) }),
     onSuccess,
     onError: (err: Error) => setError(err.message),
   });
@@ -194,6 +203,7 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
               <RadioBtn active={role === "member"} onClick={() => setRole("member")} label={i18n.t("userModal.role.user")} />
             </div>
           </Field>
+          <Field label={i18n.t("userModal.taskLimit")}><input type="number" min={0} value={taskLimit} onChange={(e) => setTaskLimit(e.target.value)} style={INPUT} /></Field>
           <Field label={i18n.t("userModal.initialPassword")}>
             <PwdInput value={password} onChange={setPassword} show={showPwd} onToggle={() => setShowPwd(!showPwd)} />
             <div style={HINT}>{i18n.t("userModal.passwordHint")}</div>
@@ -220,10 +230,11 @@ function EditUserModal({ user, onClose, onSuccess }: { user: UserApi; onClose: (
   const [displayName, setDisplayName] = useState(user.display_name);
   const [role, setRole] = useState(user.role);
   const [disabled, setDisabled] = useState(user.status === "suspended");
+  const [taskLimit, setTaskLimit] = useState(String(user.task_limit ?? 0));
   const [error, setError] = useState("");
 
   const mut = useMutation({
-    mutationFn: () => api.users.update(user.id, { display_name: displayName, role, status: disabled ? "suspended" : "active" }),
+    mutationFn: () => api.users.update(user.id, { display_name: displayName, role, status: disabled ? "suspended" : "active", task_limit: Math.max(0, Number(taskLimit) || 0) }),
     onSuccess,
     onError: (err: Error) => setError(err.message),
   });
@@ -241,6 +252,7 @@ function EditUserModal({ user, onClose, onSuccess }: { user: UserApi; onClose: (
               <RadioBtn active={role === "member"} onClick={() => setRole("member")} label={i18n.t("userModal.role.user")} />
             </div>
           </Field>
+          <Field label={i18n.t("userModal.taskLimit")}><input type="number" min={0} value={taskLimit} onChange={(e) => setTaskLimit(e.target.value)} style={INPUT} /></Field>
           <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-primary)" }}>
             <ToggleSwitch checked={disabled} onChange={setDisabled} />
             {i18n.t("userModal.disable")}
