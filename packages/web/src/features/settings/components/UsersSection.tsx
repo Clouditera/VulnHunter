@@ -179,13 +179,17 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [forceChange, setForceChange] = useState(true);
   const [taskLimit, setTaskLimit] = useState("0");
   const [error, setError] = useState("");
 
   const mut = useMutation({
-    mutationFn: () => api.users.create({ email, password, display_name: displayName || undefined, role, must_change_password: forceChange, task_limit: Math.max(0, Number(taskLimit) || 0) }),
+    mutationFn: () => {
+      if (password !== confirmPassword) throw new Error(i18n.t("userModal.err.passwordMismatch"));
+      return api.users.create({ email, password, display_name: displayName || undefined, role, must_change_password: forceChange, task_limit: Math.max(0, Number(taskLimit) || 0) });
+    },
     onSuccess,
     onError: (err: Error) => setError(err.message),
   });
@@ -208,6 +212,9 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
             <PwdInput value={password} onChange={setPassword} show={showPwd} onToggle={() => setShowPwd(!showPwd)} />
             <div style={HINT}>{i18n.t("userModal.passwordHint")}</div>
           </Field>
+          <Field label={i18n.t("userModal.confirmPassword")}>
+            <PwdInput value={confirmPassword} onChange={setConfirmPassword} show={showPwd} onToggle={() => setShowPwd(!showPwd)} />
+          </Field>
           <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-primary)" }}>
             <input type="checkbox" checked={forceChange} onChange={(e) => setForceChange(e.target.checked)} />
             {i18n.t("userModal.forceChangePassword")}
@@ -216,7 +223,7 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
         </div>
         <div style={MODAL_FOOTER}>
           <button onClick={onClose} style={GHOST_BTN_STYLED}>{i18n.t("userModal.cancel")}</button>
-          <button onClick={() => mut.mutate()} disabled={!email || password.length < 8 || mut.isPending} style={{ ...PRIMARY_BTN, opacity: !email || password.length < 8 ? 0.5 : 1 }}>
+          <button onClick={() => mut.mutate()} disabled={!email || password.length < 8 || confirmPassword.length < 8 || password !== confirmPassword || mut.isPending} style={{ ...PRIMARY_BTN, opacity: !email || password.length < 8 || confirmPassword.length < 8 || password !== confirmPassword ? 0.5 : 1 }}>
             {mut.isPending ? "..." : i18n.t("userModal.create")}
           </button>
         </div>
@@ -271,11 +278,17 @@ function EditUserModal({ user, onClose, onSuccess }: { user: UserApi; onClose: (
 /* ── Reset Password Modal ── */
 function ResetPasswordModal({ user, onClose, onSuccess }: { user: UserApi; onClose: () => void; onSuccess: () => void }) {
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
+  const [error, setError] = useState("");
 
   const mut = useMutation({
-    mutationFn: () => api.users.update(user.id, { reset_password: password }),
+    mutationFn: () => {
+      if (password !== confirmPassword) throw new Error(i18n.t("userModal.err.passwordMismatch"));
+      return api.users.update(user.id, { reset_password: password });
+    },
     onSuccess,
+    onError: (err: Error) => setError(err.message),
   });
 
   return (
@@ -287,10 +300,14 @@ function ResetPasswordModal({ user, onClose, onSuccess }: { user: UserApi; onClo
             <PwdInput value={password} onChange={setPassword} show={showPwd} onToggle={() => setShowPwd(!showPwd)} />
             <div style={HINT}>{i18n.t("userModal.passwordHint")}</div>
           </Field>
+          <Field label={i18n.t("userModal.confirmPassword")}>
+            <PwdInput value={confirmPassword} onChange={setConfirmPassword} show={showPwd} onToggle={() => setShowPwd(!showPwd)} />
+          </Field>
+          {error && <div style={{ color: "var(--brand)", fontSize: "12px" }}>{error}</div>}
         </div>
         <div style={MODAL_FOOTER}>
           <button onClick={onClose} style={GHOST_BTN_STYLED}>{i18n.t("userModal.cancel")}</button>
-          <button onClick={() => mut.mutate()} disabled={password.length < 8 || mut.isPending} style={{ ...PRIMARY_BTN, opacity: password.length < 8 ? 0.5 : 1 }}>
+          <button onClick={() => mut.mutate()} disabled={password.length < 8 || confirmPassword.length < 8 || password !== confirmPassword || mut.isPending} style={{ ...PRIMARY_BTN, opacity: password.length < 8 || confirmPassword.length < 8 || password !== confirmPassword ? 0.5 : 1 }}>
             {mut.isPending ? "..." : i18n.t("resetPwd.confirm")}
           </button>
         </div>
@@ -301,10 +318,10 @@ function ResetPasswordModal({ user, onClose, onSuccess }: { user: UserApi; onClo
 
 /* ── Shared primitives ── */
 
-function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+function ModalOverlay({ children }: { children: React.ReactNode; onClose: () => void }) {
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-      <div onClick={(e) => e.stopPropagation()}>{children}</div>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+      <div>{children}</div>
     </div>
   );
 }

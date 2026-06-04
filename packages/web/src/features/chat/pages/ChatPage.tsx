@@ -94,16 +94,16 @@ function ChatPageInner() {
         onAbort={abort}
         onArtifactSelect={handleArtifactSelect}
         activity={activity}
-        onSuggest={(text) => {
+        onSuggest={(text, submit = false) => {
           if (!activeId) {
             startDraftSession();
             window.setTimeout(
-              () => window.dispatchEvent(new CustomEvent("vh:chat-suggest", { detail: { text } })),
+              () => window.dispatchEvent(new CustomEvent("vh:chat-suggest", { detail: { text, submit } })),
               0,
             );
             return;
           }
-          window.dispatchEvent(new CustomEvent("vh:chat-suggest", { detail: { text } }));
+          window.dispatchEvent(new CustomEvent("vh:chat-suggest", { detail: { text, submit } }));
         }}
       />
       {isNarrow ? (
