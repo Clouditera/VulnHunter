@@ -5,15 +5,17 @@ FROM base AS builder
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/service/package.json ./packages/service/
+COPY packages/enterprise/package.json ./packages/enterprise/
 COPY packages/web/package.json ./packages/web/
 
 RUN corepack enable pnpm && pnpm install --frozen-lockfile
 
 COPY packages/shared ./packages/shared
 COPY packages/service ./packages/service
+COPY packages/enterprise ./packages/enterprise
 COPY packages/web ./packages/web
 
-RUN pnpm turbo run build --filter=@vulnagent/service --filter=@vulnagent/web
+RUN pnpm turbo run build --filter=@vulnagent/service --filter=@vulnagent/enterprise --filter=@vulnagent/web
 RUN pnpm deploy --filter=@vulnagent/service --prod /prod/service
 
 FROM base AS runner
@@ -31,9 +33,15 @@ ARG YOUNGFLOW_VERSION=0.2.5
 
 COPY --from=builder --chown=vulnagent:nodejs /prod/service/node_modules ./node_modules
 COPY --from=builder --chown=vulnagent:nodejs /prod/service/package.json ./package.json
+COPY --from=builder --chown=vulnagent:nodejs /prod/service/package.json ./packages/service/package.json
 COPY --from=builder --chown=vulnagent:nodejs /prod/service/dist ./packages/service/dist
 COPY --from=builder --chown=vulnagent:nodejs /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder --chown=vulnagent:nodejs /app/packages/enterprise/package.json ./packages/enterprise/package.json
+COPY --from=builder --chown=vulnagent:nodejs /app/packages/enterprise/dist ./packages/enterprise/dist
 COPY --from=builder --chown=vulnagent:nodejs /app/packages/web/dist ./public
+RUN mkdir -p /app/node_modules/@vulnagent && \
+    ln -sf /app/packages/service /app/node_modules/@vulnagent/service && \
+    chown -h vulnagent:nodejs /app/node_modules/@vulnagent/service
 RUN printf '{\n  "product": "vulnagent",\n  "version": "%s",\n  "buildTime": "%s",\n  "gitCommit": "%s",\n  "youngflowVersion": "%s",\n  "licenseSchema": "v1"\n}\n' "$VULNAGENT_VERSION" "$VULNAGENT_BUILD_TIME" "$VULNAGENT_GIT_COMMIT" "$YOUNGFLOW_VERSION" > /app/VERSION.json && \
     chown vulnagent:nodejs /app/VERSION.json
 

@@ -14,8 +14,14 @@ import * as reportStorage from "./storage.js";
 import { spawnReportWorker } from "./report-worker.js";
 
 export const reportsRouter = new Hono();
-reportsRouter.use("*", licenseGuard);
-reportsRouter.use("*", requireAuth);
+reportsRouter.use("*", async (c, next) => {
+  if (c.req.path === "/api/system/activate") return next();
+  return licenseGuard(c, next);
+});
+reportsRouter.use("*", async (c, next) => {
+  if (c.req.path === "/api/system/activate") return next();
+  return requireAuth(c, next);
+});
 
 // ─── Skills CRUD (admin) ───
 

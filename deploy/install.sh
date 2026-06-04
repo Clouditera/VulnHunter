@@ -115,6 +115,7 @@ if [[ ! -f .env ]]; then
   sed -i "s|^MINIO_ACCESS_KEY=.*|MINIO_ACCESS_KEY=vh$(rand_hex 8)|" .env
   sed -i "s|^MINIO_SECRET_KEY=.*|MINIO_SECRET_KEY=$(rand_hex 24)|" .env
   sed -i "s|^WEB_PORT=.*|WEB_PORT=$web_port|" .env
+  sed -i "s|^EDITION=.*|EDITION=${EDITION:-community}|" .env
   master_key_file="$data_dir/.secrets/vulnagent-master.key"
   sed -i "s|^MASTER_KEY_FILE=.*|MASTER_KEY_FILE=$master_key_file|" .env
   sed -i "s|^VULNAGENT_MASTER_KEY_FILE=.*|VULNAGENT_MASTER_KEY_FILE=$master_key_file|" .env

@@ -13,7 +13,7 @@ YOUNGFLOW_VERSION="${YOUNGFLOW_VERSION:-0.2.5}"
 git submodule update --init --recursive
 
 rm -rf "$OUT"
-mkdir -p "$OUT/images" "$OUT/docs"
+mkdir -p "$OUT/images" "$OUT/docs" "$OUT/.secrets"
 
 cat > "$OUT/VERSION.json" << JSON
 {
@@ -69,6 +69,13 @@ docker save "$POSTGRES_IMAGE" -o "$OUT/images/postgres-16-alpine.tar"
 docker save "$MINIO_IMAGE" -o "$OUT/images/minio.tar"
 
 cp deploy/docker-compose.yml deploy/.env.example deploy/install.sh deploy/upgrade.sh deploy/uninstall.sh deploy/doctor.sh "$OUT/"
+LICENSE_PUBLIC_KEY_SOURCE="${LICENSE_PUBLIC_KEY_FILE:-$HOME/.vulnhunt-issuer/license-public.pem}"
+if [[ ! -f "$LICENSE_PUBLIC_KEY_SOURCE" ]]; then
+  echo "missing license public key: $LICENSE_PUBLIC_KEY_SOURCE" >&2
+  echo "Set LICENSE_PUBLIC_KEY_FILE to the issuer public key PEM before building an enterprise release." >&2
+  exit 1
+fi
+cp "$LICENSE_PUBLIC_KEY_SOURCE" "$OUT/.secrets/license-public.pem"
 sed -i "s|^SERVICE_IMAGE=.*|SERVICE_IMAGE=vulnagent-service:$VERSION|" "$OUT/.env.example"
 sed -i "s|^WEB_IMAGE=.*|WEB_IMAGE=vulnagent-web:$VERSION|" "$OUT/.env.example"
 sed -i "s|^WORKER_IMAGE=.*|WORKER_IMAGE=vulnagent-worker:$VERSION|" "$OUT/.env.example"
@@ -80,7 +87,7 @@ chmod +x "$OUT"/*.sh
 (
   cd "$OUT"
   find images -type f -name '*.tar' -print | sort
-  printf '%s\n' docker-compose.yml .env.example install.sh doctor.sh upgrade.sh uninstall.sh VERSION.json
+  printf '%s\n' docker-compose.yml .env.example install.sh doctor.sh upgrade.sh uninstall.sh VERSION.json .secrets/license-public.pem
   find docs -type f -print | sort
 ) | while IFS= read -r file; do
   [[ -f "$OUT/$file" ]] && sha256sum "$OUT/$file"

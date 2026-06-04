@@ -10,8 +10,14 @@ import { queryContextFromUser } from "../../infra/query-context.js";
 
 export const filesRouter = new Hono();
 
-filesRouter.use("*", licenseGuard);
-filesRouter.use("*", requireAuth);
+filesRouter.use("*", async (c, next) => {
+  if (c.req.path === "/api/system/activate") return next();
+  return licenseGuard(c, next);
+});
+filesRouter.use("*", async (c, next) => {
+  if (c.req.path === "/api/system/activate") return next();
+  return requireAuth(c, next);
+});
 
 // POST /api/tasks  — create from upload or git
 // (Unified create endpoint, not in files/ conceptually, but wired here for Phase 2)
