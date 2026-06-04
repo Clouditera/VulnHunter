@@ -498,7 +498,7 @@ const ZH: Record<string, string> = {
   "settings.credentials.update": "保存修改",
   "filters.user": "用户",
   "filters.allUsers": "全部用户",
-  "taskLimit.exceeded": "已达到任务创建上限，请联系管理员扩容。",
+  "taskLimit.exceeded": "已达到任务创建上限（{used}/{limit}），请联系管理员扩容。",
   "newTask.cancel": "取消",
 
   // Chat
@@ -1174,7 +1174,7 @@ const EN: Record<string, string> = {
   "settings.credentials.update": "Save changes",
   "filters.user": "User",
   "filters.allUsers": "All users",
-  "taskLimit.exceeded": "Task creation limit reached. Contact an administrator to increase your quota.",
+  "taskLimit.exceeded": "Task creation limit reached ({used}/{limit}). Contact an administrator to increase your quota.",
   "newTask.cancel": "Cancel",
 
   // Chat
