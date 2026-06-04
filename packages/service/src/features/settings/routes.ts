@@ -18,6 +18,7 @@ import { loadConfig } from "../../infra/config.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
+const VALID_PROTO_TYPES = new Set(["openai-completions", "openai-responses", "anthropic", "openai"]);
 function parseContextWindowTokens(value: unknown): number {
   if (value == null) return DEFAULT_CONTEXT_WINDOW_TOKENS;
   if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("invalid context_window_tokens");
@@ -58,14 +59,19 @@ settingsRouter.get("/credentials", async (c) => {
   return c.json({ credentials: creds });
 });
 
-// DELETE /api/settings/credentials/:id — delete a credential
-settingsRouter.delete("/credentials/:id", async (c) => {
+async function handleDeleteCredential(c: any) {
   const ctx = queryContextFromUser(c.get("user"));
   const id = c.req.param("id");
   const ok = await deleteCredential(ctx, id);
   if (!ok) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   return c.json({ ok: true });
-});
+}
+
+// DELETE /api/settings/credentials/:id — delete a credential
+settingsRouter.delete("/credentials/:id", handleDeleteCredential);
+
+// DELETE /api/settings/credential/:id — compatibility alias for singular credential route
+settingsRouter.delete("/credential/:id", handleDeleteCredential);
 
 // POST /api/settings/credentials/:id/default — set as default
 settingsRouter.post("/credentials/:id/default", async (c) => {
@@ -91,11 +97,14 @@ settingsRouter.put("/credential", async (c) => {
     owner_id?: string | null;
   }>();
 
-  if (!body.provider || !body.model_id || !body.base_url) {
+  if (!body.provider || !body.proto_type || !body.model_id || !body.base_url) {
     return c.json(
-      { error: { code: "ERR_BAD_REQUEST", detail: "provider, base_url, model_id required" } },
+      { error: { code: "ERR_BAD_REQUEST", detail: "provider, proto_type, base_url, model_id required" } },
       400,
     );
+  }
+  if (!VALID_PROTO_TYPES.has(body.proto_type)) {
+    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "invalid proto_type" } }, 400);
   }
 
   let contextWindowTokens: number;
@@ -146,6 +155,10 @@ settingsRouter.patch("/credential/:id", async (c) => {
     context_window_tokens?: number;
     owner_id?: string | null;
   }>();
+
+  if (body.proto_type !== undefined && !VALID_PROTO_TYPES.has(body.proto_type)) {
+    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "invalid proto_type" } }, 400);
+  }
 
   let contextWindowTokens: number | undefined;
   if (body.context_window_tokens !== undefined) {
