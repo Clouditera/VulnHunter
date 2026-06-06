@@ -5,7 +5,7 @@ import * as taskStorage from "./storage.js";
 import { cleanupScanWorkDir } from "../workers/scan-worker.js";
 import { loadTaskEvents } from "../events/event-archive.js";
 import { listCredentials } from "../settings/storage.js";
-import { cancelTask, pauseTask, restartTask, resumeTask, TaskControlError } from "./control-service.js";
+import { cancelTask, continueTask, pauseTask, restartTask, resumeTask, TaskControlError } from "./control-service.js";
 import { loadConfig } from "../../infra/config.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
@@ -119,6 +119,32 @@ tasksRouter.post("/:id/restart", async (c) => {
   if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
   try {
     await restartTask(task.id);
+    return c.json({ ok: true });
+  } catch (err) {
+    return controlErrorResponse(c, err);
+  }
+});
+
+// POST /api/tasks/:id/continue — re-run with --continue on top of existing outputs
+tasksRouter.post("/:id/continue", async (c) => {
+  const ctx = queryContextFromUser(c.get("user"));
+  const task = await taskStorage.getTaskById(ctx, c.req.param("id"));
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+  const body = await c.req
+    .json<{ audit_focus?: string; scan_timeout?: string | number }>()
+    .catch(() => ({} as { audit_focus?: string; scan_timeout?: string | number }));
+  const auditFocus =
+    typeof body.audit_focus === "string" ? body.audit_focus.trim() : undefined;
+  let scanTimeout: number | undefined;
+  if (body.scan_timeout !== undefined && body.scan_timeout !== null && body.scan_timeout !== "") {
+    const n =
+      typeof body.scan_timeout === "number"
+        ? body.scan_timeout
+        : Number.parseInt(String(body.scan_timeout).trim(), 10);
+    if (Number.isFinite(n) && n > 0) scanTimeout = Math.trunc(n);
+  }
+  try {
+    await continueTask(task.id, { auditFocus, scanTimeout });
     return c.json({ ok: true });
   } catch (err) {
     return controlErrorResponse(c, err);

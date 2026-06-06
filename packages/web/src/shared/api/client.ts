@@ -213,7 +213,15 @@ export const api = {
     create: (
       body:
         | FormData
-        | { git_url: string; project_name?: string; display_name?: string; credential_id?: string },
+        | {
+            git_url: string;
+            project_name?: string;
+            display_name?: string;
+            credential_id?: string;
+            audit_focus?: string;
+            scan_timeout?: number;
+            max_items_per_recon?: number;
+          },
     ) =>
       body instanceof FormData
         ? fetch("/api/tasks", { method: "POST", credentials: "include", body }).then((r) => r.json() as Promise<{ task: Task }>)
@@ -271,6 +279,11 @@ export const api = {
     pause: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/pause`, { method: "POST" }),
     resume: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/resume`, { method: "POST" }),
     restart: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/restart`, { method: "POST" }),
+    continue: (id: string, params?: { audit_focus?: string; scan_timeout?: number }) =>
+      request<{ ok: boolean }>(`/api/tasks/${id}/continue`, {
+        method: "POST",
+        body: JSON.stringify(params ?? {}),
+      }),
     delete: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}`, { method: "DELETE" }),
     poc: (id: string) => request<{ poc_files: PocFile[] }>(`/api/tasks/${id}/poc`),
     pocContent: (id: string, filename: string, key: string) =>

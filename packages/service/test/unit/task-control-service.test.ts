@@ -9,6 +9,7 @@ const state = {
   pauseCount: 1,
   unpauseCount: 1,
   reset: [] as string[],
+  continued: [] as any[],
   cleaned: [] as string[],
   notified: [] as any[],
   busy: false,
@@ -18,6 +19,7 @@ vi.mock("../../src/features/tasks/storage.js", () => ({
   getTaskById: vi.fn(async () => state.task),
   updateTaskState: vi.fn(async (...args: any[]) => state.updates.push(args)),
   queueTaskForResume: vi.fn(async (...args: any[]) => state.updates.push(["queueTaskForResume", ...args])),
+  queueTaskForContinue: vi.fn(async (...args: any[]) => state.continued.push(args)),
   resetTaskForRestart: vi.fn(async (taskId: string) => state.reset.push(taskId)),
 }));
 
@@ -53,7 +55,7 @@ vi.mock("../../src/infra/minio/client.js", () => ({
   })),
 }));
 
-const { cancelTask, pauseTask, resumeTask, restartTask, TaskControlError } = await import("../../src/features/tasks/control-service.js");
+const { cancelTask, continueTask, pauseTask, resumeTask, restartTask, TaskControlError } = await import("../../src/features/tasks/control-service.js");
 
 function makeTask(overrides: Record<string, unknown> = {}) {
   return {
@@ -75,6 +77,7 @@ describe("task control service", () => {
     state.pauseCount = 1;
     state.unpauseCount = 1;
     state.reset = [];
+    state.continued = [];
     state.cleaned = [];
     state.notified = [];
     state.busy = false;
@@ -139,6 +142,31 @@ describe("task control service", () => {
     expect(state.cleaned).toEqual(["/tmp/vh:task-1:vulnagent-worker:1.0.3"]);
   });
 
+  it("continues a completed task without clearing findings", async () => {
+    state.task = makeTask({ state: "completed" });
+    const result = await continueTask("task-1", { auditFocus: "auth", scanTimeout: 1500 });
+    expect(result.state).toBe("queued");
+    // continue must NOT reset/clear findings
+    expect(state.reset).toEqual([]);
+    expect(state.cleaned).toEqual([]);
+    expect(state.continued).toEqual([["task-1", { auditFocus: "auth", scanTimeout: 1500 }]]);
+    expect(state.notified[0]).toMatchObject({ type: "task_state", taskId: "task-1", state: "queued" });
+  });
+
+  it("rejects continue on a running task", async () => {
+    state.task = makeTask({ state: "running" });
+    await expect(continueTask("task-1")).rejects.toMatchObject({ code: "ERR_INVALID_STATE" });
+    expect(state.continued).toEqual([]);
+  });
+
+  it("allows continue on failed and cancelled tasks", async () => {
+    state.task = makeTask({ state: "failed" });
+    await continueTask("task-1");
+    state.task = makeTask({ state: "cancelled" });
+    await continueTask("task-1");
+    expect(state.continued.length).toBe(2);
+  });
+
   it("cancels a queued task without stopping a worker", async () => {
     state.task = makeTask({ state: "queued" });
     const result = await cancelTask("task-1");
@@ -157,9 +185,11 @@ describe("task control service", () => {
     state.task = makeTask({ state: "completed" });
     await expect(restartTask("task-1", { dataDir: "/tmp/vh", minio: { bucket: "vulnagent" } } as any))
       .rejects.toMatchObject({ code: "ERR_TASK_BUSY" });
+    await expect(continueTask("task-1")).rejects.toMatchObject({ code: "ERR_TASK_BUSY" });
 
     expect(state.updates).toEqual([]);
     expect(state.stopped).toEqual([]);
     expect(state.reset).toEqual([]);
+    expect(state.continued).toEqual([]);
   });
 });

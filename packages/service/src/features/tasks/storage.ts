@@ -264,6 +264,57 @@ export async function resetTaskForRestart(id: string): Promise<void> {
   await db`DELETE FROM findings_meta WHERE task_id = ${id}`;
 }
 
+/**
+ * Queue a completed/failed/cancelled task for a CONTINUE scan: keep all
+ * historical findings + MinIO outputs, set `source_meta.continue_mode = true`
+ * (and optionally override audit_focus / scan_timeout), and re-queue. Unlike
+ * restart, findings_meta and scan-outputs are preserved; the scheduler will
+ * download the historical outputs back into the worker workspace.
+ */
+export async function queueTaskForContinue(
+  id: string,
+  overrides?: { auditFocus?: string; scanTimeout?: number },
+): Promise<void> {
+  const db = getDb();
+  const task = await getTaskById(id);
+  const currentMeta: Record<string, unknown> =
+    task && task.source_meta && typeof task.source_meta === "object"
+      ? { ...(task.source_meta as Record<string, unknown>) }
+      : {};
+  currentMeta.continue_mode = true;
+  if (overrides?.auditFocus !== undefined) currentMeta.audit_focus = overrides.auditFocus;
+  if (overrides?.scanTimeout !== undefined) currentMeta.scan_timeout = overrides.scanTimeout;
+  await db`
+    UPDATE tasks
+    SET state = 'queued',
+        started_at = NULL,
+        completed_at = NULL,
+        duration_ms = NULL,
+        failure_reason = NULL,
+        source_meta = ${db.json(currentMeta as Record<string, string | number | boolean | null>)}::jsonb
+    WHERE id = ${id}
+  `;
+}
+
+/** Remove the continue_mode flag from a task's source_meta (post-completion). */
+export async function clearContinueMode(id: string): Promise<void> {
+  const db = getDb();
+  await db`
+    UPDATE tasks
+    SET source_meta = (source_meta - 'continue_mode')
+    WHERE id = ${id}
+  `;
+}
+
+/** True when a task is queued/running in CONTINUE mode (source_meta flag). */
+export function isContinueMode(task: DbTask): boolean {
+  let meta: unknown = task.source_meta;
+  if (typeof meta === "string") {
+    try { meta = JSON.parse(meta); } catch { meta = {}; }
+  }
+  return (meta as { continue_mode?: boolean } | null)?.continue_mode === true;
+}
+
 export async function countTasksByState(ctx: QueryContext, state: TaskState): Promise<number>;
 export async function countTasksByState(state: TaskState): Promise<number>;
 export async function countTasksByState(a: QueryContext | TaskState, b?: TaskState): Promise<number> {

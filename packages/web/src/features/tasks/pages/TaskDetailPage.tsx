@@ -99,6 +99,24 @@ export function TaskDetailPage() {
     mutationFn: () => api.tasks.restart(taskId!),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["task", taskId] }),
   });
+  const [continueDialogOpen, setContinueDialogOpen] = useState(false);
+  const [continueFocus, setContinueFocus] = useState("");
+  const [continueDuration, setContinueDuration] = useState("60");
+  const continueMut = useMutation({
+    mutationFn: () => {
+      const min = Number.parseInt(continueDuration, 10);
+      const scan_timeout = Number.isFinite(min) && min > 0 ? min * 60 : undefined;
+      const focus = continueFocus.trim();
+      return api.tasks.continue(taskId!, {
+        audit_focus: focus || undefined,
+        scan_timeout,
+      });
+    },
+    onSuccess: () => {
+      setContinueDialogOpen(false);
+      qc.invalidateQueries({ queryKey: ["task", taskId] });
+    },
+  });
   const [editingName, setEditingName] = useState(false);
   const [displayNameDraft, setDisplayNameDraft] = useState("");
   const displayNameMut = useMutation({
@@ -379,11 +397,109 @@ export function TaskDetailPage() {
                 {i18n.t("taskDetail.restart")}
               </button>
             )}
+            {["failed", "cancelled", "completed"].includes(task.state) && (
+              <button
+                data-testid="task-continue-btn"
+                onClick={() => {
+                  const meta = (task as Task & { source_meta?: Record<string, unknown> }).source_meta ?? {};
+                  setContinueFocus(typeof meta.audit_focus === "string" ? meta.audit_focus : "");
+                  const t = Number(meta.scan_timeout);
+                  setContinueDuration(Number.isFinite(t) && t > 0 ? String(Math.round(t / 60)) : "60");
+                  setContinueDialogOpen(true);
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-error)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                style={{
+                  padding: "7px 14px",
+                  border: "1px solid var(--brand)",
+                  borderRadius: "6px",
+                  background: "transparent",
+                  color: "var(--brand)",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "background 0.15s",
+                }}
+              >
+                {i18n.t("taskDetail.continue")}
+              </button>
+            )}
           </div>
         </div>
 
         {/* Failure banner (when state=failed) */}
         {task.state === "failed" && <FailureBanner task={task} />}
+
+        {/* Continue-scan dialog */}
+        {continueDialogOpen && (
+          <div
+            data-testid="continue-scan-dialog"
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}
+            onMouseDown={(e) => { if (e.target === e.currentTarget) setContinueDialogOpen(false); }}
+          >
+            <div style={{ background: "var(--bg-card)", borderRadius: "10px", width: "460px", boxShadow: "0 20px 60px rgba(0,0,0,0.15)", overflow: "hidden" }}>
+              <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
+                <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>{i18n.t("taskDetail.continueTitle")}</h2>
+                <p style={{ margin: "6px 0 0", fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                  {i18n.t("taskDetail.continueHint")}
+                </p>
+              </div>
+              <div style={{ padding: "24px" }}>
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
+                    {i18n.t("newTask.auditFocus")}
+                  </label>
+                  <textarea
+                    data-testid="continue-audit-focus"
+                    value={continueFocus}
+                    onChange={(e) => setContinueFocus(e.target.value)}
+                    placeholder={i18n.t("newTask.auditFocusPlaceholder")}
+                    rows={3}
+                    maxLength={2000}
+                    style={{ width: "100%", border: "1px solid var(--border)", borderRadius: "6px", padding: "8px 10px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit", lineHeight: 1.5 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
+                    {i18n.t("newTask.scanDuration")}
+                  </label>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <input
+                      data-testid="continue-scan-duration"
+                      type="number"
+                      min={1}
+                      value={continueDuration}
+                      onChange={(e) => setContinueDuration(e.target.value)}
+                      style={{ width: "100px", height: "40px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 10px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box" }}
+                    />
+                    <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>{i18n.t("newTask.minutes")}</span>
+                  </div>
+                </div>
+                {continueMut.isError && (
+                  <p style={{ color: "var(--brand)", fontSize: "13px", margin: "12px 0 0" }}>
+                    {(continueMut.error as Error)?.message ?? String(continueMut.error)}
+                  </p>
+                )}
+              </div>
+              <div style={{ padding: "0 24px 24px", display: "flex", gap: "10px" }}>
+                <button
+                  onClick={() => setContinueDialogOpen(false)}
+                  style={{ flex: 1, padding: "10px", background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
+                >
+                  {i18n.t("common.cancel")}
+                </button>
+                <button
+                  data-testid="continue-scan-submit"
+                  onClick={() => continueMut.mutate()}
+                  disabled={continueMut.isPending}
+                  style={{ flex: 1, padding: "10px", background: continueMut.isPending ? "var(--bg-disabled)" : "var(--brand)", color: continueMut.isPending ? "var(--text-secondary)" : "var(--btn-primary-text)", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, cursor: continueMut.isPending ? "not-allowed" : "pointer" }}
+                >
+                  {continueMut.isPending ? i18n.t("newTask.submitting") : i18n.t("taskDetail.continueSubmit")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Live Log (fused into topbar) */}
         <LiveLog taskId={task.id} taskState={task.state} />
