@@ -23,10 +23,11 @@ export async function spawnScanWorker(
   config: ServiceConfig,
   llmEnv: Record<string, string>,
   resume = false,
+  continueMode = false,
 ): Promise<string> {
   const hostWorkDir = getHostWorkDir(config.dataDir, task.id);
 
-  if (!resume) {
+  if (!resume && !continueMode) {
     ensureWorkDir(hostWorkDir);
   }
 
@@ -49,6 +50,10 @@ export async function spawnScanWorker(
       MODE: "scan",
       TASK_ID: task.id,
       RESUME: resume ? "1" : "0",
+      CONTINUE: continueMode ? "1" : "0",
+      AUDIT_FOCUS: stringMeta(task.source_meta, "audit_focus"),
+      SCAN_TIMEOUT: stringMeta(task.source_meta, "scan_timeout"),
+      MAX_ITEMS_PER_RECON: stringMeta(task.source_meta, "max_items_per_recon"),
       MINIO_ENDPOINT: `http://${config.minio.endpoint}:${config.minio.port}`,
       MINIO_ACCESS_KEY: config.minio.accessKey,
       MINIO_SECRET_KEY: config.minio.secretKey,
@@ -62,8 +67,14 @@ export async function spawnScanWorker(
   await updateTaskState(task.id, "running", { startedAt: new Date() });
   notify({ type: "task_state", taskId: task.id, state: "running" });
 
-  logger.info({ taskId: task.id, hostWorkDir, resume }, "Scan worker started");
+  logger.info({ taskId: task.id, hostWorkDir, resume, continueMode }, "Scan worker started");
   return container.id;
+}
+
+function stringMeta(meta: DbTask["source_meta"] | null | undefined, key: string): string {
+  const value = meta?.[key];
+  if (value === undefined || value === null) return "";
+  return String(value);
 }
 
 export async function stopScanWorker(taskId: string): Promise<void> {
