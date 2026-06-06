@@ -291,7 +291,7 @@ export async function queueTaskForContinue(
         completed_at = NULL,
         duration_ms = NULL,
         failure_reason = NULL,
-        source_meta = ${JSON.stringify(currentMeta)}::jsonb
+        source_meta = ${db.json(currentMeta as Record<string, string | number | boolean | null>)}::jsonb
     WHERE id = ${id}
   `;
 }
