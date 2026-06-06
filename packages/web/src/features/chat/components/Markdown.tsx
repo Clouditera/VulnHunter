@@ -99,7 +99,7 @@ const H3: CSSProperties = {
 };
 const H4: CSSProperties = { ...H3, fontSize: "13.5px" };
 
-const components: Components = {
+const baseComponents: Components = {
   // Code: inline vs fenced. `className` is "language-xxx" for fenced blocks.
   code({ className, children, ...props }) {
     const match = /language-(\w+)/.exec(className || "");
@@ -172,11 +172,53 @@ const components: Components = {
   em: ({ children }) => <em>{children}</em>,
 };
 
-export function Markdown({ content }: { content: string }) {
+/** Build the component map, optionally intercepting relative .md links. */
+function buildComponents(onRelativeLink?: (href: string) => void): Components {
+  if (!onRelativeLink) return baseComponents;
+  return {
+    ...baseComponents,
+    a: ({ href, children }) => {
+      const text = typeof children === "string" ? children : "";
+      const isAutolink = text === href;
+      if (isAutolink) return <span>{children}</span>;
+      // Intercept relative links (no scheme, no leading slash) — typically
+      // `[overview.md](overview.md)` inside the wiki index. Switch wiki page
+      // instead of navigating away.
+      const isRelative =
+        !!href && !/^[a-z]+:\/\//i.test(href) && !href.startsWith("/") && !href.startsWith("#");
+      if (isRelative) {
+        return (
+          <a
+            href={href}
+            style={LINK}
+            onClick={(e) => {
+              e.preventDefault();
+              onRelativeLink(href!);
+            }}
+          >
+            {children}
+          </a>
+        );
+      }
+      return (
+        <a href={href} style={LINK} target="_blank" rel="noopener noreferrer">
+          {children}
+        </a>
+      );
+    },
+  };
+}
+export function Markdown({
+  content,
+  onRelativeLink,
+}: {
+  content: string;
+  onRelativeLink?: (href: string) => void;
+}) {
   return (
     <ReactMarkdown
       remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
-      components={components}
+      components={buildComponents(onRelativeLink)}
     >
       {content}
     </ReactMarkdown>
