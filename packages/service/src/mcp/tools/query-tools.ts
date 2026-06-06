@@ -145,31 +145,39 @@ export async function getTaskEvents(args: {
 
 export const readWikiSchema = {
   task_id: z.string().describe("The task ID"),
-  section: z
-    .enum(["profile", "features", "groups", "all"])
+  page: z
+    .string()
     .optional()
-    .default("all")
-    .describe("Wiki section"),
+    .describe("Wiki page filename, e.g. overview.md. Omit to read the index/listing."),
 };
 
-export async function readWiki(args: { task_id: string; section?: string }, ctx: McpContext): Promise<ToolResult> {
+export async function readWiki(args: { task_id: string; page?: string }, ctx: McpContext): Promise<ToolResult> {
   try {
     const task = await taskStorage.getTaskById(toQueryContext(ctx), args.task_id);
     if (!task) return text("Task not found.");
     const config = (await import("../../infra/config.js")).loadConfig();
-    const minio = (await import("../../infra/minio/client.js")).getMinio();
+    const wiki = await import("../../features/wiki/routes.js");
+    const isRunning = task.state === "running" || task.state === "paused";
 
-    // Try to load project profiler
-    const profilerKey = `scan-outputs/${args.task_id}/profiler/project-profiler.yaml`;
-    try {
-      const stream = await minio.getObject(config.minio.bucket, profilerKey);
-      const chunks: Buffer[] = [];
-      for await (const chunk of stream) chunks.push(Buffer.from(chunk));
-      const content = Buffer.concat(chunks).toString("utf-8");
-      return text(`# Project Wiki\n\n${content}`);
-    } catch {
-      return text("No wiki/profiler data available for this task.");
+    // VulnForge wiki: knowledge/wiki/*.md. Read the requested page, or list
+    // available pages + index.md when no page is specified.
+    const pages = await wiki.listWikiPageNames(task, config);
+    if (pages.length > 0) {
+      const pageName = args.page && pages.includes(args.page) ? args.page : (pages.includes("index.md") ? "index.md" : pages[0]);
+      const content = await wiki.readWikiPageContent(task, config, pageName, isRunning);
+      if (content) {
+        const listing = pages.join(", ");
+        return text(`# Wiki: ${pageName}\n\nAvailable pages: ${listing}\n\n${content}`);
+      }
     }
+
+    // Fallback: legacy/VulnForge profiler.yaml (project profile only).
+    const profiler =
+      (await wiki.readArtifact(task.id, config, "profiler.yaml", isRunning)) ??
+      (await wiki.readArtifact(task.id, config, "profiler/project-profiler.yaml", isRunning));
+    if (profiler) return text(`# Project Profile\n\n${profiler}`);
+
+    return text("No wiki data available for this task.");
   } catch (err) {
     logger.warn({ err }, "Failed to load wiki for MCP");
     return text("Unable to load wiki data.");
