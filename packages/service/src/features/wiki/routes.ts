@@ -278,3 +278,91 @@ wikiRouter.get("/:id/wiki/page/:filename", async (c) => {
   if (content === null) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   return c.json({ name: filename, content });
 });
+
+/* ── Profiler + Coverage (Phase 4) ── */
+
+/** Read a text artifact, source order by task state (running→local, else MinIO). */
+async function readArtifact(
+  taskId: string,
+  config: ReturnType<typeof loadConfig>,
+  relPath: string,
+  isRunning: boolean,
+): Promise<string | null> {
+  const bucket = config.minio.bucket;
+  const minioKey = `scan-outputs/${taskId}/${relPath}`;
+  const localPath = join(config.dataDir, "workspaces", taskId, "out", ...relPath.split("/"));
+  if (isRunning) {
+    return readLocalText(localPath) ?? (await readMinioText(bucket, minioKey));
+  }
+  return (await readMinioText(bucket, minioKey)) ?? readLocalText(localPath);
+}
+
+// GET /api/tasks/:id/profiler — project profile (profiler.yaml)
+wikiRouter.get("/:id/profiler", async (c) => {
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), c.req.param("id"));
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+
+  const config = loadConfig();
+  const isRunning = task.state === "running" || task.state === "paused";
+
+  // VulnForge writes profiler.yaml at output_dir root; legacy flow used
+  // profiler/project-profiler.yaml. Try VulnForge path first, then legacy.
+  let raw = await readArtifact(task.id, config, "profiler.yaml", isRunning);
+  if (raw === null) {
+    raw = await readArtifact(task.id, config, "profiler/project-profiler.yaml", isRunning);
+  }
+  if (raw === null) return c.json({ profiler: null });
+
+  try {
+    return c.json({ profiler: yaml.load(raw) });
+  } catch (err) {
+    logger.warn({ err, taskId: task.id }, "Failed to parse profiler.yaml");
+    return c.json({ profiler: null });
+  }
+});
+
+interface CoverageSummary {
+  path?: string;
+  files: number;
+  covered_files: number;
+  total_lines: number;
+  read_lines: number;
+  coverage: number;
+}
+
+// GET /api/tasks/:id/coverage — code-reading coverage summary (no per-file detail)
+wikiRouter.get("/:id/coverage", async (c) => {
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), c.req.param("id"));
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+
+  const config = loadConfig();
+  const isRunning = task.state === "running" || task.state === "paused";
+
+  const raw = await readArtifact(
+    task.id,
+    config,
+    "knowledge/coverage/code-reading-coverage.json",
+    isRunning,
+  );
+  if (raw === null) return c.json({ summary: null });
+
+  try {
+    const parsed = JSON.parse(raw) as {
+      summary?: CoverageSummary;
+      directories?: Record<string, CoverageSummary>;
+    };
+    // Only return the summary (+ top-level directory aggregates). The per-file
+    // line coverage (`files`) can be hundreds of entries — too heavy to ship.
+    const summary = parsed.summary ?? null;
+    // Top-level dirs only (no nested paths) for an optional breakdown.
+    const directories = parsed.directories
+      ? Object.values(parsed.directories).filter(
+          (d) => d.path && d.path !== "." && !d.path.includes("/"),
+        )
+      : [];
+    return c.json({ summary, directories });
+  } catch (err) {
+    logger.warn({ err, taskId: task.id }, "Failed to parse coverage JSON");
+    return c.json({ summary: null });
+  }
+});

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Task, type FindingMeta } from "../../../../shared/api/client.js";
+import { api, type Task, type FindingMeta, type ProfilerData, type CoverageSummary } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon, type IconName } from "../../../../shared/components/Icon.js";
 import { formatDateTime } from "../../../../shared/utils/format.js";
@@ -133,6 +133,19 @@ export function OverviewTab() {
     queryFn: () => api.tasks.pocSummary(task.id),
     retry: false,
   });
+
+  const { data: profilerData } = useQuery({
+    queryKey: ["task-profiler", task.id],
+    queryFn: () => api.tasks.profiler(task.id),
+    retry: false,
+  });
+  const { data: coverageData } = useQuery({
+    queryKey: ["task-coverage", task.id],
+    queryFn: () => api.tasks.coverage(task.id),
+    retry: false,
+  });
+  const profiler = profilerData?.profiler ?? null;
+  const coverage = coverageData?.summary ?? null;
 
   const findings = (findingsData?.findings ?? []) as FindingMeta[];
   const counts = {
@@ -421,6 +434,9 @@ export function OverviewTab() {
       </Card>
 
       {/* Execution Summary */}
+      {profiler && <ProfilerCard profiler={profiler} />}
+      {coverage && <CoverageCard summary={coverage} />}
+
       <Card title={i18n.t("overview.executionSummary")}>
         <KV
           label={i18n.t("overview.duration")}
@@ -445,6 +461,109 @@ export function OverviewTab() {
         />
       </Card>
     </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Phase 4: Profiler card + Coverage card                                   */
+/* -------------------------------------------------------------------------- */
+
+const LANG_BAR_COLORS = [
+  "var(--brand)",
+  "var(--sev-medium)",
+  "var(--sev-low)",
+  "var(--sev-info)",
+  "var(--text-secondary)",
+];
+
+function ProfilerCard({ profiler }: { profiler: ProfilerData }) {
+  const name = profiler.basic_info?.project_name;
+  const fileCount = profiler.code_stats?.file_count;
+  const loc = profiler.code_stats?.loc;
+  const buildSystem = profiler.tech_stack?.build_system;
+  const deps = profiler.tech_stack?.main_dependencies ?? [];
+  const languages = (profiler.code_stats?.languages ?? []).slice(0, 6);
+
+  return (
+    <Card title={i18n.t("overview.profilerCard")} icon="cpu">
+      {name && <KV label={i18n.t("overview.profilerName")} value={name} />}
+      {fileCount != null && (
+        <KV label={i18n.t("overview.profilerFiles")} value={fileCount.toLocaleString()} />
+      )}
+      {loc != null && (
+        <KV label={i18n.t("overview.profilerLoc")} value={loc.toLocaleString()} />
+      )}
+      {buildSystem && <KV label={i18n.t("overview.profilerBuild")} value={buildSystem} />}
+
+      {languages.length > 0 && (
+        <div style={{ marginTop: "14px" }}>
+          <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "8px" }}>
+            {i18n.t("overview.profilerLanguages")}
+          </div>
+          {/* Stacked horizontal bar */}
+          <div style={{ display: "flex", height: "10px", borderRadius: "5px", overflow: "hidden", marginBottom: "10px" }}>
+            {languages.map((l, i) => (
+              <div
+                key={l.name}
+                title={`${l.name} ${l.percentage}%`}
+                style={{ width: `${l.percentage}%`, background: LANG_BAR_COLORS[i % LANG_BAR_COLORS.length] }}
+              />
+            ))}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
+            {languages.map((l, i) => (
+              <div key={l.name} style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                <span style={{ width: "8px", height: "8px", borderRadius: "2px", background: LANG_BAR_COLORS[i % LANG_BAR_COLORS.length], flexShrink: 0 }} />
+                <span>{l.name}</span>
+                <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--text-primary)" }}>{l.percentage}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {deps.length > 0 && (
+        <div style={{ marginTop: "14px" }}>
+          <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px" }}>
+            {i18n.t("overview.profilerDeps")}
+          </div>
+          <div style={{ fontSize: "12.5px", color: "var(--text-primary)", lineHeight: 1.6 }}>
+            {deps.join(" · ")}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function coverageColor(ratio: number): string {
+  if (ratio >= 0.8) return "var(--sev-low)";
+  if (ratio >= 0.5) return "var(--sev-medium)";
+  return "var(--sev-high)";
+}
+
+function CoverageCard({ summary }: { summary: CoverageSummary }) {
+  const ratio = Math.max(0, Math.min(1, summary.coverage ?? 0));
+  const pct = (ratio * 100).toFixed(1);
+  const color = coverageColor(ratio);
+
+  return (
+    <Card title={i18n.t("overview.coverageCard")} icon="activity">
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "8px" }}>
+        <span style={{ fontSize: "22px", fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
+      </div>
+      <div style={{ width: "100%", height: "10px", borderRadius: "5px", background: "var(--bg-page)", overflow: "hidden", marginBottom: "16px" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, transition: "width 0.3s" }} />
+      </div>
+      <KV
+        label={i18n.t("overview.coverageFiles")}
+        value={`${summary.covered_files.toLocaleString()} / ${summary.files.toLocaleString()}`}
+      />
+      <KV
+        label={i18n.t("overview.coverageLines")}
+        value={`${summary.read_lines.toLocaleString()} / ${summary.total_lines.toLocaleString()}`}
+      />
+    </Card>
   );
 }
 

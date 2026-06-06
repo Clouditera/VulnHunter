@@ -330,6 +330,10 @@ export const api = {
       request<WikiPayload>(`/api/tasks/${id}/wiki`),
     wikiPage: (id: string, filename: string) =>
       request<WikiPageContent>(`/api/tasks/${id}/wiki/page/${encodeURIComponent(filename)}`),
+    profiler: (id: string) =>
+      request<{ profiler: ProfilerData | null }>(`/api/tasks/${id}/profiler`),
+    coverage: (id: string) =>
+      request<CoveragePayload>(`/api/tasks/${id}/coverage`),
     /** Historical events for a finished task. Backend prefers the in-memory
      *  ring buffer when present (running tasks), falling back to MinIO
      *  archive `scan-outputs/<id>/.youngflow/logs/youngflow.service.jsonl`
@@ -971,6 +975,44 @@ export interface WikiPageEntry {
 export interface WikiPageContent {
   name: string;
   content: string;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Profiler + Coverage (Phase 4)                                            */
+/* -------------------------------------------------------------------------- */
+
+export interface ProfilerLanguage {
+  name: string;
+  percentage: number;
+}
+
+export interface ProfilerData {
+  basic_info?: { project_name?: string };
+  code_stats?: {
+    file_count?: number;
+    loc?: number;
+    languages?: ProfilerLanguage[];
+  };
+  tech_stack?: {
+    build_system?: string;
+    package_manager?: string;
+    main_dependencies?: string[];
+  };
+  [key: string]: unknown;
+}
+
+export interface CoverageSummary {
+  path?: string;
+  files: number;
+  covered_files: number;
+  total_lines: number;
+  read_lines: number;
+  coverage: number;
+}
+
+export interface CoveragePayload {
+  summary: CoverageSummary | null;
+  directories?: CoverageSummary[];
 }
 
 export interface WikiPayload {
