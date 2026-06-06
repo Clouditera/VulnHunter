@@ -379,6 +379,14 @@ export const createTaskSchema = {
   git_url: z.string().optional().describe("Git repository URL (use this OR attachment_id)"),
   git_branch: z.string().optional().default("main").describe("Git branch (default: main)"),
   attachment_id: z.string().optional().describe("Chat artifact ID of an uploaded zip file (use this OR git_url)"),
+  audit_focus: z
+    .string()
+    .optional()
+    .describe("审计关注面：用自然语言描述用户关注的代码部分，如“聚焦认证和权限校验逻辑”。可选。"),
+  scan_duration: z
+    .number()
+    .optional()
+    .describe("扫描时长（分钟），默认 60 分钟。可选。"),
 };
 
 export async function createMcpTask(args: {
@@ -387,11 +395,22 @@ export async function createMcpTask(args: {
   git_url?: string;
   git_branch?: string;
   attachment_id?: string;
+  audit_focus?: string;
+  scan_duration?: number;
 }, ctx: McpContext): Promise<ToolResult> {
   const config = loadConfig();
 
   if (!args.git_url && !args.attachment_id) {
     return { content: [{ type: "text", text: "Error: Either git_url or attachment_id is required." }] };
+  }
+
+  // VulnForge scan params. scan_duration is in minutes (user-facing); the
+  // worker reads scan_timeout in seconds. audit_focus is free text.
+  const scanMeta: Record<string, string | number> = {};
+  const focus = typeof args.audit_focus === "string" ? args.audit_focus.trim() : "";
+  if (focus) scanMeta.audit_focus = focus;
+  if (typeof args.scan_duration === "number" && Number.isFinite(args.scan_duration) && args.scan_duration > 0) {
+    scanMeta.scan_timeout = Math.trunc(args.scan_duration) * 60;
   }
 
   const cred = await resolveTaskCredential(ctx);
@@ -426,7 +445,7 @@ export async function createMcpTask(args: {
       projectName,
       displayName: args.display_name,
       sourceType: "upload",
-      sourceMeta: { filename: artifact.original_name, minio_key: artifact.minio_key, size_bytes: artifact.size_bytes, chat_artifact_id: artifact.id },
+      sourceMeta: { filename: artifact.original_name, minio_key: artifact.minio_key, size_bytes: artifact.size_bytes, chat_artifact_id: artifact.id, ...scanMeta },
       credentialId: cred.id,
     });
 
@@ -465,7 +484,7 @@ export async function createMcpTask(args: {
     projectName,
     displayName: args.display_name,
     sourceType: "git",
-    sourceMeta: { git_url: args.git_url!, git_branch: args.git_branch ?? "main" },
+    sourceMeta: { git_url: args.git_url!, git_branch: args.git_branch ?? "main", ...scanMeta },
     credentialId: cred.id,
   });
 

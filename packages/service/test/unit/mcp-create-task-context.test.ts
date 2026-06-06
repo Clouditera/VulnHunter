@@ -86,6 +86,34 @@ describe("createMcpTask context binding", () => {
     expect(getCredentialByIdMock).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", tenantId: "tenant-1", role: "member" }), "cred-session");
   });
 
+  it("passes audit_focus and converts scan_duration minutes to scan_timeout seconds", async () => {
+    const { createMcpTask } = await import("../../src/mcp/tools.js");
+
+    await createMcpTask(
+      { git_url: "https://example.com/project.git", audit_focus: "  focus on auth  ", scan_duration: 30 },
+      { ...ctx, credentialId: "cred-session" },
+    );
+
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      sourceMeta: expect.objectContaining({
+        git_url: "https://example.com/project.git",
+        audit_focus: "focus on auth",
+        scan_timeout: 1800,
+      }),
+    }));
+  });
+
+  it("omits scan params when not provided", async () => {
+    const { createMcpTask } = await import("../../src/mcp/tools.js");
+    createTaskMock.mockClear();
+
+    await createMcpTask({ git_url: "https://example.com/project.git" }, { ...ctx, credentialId: "cred-session" });
+
+    const meta = createTaskMock.mock.calls.at(-1)![0].sourceMeta;
+    expect(meta.audit_focus).toBeUndefined();
+    expect(meta.scan_timeout).toBeUndefined();
+  });
+
   it("falls back to default credential when chat session has no credential", async () => {
     const { createMcpTask } = await import("../../src/mcp/tools.js");
 
