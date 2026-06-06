@@ -174,6 +174,7 @@ export function FindingsTab() {
   })();
 
   const [severityFilter, setSeverityFilter] = useState<string>("all");
+  const [itemTypeFilter, setItemTypeFilter] = useState<"finding" | "risk" | "all">("finding");
   const [reviewFilter, setReviewFilter] = useState<string>(initialReviewParam ?? "all");
   const [batchMode, setBatchMode] = useState(false);
   const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set());
@@ -195,14 +196,17 @@ export function FindingsTab() {
   /* -------- Data queries -------- */
 
   const { data: findingsData, isLoading: findingsLoading } = useQuery({
-    queryKey: ["findings", task.id, severityFilter, reviewFilter],
+    queryKey: ["findings", task.id, severityFilter, reviewFilter, itemTypeFilter],
     queryFn: () =>
       api.findings.list(task.id, {
         severity: severityFilter === "all" ? undefined : severityFilter,
+        itemType: itemTypeFilter,
         reviewStatus: reviewFilter === "all" ? undefined : [reviewFilter as FindingReviewStatus],
         limit: 1000,
       }),
   });
+
+  const itemCounts = findingsData?.counts ?? { finding: 0, risk: 0, all: 0 };
 
   const { data: treeData } = useQuery({
     queryKey: ["workspace-tree", task.id],
@@ -384,6 +388,48 @@ export function FindingsTab() {
             flexDirection: "column",
           }}
         >
+      {/* Item-type segment control: 漏洞 / 风险 / 全部 */}
+      <div
+        data-testid="findings-itemtype-segment"
+        style={{
+          display: "flex",
+          gap: "4px",
+          padding: "10px 12px 0",
+          alignItems: "center",
+          flexShrink: 0,
+        }}
+      >
+        {([
+          ["finding", i18n.t("findings.itemType.finding"), itemCounts.finding],
+          ["risk", i18n.t("findings.itemType.risk"), itemCounts.risk],
+          ["all", i18n.t("findings.itemType.all"), itemCounts.all],
+        ] as const).map(([type, label, count]) => {
+          const active = itemTypeFilter === type;
+          return (
+            <button
+              key={type}
+              data-testid={`findings-itemtype-${type}`}
+              onClick={() => setItemTypeFilter(type)}
+              style={{
+                flex: 1,
+                padding: "5px 8px",
+                border: `1px solid ${active ? "var(--brand)" : "var(--border)"}`,
+                borderRadius: "6px",
+                background: active ? "var(--bg-active-filter)" : "transparent",
+                color: active ? "var(--brand)" : "var(--text-secondary)",
+                fontSize: "11.5px",
+                fontWeight: active ? 600 : 500,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {label} ({count})
+            </button>
+          );
+        })}
+      </div>
+
       {/* Filter bar — inside left panel header, one row */}
       <div
         style={{
@@ -748,6 +794,111 @@ const MSG_STYLE: React.CSSProperties = {
   fontSize: "13px",
 };
 
+/** EV priority color mapping. P0 most urgent → P4 least. */
+const EV_PRIORITY_COLORS: Record<string, string> = {
+  P0: "var(--sev-high)",
+  P1: "var(--sev-high)",
+  P2: "var(--sev-medium)",
+  P3: "var(--sev-low)",
+  P4: "var(--sev-info)",
+};
+
+function EvPriorityBadge({ priority }: { priority: string }) {
+  const p = priority.toUpperCase();
+  const color = EV_PRIORITY_COLORS[p] ?? "var(--text-secondary)";
+  return (
+    <span
+      data-testid="finding-ev-priority"
+      title={i18n.t("findings.field.evPriority")}
+      style={{
+        fontSize: "9.5px",
+        fontWeight: 700,
+        color: "#fff",
+        background: color,
+        borderRadius: "4px",
+        padding: "1px 5px",
+        letterSpacing: "0.3px",
+        flexShrink: 0,
+      }}
+    >
+      {p}
+    </span>
+  );
+}
+
+/**
+ * CVSS + Exploit-Value scoring card. Renders only when at least one score is
+ * present; legacy findings without CVSS/EV show nothing (no empty card).
+ */
+function CvssEvCard({ finding }: { finding: FindingMeta }) {
+  const hasCvss = finding.cvss_score != null || !!finding.cvss_vector;
+  const hasEv = finding.ev_score != null || !!finding.ev_vector || !!finding.ev_priority;
+  if (!hasCvss && !hasEv) return null;
+
+  return (
+    <div
+      data-testid="finding-cvss-ev-card"
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: "8px",
+        padding: "10px 12px",
+        marginBottom: "14px",
+        background: "var(--bg-page)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+      }}
+    >
+      {hasCvss && (
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)", width: "42px", flexShrink: 0 }}>CVSS</span>
+          {finding.cvss_vector && (
+            <code style={{ fontSize: "11px", color: "var(--text-primary)", fontFamily: "monospace", wordBreak: "break-all" }}>
+              {finding.cvss_vector}
+            </code>
+          )}
+          {finding.cvss_score != null && (
+            <span style={{ marginLeft: "auto", fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>
+              {finding.cvss_score}
+            </span>
+          )}
+        </div>
+      )}
+      {hasEv && (
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)", width: "42px", flexShrink: 0 }}>EV</span>
+          {finding.ev_vector && (
+            <code style={{ fontSize: "11px", color: "var(--text-primary)", fontFamily: "monospace", wordBreak: "break-all" }}>
+              {finding.ev_vector}
+            </code>
+          )}
+          {finding.ev_priority && <EvPriorityBadge priority={finding.ev_priority} />}
+          {finding.ev_score != null && (
+            <span style={{ marginLeft: finding.ev_priority ? "4px" : "auto", fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>
+              {finding.ev_score}
+            </span>
+          )}
+        </div>
+      )}
+      {finding.ev_rationale && (
+        <div
+          data-testid="finding-ev-rationale"
+          style={{
+            fontSize: "11.5px",
+            color: "var(--text-secondary)",
+            whiteSpace: "pre-wrap",
+            lineHeight: 1.5,
+            borderTop: "1px solid var(--divider)",
+            paddingTop: "8px",
+          }}
+        >
+          {finding.ev_rationale}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FindingRow({
   finding: f,
   selected,
@@ -822,6 +973,25 @@ function FindingRow({
             >
               {f.finding_key}
             </span>
+            {f.item_type === "risk" && (
+              <span
+                data-testid="finding-risk-badge"
+                style={{
+                  fontSize: "9.5px",
+                  fontWeight: 700,
+                  color: "var(--text-secondary)",
+                  background: "var(--bg-page)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "4px",
+                  padding: "1px 5px",
+                  letterSpacing: "0.3px",
+                  flexShrink: 0,
+                }}
+              >
+                {i18n.t("findings.itemType.risk")}
+              </span>
+            )}
+            {f.ev_priority && <EvPriorityBadge priority={f.ev_priority} />}
             {f.review_status && (f.review_status !== "pending" || reviewFilter !== "all") && (
               <ReviewStatusBadge status={f.review_status} />
             )}
@@ -1307,6 +1477,9 @@ function FindingDetailPanel({
 
       {/* Review status section */}
       <FindingReviewSection taskId={taskId} finding={finding} />
+
+      {/* CVSS / Exploit-Value scoring card (VulnForge) */}
+      <CvssEvCard finding={finding} />
 
       {/* Metadata row (inline, always visible) */}
       <div

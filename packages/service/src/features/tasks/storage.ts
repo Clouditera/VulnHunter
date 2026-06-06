@@ -308,7 +308,7 @@ export async function getFindingsSeverityCounts(
   const rows = await db<{ task_id: string; severity: string; count: number }[]>`
     SELECT task_id, severity, COUNT(*)::int as count
     FROM findings_meta
-    WHERE task_id = ANY(${taskIds})
+    WHERE task_id = ANY(${taskIds}) AND item_type = 'finding'
     GROUP BY task_id, severity
   `;
 

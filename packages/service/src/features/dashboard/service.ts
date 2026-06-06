@@ -82,12 +82,14 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
       SELECT f.severity, COUNT(*) as count FROM findings_meta f
       JOIN tasks t ON t.id = f.task_id
       WHERE f.tenant_id = ${tenantId} AND t.created_by = ${userId}
+        AND f.item_type = 'finding'
         AND f.indexed_at >= ${since}
       GROUP BY f.severity
     `
     : await db<{ severity: string; count: string }[]>`
       SELECT severity, COUNT(*) as count FROM findings_meta
       WHERE tenant_id = ${tenantId}
+        AND item_type = 'finding'
         AND indexed_at >= ${since}
       GROUP BY severity
     `;
@@ -99,6 +101,7 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
         FROM findings_meta f
         JOIN tasks t ON t.id = f.task_id
         WHERE f.tenant_id = ${tenantId} AND t.created_by = ${userId}
+          AND f.item_type = 'finding'
           AND f.indexed_at >= ${since}
           AND COALESCE(NULLIF(f.vuln_type_full, ''), NULLIF(f.vuln_type, '')) IS NOT NULL
       ) x
@@ -111,6 +114,7 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
         SELECT COALESCE(NULLIF(vuln_type_full, ''), NULLIF(vuln_type, '')) as vuln_type
         FROM findings_meta
         WHERE tenant_id = ${tenantId}
+          AND item_type = 'finding'
           AND indexed_at >= ${since}
           AND COALESCE(NULLIF(vuln_type_full, ''), NULLIF(vuln_type, '')) IS NOT NULL
       ) x
@@ -181,7 +185,7 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
     recentRows.map(async (task) => {
       const rows = await db<{ severity: string; count: string }[]>`
         SELECT severity, COUNT(*) as count FROM findings_meta
-        WHERE task_id = ${task.id} GROUP BY severity
+        WHERE task_id = ${task.id} AND item_type = 'finding' GROUP BY severity
       `;
       const counts = { h: 0, m: 0, l: 0, i: 0 };
       for (const r of rows) {

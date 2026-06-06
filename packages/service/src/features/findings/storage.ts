@@ -19,11 +19,20 @@ export interface DbFindingMeta {
   function_name: string | null;
   language: string | null;
   group_id: string | null;
+  cvss_vector: string | null;
+  cvss_score: number | null;
+  ev_vector: string | null;
+  ev_score: number | null;
+  ev_priority: string | null;
+  ev_rationale: string | null;
+  item_type: "finding" | "risk";
   user_verdict: string;
   review_status: FindingReviewStatus;
   reviewed_by: string | null;
   reviewed_at: Date | null;
 }
+
+export type FindingItemTypeFilter = "finding" | "risk" | "all";
 
 export interface DbFindingReviewEvent {
   id: string;
@@ -45,6 +54,7 @@ export function isFindingReviewStatus(value: unknown): value is FindingReviewSta
 export async function listFindings(params: {
   taskId: string;
   severity?: Severity;
+  itemType?: FindingItemTypeFilter;
   reviewStatuses?: FindingReviewStatus[];
   search?: string;
   limit?: number;
@@ -60,6 +70,9 @@ export async function listFindings(params: {
 
   if (params.severity) {
     conditions.push(db`severity = ${params.severity}`);
+  }
+  if (params.itemType && params.itemType !== "all") {
+    conditions.push(db`item_type = ${params.itemType}`);
   }
   if (params.reviewStatuses && params.reviewStatuses.length > 0) {
     conditions.push(db`review_status = ANY(${params.reviewStatuses})`);
@@ -254,14 +267,37 @@ export async function countFindingsByReviewStatus(
 
 export async function countFindingsBySeverity(
   taskId: string,
+  itemType: FindingItemTypeFilter = "finding",
 ): Promise<Record<Severity, number>> {
   const db = getDb();
+  // Default counts only confirmed findings (item_type='finding') so existing
+  // Dashboard / task-list severity badges stay consistent with prior behavior.
+  const typeFilter = itemType === "all" ? db`` : db`AND item_type = ${itemType}`;
   const rows = await db<{ severity: Severity; count: string }[]>`
     SELECT severity, COUNT(*) as count FROM findings_meta
-    WHERE task_id = ${taskId} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE task_id = ${taskId} AND tenant_id = ${DEFAULT_TENANT_ID} ${typeFilter}
     GROUP BY severity
   `;
   const counts: Record<Severity, number> = { high: 0, medium: 0, low: 0, info: 0 };
   for (const r of rows) counts[r.severity] = Number(r.count);
+  return counts;
+}
+
+/** Count items grouped by item_type for a task ({ finding, risk }). */
+export async function countFindingsByItemType(
+  taskId: string,
+): Promise<{ finding: number; risk: number }> {
+  const db = getDb();
+  const rows = await db<{ item_type: string; count: string }[]>`
+    SELECT item_type, COUNT(*) as count FROM findings_meta
+    WHERE task_id = ${taskId} AND tenant_id = ${DEFAULT_TENANT_ID}
+    GROUP BY item_type
+  `;
+  const counts = { finding: 0, risk: 0 };
+  for (const r of rows) {
+    if (r.item_type === "finding" || r.item_type === "risk") {
+      counts[r.item_type] = Number(r.count);
+    }
+  }
   return counts;
 }

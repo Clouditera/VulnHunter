@@ -9,6 +9,8 @@ import {
   bulkSetFindingReviewStatus,
   listFindingReviewEvents,
   isFindingReviewStatus,
+  countFindingsByItemType,
+  type FindingItemTypeFilter,
 } from "./storage.js";
 import { indexFindings } from "./indexer.js";
 import { loadConfig } from "../../infra/config.js";
@@ -32,6 +34,15 @@ findingsRouter.get("/:taskId/findings", async (c) => {
   const limit = Math.min(Number(c.req.query("limit") ?? 500), 1000);
   const offset = Number(c.req.query("offset") ?? 0);
 
+  // item_type filter: finding (default) | risk | all
+  const itemTypeRaw = c.req.query("item_type");
+  let itemType: FindingItemTypeFilter = "finding";
+  if (itemTypeRaw === "risk" || itemTypeRaw === "all" || itemTypeRaw === "finding") {
+    itemType = itemTypeRaw;
+  } else if (itemTypeRaw !== undefined) {
+    return c.json({ error: { code: "ERR_VALIDATION", message: "Invalid item_type" } }, 400);
+  }
+
   // Parse review_status filter (comma-separated)
   let reviewStatuses: FindingReviewStatus[] | undefined;
   const reviewParam = c.req.query("review_status");
@@ -44,8 +55,13 @@ findingsRouter.get("/:taskId/findings", async (c) => {
     reviewStatuses = valid;
   }
 
-  const findings = await listFindings({ taskId, severity, reviewStatuses, search, limit, offset });
-  return c.json({ findings, total: findings.length });
+  const findings = await listFindings({ taskId, severity, itemType, reviewStatuses, search, limit, offset });
+  const counts = await countFindingsByItemType(taskId);
+  return c.json({
+    findings,
+    total: findings.length,
+    counts: { finding: counts.finding, risk: counts.risk, all: counts.finding + counts.risk },
+  });
 });
 
 // GET /api/tasks/:taskId/findings/:key  — full YAML detail
