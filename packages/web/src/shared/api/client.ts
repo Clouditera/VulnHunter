@@ -328,6 +328,8 @@ export const api = {
      *  task that didn't run all stages). */
     wiki: (id: string) =>
       request<WikiPayload>(`/api/tasks/${id}/wiki`),
+    wikiPage: (id: string, filename: string) =>
+      request<WikiPageContent>(`/api/tasks/${id}/wiki/page/${encodeURIComponent(filename)}`),
     /** Historical events for a finished task. Backend prefers the in-memory
      *  ring buffer when present (running tasks), falling back to MinIO
      *  archive `scan-outputs/<id>/.youngflow/logs/youngflow.service.jsonl`
@@ -961,12 +963,29 @@ export interface WikiAnalysisSummary {
   [key: string]: unknown;
 }
 
+export interface WikiPageEntry {
+  name: string;
+  path: string;
+}
+
+export interface WikiPageContent {
+  name: string;
+  content: string;
+}
+
 export interface WikiPayload {
-  profiler: WikiProfiler | null;
-  reports: WikiReport[];
-  features: WikiFeatureEnvelope[];
-  featureGroups: WikiFeatureGroupEnvelope[];
-  analysisSummaries: WikiAnalysisSummary[];
+  /** VulnForge wiki mode: present when knowledge/wiki/*.md exists. */
+  pages?: WikiPageEntry[];
+  /** Name of the page whose content is preloaded in indexContent. */
+  indexName?: string;
+  /** Preloaded content of the index/first page (no extra round trip). */
+  indexContent?: string;
+  /** Legacy mode fields (profiler/aggregator) — present when no VulnForge wiki. */
+  profiler?: WikiProfiler | null;
+  reports?: WikiReport[];
+  features?: WikiFeatureEnvelope[];
+  featureGroups?: WikiFeatureGroupEnvelope[];
+  analysisSummaries?: WikiAnalysisSummary[];
 }
 
 /* -------------------------------------------------------------------------- */

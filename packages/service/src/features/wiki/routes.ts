@@ -150,6 +150,43 @@ function hasData(d: WikiData): boolean {
   return !!(d.profiler || d.reports.length || d.features.length || d.featureGroups.length || d.analysisSummaries.length);
 }
 
+/* ── VulnForge wiki (knowledge/wiki/*.md) ── */
+
+const WIKI_SUBDIR = "knowledge/wiki/";
+
+interface WikiPageEntry {
+  name: string;
+  path: string;
+}
+
+/** Order: index.md, overview.md, then alphabetical. */
+export function sortWikiPages(names: string[]): WikiPageEntry[] {
+  return names
+    .map((name) => ({ name, path: `${WIKI_SUBDIR}${name}` }))
+    .sort((a, b) => {
+      if (a.name === b.name) return 0;
+      if (a.name === "index.md") return -1;
+      if (b.name === "index.md") return 1;
+      if (a.name === "overview.md") return -1;
+      if (b.name === "overview.md") return 1;
+      return a.name.localeCompare(b.name);
+    });
+}
+
+function listLocalWikiPages(outDir: string): string[] {
+  return listLocalFiles(join(outDir, "knowledge", "wiki"), ".md").map((f) => f.split("/").pop()!);
+}
+
+async function listMinioWikiPages(bucket: string, prefix: string): Promise<string[]> {
+  const keys = await listMinioKeys(bucket, `${prefix}${WIKI_SUBDIR}`);
+  return keys.filter((k) => k.endsWith(".md")).map((k) => k.split("/").pop()!);
+}
+
+/** Validate a wiki filename: a single .md basename, no path traversal. */
+export function isSafeWikiFilename(name: string): boolean {
+  return /^[A-Za-z0-9._-]+\.md$/.test(name) && !name.includes("..");
+}
+
 function mergeWikiData(primary: WikiData, fallback: WikiData): WikiData {
   return {
     profiler: primary.profiler ?? fallback.profiler,
@@ -172,31 +209,72 @@ wikiRouter.get("/:id/wiki", async (c) => {
   const isRunning = task.state === "running" || task.state === "paused";
 
   try {
-    let data: WikiData;
-
+    // 1. Prefer VulnForge wiki (knowledge/wiki/*.md). Source order mirrors the
+    //    legacy loader: running→local-first, completed→MinIO-first, each with
+    //    fallback to the other source.
+    let pageNames: string[] = [];
     if (isRunning) {
-      // Running: local first, fallback to MinIO
-      const local = loadLocalWikiData(localOutDir);
-      if (hasData(local)) {
-        data = local;
-      } else {
-        const minio = await loadMinioWikiData(bucket, minioPrefix);
-        data = mergeWikiData(local, minio);
-      }
+      pageNames = listLocalWikiPages(localOutDir);
+      if (pageNames.length === 0) pageNames = await listMinioWikiPages(bucket, minioPrefix);
     } else {
-      // Completed: MinIO first, fallback to local
-      const minio = await loadMinioWikiData(bucket, minioPrefix);
-      if (hasData(minio)) {
-        data = minio;
-      } else {
-        const local = loadLocalWikiData(localOutDir);
-        data = mergeWikiData(minio, local);
-      }
+      pageNames = await listMinioWikiPages(bucket, minioPrefix);
+      if (pageNames.length === 0) pageNames = listLocalWikiPages(localOutDir);
     }
 
+    if (pageNames.length > 0) {
+      const pages = sortWikiPages(pageNames);
+      // Return index.md content with the directory so the first page needs no
+      // extra round trip. Fall back to the first page if there is no index.md.
+      const firstName = pages.some((p) => p.name === "index.md") ? "index.md" : pages[0].name;
+      const indexContent = await readWikiPageContent(task, config, firstName, isRunning);
+      return c.json({ pages, indexName: firstName, indexContent });
+    }
+
+    // 2. Fallback: legacy structured wiki data (profiler/aggregator).
+    let data: WikiData;
+    if (isRunning) {
+      const local = loadLocalWikiData(localOutDir);
+      data = hasData(local) ? local : mergeWikiData(local, await loadMinioWikiData(bucket, minioPrefix));
+    } else {
+      const minio = await loadMinioWikiData(bucket, minioPrefix);
+      data = hasData(minio) ? minio : mergeWikiData(minio, loadLocalWikiData(localOutDir));
+    }
     return c.json(data);
   } catch (err) {
     logger.error({ err, taskId: task.id }, "Failed to load wiki data");
     return c.json({ error: { code: "ERR_INTERNAL", detail: String(err) } }, 500);
   }
+});
+
+/** Read a single wiki page's Markdown content, source order by task state. */
+async function readWikiPageContent(
+  task: { id: string },
+  config: ReturnType<typeof loadConfig>,
+  filename: string,
+  isRunning: boolean,
+): Promise<string | null> {
+  const bucket = config.minio.bucket;
+  const minioKey = `scan-outputs/${task.id}/${WIKI_SUBDIR}${filename}`;
+  const localPath = join(config.dataDir, "workspaces", task.id, "out", "knowledge", "wiki", filename);
+  if (isRunning) {
+    return readLocalText(localPath) ?? (await readMinioText(bucket, minioKey));
+  }
+  return (await readMinioText(bucket, minioKey)) ?? readLocalText(localPath);
+}
+
+// GET /api/tasks/:id/wiki/page/:filename — read a single VulnForge wiki page
+wikiRouter.get("/:id/wiki/page/:filename", async (c) => {
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), c.req.param("id"));
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+
+  const filename = c.req.param("filename");
+  if (!isSafeWikiFilename(filename)) {
+    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "invalid wiki filename" } }, 400);
+  }
+
+  const config = loadConfig();
+  const isRunning = task.state === "running" || task.state === "paused";
+  const content = await readWikiPageContent(task, config, filename, isRunning);
+  if (content === null) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  return c.json({ name: filename, content });
 });

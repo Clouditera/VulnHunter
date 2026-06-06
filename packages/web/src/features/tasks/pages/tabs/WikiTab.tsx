@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -7,6 +7,7 @@ import {
   type WikiAnalysisSummary,
   type WikiFeature,
   type WikiFeatureGroup,
+  type WikiPageEntry,
   type WikiProfiler,
   type WikiReport,
   type WikiRiskLevel,
@@ -80,6 +81,21 @@ export function WikiTab() {
       <FullState tone="error">
         {i18n.t("wiki.error").replace("{msg}", (error as Error).message)}
       </FullState>
+    );
+  }
+
+  // VulnForge wiki mode: knowledge/wiki/*.md present → Markdown browser.
+  if (data?.pages && data.pages.length > 0) {
+    return (
+      <WikiMarkdownBrowser
+        taskId={id}
+        pages={data.pages}
+        indexName={data.indexName ?? data.pages[0].name}
+        indexContent={data.indexContent ?? ""}
+        leftWidth={leftWidth}
+        setLeftWidth={setLeftWidth}
+        splitContainerRef={splitContainerRef}
+      />
     );
   }
 
@@ -283,6 +299,141 @@ function FullState({
       }}
     >
       {children}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  VulnForge wiki: Markdown directory + detail browser                       */
+/* -------------------------------------------------------------------------- */
+
+function WikiMarkdownBrowser({
+  taskId,
+  pages,
+  indexName,
+  indexContent,
+  leftWidth,
+  setLeftWidth,
+  splitContainerRef,
+}: {
+  taskId: string;
+  pages: WikiPageEntry[];
+  indexName: string;
+  indexContent: string;
+  leftWidth: number;
+  setLeftWidth: (w: number) => void;
+  splitContainerRef: RefObject<HTMLDivElement>;
+}) {
+  const [active, setActive] = useState<string>(indexName);
+
+  // Per-page content query. The index/first page is seeded from the directory
+  // response so it renders with zero extra round trips; React Query caches the
+  // rest as the user navigates.
+  const { data: pageData, isLoading } = useQuery({
+    queryKey: ["task-wiki-page", taskId, active],
+    queryFn: () => api.tasks.wikiPage(taskId, active),
+    refetchOnWindowFocus: false,
+    retry: 1,
+    initialData:
+      active === indexName ? { name: indexName, content: indexContent } : undefined,
+  });
+
+  const knownNames = useMemo(() => new Set(pages.map((p) => p.name)), [pages]);
+
+  // Switch wiki page when a relative .md link is clicked inside the Markdown.
+  const handleRelativeLink = (href: string) => {
+    const name = href.split(/[#?]/)[0].split("/").pop() ?? href;
+    if (knownNames.has(name)) setActive(name);
+  };
+
+  const prettyTitle = (name: string) => name.replace(/\.md$/, "");
+
+  return (
+    <div
+      ref={splitContainerRef}
+      data-testid="wiki-tab"
+      style={{
+        display: "flex",
+        flex: 1,
+        minHeight: 0,
+        height: "100%",
+        overflow: "hidden",
+        background: "var(--bg-card)",
+        border: "1px solid var(--border)",
+        borderRadius: "10px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+      }}
+    >
+      {/* Left: wiki page list */}
+      <nav
+        data-testid="wiki-sidebar"
+        style={{
+          width: `${leftWidth}px`,
+          flexShrink: 0,
+          overflow: "auto",
+          background: "var(--bg-page)",
+          padding: "12px 0",
+        }}
+      >
+        {pages.map((p) => {
+          const isActive = p.name === active;
+          return (
+            <button
+              key={p.name}
+              type="button"
+              data-testid={`wiki-page-${p.name}`}
+              onClick={() => setActive(p.name)}
+              title={prettyTitle(p.name)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                width: "100%",
+                padding: "8px 16px",
+                border: "none",
+                borderLeft: isActive ? "2px solid var(--brand)" : "2px solid transparent",
+                background: isActive ? "var(--bg-card)" : "transparent",
+                color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                fontSize: "13px",
+                fontWeight: isActive ? 600 : 400,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                textAlign: "left",
+                transition: "background 0.12s, color 0.12s, border-color 0.12s",
+              }}
+            >
+              <Icon name="file-text" size={14} style={{ flexShrink: 0, opacity: isActive ? 1 : 0.6 }} />
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {prettyTitle(p.name)}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+
+      <Splitter
+        value={leftWidth}
+        onResize={setLeftWidth}
+        min={200}
+        max={600}
+        containerRef={splitContainerRef}
+      />
+
+      {/* Right: Markdown content */}
+      <div
+        data-testid="wiki-content"
+        style={{ flex: 1, minWidth: 0, overflow: "auto", padding: "24px 28px" }}
+      >
+        {isLoading && !pageData ? (
+          <div style={{ color: "var(--text-secondary)", fontSize: "13px" }}>{i18n.t("wiki.loading")}</div>
+        ) : pageData ? (
+          <div style={{ fontSize: "13px", lineHeight: 1.7, color: "var(--text-primary)" }}>
+            <Markdown content={pageData.content} onRelativeLink={handleRelativeLink} />
+          </div>
+        ) : (
+          <div style={{ color: "var(--text-secondary)", fontSize: "13px" }}>{i18n.t("wiki.empty.hint")}</div>
+        )}
+      </div>
     </div>
   );
 }
