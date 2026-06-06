@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename, join, normalize, resolve } from "node:path";
 import * as taskStorage from "../../features/tasks/storage.js";
-import { cancelTask, pauseTask, restartTask, resumeTask, TaskControlError } from "../../features/tasks/control-service.js";
+import { cancelTask, continueTask, pauseTask, restartTask, resumeTask, TaskControlError } from "../../features/tasks/control-service.js";
 import type { McpContext } from "../context.js";
 import type { QueryContext } from "../../infra/query-context.js";
 import { buildBufferPreview } from "../../features/chat/artifact-preview.js";
@@ -26,10 +26,18 @@ function toQueryContext(ctx: McpContext): QueryContext {
 
 export const controlTaskSchema = {
   task_id: z.string().describe("The task ID"),
-  action: z.enum(["pause", "resume", "cancel", "restart"]).describe("Action to perform"),
+  action: z.enum(["pause", "resume", "cancel", "restart", "continue"]).describe("Action to perform"),
+  audit_focus: z
+    .string()
+    .optional()
+    .describe("仅 continue 时可选：调整审计关注面（自然语言）。"),
+  scan_duration: z
+    .number()
+    .optional()
+    .describe("仅 continue 时可选：调整扫描时长（分钟）。"),
 };
 
-export async function controlTask(args: { task_id: string; action: string }, _ctx?: McpContext): Promise<ToolResult> {
+export async function controlTask(args: { task_id: string; action: string; audit_focus?: string; scan_duration?: number }, _ctx?: McpContext): Promise<ToolResult> {
   const task = _ctx ? await taskStorage.getTaskById(toQueryContext(_ctx), args.task_id) : await taskStorage.getTaskById(args.task_id);
   if (!task) return text("Task not found.");
 
@@ -50,6 +58,15 @@ export async function controlTask(args: { task_id: string; action: string }, _ct
       case "resume": {
         const result = await resumeTask(task.id);
         return text(`Task ${result.task.project_name} queued for resume.`);
+      }
+      case "continue": {
+        const focus = typeof args.audit_focus === "string" ? args.audit_focus.trim() : undefined;
+        const scanTimeout =
+          typeof args.scan_duration === "number" && Number.isFinite(args.scan_duration) && args.scan_duration > 0
+            ? Math.trunc(args.scan_duration) * 60
+            : undefined;
+        const result = await continueTask(task.id, { auditFocus: focus, scanTimeout });
+        return text(`Task ${result.task.project_name} queued to continue scanning on top of existing results.`);
       }
       default:
         return text(`Unknown action: ${args.action}`);
