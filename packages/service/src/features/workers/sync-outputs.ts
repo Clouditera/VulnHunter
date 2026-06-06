@@ -63,9 +63,20 @@ export async function syncOutputsToMinio(
  * `--continue` needs the prior business artifacts (findings/risks/knowledge/
  * hypotheses/...) present in /workspace/out.
  *
+ * IMPORTANT permission model: the worker runs as root and writes out/ as uid 0,
+ * while the service runs as uid 1000. The service therefore CANNOT write into an
+ * existing root-owned out/ tree. For a completed→continue on the same host the
+ * workspace out/ already persists on disk, so we skip the download entirely and
+ * let the worker --continue build on the on-disk artifacts. We only download
+ * (into a freshly-created, service-owned out/) when the workspace was wiped
+ * (e.g. service moved hosts / disk cleaned), where no permission conflict arises.
+ *
  * Skips `.youngflow/sessions/` (LLM conversation logs, often GB-scale) — these
  * are not needed for --continue, which archives the old engine state and starts
  * a fresh run.
+ *
+ * Returns the number of objects downloaded (0 when skipped because outputs are
+ * already present on disk).
  */
 export async function downloadOutputsFromMinio(
   taskId: string,
@@ -73,6 +84,15 @@ export async function downloadOutputsFromMinio(
 ): Promise<number> {
   const hostWorkDir = getHostWorkDir(config.dataDir, taskId);
   const outDir = join(hostWorkDir, "out");
+
+  // If outputs already exist on disk (persisted workspace), do NOT touch them.
+  // The worker (root) owns these files; the service (uid 1000) cannot overwrite
+  // them, and the worker --continue can use them directly.
+  if (existsSync(outDir) && readdirSync(outDir).length > 0) {
+    logger.info({ taskId }, "Historical outputs already present on disk; skipping MinIO download for continue");
+    return 0;
+  }
+
   ensureWorkDir(outDir);
 
   const minio = getMinio();
