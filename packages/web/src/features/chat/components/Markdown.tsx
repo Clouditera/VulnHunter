@@ -179,18 +179,17 @@ function buildComponents(onRelativeLink?: (href: string) => void): Components {
     ...baseComponents,
     a: ({ href, children }) => {
       const text = typeof children === "string" ? children : "";
-      const isAutolink = text === href;
-      if (isAutolink) return <span>{children}</span>;
-      // Intercept relative links (no scheme, no leading slash) — typically
-      // `[overview.md](overview.md)` inside the wiki index. Switch wiki page
-      // instead of navigating away.
+      // Intercept relative links FIRST (before the autolink guard). In the wiki
+      // index the link text often equals the href (e.g. `[overview.md](overview.md)`),
+      // which would otherwise be swallowed by the autolink → <span> branch.
+      // Relative = no scheme, no leading slash, not a pure anchor.
       const isRelative =
         !!href && !/^[a-z]+:\/\//i.test(href) && !href.startsWith("/") && !href.startsWith("#");
       if (isRelative) {
         return (
           <a
             href={href}
-            style={LINK}
+            style={{ ...LINK, cursor: "pointer" }}
             onClick={(e) => {
               e.preventDefault();
               onRelativeLink(href!);
@@ -200,6 +199,8 @@ function buildComponents(onRelativeLink?: (href: string) => void): Components {
           </a>
         );
       }
+      // Autolinked URLs inside code blocks: link text IS the URL — render plain.
+      if (text === href) return <span>{children}</span>;
       return (
         <a href={href} style={LINK} target="_blank" rel="noopener noreferrer">
           {children}
