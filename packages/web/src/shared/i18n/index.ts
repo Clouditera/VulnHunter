@@ -175,6 +175,10 @@ const ZH: Record<string, string> = {
 
   // Findings
   "findings.filterAll": "全部",
+  "findings.itemType.finding": "漏洞",
+  "findings.itemType.risk": "风险",
+  "findings.itemType.all": "全部",
+  "findings.field.evPriority": "利用优先级",
   "findings.sevHigh": "高危",
   "findings.sevMedium": "中危",
   "findings.sevLow": "低危",
@@ -854,6 +858,10 @@ const EN: Record<string, string> = {
 
   // Findings
   "findings.filterAll": "all",
+  "findings.itemType.finding": "Bugs",
+  "findings.itemType.risk": "Risks",
+  "findings.itemType.all": "All",
+  "findings.field.evPriority": "Exploit priority",
   "findings.sevHigh": "High",
   "findings.sevMedium": "Medium",
   "findings.sevLow": "Low",

@@ -137,6 +137,8 @@ export interface FindingDetail {
 
 export type FindingReviewStatus = 'pending' | 'confirmed' | 'false_positive' | 'ignored';
 
+export type FindingItemType = "finding" | "risk";
+
 export interface FindingMeta {
   id: string;
   task_id: string;
@@ -148,10 +150,24 @@ export interface FindingMeta {
   primary_file: string | null;
   primary_line: number | null;
   function_name: string | null;
+  cwe: string | null;
+  cvss_vector: string | null;
+  cvss_score: number | null;
+  ev_vector: string | null;
+  ev_score: number | null;
+  ev_priority: string | null;
+  ev_rationale: string | null;
+  item_type: FindingItemType;
   user_verdict: string;
   review_status: FindingReviewStatus;
   reviewed_by: string | null;
   reviewed_at: string | null;
+}
+
+export interface FindingItemCounts {
+  finding: number;
+  risk: number;
+  all: number;
 }
 
 export interface FindingReviewEvent {
@@ -310,15 +326,16 @@ export const api = {
       ),
   },
   findings: {
-    list: (taskId: string, filters?: { severity?: string; reviewStatus?: FindingReviewStatus[]; limit?: number; offset?: number; search?: string }) => {
+    list: (taskId: string, filters?: { severity?: string; itemType?: FindingItemType | "all"; reviewStatus?: FindingReviewStatus[]; limit?: number; offset?: number; search?: string }) => {
       const params = new URLSearchParams();
       if (filters?.severity) params.set("severity", filters.severity);
+      if (filters?.itemType) params.set("item_type", filters.itemType);
       if (filters?.reviewStatus?.length) params.set("review_status", filters.reviewStatus.join(","));
       if (filters?.limit) params.set("limit", String(filters.limit));
       if (filters?.offset) params.set("offset", String(filters.offset));
       if (filters?.search) params.set("search", filters.search);
       const qs = params.toString();
-      return request<{ findings: FindingMeta[]; total: number }>(`/api/tasks/${taskId}/findings${qs ? `?${qs}` : ""}`);
+      return request<{ findings: FindingMeta[]; total: number; counts: FindingItemCounts }>(`/api/tasks/${taskId}/findings${qs ? `?${qs}` : ""}`);
     },
     detail: (taskId: string, key: string) =>
       request<{ meta: FindingMeta; detail: FindingDetail }>(
