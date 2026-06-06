@@ -4,6 +4,10 @@ const state = {
   task: null as any,
   updates: [] as any[],
   stopped: [] as string[],
+  paused: [] as string[],
+  unpaused: [] as string[],
+  pauseCount: 1,
+  unpauseCount: 1,
   reset: [] as string[],
   cleaned: [] as string[],
   notified: [] as any[],
@@ -19,6 +23,8 @@ vi.mock("../../src/features/tasks/storage.js", () => ({
 
 vi.mock("../../src/features/workers/scan-worker.js", () => ({
   stopScanWorker: vi.fn(async (taskId: string) => state.stopped.push(taskId)),
+  pauseScanWorker: vi.fn(async (taskId: string) => { state.paused.push(taskId); return state.pauseCount; }),
+  unpauseScanWorker: vi.fn(async (taskId: string) => { state.unpaused.push(taskId); return state.unpauseCount; }),
   cleanupScanWorkDir: vi.fn((dataDir: string, taskId: string, cleanupImage?: string) => state.cleaned.push(`${dataDir}:${taskId}:${cleanupImage ?? ""}`)),
 }));
 
@@ -64,6 +70,10 @@ describe("task control service", () => {
     state.task = null;
     state.updates = [];
     state.stopped = [];
+    state.paused = [];
+    state.unpaused = [];
+    state.pauseCount = 1;
+    state.unpauseCount = 1;
     state.reset = [];
     state.cleaned = [];
     state.notified = [];
@@ -79,18 +89,41 @@ describe("task control service", () => {
     expect(state.notified[0]).toMatchObject({ type: "task_state", taskId: "task-1", state: "cancelled" });
   });
 
-  it("pauses a running task and stops the worker", async () => {
+  it("pauses a running task by freezing the container (docker pause)", async () => {
     state.task = makeTask({ state: "running" });
     const result = await pauseTask("task-1");
     expect(result.state).toBe("paused");
     expect(state.updates[0][1]).toBe("paused");
+    expect(state.paused).toEqual(["task-1"]);
+    expect(state.stopped).toEqual([]);
+  });
+
+  it("falls back to stop when no container could be paused", async () => {
+    state.task = makeTask({ state: "running" });
+    state.pauseCount = 0;
+    const result = await pauseTask("task-1");
+    expect(result.state).toBe("paused");
+    expect(state.paused).toEqual(["task-1"]);
     expect(state.stopped).toEqual(["task-1"]);
   });
 
-  it("resumes a paused task by queuing it", async () => {
+  it("resumes a paused task by unpausing the frozen container", async () => {
     state.task = makeTask({ state: "paused" });
     const result = await resumeTask("task-1");
     expect(result.state).toBe("queued");
+    expect(state.unpaused).toEqual(["task-1"]);
+    // No checkpoint re-queue when the container was unpaused in place.
+    expect(state.updates.some((u) => u[0] === "queueTaskForResume")).toBe(false);
+    expect(state.notified[0]).toMatchObject({ type: "task_state", taskId: "task-1", state: "running" });
+  });
+
+  it("falls back to checkpoint resume when no paused container exists", async () => {
+    state.task = makeTask({ state: "paused" });
+    state.unpauseCount = 0;
+    const result = await resumeTask("task-1");
+    expect(result.state).toBe("queued");
+    expect(state.unpaused).toEqual(["task-1"]);
+    expect(state.updates.some((u) => u[0] === "queueTaskForResume")).toBe(true);
     expect(state.notified[0]).toMatchObject({ type: "task_state", taskId: "task-1", state: "queued" });
   });
 

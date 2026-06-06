@@ -54,6 +54,7 @@ export async function spawnScanWorker(
       AUDIT_FOCUS: stringMeta(task.source_meta, "audit_focus"),
       SCAN_TIMEOUT: stringMeta(task.source_meta, "scan_timeout"),
       MAX_ITEMS_PER_RECON: stringMeta(task.source_meta, "max_items_per_recon"),
+      RECURSION_LIMIT: stringMeta(task.source_meta, "recursion_limit"),
       MINIO_ENDPOINT: `http://${config.minio.endpoint}:${config.minio.port}`,
       MINIO_ACCESS_KEY: config.minio.accessKey,
       MINIO_SECRET_KEY: config.minio.secretKey,
@@ -94,6 +95,58 @@ export async function stopScanWorker(taskId: string): Promise<void> {
       logger.warn({ err, taskId }, "Failed to stop worker container");
     }
   }
+}
+
+/**
+ * Freeze the running scan container in place (SIGSTOP via the Docker freezer
+ * cgroup). Unlike stop+resume, this preserves full process/memory state, which
+ * is required for VulnForge's cyclic flow — YoungFlow's checkpoint `--resume`
+ * cannot correctly restore loop stages (see YoungFlow issue #27). Returns the
+ * number of containers paused.
+ */
+export async function pauseScanWorker(taskId: string): Promise<number> {
+  const docker = getDocker();
+  const containers = await docker.listContainers({
+    all: false,
+    filters: JSON.stringify({ label: [`${LABEL_TASK_ID}=${taskId}`, `${LABEL_TASK_TYPE}=scan`] }),
+  });
+  let paused = 0;
+  for (const info of containers) {
+    try {
+      await docker.getContainer(info.Id).pause();
+      paused++;
+      logger.info({ taskId, containerId: info.Id }, "Scan worker paused (docker pause)");
+    } catch (err) {
+      logger.warn({ err, taskId }, "Failed to pause worker container");
+    }
+  }
+  return paused;
+}
+
+/**
+ * Resume a previously frozen scan container (docker unpause). Includes paused
+ * containers in the listing since a paused container is still "running" but we
+ * keep `all: true` for safety. Returns the number of containers unpaused.
+ */
+export async function unpauseScanWorker(taskId: string): Promise<number> {
+  const docker = getDocker();
+  const containers = await docker.listContainers({
+    all: true,
+    filters: JSON.stringify({ label: [`${LABEL_TASK_ID}=${taskId}`, `${LABEL_TASK_TYPE}=scan`] }),
+  });
+  let unpaused = 0;
+  for (const info of containers) {
+    // Only attempt unpause on containers actually in the paused state.
+    if (info.State !== "paused" && !/\(Paused\)/i.test(info.Status ?? "")) continue;
+    try {
+      await docker.getContainer(info.Id).unpause();
+      unpaused++;
+      logger.info({ taskId, containerId: info.Id }, "Scan worker unpaused (docker unpause)");
+    } catch (err) {
+      logger.warn({ err, taskId }, "Failed to unpause worker container");
+    }
+  }
+  return unpaused;
 }
 
 export function cleanupScanWorkDir(dataDir: string, taskId: string, cleanupImage?: string): void {

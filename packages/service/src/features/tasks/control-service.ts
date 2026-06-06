@@ -2,7 +2,7 @@ import { getMinio } from "../../infra/minio/client.js";
 import { loadConfig, type ServiceConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
 import { notify } from "../notifications/index.js";
-import { cleanupScanWorkDir, stopScanWorker } from "../workers/scan-worker.js";
+import { cleanupScanWorkDir, stopScanWorker, pauseScanWorker, unpauseScanWorker } from "../workers/scan-worker.js";
 import { assertNoActiveOperation } from "./operation-lock.js";
 import {
   getTaskById,
@@ -58,7 +58,8 @@ export async function cancelTask(taskId: string): Promise<TaskControlResult> {
   }
   await assertScanNotBusy(task.id);
   await updateTaskState(task.id, "cancelled", { completedAt: new Date() });
-  if (task.state === "running") {
+  // Both running and paused (docker-frozen) tasks have a live container to tear down.
+  if (task.state === "running" || task.state === "paused") {
     await stopScanWorker(task.id).catch((err) => {
       logger.warn({ err, taskId: task.id }, "Failed to stop container on cancel");
     });
@@ -71,10 +72,21 @@ export async function pauseTask(taskId: string): Promise<TaskControlResult> {
   const task = await requireTask(taskId);
   if (task.state !== "running") invalidState("Task is not running");
   await assertScanNotBusy(task.id);
-  await updateTaskState(task.id, "paused");
-  await stopScanWorker(task.id).catch((err) => {
-    logger.warn({ err, taskId: task.id }, "Failed to stop worker on pause");
+  // Freeze the container in place (docker pause) instead of killing the worker.
+  // VulnForge is a cyclic flow; YoungFlow's --resume cannot restore loop stages
+  // (YoungFlow issue #27), so we preserve full process state and unpause on
+  // resume. Fall back to stop only if no container was actually paused.
+  const paused = await pauseScanWorker(task.id).catch((err) => {
+    logger.warn({ err, taskId: task.id }, "Failed to pause worker container");
+    return 0;
   });
+  if (paused === 0) {
+    logger.warn({ taskId: task.id }, "No scan container paused; falling back to stop");
+    await stopScanWorker(task.id).catch((err) => {
+      logger.warn({ err, taskId: task.id }, "Failed to stop worker on pause fallback");
+    });
+  }
+  await updateTaskState(task.id, "paused");
   notify({ type: "task_state", taskId: task.id, state: "paused" });
   return { ok: true, task, state: "paused" };
 }
@@ -82,6 +94,20 @@ export async function pauseTask(taskId: string): Promise<TaskControlResult> {
 export async function resumeTask(taskId: string): Promise<TaskControlResult> {
   const task = await requireTask(taskId);
   if (task.state !== "paused") invalidState("Task is not paused");
+  // Prefer unpausing the frozen container in place. If it is still present we
+  // simply continue execution and go straight back to running. Only when no
+  // paused container exists (e.g. service restarted, container gone) do we fall
+  // back to the scheduler-driven respawn (`--resume` checkpoint recovery).
+  const unpaused = await unpauseScanWorker(task.id).catch((err) => {
+    logger.warn({ err, taskId: task.id }, "Failed to unpause worker container");
+    return 0;
+  });
+  if (unpaused > 0) {
+    await updateTaskState(task.id, "running");
+    notify({ type: "task_state", taskId: task.id, state: "running" });
+    return { ok: true, task, state: "queued" };
+  }
+  logger.warn({ taskId: task.id }, "No paused container to unpause; falling back to checkpoint resume");
   await queueTaskForResume(task.id);
   notify({ type: "task_state", taskId: task.id, state: "queued" });
   return { ok: true, task, state: "queued" };

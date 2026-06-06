@@ -61,10 +61,14 @@ YOUNGFLOW_ARGS=(
   --max-parallel "$YOUNGFLOW_MAX_PARALLEL"
 )
 
+# Optional: stop after a specific stage (debug/Phase 0). Scan-duration
+# termination is handled by the `timeout` wrapper below, NOT --until
+# (YoungFlow --until only accepts a known stage id).
 if [ -n "${UNTIL:-}" ]; then
   YOUNGFLOW_ARGS+=(--until "$UNTIL")
-elif [ -n "${SCAN_TIMEOUT:-}" ]; then
-  YOUNGFLOW_ARGS+=(--until "timeout:${SCAN_TIMEOUT}")
+fi
+if [ -n "${RECURSION_LIMIT:-}" ]; then
+  YOUNGFLOW_ARGS+=(--recursion-limit "$RECURSION_LIMIT")
 fi
 if [ -n "${AUDIT_FOCUS:-}" ]; then
   YOUNGFLOW_ARGS+=(--audit-focus "$AUDIT_FOCUS")
@@ -79,11 +83,27 @@ if [ "${CONTINUE:-0}" = "1" ]; then
   YOUNGFLOW_ARGS+=(--continue)
 fi
 
-echo "[scan] Running youngflow (version=$(youngflow --version), model=$LLM_MODEL_NAME, max_parallel=$YOUNGFLOW_MAX_PARALLEL, flow=$FLOW_FILE)..." >&2
+# Scan-duration termination: wrap youngflow in coreutils `timeout`.
+# SCAN_TIMEOUT (seconds) bounds the whole scan; when it elapses youngflow
+# gets SIGTERM to clean up, and we treat that as a normal completion so the
+# scheduler still syncs outputs + indexes findings. Falls back to the flow's
+# own 60h timeout when SCAN_TIMEOUT is unset.
+EFFECTIVE_TIMEOUT="${SCAN_TIMEOUT:-216000}"
+
+echo "[scan] Running youngflow (version=$(youngflow --version), model=$LLM_MODEL_NAME, max_parallel=$YOUNGFLOW_MAX_PARALLEL, timeout=${EFFECTIVE_TIMEOUT}s, flow=$FLOW_FILE)..." >&2
 set +e
-youngflow "${YOUNGFLOW_ARGS[@]}" 2>"$SERVICE_LOG"
+timeout --signal=TERM --kill-after=30 "${EFFECTIVE_TIMEOUT}s" \
+  youngflow "${YOUNGFLOW_ARGS[@]}" 2>"$SERVICE_LOG"
 EXIT=$?
 set -e
+
+# timeout returns 124 (TERM) or 137 (KILL after --kill-after) when the scan
+# duration cap is hit. That is an expected, successful Phase-0 termination:
+# normalize to 0 so the scheduler runs sync + index on the produced findings.
+if [ "$EXIT" = "124" ] || [ "$EXIT" = "137" ]; then
+  echo "[scan] Scan stopped after ${EFFECTIVE_TIMEOUT}s scan-duration cap (normal termination)" >&2
+  EXIT=0
+fi
 
 finish_log
 trap - EXIT

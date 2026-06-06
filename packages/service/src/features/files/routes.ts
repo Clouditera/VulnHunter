@@ -10,6 +10,42 @@ import { queryContextFromUser } from "../../infra/query-context.js";
 
 export const filesRouter = new Hono();
 
+/**
+ * Extract optional VulnForge scan tuning fields and normalize them into
+ * source_meta. Only defined, non-empty values are included so existing
+ * tasks/UI that omit them stay unaffected. scan_timeout / max_items_per_recon
+ * are coerced to positive integers; invalid values are dropped.
+ */
+export function scanMetaFromValues(
+  auditFocus?: string | null,
+  scanTimeout?: string | number | null,
+  maxItemsPerRecon?: string | number | null,
+): Record<string, string | number> {
+  const meta: Record<string, string | number> = {};
+  const focus = typeof auditFocus === "string" ? auditFocus.trim() : "";
+  if (focus) meta.audit_focus = focus;
+  const timeout = toPositiveInt(scanTimeout);
+  if (timeout !== undefined) meta.scan_timeout = timeout;
+  const items = toPositiveInt(maxItemsPerRecon);
+  if (items !== undefined) meta.max_items_per_recon = items;
+  return meta;
+}
+
+function scanMetaFromForm(formData: FormData): Record<string, string | number> {
+  return scanMetaFromValues(
+    formData.get("audit_focus") as string | null,
+    formData.get("scan_timeout") as string | null,
+    formData.get("max_items_per_recon") as string | null,
+  );
+}
+
+export function toPositiveInt(value: string | number | null | undefined): number | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  const n = typeof value === "number" ? value : Number.parseInt(String(value).trim(), 10);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.trunc(n);
+}
+
 filesRouter.use("*", async (c, next) => {
   if (c.req.path === "/api/system/activate") return next();
   return licenseGuard(c, next);
@@ -57,7 +93,7 @@ filesRouter.post("/tasks", async (c) => {
       projectName: file.name.replace(/\.(zip|tar\.gz|tar\.bz2)$/, ""),
       displayName,
       sourceType: "upload",
-      sourceMeta: { filename: file.name, minio_key: minioKey, size_bytes: file.size },
+      sourceMeta: { filename: file.name, minio_key: minioKey, size_bytes: file.size, ...scanMetaFromForm(formData) },
       credentialId,
     });
 
@@ -72,6 +108,9 @@ filesRouter.post("/tasks", async (c) => {
     auto_skill_ids?: string[];
     credential_id?: string;
     display_name?: string;
+    audit_focus?: string;
+    scan_timeout?: string | number;
+    max_items_per_recon?: string | number;
   }>();
 
   if (!body.git_url) {
@@ -84,7 +123,11 @@ filesRouter.post("/tasks", async (c) => {
     projectName: body.project_name ?? new URL(body.git_url).pathname.split("/").pop() ?? "project",
     displayName: body.display_name,
     sourceType: "git",
-    sourceMeta: { git_url: body.git_url, git_branch: body.git_branch ?? "main" },
+    sourceMeta: {
+      git_url: body.git_url,
+      git_branch: body.git_branch ?? "main",
+      ...scanMetaFromValues(body.audit_focus, body.scan_timeout, body.max_items_per_recon),
+    },
     autoSkillIds: body.auto_skill_ids,
     credentialId: body.credential_id,
   });
