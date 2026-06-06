@@ -10,7 +10,7 @@ import { load as yamlLoad } from "js-yaml";
 import { execSync } from "node:child_process";
 import { logger } from "../../infra/logger.js";
 import { getDb } from "../../infra/db/client.js";
-import { countTasksByState, getQueuedTasks, getTaskById, updateTaskState, type DbTask } from "../tasks/storage.js";
+import { countTasksByState, getQueuedTasks, getTaskById, updateTaskState, clearContinueMode, isContinueMode, type DbTask } from "../tasks/storage.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir } from "./scan-worker.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
@@ -18,7 +18,7 @@ import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../inf
 import { credentialToWorkerEnv } from "../settings/credential-env.js";
 import { startTailing, stopTailing } from "../events/event-tail.js";
 import { indexFindings } from "../findings/indexer.js";
-import { syncOutputsToMinio } from "./sync-outputs.js";
+import { syncOutputsToMinio, downloadOutputsFromMinio } from "./sync-outputs.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { onChatContainerDie } from "../chat/chat-session.js";
 import { onReportContainerDie } from "../reports/report-worker.js";
@@ -172,6 +172,13 @@ export class TaskScheduler {
           }
         } else {
           const ok = exitCode === 0;
+          // Clear continue_mode flag (whether success or failure) so a later
+          // restart isn't misread as a continue run.
+          try {
+            await clearContinueMode(taskId);
+          } catch (err) {
+            logger.warn({ err, taskId }, "Failed to clear continue_mode flag");
+          }
           if (ok) {
             try {
               await syncOutputsToMinio(taskId, this.config);
@@ -258,8 +265,12 @@ export class TaskScheduler {
     let spawned = 0;
     for (const task of queued) {
       if (spawned >= capacity) break;
+      // Detect continue mode (re-run on top of existing outputs) vs resume
+      // (paused container respawn). Continue clears started_at, so it would
+      // otherwise look like a fresh run.
+      const isContinue = isContinueMode(task);
       // Detect resume: if started_at is set, task was previously running/paused
-      const isResume = task.started_at != null;
+      const isResume = task.started_at != null && !isContinue;
 
       // Get LLM credentials — task-specific or default
       const credId = (task as DbTask & { credential_id?: string }).credential_id;
@@ -305,10 +316,16 @@ export class TaskScheduler {
       const llmEnv = { ...credentialToWorkerEnv(cred), YOUNGFLOW_MAX_PARALLEL: String(this.youngflowMaxParallel) };
 
       try {
-        if (!isResume) {
+        if (isContinue) {
+          // Continue: re-extract source then pull historical outputs back into
+          // the workspace so YoungFlow --continue can build on prior artifacts.
+          await this.prepareWorkspace(task);
+          const downloaded = await downloadOutputsFromMinio(task.id, this.config);
+          logger.info({ taskId: task.id, downloaded }, "Historical outputs restored for continue");
+        } else if (!isResume) {
           await this.prepareWorkspace(task);
         }
-        await spawnScanWorker(task, this.config, llmEnv, isResume);
+        await spawnScanWorker(task, this.config, llmEnv, isResume, isContinue);
 
         // Start tailing service event files
         const hostWorkDir = getHostWorkDir(this.config.dataDir, task.id);
@@ -318,7 +335,9 @@ export class TaskScheduler {
 
         spawned++;
 
-        if (isResume) {
+        if (isContinue) {
+          logger.info({ taskId: task.id }, "Task continued on top of existing outputs");
+        } else if (isResume) {
           logger.info({ taskId: task.id }, "Task resumed from paused state");
         }
       } catch (err) {

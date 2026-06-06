@@ -7,6 +7,7 @@ import { assertNoActiveOperation } from "./operation-lock.js";
 import {
   getTaskById,
   queueTaskForResume,
+  queueTaskForContinue,
   resetTaskForRestart,
   updateTaskState,
   type DbTask,
@@ -109,6 +110,27 @@ export async function resumeTask(taskId: string): Promise<TaskControlResult> {
   }
   logger.warn({ taskId: task.id }, "No paused container to unpause; falling back to checkpoint resume");
   await queueTaskForResume(task.id);
+  notify({ type: "task_state", taskId: task.id, state: "queued" });
+  return { ok: true, task, state: "queued" };
+}
+
+/**
+ * CONTINUE a completed/failed/cancelled task: re-run VulnForge with `--continue`
+ * on top of the existing outputs. Unlike restart, this preserves findings_meta
+ * and MinIO scan-outputs; the scheduler downloads the historical outputs back
+ * into the worker workspace and YoungFlow archives the prior engine state to
+ * begin a fresh deepening round. Optionally overrides audit_focus / scan_timeout.
+ */
+export async function continueTask(
+  taskId: string,
+  params?: { auditFocus?: string; scanTimeout?: number },
+): Promise<TaskControlResult> {
+  const task = await requireTask(taskId);
+  if (!["completed", "failed", "cancelled"].includes(task.state)) {
+    invalidState("Can only continue completed/failed/cancelled tasks");
+  }
+  await assertScanNotBusy(task.id);
+  await queueTaskForContinue(task.id, params);
   notify({ type: "task_state", taskId: task.id, state: "queued" });
   return { ok: true, task, state: "queued" };
 }

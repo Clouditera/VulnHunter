@@ -12,6 +12,10 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [gitUrl, setGitUrl] = useState("");
   const [gitBranch, setGitBranch] = useState("main");
   const [displayName, setDisplayName] = useState("");
+  const [auditFocus, setAuditFocus] = useState("");
+  const [scanDuration, setScanDuration] = useState<string>("60"); // minutes
+  const [maxItemsPerRecon, setMaxItemsPerRecon] = useState<string>("10");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
@@ -48,6 +52,13 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   async function handleCreate() {
     setError("");
     setLoading(true);
+    // scan_duration is shown in minutes; backend expects scan_timeout in seconds.
+    const durationMin = Number.parseInt(scanDuration, 10);
+    const scanTimeout =
+      Number.isFinite(durationMin) && durationMin > 0 ? durationMin * 60 : undefined;
+    const maxItems = Number.parseInt(maxItemsPerRecon, 10);
+    const maxItemsVal = Number.isFinite(maxItems) && maxItems > 0 ? maxItems : undefined;
+    const focus = auditFocus.trim();
     try {
       if (tab === "upload") {
         if (!file) return;
@@ -55,6 +66,10 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         fd.append("file", file);
         if (credentialId) fd.append("credential_id", credentialId);
         if (displayName.trim()) fd.append("display_name", displayName.trim());
+        if (focus) fd.append("audit_focus", focus);
+        if (scanTimeout !== undefined) fd.append("scan_timeout", String(scanTimeout));
+        if (maxItemsVal !== undefined)
+          fd.append("max_items_per_recon", String(maxItemsVal));
         setUploadPct(0);
         await api.tasks.createWithProgress(fd, (pct) => setUploadPct(pct));
       } else {
@@ -64,6 +79,9 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
           project_name: gitUrl.split("/").pop(),
           display_name: displayName.trim() || undefined,
           credential_id: credentialId || undefined,
+          audit_focus: focus || undefined,
+          scan_timeout: scanTimeout,
+          max_items_per_recon: maxItemsVal,
         });
       }
       onCreated();
@@ -401,6 +419,71 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
               </div>
             </div>
           )}
+
+          {/* VulnForge scan parameters */}
+          <div style={{ marginTop: "20px", paddingTop: "20px", borderTop: "1px solid var(--divider)" }}>
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
+                {i18n.t("newTask.auditFocus")}
+              </label>
+              <textarea
+                data-testid="new-task-audit-focus"
+                value={auditFocus}
+                onChange={(e) => setAuditFocus(e.target.value)}
+                placeholder={i18n.t("newTask.auditFocusPlaceholder")}
+                rows={3}
+                maxLength={2000}
+                style={{ width: "100%", border: "1px solid var(--border)", borderRadius: "6px", padding: "8px 10px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit", lineHeight: 1.5 }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
+                {i18n.t("newTask.scanDuration")}
+              </label>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <input
+                  data-testid="new-task-scan-duration"
+                  type="number"
+                  min={1}
+                  value={scanDuration}
+                  onChange={(e) => setScanDuration(e.target.value)}
+                  style={{ width: "100px", height: "40px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 10px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box" }}
+                />
+                <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                  {i18n.t("newTask.minutes")}
+                </span>
+                <span style={{ fontSize: "12px", color: "var(--text-secondary)", opacity: 0.7 }}>
+                  {i18n.t("newTask.scanDurationHint")}
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              data-testid="new-task-advanced-toggle"
+              onClick={() => setShowAdvanced((v) => !v)}
+              style={{ marginTop: "14px", background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "4px" }}
+            >
+              <span style={{ display: "inline-block", transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>▶</span>
+              {i18n.t("newTask.advanced")}
+            </button>
+            {showAdvanced && (
+              <div style={{ marginTop: "12px" }}>
+                <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
+                  {i18n.t("newTask.maxItemsPerRecon")}
+                </label>
+                <input
+                  data-testid="new-task-max-items"
+                  type="number"
+                  min={1}
+                  value={maxItemsPerRecon}
+                  onChange={(e) => setMaxItemsPerRecon(e.target.value)}
+                  style={{ width: "100px", height: "40px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 10px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box" }}
+                />
+              </div>
+            )}
+          </div>
 
           {error && <p style={{ color: "var(--brand)", fontSize: "13px", margin: "12px 0 0" }}>{error}</p>}
         </div>
