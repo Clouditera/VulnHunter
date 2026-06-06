@@ -182,6 +182,25 @@ async function listMinioWikiPages(bucket: string, prefix: string): Promise<strin
   return keys.filter((k) => k.endsWith(".md")).map((k) => k.split("/").pop()!);
 }
 
+/** List wiki page filenames for a task, source order by state. Exported for MCP. */
+export async function listWikiPageNames(
+  task: { id: string; state: string },
+  config: ReturnType<typeof loadConfig>,
+): Promise<string[]> {
+  const bucket = config.minio.bucket;
+  const localOutDir = join(config.dataDir, "workspaces", task.id, "out");
+  const isRunning = task.state === "running" || task.state === "paused";
+  let names = isRunning
+    ? listLocalWikiPages(localOutDir)
+    : await listMinioWikiPages(bucket, `scan-outputs/${task.id}/`);
+  if (names.length === 0) {
+    names = isRunning
+      ? await listMinioWikiPages(bucket, `scan-outputs/${task.id}/`)
+      : listLocalWikiPages(localOutDir);
+  }
+  return sortWikiPages(names).map((p) => p.name);
+}
+
 /** Validate a wiki filename: a single .md basename, no path traversal. */
 export function isSafeWikiFilename(name: string): boolean {
   return /^[A-Za-z0-9._-]+\.md$/.test(name) && !name.includes("..");
@@ -247,7 +266,7 @@ wikiRouter.get("/:id/wiki", async (c) => {
 });
 
 /** Read a single wiki page's Markdown content, source order by task state. */
-async function readWikiPageContent(
+export async function readWikiPageContent(
   task: { id: string },
   config: ReturnType<typeof loadConfig>,
   filename: string,
@@ -282,7 +301,7 @@ wikiRouter.get("/:id/wiki/page/:filename", async (c) => {
 /* ── Profiler + Coverage (Phase 4) ── */
 
 /** Read a text artifact, source order by task state (running→local, else MinIO). */
-async function readArtifact(
+export async function readArtifact(
   taskId: string,
   config: ReturnType<typeof loadConfig>,
   relPath: string,
