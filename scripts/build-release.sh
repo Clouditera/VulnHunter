@@ -8,7 +8,7 @@ MINIO_IMAGE="${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:16-alpine}"
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-YOUNGFLOW_VERSION="${YOUNGFLOW_VERSION:-0.2.5}"
+YOUNGFLOW_VERSION="${YOUNGFLOW_VERSION:-0.2.14}"
 
 git submodule update --init --recursive
 
@@ -36,12 +36,12 @@ JSON
 
 pnpm turbo run build --filter=@vulnagent/service --filter=@vulnagent/web
 pnpm --filter @vulnagent/worker-bridge build
-if [[ ! -f flows/vulnagent/flow.yaml ]]; then
-  echo "missing flows/vulnagent/flow.yaml; run git submodule update --init --recursive" >&2
+if [[ ! -f flows/vulnforge/flow.deep.yaml ]]; then
+  echo "missing flows/vulnforge/flow.deep.yaml; run git submodule update --init --recursive" >&2
   exit 1
 fi
-if [[ ! -f flows/vulnagent/extensions/pi-subagents/package.json ]]; then
-  echo "missing flows/vulnagent/extensions/pi-subagents/package.json; run git submodule update --init --recursive" >&2
+if [[ ! -f flows/vulnforge/extensions/output-contract/package.json ]]; then
+  echo "missing flows/vulnforge/extensions/output-contract/package.json; run git submodule update --init --recursive" >&2
   exit 1
 fi
 if [[ ! -x submodules/youngflow/release/youngflow-linux-x64 ]]; then

@@ -11,15 +11,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN npm install -g @mariozechner/pi-coding-agent \
     && pi install npm:pi-mcp-adapter
 
-# youngflow — self-contained release binary (v0.2.3)
+# youngflow — self-contained release binary (v0.2.14)
 COPY submodules/youngflow/release/youngflow-linux-x64 /usr/local/bin/youngflow
 RUN chmod +x /usr/local/bin/youngflow \
     && youngflow --version
 
-# vulnagent flow assets (separate from youngflow submodule)
-COPY flows/vulnagent /opt/vulnagent/flows/vulnagent
-RUN cd /opt/vulnagent/flows/vulnagent/extensions/output-contract \
-    && npm install --omit=dev --no-audit --no-fund
+# vulnforge scan flow assets (separate from youngflow submodule)
+COPY flows/vulnforge /opt/vulnagent/flows/vulnforge
+RUN cd /opt/vulnagent/flows/vulnforge/extensions/output-contract \
+    && npm install --omit=dev --no-audit --no-fund \
+    && npm install --omit=dev --no-audit --no-fund @earendil-works/pi-coding-agent
+RUN cd /opt/vulnagent/flows/vulnforge/extensions/code-reading-coverage \
+    && npm init -y >/dev/null \
+    && npm install --omit=dev --no-audit --no-fund @mariozechner/pi-coding-agent
 COPY flows/vulnagent-report /opt/vulnagent/flows/vulnagent-report
 COPY flows/vulnagent-chat /opt/vulnagent/flows/vulnagent-chat
 

@@ -2,7 +2,8 @@
 set -e
 
 TASK_ID="${TASK_ID:?TASK_ID is required}"
-FLOW_DIR="/opt/vulnagent/flows/vulnagent"
+FLOW_DIR="/opt/vulnagent/flows/vulnforge"
+FLOW_FILE="$FLOW_DIR/flow.deep.yaml"
 SERVICE_LOG="/workspace/.service-logs/youngflow.service.jsonl"
 
 finish_log() {
@@ -18,14 +19,18 @@ echo "[scan] Starting scan for task: $TASK_ID" >&2
 
 # Preflight: verify critical dependencies
 if ! command -v python3 &>/dev/null; then
-  echo "[scan] FATAL: python3 not found — feature-aggregator requires python3" >&2
+  echo "[scan] FATAL: python3 not found — VulnForge helpers require python3" >&2
   exit 1
 fi
 if ! python3 -c "import yaml" 2>/dev/null; then
-  echo "[scan] FATAL: python3-yaml not installed — feature-aggregator requires pyyaml" >&2
+  echo "[scan] FATAL: python3-yaml not installed — VulnForge helpers require pyyaml" >&2
   exit 1
 fi
-echo "[scan] Preflight OK: python3 + yaml available" >&2
+if [ ! -f "$FLOW_FILE" ]; then
+  echo "[scan] FATAL: VulnForge flow not found: $FLOW_FILE" >&2
+  exit 1
+fi
+echo "[scan] Preflight OK: python3 + yaml + VulnForge flow available" >&2
 
 # Code already extracted to /workspace/src/ by service (bind mount)
 
@@ -41,23 +46,42 @@ YOUNGFLOW_IDLE_TIMEOUT=${YOUNGFLOW_IDLE_TIMEOUT:-3600}
 YOUNGFLOW_ERROR_RETRIES=${YOUNGFLOW_ERROR_RETRIES:-5}
 EOF
 
-if [ "${RESUME:-0}" != "1" ]; then
+if [ "${RESUME:-0}" != "1" ] && [ "${CONTINUE:-0}" != "1" ]; then
   rm -rf /workspace/out
 fi
 mkdir -p /workspace/.service-logs
 rm -f "$SERVICE_LOG"
 
 YOUNGFLOW_MAX_PARALLEL=${YOUNGFLOW_MAX_PARALLEL:-3}
-echo "[scan] Running youngflow (model=$LLM_MODEL_NAME, max_parallel=$YOUNGFLOW_MAX_PARALLEL)..." >&2
+YOUNGFLOW_ARGS=(
+  "$FLOW_FILE"
+  --work-dir /workspace/src
+  --output-dir /workspace/out
+  --json-log
+  --max-parallel "$YOUNGFLOW_MAX_PARALLEL"
+)
+
+if [ -n "${UNTIL:-}" ]; then
+  YOUNGFLOW_ARGS+=(--until "$UNTIL")
+elif [ -n "${SCAN_TIMEOUT:-}" ]; then
+  YOUNGFLOW_ARGS+=(--until "timeout:${SCAN_TIMEOUT}")
+fi
+if [ -n "${AUDIT_FOCUS:-}" ]; then
+  YOUNGFLOW_ARGS+=(--audit-focus "$AUDIT_FOCUS")
+fi
+if [ -n "${MAX_ITEMS_PER_RECON:-}" ]; then
+  YOUNGFLOW_ARGS+=(--max-items-per-recon "$MAX_ITEMS_PER_RECON")
+fi
+if [ "${RESUME:-0}" = "1" ]; then
+  YOUNGFLOW_ARGS+=(--resume)
+fi
+if [ "${CONTINUE:-0}" = "1" ]; then
+  YOUNGFLOW_ARGS+=(--continue)
+fi
+
+echo "[scan] Running youngflow (version=$(youngflow --version), model=$LLM_MODEL_NAME, max_parallel=$YOUNGFLOW_MAX_PARALLEL, flow=$FLOW_FILE)..." >&2
 set +e
-youngflow "$FLOW_DIR" \
-  --work-dir /workspace/src \
-  --output-dir /workspace/out \
-  --json-log \
-  --max-parallel "$YOUNGFLOW_MAX_PARALLEL" \
-  ${UNTIL:+--until "$UNTIL"} \
-  $([ "${RESUME:-0}" = "1" ] && echo "--resume") \
-  2>"$SERVICE_LOG"
+youngflow "${YOUNGFLOW_ARGS[@]}" 2>"$SERVICE_LOG"
 EXIT=$?
 set -e
 
