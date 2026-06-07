@@ -274,7 +274,7 @@ export async function listTasks(args: {
   );
 
   return {
-    content: [{ type: "text", text: `${header}\n${rows.join("\n")}` }],
+    content: [{ type: "text", text: `${header}\n${rows.join("\n")}\n\n（后续操作调用工具时使用完整的任务 ID。）` }],
   };
 }
 
