@@ -268,13 +268,13 @@ export async function listTasks(args: {
     };
   }
 
-  const header = `Found ${tasks.length} task(s):\n\n| project | id | state | created |\n|---|---|---|---|`;
+  const header = `共 ${tasks.length} 个任务：\n\n| 任务名称 | 任务 ID | 状态 | 创建时间 |\n|---|---|---|---|`;
   const rows = tasks.map((t) =>
     `| ${t.project_name} | ${t.id} | ${t.state} | ${new Date(t.created_at).toLocaleDateString()} |`,
   );
 
   return {
-    content: [{ type: "text", text: `${header}\n${rows.join("\n")}\n\nUse the full \`id\` column value for subsequent tool calls (e.g. list-findings, read-task-metadata, cancel-task).` }],
+    content: [{ type: "text", text: `${header}\n${rows.join("\n")}` }],
   };
 }
 
@@ -301,7 +301,7 @@ export async function cancelTask(args: {
   try {
     const result = await cancelTaskControl(task.id);
     return {
-      content: [{ type: "text", text: `Task ${result.task.project_name} (${result.task.id}) has been cancelled.` }],
+      content: [{ type: "text", text: `任务「${result.task.project_name}」已取消，任务 ID \`${result.task.id}\`，当前状态：已取消（cancelled）。` }],
     };
   } catch (err) {
     if (err instanceof TaskControlError) {
@@ -471,12 +471,8 @@ export async function createMcpTask(args: {
       content: [{
         type: "text",
         text: [
-          `Task created from uploaded file.`,
-          `- **Task ID**: ${task.id}`,
-          `- **Project**: ${projectName}`,
-          `- **Source**: ${artifact.original_name} (${Math.round(artifact.size_bytes / 1024)}KB)`,
-          `- **State**: queued`,
-          `- **Credential**: ${cred.label ?? "default"}`,
+          `任务「${projectName}」已创建成功，任务 ID \`${task.id}\`，当前状态：排队中（queued）。`,
+          `来源：${artifact.original_name}（${Math.round(artifact.size_bytes / 1024)}KB），凭证：${cred.label ?? "default"}。就绪后自动开始扫描。`,
         ].join("\n"),
       }],
     };
@@ -509,14 +505,8 @@ export async function createMcpTask(args: {
     content: [{
       type: "text",
       text: [
-        `Task created successfully.`,
-        `- **Task ID**: ${task.id}`,
-        `- **Project**: ${projectName}`,
-        `- **Source**: ${args.git_url} (branch: ${args.git_branch ?? "main"})`,
-        `- **State**: queued`,
-        `- **Credential**: ${cred.label ?? "default"}`,
-        ``,
-        `Git clone is running in the background. The task will start scanning once the code is ready.`,
+        `任务「${projectName}」已创建成功，任务 ID \`${task.id}\`，当前状态：排队中（queued）。`,
+        `来源：${args.git_url}（分支：${args.git_branch ?? "main"}），凭证：${cred.label ?? "default"}。代码克隆在后台进行，就绪后自动开始扫描。`,
       ].join("\n"),
     }],
   };
