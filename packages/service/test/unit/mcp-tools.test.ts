@@ -76,19 +76,34 @@ describe("MCP tools", () => {
       vi.mocked(findingsStorage.listFindings).mockResolvedValue([]);
 
       const result = await listFindings({ task_id: "t1" });
-      expect(result.content[0].text).toContain("No findings found");
+      expect(result.content[0].text).toContain("No finding items found");
     });
 
-    it("passes severity filter to storage", async () => {
+    it("passes severity filter to storage with default item_type=finding", async () => {
       vi.mocked(findingsStorage.listFindings).mockResolvedValue([]);
 
       await listFindings({ task_id: "t1", severity: "high", limit: 5 });
 
       expect(findingsStorage.listFindings).toHaveBeenCalledWith({
         taskId: "t1",
+        itemType: "finding",
         severity: "high",
         limit: 5,
       });
+    });
+
+    it("passes item_type=risk to storage", async () => {
+      vi.mocked(findingsStorage.listFindings).mockResolvedValue([]);
+
+      const result = await listFindings({ task_id: "t1", item_type: "risk" });
+
+      expect(findingsStorage.listFindings).toHaveBeenCalledWith({
+        taskId: "t1",
+        itemType: "risk",
+        severity: undefined,
+        limit: 20,
+      });
+      expect(result.content[0].text).toContain("No risk items found");
     });
   });
 
