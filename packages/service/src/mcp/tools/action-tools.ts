@@ -26,7 +26,7 @@ function toQueryContext(ctx: McpContext): QueryContext {
 
 export const controlTaskSchema = {
   task_id: z.string().describe("The task ID"),
-  action: z.enum(["pause", "resume", "cancel", "restart", "continue"]).describe("Action to perform"),
+  action: z.enum(["pause", "resume", "cancel", "restart", "continue"]).describe("操作类型：pause=暂停, resume=恢复, cancel=取消, restart=重新开始, continue=在已有结果基础上继续深入扫描"),
   audit_focus: z
     .string()
     .optional()

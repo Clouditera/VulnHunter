@@ -28,12 +28,17 @@ function toQueryContext(ctx: McpContext): QueryContext {
 
 export const listFindingsSchema = {
   task_id: z.string().describe("The task ID to list findings for"),
+  item_type: z
+    .enum(["finding", "risk", "all"])
+    .optional()
+    .describe("查询类型：finding=漏洞（已确认可利用）, risk=风险（存在隐患）, all=全部。默认 finding。"),
   severity: z.enum(["high", "medium", "low", "info"]).optional().describe("Filter by severity"),
   limit: z.number().optional().default(20).describe("Max results (default 20)"),
 };
 
 export async function listFindings(args: {
   task_id: string;
+  item_type?: "finding" | "risk" | "all";
   severity?: "high" | "medium" | "low" | "info";
   limit?: number;
 }, ctx?: McpContext): Promise<ToolResult> {
@@ -43,15 +48,18 @@ export async function listFindings(args: {
     if (!task) return { content: [{ type: "text", text: `Task ${args.task_id} not found.` }] };
   }
 
+  const itemType = args.item_type ?? "finding";
   const findings = await findingsStorage.listFindings({
     taskId: args.task_id,
+    itemType,
     severity: args.severity,
     limit: args.limit ?? 20,
   });
 
+  const label = itemType === "risk" ? "risk" : itemType === "all" ? "finding/risk" : "finding";
   if (findings.length === 0) {
     return {
-      content: [{ type: "text", text: `No findings found for task ${args.task_id}${args.severity ? ` with severity ${args.severity}` : ""}.` }],
+      content: [{ type: "text", text: `No ${label} items found for task ${args.task_id}${args.severity ? ` with severity ${args.severity}` : ""}.` }],
     };
   }
 
@@ -59,7 +67,7 @@ export async function listFindings(args: {
     `- **${f.finding_key}** [${f.severity.toUpperCase()}] ${f.vuln_type ?? "unknown"} — ${f.primary_file ?? "?"}:${f.primary_line ?? "?"}${f.function_name ? ` (${f.function_name})` : ""}`,
   );
 
-  const summary = `Found ${findings.length} finding(s) for task ${args.task_id}:\n\n${lines.join("\n")}`;
+  const summary = `Found ${findings.length} ${label} item(s) for task ${args.task_id}:\n\n${lines.join("\n")}`;
   return { content: [{ type: "text", text: summary }] };
 }
 
@@ -382,11 +390,11 @@ export const createTaskSchema = {
   audit_focus: z
     .string()
     .optional()
-    .describe("审计关注面：用自然语言描述用户关注的代码部分，如“聚焦认证和权限校验逻辑”。可选。"),
+    .describe("用户关注的安全审计方向，直接使用用户原话。"),
   scan_duration: z
     .number()
     .optional()
-    .describe("扫描时长（分钟），默认 60 分钟。可选。"),
+    .describe("扫描时长（分钟）。用户未指定时询问用户偏好。"),
 };
 
 export async function createMcpTask(args: {
