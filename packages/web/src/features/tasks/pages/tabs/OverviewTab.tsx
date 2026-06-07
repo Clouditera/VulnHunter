@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Task, type FindingMeta, type ProfilerData, type CoverageSummary } from "../../../../shared/api/client.js";
+import { api, type Task, type FindingMeta, type ProfilerData } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon, type IconName } from "../../../../shared/components/Icon.js";
 import { formatDateTime } from "../../../../shared/utils/format.js";
@@ -139,13 +139,7 @@ export function OverviewTab() {
     queryFn: () => api.tasks.profiler(task.id),
     retry: false,
   });
-  const { data: coverageData } = useQuery({
-    queryKey: ["task-coverage", task.id],
-    queryFn: () => api.tasks.coverage(task.id),
-    retry: false,
-  });
   const profiler = profilerData?.profiler ?? null;
-  const coverage = coverageData?.summary ?? null;
 
   const findings = (findingsData?.findings ?? []) as FindingMeta[];
   const counts = {
@@ -435,7 +429,6 @@ export function OverviewTab() {
 
       {/* Execution Summary */}
       {profiler && <ProfilerCard profiler={profiler} />}
-      {coverage && <CoverageCard summary={coverage} />}
 
       <Card title={i18n.t("overview.executionSummary")}>
         <KV
@@ -532,37 +525,6 @@ function ProfilerCard({ profiler }: { profiler: ProfilerData }) {
           </div>
         </div>
       )}
-    </Card>
-  );
-}
-
-function coverageColor(ratio: number): string {
-  if (ratio >= 0.8) return "var(--sev-low)";
-  if (ratio >= 0.5) return "var(--sev-medium)";
-  return "var(--sev-high)";
-}
-
-function CoverageCard({ summary }: { summary: CoverageSummary }) {
-  const ratio = Math.max(0, Math.min(1, summary.coverage ?? 0));
-  const pct = (ratio * 100).toFixed(1);
-  const color = coverageColor(ratio);
-
-  return (
-    <Card title={i18n.t("overview.coverageCard")} icon="activity">
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "8px" }}>
-        <span style={{ fontSize: "22px", fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
-      </div>
-      <div style={{ width: "100%", height: "10px", borderRadius: "5px", background: "var(--bg-page)", overflow: "hidden", marginBottom: "16px" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: color, transition: "width 0.3s" }} />
-      </div>
-      <KV
-        label={i18n.t("overview.coverageFiles")}
-        value={`${summary.covered_files.toLocaleString()} / ${summary.files.toLocaleString()}`}
-      />
-      <KV
-        label={i18n.t("overview.coverageLines")}
-        value={`${summary.read_lines.toLocaleString()} / ${summary.total_lines.toLocaleString()}`}
-      />
     </Card>
   );
 }
