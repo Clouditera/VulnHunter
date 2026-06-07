@@ -25,7 +25,6 @@ RUN cd /opt/vulnagent/flows/vulnforge/extensions/code-reading-coverage \
     && npm init -y >/dev/null \
     && npm install --omit=dev --no-audit --no-fund @mariozechner/pi-coding-agent
 COPY flows/vulnagent-report /opt/vulnagent/flows/vulnagent-report
-COPY flows/vulnagent-chat /opt/vulnagent/flows/vulnagent-chat
 
 # Worker bridge (for chat/report modes)
 COPY packages/worker-bridge/dist/bundle.js /opt/bridge/bundle.js
