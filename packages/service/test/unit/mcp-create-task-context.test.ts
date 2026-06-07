@@ -76,7 +76,7 @@ describe("createMcpTask context binding", () => {
 
     const result = await createMcpTask({ git_url: "https://example.com/project.git" }, { ...ctx, credentialId: "cred-session" });
 
-    expect(result.content[0].text).toContain("Task created successfully");
+    expect(result.content[0].text).toContain("已创建成功");
     expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
       createdBy: "user-1",
       sourceType: "git",
@@ -119,7 +119,7 @@ describe("createMcpTask context binding", () => {
 
     const result = await createMcpTask({ git_url: "https://example.com/project.git" }, { ...ctx, credentialId: null });
 
-    expect(result.content[0].text).toContain("Task created successfully");
+    expect(result.content[0].text).toContain("已创建成功");
     expect(getDefaultCredentialMock).toHaveBeenCalled();
     expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({ credentialId: "cred-1" }));
   });
@@ -148,7 +148,7 @@ describe("createMcpTask context binding", () => {
 
     const result = await createMcpTask({ attachment_id: "artifact-1" }, ctx);
 
-    expect(result.content[0].text).toContain("Task created from uploaded file");
+    expect(result.content[0].text).toContain("已创建成功");
     expect(sqlCalls.some((s) => s.includes("session_id") && s.includes("user_id") && s.includes("tenant_id"))).toBe(true);
     expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
       createdBy: "user-1",
