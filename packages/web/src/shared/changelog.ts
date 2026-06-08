@@ -1,0 +1,54 @@
+/**
+ * Version changelog shown to users in a login popup.
+ *
+ * To publish a new changelog on release: bump CURRENT_VERSION and replace
+ * CHANGELOG_MARKDOWN with the new announcement (Markdown, without the title
+ * line — the modal renders the title from CURRENT_VERSION).
+ *
+ * "Seen" state is tracked in localStorage under CHANGELOG_STORAGE_KEY, keyed
+ * by version, so each version's popup shows at most once per browser.
+ */
+
+export const CURRENT_VERSION = "2.2.0";
+
+export const CHANGELOG_STORAGE_KEY = "vulnagent_lastSeenVersion";
+
+export const CHANGELOG_MARKDOWN = `
+### 🔍 更精准的漏洞发现
+- 扫描结果分为**漏洞**和**风险**两类，帮你区分处理优先级
+- 每个发现提供 **CVSS 评分**和**攻击价值评估（EV）**，快速判断哪些最需要关注
+
+### 🎯 可定制的扫描策略
+- 创建任务时可以描述你的**审计关注面**，例如"聚焦认证和权限逻辑"
+- 自由设置**扫描时长**，小型项目 30 分钟快扫，大型项目可设 8 小时以上深度审计
+- 任务完成后支持**继续深入扫描**，已有发现全部保留，在此基础上发现更多问题
+
+### 📚 知识库
+- 扫描过程中自动生成项目各模块的**安全分析笔记**
+- 在 Wiki 页面按模块浏览，支持文档间跳转
+
+### 📊 项目画像
+- 自动识别项目**语言分布、代码量、技术栈和依赖**，任务详情页直接查看
+
+### 🤖 AI 助手升级
+- 通过对话即可**创建任务、查看结果、继续扫描、生成报告**
+- 能区分漏洞和风险，用通俗语言解释安全发现
+`.trim();
+
+export function shouldShowChangelog(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(CHANGELOG_STORAGE_KEY) !== CURRENT_VERSION;
+  } catch {
+    return false;
+  }
+}
+
+export function markChangelogSeen(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CHANGELOG_STORAGE_KEY, CURRENT_VERSION);
+  } catch {
+    // localStorage unavailable (private mode / disabled) — silently ignore.
+  }
+}
