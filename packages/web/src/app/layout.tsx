@@ -6,6 +6,8 @@ import { api, type ChatSessionApi } from "../shared/api/client.js";
 import { i18n } from "../shared/i18n/index.js";
 import { theme } from "../shared/theme/index.js";
 import { Icon, type IconName } from "../shared/components/Icon.js";
+import { ChangelogModal } from "../shared/components/ChangelogModal.js";
+import { shouldShowChangelog, markChangelogSeen } from "../shared/changelog.js";
 import { useNotifications } from "../shared/hooks/useNotifications.js";
 import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
 
@@ -38,8 +40,14 @@ export function AppLayout() {
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
   const [activeRecentId, setActiveRecentId] = useState<string | null>(null);
   const [sessionRefreshToken, setSessionRefreshToken] = useState(0);
+  const [showChangelog, setShowChangelog] = useState(() => shouldShowChangelog());
 
   useNotifications();
+
+  function dismissChangelog() {
+    markChangelogSeen();
+    setShowChangelog(false);
+  }
 
   useEffect(() => {
     const unsub1 = i18n.onChange(() => forceUpdate((n) => n + 1));
@@ -310,6 +318,8 @@ export function AppLayout() {
       <main style={{ flex: 1, minWidth: 0, overflow: "auto", height: "100vh" }}>
         <Outlet />
       </main>
+
+      {showChangelog && <ChangelogModal onClose={dismissChangelog} />}
     </div>
   );
 }
