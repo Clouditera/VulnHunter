@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSafeWikiFilename, sortWikiPages } from "../../src/features/wiki/routes.js";
+import { isSafeWikiFilename, sortWikiPages, slimCoverageMap } from "../../src/features/wiki/routes.js";
 
 describe("isSafeWikiFilename", () => {
   it("accepts plain .md basenames", () => {
@@ -36,5 +36,30 @@ describe("sortWikiPages", () => {
   it("works without index/overview present", () => {
     const ordered = sortWikiPages(["b.md", "a.md"]);
     expect(ordered.map((p) => p.name)).toEqual(["a.md", "b.md"]);
+  });
+});
+
+describe("slimCoverageMap", () => {
+  it("returns [] for undefined", () => {
+    expect(slimCoverageMap(undefined)).toEqual([]);
+  });
+  it("slims file entries to path/coverage/read_lines/total_lines (no file counts)", () => {
+    const out = slimCoverageMap({
+      "src/a.c": { path: "src/a.c", total_lines: 100, read_lines: 50, coverage: 0.5, files: 0, covered_files: 0, ranges: [[1, 50]], stages: ["recon"] } as never,
+    });
+    expect(out).toEqual([{ path: "src/a.c", coverage: 0.5, read_lines: 50, total_lines: 100, files: 0, covered_files: 0 }]);
+    // heavy fields dropped
+    expect(out[0]).not.toHaveProperty("ranges");
+    expect(out[0]).not.toHaveProperty("stages");
+  });
+  it("keeps file counts for directory entries", () => {
+    const out = slimCoverageMap({
+      "src": { path: "src", files: 10, covered_files: 4, total_lines: 1000, read_lines: 300, coverage: 0.3 },
+    });
+    expect(out[0]).toEqual({ path: "src", coverage: 0.3, read_lines: 300, total_lines: 1000, files: 10, covered_files: 4 });
+  });
+  it("falls back to map key when path field absent + defaults missing numbers", () => {
+    const out = slimCoverageMap({ "x.c": {} as never });
+    expect(out[0]).toEqual({ path: "x.c", coverage: 0, read_lines: 0, total_lines: 0 });
   });
 });

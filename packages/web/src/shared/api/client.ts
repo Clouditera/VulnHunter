@@ -335,6 +335,9 @@ export const api = {
       request<{ profiler: ProfilerData | null }>(`/api/tasks/${id}/profiler`),
     coverage: (id: string) =>
       request<CoveragePayload>(`/api/tasks/${id}/coverage`),
+    /** Full per-file + per-dir audit-progress map (detail=full) for the code-tree overlay. */
+    auditProgress: (id: string) =>
+      request<AuditProgressPayload>(`/api/tasks/${id}/coverage?detail=full`),
     /** Historical events for a finished task. Backend prefers the in-memory
      *  ring buffer when present (running tasks), falling back to MinIO
      *  archive `scan-outputs/<id>/.youngflow/logs/youngflow.service.jsonl`
@@ -1014,6 +1017,23 @@ export interface CoverageSummary {
 export interface CoveragePayload {
   summary: CoverageSummary | null;
   directories?: CoverageSummary[];
+}
+
+/** Slim coverage node for the audit-progress tree overlay (detail=full). */
+export interface AuditProgressNode {
+  path: string;
+  coverage: number;
+  read_lines: number;
+  total_lines: number;
+  /** Present on directory nodes only. */
+  files?: number;
+  covered_files?: number;
+}
+
+export interface AuditProgressPayload {
+  summary: CoverageSummary | null;
+  directories: AuditProgressNode[];
+  files: AuditProgressNode[];
 }
 
 export interface WikiPayload {

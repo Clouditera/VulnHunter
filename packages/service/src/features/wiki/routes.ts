@@ -349,6 +349,24 @@ interface CoverageSummary {
   coverage: number;
 }
 
+/**
+ * Slim a coverage map (directories or files) to the fields the audit-progress
+ * tree overlay needs: path/coverage/read_lines/total_lines (+ file counts for
+ * directories). Drops heavy per-file `ranges`/`stages`. Pure — unit tested.
+ */
+export function slimCoverageMap(
+  m: Record<string, CoverageSummary> | undefined,
+): Array<Record<string, unknown>> {
+  if (!m) return [];
+  return Object.entries(m).map(([path, v]) => ({
+    path: v.path ?? path,
+    coverage: v.coverage ?? 0,
+    read_lines: v.read_lines ?? 0,
+    total_lines: v.total_lines ?? 0,
+    ...(v.files != null ? { files: v.files, covered_files: v.covered_files ?? 0 } : {}),
+  }));
+}
+
 // GET /api/tasks/:id/coverage — code-reading coverage summary (no per-file detail)
 wikiRouter.get("/:id/coverage", async (c) => {
   const task = await getAccessibleTask(queryContextFromUser(c.get("user")), c.req.param("id"));
@@ -369,10 +387,23 @@ wikiRouter.get("/:id/coverage", async (c) => {
     const parsed = JSON.parse(raw) as {
       summary?: CoverageSummary;
       directories?: Record<string, CoverageSummary>;
+      files?: Record<string, CoverageSummary>;
     };
+    const summary = parsed.summary ?? null;
+
+    // detail=full → return complete per-file + per-dir maps (slim fields only),
+    // for the "audit progress" code-tree overlay. Default (summary) keeps the
+    // lightweight shape for existing callers (Overview mini card).
+    if (c.req.query("detail") === "full") {
+      return c.json({
+        summary,
+        directories: slimCoverageMap(parsed.directories),
+        files: slimCoverageMap(parsed.files),
+      });
+    }
+
     // Only return the summary (+ top-level directory aggregates). The per-file
     // line coverage (`files`) can be hundreds of entries — too heavy to ship.
-    const summary = parsed.summary ?? null;
     // Top-level dirs only (no nested paths) for an optional breakdown.
     const directories = parsed.directories
       ? Object.values(parsed.directories).filter(
