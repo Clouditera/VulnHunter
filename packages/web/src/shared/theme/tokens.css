@@ -14,6 +14,13 @@
   --sev-low: #2563eb;
   --sev-info: #9ca3af;
 
+  /* Audit Progress — green-depth ramp (grey → dark green). Not red: low
+     progress ≠ bad; red is reserved for vulnerabilities. Works light+dark. */
+  --audit-none: #9ca3af;
+  --audit-low: #86efac;
+  --audit-mid: #22c55e;
+  --audit-high: #15803d;
+
   /* Code viewer: theme-aware (light by default, dark in dark mode) */
   /* Terminal-bg stays always dark (LiveLog has terminal aesthetic) */
   --code-bg: #f8fafc;
