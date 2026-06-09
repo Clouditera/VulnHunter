@@ -111,6 +111,8 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         alignItems: "center",
         justifyContent: "center",
         zIndex: 50,
+        padding: "20px",
+        boxSizing: "border-box",
       }}
       onMouseDown={(e) => {
         overlayMouseDownRef.current = e.target === e.currentTarget;
@@ -130,8 +132,12 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
           background: "var(--bg-card)",
           borderRadius: "10px",
           width: "480px",
+          maxWidth: "100%",
+          maxHeight: "calc(100vh - 40px)",
           boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
           overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
         {/* Header */}
@@ -139,6 +145,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
           style={{
             padding: "20px 24px",
             borderBottom: "1px solid var(--border)",
+            flexShrink: 0,
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -160,7 +167,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", borderBottom: "1px solid var(--border)", background: "var(--bg-page)" }}>
+        <div style={{ display: "flex", borderBottom: "1px solid var(--border)", background: "var(--bg-page)", flexShrink: 0 }}>
           {(["upload", "git"] as const).map((t) => (
             <button
               key={t}
@@ -185,7 +192,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         </div>
 
         {/* Body */}
-        <div style={{ padding: "24px" }}>
+        <div style={{ padding: "24px", overflowY: "auto", flex: 1, minHeight: 0 }}>
           <div style={{ marginBottom: "16px" }}>
             <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
               {i18n.t("tasks.displayNameOptional")}
@@ -457,7 +464,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "0 24px 24px" }}>
+        <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
           <button
             data-testid="start-scan-btn"
             onClick={handleCreate}

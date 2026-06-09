@@ -181,12 +181,17 @@ export function ReviewNoteModal({
         alignItems: "center",
         justifyContent: "center",
         zIndex: 9999,
+        padding: 20,
+        boxSizing: "border-box",
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
     >
       <div
         style={{
           width: 400,
+          maxWidth: "100%",
+          maxHeight: "calc(100vh - 40px)",
+          overflowY: "auto",
           padding: 20,
           borderRadius: 10,
           background: "var(--bg-card)",
