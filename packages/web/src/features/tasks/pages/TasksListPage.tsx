@@ -10,8 +10,6 @@ import { StatusPill } from "../../../shared/components/StatusPill.js";
 import { SeverityBadges } from "../../../shared/components/SeverityBadges.js";
 import {
   formatDateTime,
-  parseRiskScore,
-  riskScoreColor,
 } from "../../../shared/utils/format.js";
 
 function formatDuration(ms: number | null): string {
@@ -332,7 +330,6 @@ export function TasksListPage() {
                   "tasks.col.project",
                   "tasks.col.status",
                   "tasks.col.findings",
-                  "tasks.col.riskScore",
                   "tasks.col.duration",
                   "tasks.col.created",
                   "tasks.col.actions",
@@ -376,7 +373,6 @@ export function TasksListPage() {
               </tr>
             ) : (
               tasks.map((task: Task) => {
-                const risk = parseRiskScore(task.risk_score);
                 const title = task.display_name?.trim() || task.project_name;
                 const subtitle = task.display_name?.trim() ? task.project_name : null;
                 return (
@@ -416,15 +412,6 @@ export function TasksListPage() {
                       style={{ padding: "14px 20px", color: "var(--text-secondary)", fontSize: "12px" }}
                     >
                       {renderFindingsCell(task)}
-                    </td>
-                    <td
-                      style={{
-                        padding: "14px 20px",
-                        fontWeight: 600,
-                        color: risk != null ? riskScoreColor(risk) : "var(--text-secondary)",
-                      }}
-                    >
-                      {risk != null ? risk.toFixed(1) : "—"}
                     </td>
                     <td
                       style={{ padding: "14px 20px", color: "var(--text-secondary)", fontSize: "12px" }}
