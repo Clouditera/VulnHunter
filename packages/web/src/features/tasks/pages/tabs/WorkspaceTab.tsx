@@ -645,7 +645,7 @@ function TreeRow({
   audit?: AuditEntry;
   onClick: () => void;
 }) {
-  // B — heat coloring: left 2px bar tinted by audit depth (green ramp).
+  // B — heat coloring: left 4px bar tinted by audit depth (green ramp).
   // Selected rows keep the brand accent; otherwise show the audit band color
   // (transparent when there's no audit data at all for this node).
   const auditBar = audit ? auditColor(audit.coverage) : "transparent";
