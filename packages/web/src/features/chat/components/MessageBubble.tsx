@@ -9,6 +9,26 @@ import { ReferenceCard } from "./ReferenceCard.js";
 import { extractAllArtifacts, stripChatArtifactJson } from "../artifacts.js";
 
 /**
+ * Attachment lines are embedded into the user message content by ChatInput as
+ *   `Attachment: [artifact_id: <uuid>; original filename: <name>](<path>)`
+ * (one per uploaded file). Rendering that raw is unreadable, so we split it out
+ * and show a compact 📎 filename chip instead. Returns the remaining prose plus
+ * the parsed attachment file names.
+ */
+function splitAttachments(content: string): { text: string; attachments: string[] } {
+  if (!content || !content.includes("Attachment: [")) return { text: content, attachments: [] };
+  const re = /^Attachment: \[(?:artifact_id:[^;\]]*;\s*)?original filename:\s*([^\]]+)\]\([^)]*\)\s*$/i;
+  const attachments: string[] = [];
+  const kept: string[] = [];
+  for (const line of content.split("\n")) {
+    const m = line.match(re);
+    if (m) attachments.push(m[1].trim());
+    else kept.push(line);
+  }
+  return { text: kept.join("\n").trim(), attachments };
+}
+
+/**
  * A single message rendered inside the MessageFlow stream.
  *
  * User messages: right-aligned pill bubble (`.msg-user`).
@@ -35,6 +55,19 @@ const USER_BUBBLE: CSSProperties = {
   width: "fit-content",
   whiteSpace: "pre-wrap",
   wordWrap: "break-word",
+};
+
+const ATTACHMENT_CHIP: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  maxWidth: "260px",
+  padding: "6px 10px",
+  background: "var(--bg-card)",
+  border: "1px solid var(--border)",
+  borderRadius: "8px",
+  fontSize: "13px",
+  color: "var(--text-primary)",
 };
 
 const IMG_GRID: CSSProperties = {
@@ -118,7 +151,24 @@ export function MessageBubble({
               ))}
             </div>
           ) : null}
-          {message.content ? <div style={USER_BUBBLE}>{message.content}</div> : null}
+          {(() => {
+            const { text, attachments } = splitAttachments(message.content ?? "");
+            return (
+              <>
+                {attachments.length > 0 ? (
+                  <div data-testid="chat-message-attachments" style={{ display: "flex", flexWrap: "wrap", gap: "6px", justifyContent: "flex-end" }}>
+                    {attachments.map((name, i) => (
+                      <div key={i} data-testid="chat-attachment-chip" style={ATTACHMENT_CHIP} title={name}>
+                        <span aria-hidden style={{ flexShrink: 0 }}>📎</span>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {text ? <div style={USER_BUBBLE}>{text}</div> : null}
+              </>
+            );
+          })()}
         </div>
         {lightboxSrc ? <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} /> : null}
       </div>
