@@ -683,6 +683,14 @@ const ZH: Record<string, string> = {
   "workspace.search": "搜索文件…",
   "workspace.vulnsInFile": "{n} 个漏洞",
 
+  // Audit Progress (审计进展 — user-facing copy never says 覆盖率)
+  "audit.title": "审计进展",
+  "audit.lines": "已读 {r}/{t} 行",
+  "audit.files": "文件",
+  "audit.rowTitle": "已审计 · 已读 {read}/{total} 行",
+  "audit.notAudited": "未审计",
+  "audit.audited": "已审计",
+
   // Common
   "common.loading": "加载中…",
   "common.noData": "—",
@@ -1395,6 +1403,14 @@ const EN: Record<string, string> = {
   "workspace.lines": "lines",
   "workspace.search": "Search files…",
   "workspace.vulnsInFile": "{n} finding(s)",
+
+  // Audit Progress
+  "audit.title": "Audit Progress",
+  "audit.lines": "{r}/{t} lines read",
+  "audit.files": "files",
+  "audit.rowTitle": "Audited · {read}/{total} lines read",
+  "audit.notAudited": "Not yet audited",
+  "audit.audited": "Audited",
 
   // Common
   "common.loading": "Loading…",
