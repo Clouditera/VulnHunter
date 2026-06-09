@@ -344,6 +344,15 @@ export async function getQueuedTasks(limit: number): Promise<DbTask[]> {
   `;
 }
 
+/** All running task IDs across tenants (for scheduler incremental indexing). */
+export async function getRunningTaskIds(): Promise<string[]> {
+  const db = getDb();
+  const rows = await db<{ id: string }[]>`
+    SELECT id FROM tasks WHERE state = 'running'
+  `;
+  return rows.map((r) => r.id);
+}
+
 export async function deleteTask(id: string): Promise<boolean> {
   const db = getDb();
   const rows = await db`DELETE FROM tasks WHERE id = ${id} RETURNING id`;

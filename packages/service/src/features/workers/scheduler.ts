@@ -10,7 +10,7 @@ import { load as yamlLoad } from "js-yaml";
 import { execSync } from "node:child_process";
 import { logger } from "../../infra/logger.js";
 import { getDb } from "../../infra/db/client.js";
-import { countTasksByState, getQueuedTasks, getTaskById, updateTaskState, clearContinueMode, isContinueMode, type DbTask } from "../tasks/storage.js";
+import { countTasksByState, getQueuedTasks, getRunningTaskIds, getTaskById, updateTaskState, clearContinueMode, isContinueMode, type DbTask } from "../tasks/storage.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir } from "./scan-worker.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
@@ -96,12 +96,19 @@ export function missingCredentialFailureReason(credId?: string | null): string {
     : "任务缺少可用模型凭证。请在任务或 Settings 中配置模型凭证后重新创建/重启任务。";
 }
 
+/** Incremental findings indexing for running tasks. */
+const INCREMENTAL_INDEX_INTERVAL_MS = 90_000;
+/** Only sync lightweight business artifacts mid-scan (skip GB-scale session logs). */
+const INCREMENTAL_SYNC_DIRS = ["findings", "risks", "knowledge"];
+
 export class TaskScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private unsubscribeEvents: (() => void) | null = null;
   private maxParallelScan = 3;
   private youngflowMaxParallel = 3;
   private config: ServiceConfig;
+  /** Last incremental sync+index time per running task (ms). */
+  private lastIncrementalAt = new Map<string, number>();
 
   constructor(config: ServiceConfig) {
     this.config = config;
@@ -249,6 +256,13 @@ export class TaskScheduler {
       logger.error({ err }, "POC scheduler tick error"),
     );
 
+    // Incremental findings indexing for running tasks (before the capacity
+    // early-return, since running>=max means capacity<=0 yet we still want
+    // running tasks' findings to surface mid-scan).
+    await this.tickIncrementalIndex().catch((err) =>
+      logger.error({ err }, "Incremental index tick error"),
+    );
+
     const running = await countTasksByState("running");
     const capacity = this.maxParallelScan - running;
 
@@ -346,6 +360,37 @@ export class TaskScheduler {
           completedAt: new Date(),
           failureReason: String(err),
         });
+      }
+    }
+  }
+
+  /**
+   * Periodically sync + index findings for running tasks so the UI surfaces
+   * vulnerabilities mid-scan instead of only at task completion. Throttled per
+   * task (every INCREMENTAL_INDEX_INTERVAL_MS), and syncs only the lightweight
+   * business-artifact dirs to avoid re-uploading GB-scale session logs each
+   * cycle. Failures are warn-only — never affect task state. The terminal
+   * sync+index after container exit remains the source of final consistency.
+   */
+  private async tickIncrementalIndex(): Promise<void> {
+    const runningIds = await getRunningTaskIds();
+    const runningSet = new Set(runningIds);
+    // Drop bookkeeping for tasks no longer running.
+    for (const id of this.lastIncrementalAt.keys()) {
+      if (!runningSet.has(id)) this.lastIncrementalAt.delete(id);
+    }
+
+    const now = Date.now();
+    for (const taskId of runningIds) {
+      const last = this.lastIncrementalAt.get(taskId) ?? 0;
+      if (now - last < INCREMENTAL_INDEX_INTERVAL_MS) continue;
+      this.lastIncrementalAt.set(taskId, now);
+      try {
+        await syncOutputsToMinio(taskId, this.config, { includeDirs: INCREMENTAL_SYNC_DIRS });
+        const count = await indexFindings(taskId, this.config.minio.bucket);
+        notify({ type: "findings_indexed", taskId, count });
+      } catch (err) {
+        logger.warn({ err, taskId }, "Incremental findings index failed (non-fatal)");
       }
     }
   }
