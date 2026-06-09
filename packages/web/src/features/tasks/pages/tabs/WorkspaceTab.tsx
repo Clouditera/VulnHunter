@@ -7,10 +7,92 @@ import {
   type WorkspaceFile,
   type WorkspaceTreeNode,
   type FindingMeta,
+  type AuditProgressNode,
+  type CoverageSummary,
 } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon } from "../../../../shared/components/Icon.js";
 import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
+
+/* -------------------------------------------------------------------------- */
+/*  Audit progress (审计进展) — green-ramp depth overlay on the code tree        */
+/* -------------------------------------------------------------------------- */
+
+// 4-band green ramp. Low ≠ bad → no red (red = vulnerability). 0 = grey.
+const AUDIT_BANDS = [
+  { min: 0.7, color: "var(--audit-high)" }, // ≥70%
+  { min: 0.3, color: "var(--audit-mid)" }, // 30–70%
+  { min: 0.001, color: "var(--audit-low)" }, // 1–30%
+  { min: 0, color: "var(--audit-none)" }, // 0%
+] as const;
+
+function auditColor(ratio: number): string {
+  return (AUDIT_BANDS.find((b) => ratio >= b.min) ?? AUDIT_BANDS[3]).color;
+}
+
+/**
+ * Normalize a path for audit-coverage join. Coverage JSON keys are relative to
+ * the target root (`src/openvpn/ssl.c`); tree node paths may carry a
+ * `/workspace/` prefix or `./` — strip both sides to the same shape so the
+ * join lands (the #1 pitfall flagged by architect: mismatch → whole tree shows
+ * “not audited”).
+ */
+function normAuditPath(p: string): string {
+  return p
+    .replace(/^\/+workspace\/+/, "")
+    .replace(/^\.\//, "")
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "");
+}
+
+interface AuditEntry {
+  coverage: number;
+  read_lines: number;
+  total_lines: number;
+}
+
+/** Tree-row badge: 36px track + fill + % (or — at 0%). Right of the vuln dot. */
+function AuditBadge({ entry }: { entry: AuditEntry }) {
+  const pct = Math.round(entry.coverage * 100);
+  return (
+    <span
+      data-testid="workspace-audit-badge"
+      title={
+        pct > 0
+          ? i18n
+              .t("audit.rowTitle")
+              .replace("{read}", entry.read_lines.toLocaleString())
+              .replace("{total}", entry.total_lines.toLocaleString())
+          : i18n.t("audit.notAudited")
+      }
+      style={{ display: "flex", alignItems: "center", gap: "5px", flexShrink: 0 }}
+    >
+      <span style={{ width: "36px", height: "4px", borderRadius: "2px", background: "var(--bg-page)", overflow: "hidden" }}>
+        <span style={{ display: "block", width: `${pct}%`, height: "100%", background: auditColor(entry.coverage), transition: "width .3s, background .3s" }} />
+      </span>
+      <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", width: "28px", textAlign: "right" }}>
+        {pct > 0 ? `${pct}%` : "—"}
+      </span>
+    </span>
+  );
+}
+
+/** Top total progress bar (under the tree search box). */
+function AuditProgressBar({ s }: { s: CoverageSummary }) {
+  const pct = (s.coverage * 100).toFixed(1);
+  return (
+    <div data-testid="workspace-audit-total" style={{ padding: "8px 12px", borderBottom: "1px solid var(--divider)", background: "var(--bg-card)" }}>
+      <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "6px" }}>
+        ⏳ {i18n.t("audit.title")} {pct}% ·{" "}
+        {i18n.t("audit.lines").replace("{r}", s.read_lines.toLocaleString()).replace("{t}", s.total_lines.toLocaleString())} · {s.covered_files}/{s.files}{" "}
+        {i18n.t("audit.files")}
+      </div>
+      <div style={{ height: "6px", borderRadius: "3px", background: "var(--bg-page)", overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: auditColor(s.coverage), transition: "width .3s" }} />
+      </div>
+    </div>
+  );
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                   */
@@ -275,6 +357,35 @@ export function WorkspaceTab() {
     staleTime: 30_000,
   });
 
+  // Audit progress (审计进展): full per-file/dir coverage map. Running tasks
+  // refetch every 5min (fish spec) so the tree deepens live; terminal tasks
+  // fetch once. Backend reads bind-mount live for running.
+  const isRunning = task.state === "running" || task.state === "paused";
+  const { data: auditData } = useQuery({
+    queryKey: ["audit-progress", task.id],
+    queryFn: () => api.tasks.auditProgress(task.id),
+    staleTime: 60_000,
+    refetchInterval: isRunning ? 300_000 : false,
+  });
+
+  // path(normalized) → audit entry, for both files and directories. Directory
+  // aggregates come straight from the engine JSON (do NOT sum client-side).
+  const auditByPath = useMemo(() => {
+    const m = new Map<string, AuditEntry>();
+    const add = (nodes: AuditProgressNode[] | undefined) => {
+      for (const n of nodes ?? []) {
+        m.set(normAuditPath(n.path), {
+          coverage: n.coverage,
+          read_lines: n.read_lines,
+          total_lines: n.total_lines,
+        });
+      }
+    };
+    add(auditData?.directories);
+    add(auditData?.files);
+    return m;
+  }, [auditData]);
+
   // When we arrive via deep-link (?file=...&line=...), consume and clear
   // the params so a manual tab switch doesn't replay them. Also expand
   // any collapsed parent directories so the file is visible in the tree.
@@ -413,6 +524,9 @@ export function WorkspaceTab() {
             </div>
           </div>
 
+          {/* Total audit-progress bar (审计进展) */}
+          {auditData?.summary ? <AuditProgressBar s={auditData.summary} /> : null}
+
           {/* Tree list */}
           <div style={{ flex: 1, overflow: "auto", padding: "6px 0" }}>
             {treeLoading ? (
@@ -459,6 +573,7 @@ export function WorkspaceTab() {
                   key={n.path}
                   node={n}
                   selected={selectedPath === n.path}
+                  audit={auditByPath.get(normAuditPath(n.path))}
                   onClick={() => {
                     if (n.isDir) toggleDir(n.path);
                     else setSelectedPath(n.path);
@@ -522,12 +637,18 @@ const TREE_MSG: React.CSSProperties = {
 function TreeRow({
   node,
   selected,
+  audit,
   onClick,
 }: {
   node: FlatNode;
   selected: boolean;
+  audit?: AuditEntry;
   onClick: () => void;
 }) {
+  // B — heat coloring: left 2px bar tinted by audit depth (green ramp).
+  // Selected rows keep the brand accent; otherwise show the audit band color
+  // (transparent when there's no audit data at all for this node).
+  const auditBar = audit ? auditColor(audit.coverage) : "transparent";
   return (
     <div
       data-testid="workspace-tree-row"
@@ -552,7 +673,7 @@ function TreeRow({
         background: selected
           ? "var(--bg-card)"
           : "transparent",
-        borderLeft: selected ? "2px solid var(--brand)" : "2px solid transparent",
+        borderLeft: selected ? "2px solid var(--brand)" : `2px solid ${auditBar}`,
         lineHeight: 1.6,
         userSelect: "none",
       }}
@@ -606,6 +727,9 @@ function TreeRow({
           }}
         />
       )}
+
+      {/* Audit progress badge (审计进展) — A */}
+      {audit ? <AuditBadge entry={audit} /> : null}
     </div>
   );
 }
