@@ -4,6 +4,7 @@ import { licenseGuard } from "../../middleware/license-guard.js";
 import * as taskStorage from "./storage.js";
 import { cleanupScanWorkDir } from "../workers/scan-worker.js";
 import { loadTaskEvents } from "../events/event-archive.js";
+import { getEventTotal } from "../events/event-store.js";
 import { listCredentials } from "../settings/storage.js";
 import { cancelTask, continueTask, pauseTask, restartTask, resumeTask, TaskControlError } from "./control-service.js";
 import { loadConfig } from "../../infra/config.js";
@@ -246,5 +247,12 @@ tasksRouter.get("/:id/events", async (c) => {
     source,
     limit,
   });
-  return c.json({ events });
+  // total = monotonic count of all events ever produced (running/paused tasks
+  // keep only the latest ~1000 in memory; total lets the UI show the true count
+  // instead of resetting to the cap on refresh). Archived (terminal) states
+  // return the full list, so length is the true total.
+  const total = ["running", "paused"].includes(task.state)
+    ? Math.max(getEventTotal(task.id), events.length)
+    : events.length;
+  return c.json({ events, total });
 });

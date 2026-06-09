@@ -233,6 +233,7 @@ export function OverviewTab() {
           );
         })()}
         <CredentialField task={task} />
+        <ScanBudgetField task={task} />
         <KV label={i18n.t("overview.language")} value={profile.language ?? null} />
         <KV
           label={i18n.t("overview.buildSystem")}
@@ -688,6 +689,56 @@ function SevBar({ counts }: { counts: { high: number; medium: number; low: numbe
 
 /* ── Credential selector (editable for paused/cancelled/failed tasks) ── */
 const EDITABLE_STATES = new Set(["paused", "cancelled", "failed"]);
+
+function formatMinutes(totalMin: number): string {
+  if (totalMin < 60) return `${totalMin} 分钟`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m > 0 ? `${h} 小时 ${m} 分钟` : `${h} 小时`;
+}
+
+/**
+ * Scan time-budget display. `scan_timeout` (source_meta, seconds) is the
+ * engine's soft upper bound — not a precise countdown (a task may converge and
+ * finish earlier, or be stopped at the budget). Running tasks show a live
+ * elapsed + remaining-budget; finished tasks show actual run time.
+ */
+function ScanBudgetField({ task }: { task: Task }) {
+  const sm = parseSourceMeta(task.source_meta as unknown as string);
+  const timeoutSec = typeof sm?.scan_timeout === "number" ? sm.scan_timeout : null;
+  const isRunning = task.state === "running";
+
+  // Live-updating clock for the running case.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isRunning) return;
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, [isRunning]);
+
+  if (timeoutSec == null && task.duration_ms == null) return null;
+  const budgetMin = timeoutSec != null ? Math.round(timeoutSec / 60) : null;
+
+  let value: string;
+  if (isRunning && task.started_at) {
+    const elapsedMin = Math.max(0, Math.floor((now - new Date(task.started_at).getTime()) / 60_000));
+    const parts = [budgetMin != null ? `扫描预算 ${formatMinutes(budgetMin)}` : null, `已运行 ${formatMinutes(elapsedMin)}`];
+    if (budgetMin != null) {
+      const remaining = Math.max(0, budgetMin - elapsedMin);
+      parts.push(`剩余约 ${formatMinutes(remaining)}`);
+    }
+    value = parts.filter(Boolean).join(" · ");
+  } else if (task.duration_ms != null) {
+    const actualMin = Math.max(0, Math.round(task.duration_ms / 60_000));
+    value = [budgetMin != null ? `扫描预算 ${formatMinutes(budgetMin)}` : null, `实际运行 ${formatMinutes(actualMin)}`].filter(Boolean).join(" · ");
+  } else if (budgetMin != null) {
+    value = `扫描预算 ${formatMinutes(budgetMin)}`;
+  } else {
+    return null;
+  }
+
+  return <KV label={i18n.t("overview.scanBudget")} value={`⏱ ${value}`} />;
+}
 
 function CredentialField({ task }: { task: Task }) {
   const qc = useQueryClient();
