@@ -8,8 +8,6 @@ import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
 import {
   formatRelativeTime,
-  parseRiskScore,
-  riskScoreColor,
 } from "../../../shared/utils/format.js";
 
 const SEV_COLORS = {
@@ -458,7 +456,6 @@ export function DashboardPage() {
                 i18n.t("tasks.col.project") || "Project",
                 i18n.t("tasks.col.status") || "Status",
                 i18n.t("tasks.col.findings") || (i18n.locale() === "zh" ? "漏洞" : "Findings"),
-                i18n.t("tasks.col.riskScore"),
                 i18n.t("tasks.col.duration") || (i18n.locale() === "zh" ? "耗时" : "Duration"),
                 i18n.t("tasks.col.time") || (i18n.locale() === "zh" ? "时间" : "Time"),
               ].map((h, i) => (
@@ -493,11 +490,9 @@ export function DashboardPage() {
                   project_name: string;
                   state: string;
                   severity_counts: { h: number; m: number; l: number; i: number };
-                  risk_score: number | null | string;
                   duration_ms: number | null;
                   created_at: string;
                 }) => {
-                  const risk = parseRiskScore(scan.risk_score);
                   const sc = scan.severity_counts;
                   const hasCounts = sc.h + sc.m + sc.l + sc.i > 0;
                   return (
@@ -529,16 +524,6 @@ export function DashboardPage() {
                         ) : (
                           <span style={{ color: "var(--text-secondary)" }}>—</span>
                         )}
-                      </td>
-                      <td
-                        style={{
-                          padding: "14px 20px",
-                          fontSize: "13px",
-                          fontWeight: 600,
-                          color: risk != null ? riskScoreColor(risk) : "var(--text-secondary)",
-                        }}
-                      >
-                        {risk != null ? risk.toFixed(1) : "—"}
                       </td>
                       <td style={{ padding: "14px 20px", fontSize: "12px", color: "var(--text-secondary)" }}>
                         {scan.duration_ms ? `${Math.round(scan.duration_ms / 60_000)} min` : "—"}

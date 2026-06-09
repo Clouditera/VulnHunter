@@ -13,7 +13,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [gitBranch, setGitBranch] = useState("main");
   const [displayName, setDisplayName] = useState("");
   const [auditFocus, setAuditFocus] = useState("");
-  const [scanDuration, setScanDuration] = useState<string>("60"); // minutes
+  const [scanDuration, setScanDuration] = useState<string>("180"); // minutes
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);

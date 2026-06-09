@@ -41,17 +41,3 @@ export function formatRelativeTime(value: string | Date | null | undefined): str
   return formatDateTime(d);
 }
 
-/** Parse risk_score which may arrive as string (PG numeric) or number. */
-export function parseRiskScore(v: unknown): number | null {
-  if (v == null) return null;
-  const n = typeof v === "number" ? v : parseFloat(String(v));
-  return Number.isFinite(n) ? n : null;
-}
-
-/** Color tier for a numeric risk score (0-10). */
-export function riskScoreColor(score: number): string {
-  if (score >= 7.5) return "var(--sev-high)";
-  if (score >= 5) return "var(--sev-medium)";
-  if (score >= 2.5) return "var(--sev-low)";
-  return "var(--sev-info)";
-}
