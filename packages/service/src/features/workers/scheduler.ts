@@ -366,8 +366,9 @@ export class TaskScheduler {
     const zipPath = join(hostWorkDir, "source.zip");
     const minio = getMinio();
 
-    // Wait for code package (git clone runs async after task creation)
-    const maxWaitSec = 120;
+    // Wait for code package (git clone runs async after task creation; large repos
+    // can take up to 10min clone + retries + zip + upload). Align with git-clone budget.
+    const maxWaitSec = 720;
     for (let attempt = 0; attempt < maxWaitSec; attempt++) {
       try {
         await minio.statObject(this.config.minio.bucket, minioKey);
