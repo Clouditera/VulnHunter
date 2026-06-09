@@ -375,7 +375,11 @@ export class ChatSession {
     // Track assistant content for DB persistence
     if (event.type === "message_start" && (event.message as Record<string, unknown>)?.role === "assistant") {
       this.assistantContent = "";
-      this.toolCalls = [];
+      // NOTE: do NOT reset this.toolCalls here. pi emits multiple
+      // message_start -> message_end cycles per tool turn (see web B16 fix);
+      // tool_execution_end may land before or between message cycles. We clear
+      // toolCalls only after persisting them at message_end, so a tool-bearing
+      // message never loses its result to a subsequent message_start reset.
     }
 
     if (event.type === "message_update") {
@@ -397,12 +401,20 @@ export class ChatSession {
           if (block.type === "text") this.assistantContent = block.text ?? "";
         }
       }
-      if (this.assistantContent) {
+      // Capture and clear tool calls for THIS message so the next message in a
+      // multi-message tool turn starts fresh and we never double-persist.
+      const toolCallsForMessage = this.toolCalls;
+      this.toolCalls = [];
+      // Persist if there is text OR tool calls. Tool-bearing assistant messages
+      // frequently carry only a tool_use/thinking block and no text — skipping
+      // those (the old `if (this.assistantContent)`) dropped emit-reference /
+      // present-artifact results entirely, so cards never rendered on refresh.
+      if (this.assistantContent || toolCallsForMessage.length > 0) {
         appendMessage({
           sessionId: this.sessionId,
           role: "assistant",
           content: this.assistantContent,
-          toolCalls: this.toolCalls.length > 0 ? this.toolCalls : undefined,
+          toolCalls: toolCallsForMessage.length > 0 ? toolCallsForMessage : undefined,
         })
           .then(() => {
             if (this.bridgeUrl) {
@@ -439,6 +451,22 @@ export class ChatSession {
 
     // Clear buffer on conversation completion
     if (event.type === "agent_end") {
+      // Safety flush: if tool calls were accumulated but never persisted by a
+      // trailing message_end (e.g. tool_execution_end after the final
+      // message_end), persist them now so emit-reference / present-artifact
+      // results are never stranded.
+      if (this.toolCalls.length > 0) {
+        const toolCallsForMessage = this.toolCalls;
+        this.toolCalls = [];
+        appendMessage({
+          sessionId: this.sessionId,
+          role: "assistant",
+          content: "",
+          toolCalls: toolCallsForMessage,
+        }).catch((err) =>
+          logger.warn({ err }, "Failed to persist trailing tool calls at agent_end"),
+        );
+      }
       this.eventBuffer = [];
       if (this.state === "active") this.state = "ready";
     }
