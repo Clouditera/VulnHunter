@@ -147,9 +147,10 @@ export async function appendMessage(params: {
   const nextSeq = (seqRows[0]?.max ?? 0) + 1;
 
   const rows = await db<DbChatMessage[]>`
-    INSERT INTO chat_messages (session_id, tenant_id, user_id, role, content, seq)
+    INSERT INTO chat_messages (session_id, tenant_id, user_id, role, content, seq, tool_calls)
     VALUES (${params.sessionId}, ${session.tenant_id}, ${session.user_id},
-            ${params.role}, ${params.content}, ${nextSeq})
+            ${params.role}, ${params.content}, ${nextSeq},
+            ${params.toolCalls && params.toolCalls.length > 0 ? db.json(params.toolCalls as never) : null})
     RETURNING *
   `;
   return rows[0];
