@@ -118,10 +118,14 @@ export class ChatSession {
     this.clients.add(clientWs);
     logger.debug({ sessionId: this.sessionId, clientCount: this.clients.size }, "Frontend client subscribed");
 
-    // Replay buffered events
-    for (const event of this.eventBuffer) {
-      if (clientWs.readyState === WebSocket.OPEN) {
-        clientWs.send(event);
+    // Replay buffered events only when a turn is in-flight. A settled session
+    // (state !== active) must not replay — otherwise switching away and back
+    // re-injects the previous reply as a duplicate bubble.
+    if (this.state === "active") {
+      for (const event of this.eventBuffer) {
+        if (clientWs.readyState === WebSocket.OPEN) {
+          clientWs.send(event);
+        }
       }
     }
 
@@ -441,14 +445,16 @@ export class ChatSession {
 
     // Serialize with session_id envelope
     const serialized = JSON.stringify({ session_id: this.sessionId, ...event });
-
-    // Buffer for late-joining clients
-    this.eventBuffer.push(serialized);
-    if (this.eventBuffer.length > EVENT_BUFFER_SIZE) {
-      this.eventBuffer.shift();
-    }
-
     this.broadcastToClients(serialized);
+
+    // Buffer for late-joining clients during an in-flight turn. Cleared on
+    // agent_end (above), so settled sessions hold no replayable content.
+    if (event.type !== "agent_end") {
+      this.eventBuffer.push(serialized);
+      if (this.eventBuffer.length > EVENT_BUFFER_SIZE) {
+        this.eventBuffer.shift();
+      }
+    }
   }
 
   private broadcastToClients(data: string): void {
