@@ -320,7 +320,7 @@ function ResetPasswordModal({ user, onClose, onSuccess }: { user: UserApi; onClo
 
 function ModalOverlay({ children }: { children: React.ReactNode; onClose: () => void }) {
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: "20px", boxSizing: "border-box" }}>
       <div>{children}</div>
     </div>
   );
@@ -368,10 +368,10 @@ const GHOST_BTN_STYLED: CSSProperties = { ...GHOST_BTN, padding: "8px 16px", fon
 const PRIMARY_BTN: CSSProperties = { padding: "8px 18px", border: "none", borderRadius: "6px", background: "var(--brand)", color: "var(--btn-primary-text, #fff)", fontSize: "13px", fontWeight: 600, cursor: "pointer" };
 const MENU: CSSProperties = { position: "absolute", right: 0, top: "100%", width: "160px", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "8px", boxShadow: "0 6px 20px rgba(0,0,0,0.08)", padding: "4px 0", zIndex: 1000 };
 const MENU_ITEM: CSSProperties = { display: "block", width: "100%", padding: "8px 14px", border: "none", background: "transparent", fontSize: "13px", color: "var(--text-primary)", cursor: "pointer", textAlign: "left", fontFamily: "inherit" };
-const MODAL: CSSProperties = { width: "440px", maxHeight: "80vh", borderRadius: "12px", background: "var(--bg-card)", boxShadow: "0 20px 60px rgba(0,0,0,0.15)", overflow: "hidden" };
-const MODAL_HEADER: CSSProperties = { padding: "18px 24px", borderBottom: "1px solid var(--divider)", display: "flex", justifyContent: "space-between", alignItems: "center" };
-const MODAL_BODY: CSSProperties = { padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px" };
-const MODAL_FOOTER: CSSProperties = { padding: "14px 24px", borderTop: "1px solid var(--divider)", display: "flex", justifyContent: "flex-end", gap: "8px" };
+const MODAL: CSSProperties = { width: "440px", maxHeight: "85vh", borderRadius: "12px", background: "var(--bg-card)", boxShadow: "0 20px 60px rgba(0,0,0,0.15)", overflow: "hidden", display: "flex", flexDirection: "column" };
+const MODAL_HEADER: CSSProperties = { padding: "18px 24px", borderBottom: "1px solid var(--divider)", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 };
+const MODAL_BODY: CSSProperties = { padding: "20px 24px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto", flex: 1, minHeight: 0 };
+const MODAL_FOOTER: CSSProperties = { padding: "14px 24px", borderTop: "1px solid var(--divider)", display: "flex", justifyContent: "flex-end", gap: "8px", flexShrink: 0 };
 const INPUT: CSSProperties = { width: "100%", padding: "9px 12px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", background: "var(--bg-card)", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", boxSizing: "border-box" };
 const LABEL: CSSProperties = { display: "block", fontSize: "12px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "6px" };
 const HINT: CSSProperties = { fontSize: "11px", color: "var(--text-secondary)", marginTop: "4px" };
