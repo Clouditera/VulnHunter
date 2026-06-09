@@ -14,6 +14,7 @@ import type { ServiceConfig } from "../../infra/config.js";
 export async function syncOutputsToMinio(
   taskId: string,
   config: ServiceConfig,
+  opts?: { includeDirs?: string[] },
 ): Promise<number> {
   const hostWorkDir = getHostWorkDir(config.dataDir, taskId);
   const outDir = join(hostWorkDir, "out");
@@ -41,7 +42,15 @@ export async function syncOutputsToMinio(
     return results;
   }
 
-  const files = walkDir(outDir);
+  // Incremental syncs (running tasks) pass includeDirs to sync only the
+  // lightweight business artifacts (findings/risks/knowledge), skipping the
+  // potentially GB-scale `.youngflow/sessions/` logs. The terminal sync passes
+  // nothing → full tree.
+  const roots = (opts?.includeDirs && opts.includeDirs.length > 0)
+    ? opts.includeDirs.map((d) => join(outDir, d)).filter((d) => existsSync(d))
+    : [outDir];
+
+  const files = roots.flatMap((root) => walkDir(root));
   for (const filePath of files) {
     const relPath = relative(outDir, filePath);
     const objectName = prefix + relPath;
@@ -53,7 +62,7 @@ export async function syncOutputsToMinio(
     }
   }
 
-  logger.info({ taskId, synced, total: files.length }, "Outputs synced to MinIO");
+  logger.info({ taskId, synced, total: files.length, incremental: Boolean(opts?.includeDirs) }, "Outputs synced to MinIO");
   return synced;
 }
 
