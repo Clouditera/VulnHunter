@@ -28,6 +28,24 @@ describe("extractMeta — CVSS/EV scoring", () => {
     expect(meta.severity).toBe("high");
   });
 
+  it("extracts engine title from canonical metadata", () => {
+    const meta = extractMeta({
+      metadata: {
+        title: "get_instance_fn 路径遍历导致任意 Python 文件加载执行 (RCE)",
+        vuln_type: "path",
+        severity: "high",
+      },
+    });
+    expect(meta.title).toBe("get_instance_fn 路径遍历导致任意 Python 文件加载执行 (RCE)");
+  });
+
+  it("leaves title undefined for raw_findings schema without title", () => {
+    const meta = extractMeta({
+      vulnerability: { vuln_type: "cmdi", severity: "high", file_path: "app.py", line: "1" },
+    });
+    expect(meta.title).toBeUndefined();
+  });
+
   it("coerces string CVSS/EV scores to numbers", () => {
     const meta = extractMeta({
       metadata: { severity: "medium", cvss_score: "5.5" as unknown as number, ev_score: "3" as unknown as number },

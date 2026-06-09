@@ -31,6 +31,7 @@ const SEVERITY_NUMERIC: Record<Severity, number> = {
 export interface FindingYaml {
   // judged/tp/ schema (7-segment canonical)
   metadata?: {
+    title?: string;
     vuln_type?: string;
     vuln_type_full_name?: string;
     severity?: string;
@@ -79,6 +80,7 @@ export function toNumberOrNull(value: number | string | null | undefined): numbe
 }
 
 interface ExtractedMeta {
+  title?: string;
   vuln_type?: string;
   vuln_type_full_name?: string;
   severity?: string;
@@ -116,6 +118,7 @@ export function extractMeta(finding: FindingYaml): ExtractedMeta {
   // If has vulnerability block (raw_findings schema), merge it with metadata
   if (v) {
     return {
+      title: m?.title,
       vuln_type: v.vuln_type ?? m?.vuln_type,
       vuln_type_full_name: m?.vuln_type_full_name,
       severity: v.severity ?? m?.severity,
@@ -252,7 +255,7 @@ async function indexOneYaml(
         cwe, primary_file, primary_line, function_name, language,
         group_id, attack_surface, route_path, schema_version,
         cvss_vector, cvss_score, ev_vector, ev_score, ev_priority, ev_rationale,
-        item_type
+        item_type, title
       ) VALUES (
         ${taskId}, ${tenantId}, ${findingKey}, ${key},
         ${severity}, ${severityNumeric}, ${meta.vuln_type ?? null},
@@ -265,12 +268,13 @@ async function indexOneYaml(
         ${meta.cvss_vector}, ${meta.cvss_score},
         ${meta.ev_vector}, ${meta.ev_score},
         ${meta.ev_priority}, ${meta.ev_rationale},
-        ${itemType}
+        ${itemType}, ${meta.title ?? null}
       )
       ON CONFLICT (task_id, finding_key) DO UPDATE SET
         severity = EXCLUDED.severity,
         severity_numeric = EXCLUDED.severity_numeric,
         vuln_type = EXCLUDED.vuln_type,
+        title = EXCLUDED.title,
         primary_file = EXCLUDED.primary_file,
         primary_line = EXCLUDED.primary_line,
         cvss_vector = EXCLUDED.cvss_vector,
