@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { CSSProperties } from "react";
 import type { SystemStatus } from "@vulnagent/shared";
 import { i18n } from "../../../shared/i18n/index.js";
@@ -481,23 +481,6 @@ export function SettingsPage() {
     }
   }
 
-  const dirty = useMemo(() => {
-    const credChanged =
-      apiKey.length > 0 ||
-      (cred &&
-        (normalizeProtoType(cred.proto_type) !== protoType ||
-          (cred.base_url ?? "") !== baseUrl ||
-          cred.model_id !== modelId ||
-          cred.thinking_effort !== thinking ||
-          (cred.context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS) !== (parseContextWindowInput(contextWindow) ?? -1) ||
-          (cred.label ?? "") !== label)) ||
-      (!cred && (apiKey.length > 0 || modelId.length > 0));
-    const cfgChanged = config ? config.max_parallel_scan !== maxParallel || (config.youngflow_max_parallel ?? 3) !== youngflowMaxParallel : false;
-    return Boolean(credChanged) || cfgChanged;
-  }, [apiKey, cred, protoType, baseUrl, modelId, thinking, contextWindow, label, config, maxParallel, youngflowMaxParallel]);
-
-  const canSaveCred = true;
-
   function focusFirstCredentialError(errors: Record<string, string>) {
     const id = errors.modelId ? "settings-model-input" : errors.baseUrl ? "settings-base-url-input" : "";
     if (!id) return;
@@ -506,11 +489,14 @@ export function SettingsPage() {
     setTimeout(() => el?.focus(), 0);
   }
 
-  async function handleSave() {
+  // Save the LLM credential only (engine concurrency now saves instantly via
+  // saveEngineConfig). Triggered by the credential card's own "save" button.
+  async function saveCredential() {
     if (saving) return;
     setSaving(true);
     setToast(null);
     try {
+      const contextWindowTokens = parseContextWindowInput(contextWindow);
       const errors: Record<string, string> = {};
       if (!baseUrl.trim()) errors.baseUrl = i18n.t("settings.validation.baseUrlRequired");
       if (!modelId.trim()) errors.modelId = i18n.t("settings.validation.modelIdRequired");
@@ -520,13 +506,12 @@ export function SettingsPage() {
         setSaving(false);
         return;
       }
-      setFieldErrors({});
-      const contextWindowTokens = parseContextWindowInput(contextWindow);
       if (contextWindowTokens == null) {
         setToast({ kind: "err", msg: i18n.t("settings.model.contextWindow.invalid") });
         setSaving(false);
         return;
       }
+      setFieldErrors({});
       const ops: Array<Promise<unknown>> = [];
 
       const credChangedNoKey =
@@ -573,10 +558,6 @@ export function SettingsPage() {
         );
       }
 
-      if (config && (config.max_parallel_scan !== maxParallel || (config.youngflow_max_parallel ?? 3) !== youngflowMaxParallel)) {
-        ops.push(api.settings.updateSystemConfig({ max_parallel_scan: maxParallel, youngflow_max_parallel: youngflowMaxParallel }));
-      }
-
       if (ops.length === 0) {
         setSaving(false);
         return;
@@ -598,7 +579,6 @@ export function SettingsPage() {
         .listCredentials()
         .catch(() => ({ credentials: [] as LlmCredential[] }));
       setCredentials(freshList.credentials);
-      if (config) setConfig({ ...config, max_parallel_scan: maxParallel, youngflow_max_parallel: youngflowMaxParallel });
       if (isNewDraft) {
         const created = freshList.credentials.find((item) =>
           item.model_id === modelId &&
@@ -623,6 +603,24 @@ export function SettingsPage() {
       setTimeout(() => setToast(null), 2800);
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** Persist engine concurrency instantly (called on slider release). */
+  async function saveEngineConfig(next: { max_parallel_scan: number; youngflow_max_parallel: number }) {
+    if (!config) return;
+    if (config.max_parallel_scan === next.max_parallel_scan && (config.youngflow_max_parallel ?? 3) === next.youngflow_max_parallel) return;
+    try {
+      await api.settings.updateSystemConfig(next);
+      setConfig({ ...config, max_parallel_scan: next.max_parallel_scan, youngflow_max_parallel: next.youngflow_max_parallel });
+      setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
+      setTimeout(() => setToast(null), 2200);
+    } catch {
+      setToast({ kind: "err", msg: i18n.t("settings.saveError") });
+      setTimeout(() => setToast(null), 2800);
+      // Revert local slider state to last-known-good config on failure.
+      setMaxParallel(config.max_parallel_scan);
+      setYoungflowMaxParallel(config.youngflow_max_parallel ?? 3);
     }
   }
 
@@ -1556,7 +1554,7 @@ export function SettingsPage() {
                           type="button"
                           data-testid="settings-credential-save"
                           disabled={saving || (!isDraft && c?.can_edit === false)}
-                          onClick={handleSave}
+                          onClick={saveCredential}
                           style={{
                             padding: "6px 16px",
                             border: "none",
@@ -1829,6 +1827,7 @@ export function SettingsPage() {
                   max={10}
                   value={maxParallel}
                   onChange={(e) => setMaxParallel(Number(e.target.value))}
+                  onPointerUp={(e) => saveEngineConfig({ max_parallel_scan: Number((e.target as HTMLInputElement).value), youngflow_max_parallel: youngflowMaxParallel })}
                   style={{ flex: 1, height: "6px", accentColor: "var(--brand)" }}
                 />
                 <span
@@ -1858,6 +1857,7 @@ export function SettingsPage() {
                   max={10}
                   value={youngflowMaxParallel}
                   onChange={(e) => setYoungflowMaxParallel(Number(e.target.value))}
+                  onPointerUp={(e) => saveEngineConfig({ max_parallel_scan: maxParallel, youngflow_max_parallel: Number((e.target as HTMLInputElement).value) })}
                   style={{ flex: 1, height: "6px", accentColor: "var(--brand)" }}
                 />
                 <span
@@ -1872,32 +1872,6 @@ export function SettingsPage() {
               {i18n.t("settings.engine.estimatedModelConcurrency").replace("{scan}", String(maxParallel)).replace("{agent}", String(youngflowMaxParallel)).replace("{total}", String(maxParallel * youngflowMaxParallel))}
             </div>
           </SettingsCard>
-
-          {/* Save is the only bottom-level action now; Test Connection
-              moved to live inside the Model Config card. */}
-          <div style={{ marginTop: "8px" }}>
-            <button
-              type="button"
-              data-testid="settings-save-btn"
-              disabled={saving}
-              onClick={handleSave}
-              style={{
-                width: "100%",
-                padding: "12px",
-                background: !dirty || !canSaveCred ? "var(--bg-disabled)" : "var(--brand)",
-                color: "var(--btn-primary-text)",
-                border: "none",
-                borderRadius: "8px",
-                fontSize: "14px",
-                fontWeight: 600,
-                cursor: !dirty || saving || !canSaveCred ? "not-allowed" : "pointer",
-                opacity: !dirty || !canSaveCred ? 0.6 : 1,
-                transition: "background 0.15s, opacity 0.15s",
-              }}
-            >
-              {saving ? i18n.t("settings.saving") : i18n.t("settings.saveBtn")}
-            </button>
-          </div>
           </>}
         </>
       )}
