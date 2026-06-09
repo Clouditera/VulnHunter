@@ -673,7 +673,7 @@ function TreeRow({
         background: selected
           ? "var(--bg-card)"
           : "transparent",
-        borderLeft: selected ? "2px solid var(--brand)" : `2px solid ${auditBar}`,
+        borderLeft: selected ? "4px solid var(--brand)" : `4px solid ${auditBar}`,
         lineHeight: 1.6,
         userSelect: "none",
       }}
