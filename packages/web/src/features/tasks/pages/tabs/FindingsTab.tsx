@@ -971,7 +971,7 @@ function FindingRow({
                 minWidth: 0,
               }}
             >
-              {f.finding_key}
+              {f.title ?? f.vuln_type_full ?? f.finding_key}
             </span>
             {f.item_type === "risk" && (
               <span
@@ -1414,7 +1414,7 @@ function FindingDetailPanel({
           }}
         />
         <span style={{ fontWeight: 600, fontSize: "14px", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {finding.finding_key}
+          {finding.title ?? finding.vuln_type_full ?? finding.finding_key}
         </span>
         <span
           style={{

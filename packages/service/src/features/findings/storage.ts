@@ -13,6 +13,7 @@ export interface DbFindingMeta {
   severity_numeric: number;
   vuln_type: string | null;
   vuln_type_full: string | null;
+  title: string | null;
   cwe: string | null;
   primary_file: string | null;
   primary_line: number | null;
