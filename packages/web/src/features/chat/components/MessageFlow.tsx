@@ -194,7 +194,7 @@ export function MessageFlow({
 
       {/* Input bar */}
       <ChatInput
-        sessionId={session?.id ?? null}
+        sessionId={session?.id && session.id !== "draft" ? session.id : null}
         streaming={streaming}
         onSend={onSend}
         onAbort={onAbort}
