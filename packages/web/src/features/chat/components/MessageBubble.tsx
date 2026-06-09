@@ -15,15 +15,23 @@ import { extractAllArtifacts, stripChatArtifactJson } from "../artifacts.js";
  * and show a compact 📎 filename chip instead. Returns the remaining prose plus
  * the parsed attachment file names.
  */
-function splitAttachments(content: string): { text: string; attachments: string[] } {
+function splitAttachments(content: string, imagePaths: Set<string>, imageNames: Set<string>): { text: string; attachments: string[] } {
   if (!content || !content.includes("Attachment: [")) return { text: content, attachments: [] };
-  const re = /^Attachment: \[(?:artifact_id:[^;\]]*;\s*)?original filename:\s*([^\]]+)\]\([^)]*\)\s*$/i;
+  const re = /^Attachment: \[(?:artifact_id:[^;\]]*;\s*)?original filename:\s*([^\]]+)\]\(([^)]*)\)\s*$/i;
   const attachments: string[] = [];
   const kept: string[] = [];
   for (const line of content.split("\n")) {
     const m = line.match(re);
-    if (m) attachments.push(m[1].trim());
-    else kept.push(line);
+    if (m) {
+      const name = m[1].trim();
+      const path = m[2].trim();
+      // Skip attachments already rendered as image thumbnails (message.images),
+      // otherwise an uploaded image shows both a thumbnail and a chip.
+      if (imagePaths.has(path) || imageNames.has(name)) continue;
+      attachments.push(name);
+    } else {
+      kept.push(line);
+    }
   }
   return { text: kept.join("\n").trim(), attachments };
 }
@@ -152,7 +160,9 @@ export function MessageBubble({
             </div>
           ) : null}
           {(() => {
-            const { text, attachments } = splitAttachments(message.content ?? "");
+            const imagePaths = new Set((imgs.map((im) => im.path).filter(Boolean)) as string[]);
+            const imageNames = new Set((imgs.map((im) => im.name).filter(Boolean)) as string[]);
+            const { text, attachments } = splitAttachments(message.content ?? "", imagePaths, imageNames);
             return (
               <>
                 {attachments.length > 0 ? (
