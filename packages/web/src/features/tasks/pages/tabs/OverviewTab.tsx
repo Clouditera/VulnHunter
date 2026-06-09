@@ -691,10 +691,12 @@ function SevBar({ counts }: { counts: { high: number; medium: number; low: numbe
 const EDITABLE_STATES = new Set(["paused", "cancelled", "failed"]);
 
 function formatMinutes(totalMin: number): string {
-  if (totalMin < 60) return `${totalMin} 分钟`;
+  if (totalMin < 60) return i18n.t("overview.fmtMin").replace("{m}", String(totalMin));
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
-  return m > 0 ? `${h} 小时 ${m} 分钟` : `${h} 小时`;
+  return m > 0
+    ? i18n.t("overview.fmtHourMin").replace("{h}", String(h)).replace("{m}", String(m))
+    : i18n.t("overview.fmtHour").replace("{h}", String(h));
 }
 
 /**
@@ -722,17 +724,23 @@ function ScanBudgetField({ task }: { task: Task }) {
   let value: string;
   if (isRunning && task.started_at) {
     const elapsedMin = Math.max(0, Math.floor((now - new Date(task.started_at).getTime()) / 60_000));
-    const parts = [budgetMin != null ? `扫描预算 ${formatMinutes(budgetMin)}` : null, `已运行 ${formatMinutes(elapsedMin)}`];
+    const parts = [
+      budgetMin != null ? i18n.t("overview.scanBudgetValue").replace("{budget}", formatMinutes(budgetMin)) : null,
+      i18n.t("overview.scanElapsed").replace("{elapsed}", formatMinutes(elapsedMin)),
+    ];
     if (budgetMin != null) {
       const remaining = Math.max(0, budgetMin - elapsedMin);
-      parts.push(`剩余约 ${formatMinutes(remaining)}`);
+      parts.push(i18n.t("overview.scanRemaining").replace("{remaining}", formatMinutes(remaining)));
     }
     value = parts.filter(Boolean).join(" · ");
   } else if (task.duration_ms != null) {
     const actualMin = Math.max(0, Math.round(task.duration_ms / 60_000));
-    value = [budgetMin != null ? `扫描预算 ${formatMinutes(budgetMin)}` : null, `实际运行 ${formatMinutes(actualMin)}`].filter(Boolean).join(" · ");
+    value = [
+      budgetMin != null ? i18n.t("overview.scanBudgetValue").replace("{budget}", formatMinutes(budgetMin)) : null,
+      i18n.t("overview.scanActual").replace("{actual}", formatMinutes(actualMin)),
+    ].filter(Boolean).join(" · ");
   } else if (budgetMin != null) {
-    value = `扫描预算 ${formatMinutes(budgetMin)}`;
+    value = i18n.t("overview.scanBudgetValue").replace("{budget}", formatMinutes(budgetMin));
   } else {
     return null;
   }
