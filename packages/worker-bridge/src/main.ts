@@ -11,6 +11,7 @@ import { writeFileSync, mkdirSync, existsSync, createWriteStream, mkdtempSync } 
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { WebSocketServer, WebSocket } from "ws";
+import { normalizeToolEventLine } from "./tool-event-normalize.js";
 
 const PORT = Number(process.env.BRIDGE_PORT ?? "8080");
 const MODE = process.env.MODE ?? "chat";
@@ -233,7 +234,13 @@ function spawnPi(): ChildProcess {
     if (!line.trim()) return;
     lastActivity = Date.now();
     console.log(`[pi stdout] ${line.substring(0, 120)}`);
-    broadcastToClients(line);
+
+    // Normalize pi tool events (toolCallId/toolName/result-object) into the
+    // platform-agreed schema (tool_call_id/tool/result-string) before
+    // broadcasting, so the frontend reducer and service persistence read a
+    // single consistent shape. Non-tool events pass through unchanged.
+    const outLine = normalizeToolEventLine(line);
+    broadcastToClients(outLine);
 
     // Write to report events file for LiveLog
     if (reportEventsStream) {
@@ -244,8 +251,8 @@ function spawnPi(): ChildProcess {
           const evt = {
             timestamp: new Date().toISOString(),
             event: "tool_call",
-            tool: parsed.tool_name ?? parsed.name ?? "unknown",
-            status: parsed.type === "tool_execution_end" ? (parsed.error ? "error" : "success") : "running",
+            tool: parsed.toolName ?? parsed.tool_name ?? parsed.tool ?? parsed.name ?? "unknown",
+            status: parsed.type === "tool_execution_end" ? ((parsed.error ?? parsed.isError) ? "error" : "success") : "running",
             source: "report",
           };
           reportEventsStream.write(JSON.stringify(evt) + "\n");

@@ -7,6 +7,7 @@
   "scripts": {
     "build": "node build.mjs",
     "dev": "node --watch dist/bundle.js",
+    "test": "vitest run",
     "clean": "rm -rf dist"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "@types/node": "^22.10.2",
     "esbuild": "^0.24.2",
     "typescript": "^5.7.2",
-    "@types/ws": "^8.5.13"
+    "@types/ws": "^8.5.13",
+    "vitest": "^2.1.9"
   }
 }
