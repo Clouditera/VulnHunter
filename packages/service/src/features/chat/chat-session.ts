@@ -431,9 +431,9 @@ export class ChatSession {
 
     if (event.type === "tool_execution_end") {
       this.toolCalls.push({
-        tool: event.name ?? event.tool,
-        args: event.args_summary ?? "",
-        result: event.result_summary ?? "",
+        tool: (event.tool ?? event.toolName ?? event.name) as string,
+        args: (event.args_summary ?? event.args ?? "") as string,
+        result: (event.result ?? event.result_summary ?? "") as string,
       });
     }
 

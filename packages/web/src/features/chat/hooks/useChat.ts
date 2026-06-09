@@ -433,8 +433,8 @@ export function useChat() {
         case "tool_execution_start": {
           const id = currentAssistantId.current;
           if (!id) return;
-          const tcId = evt.tool_call_id ?? `tc-${Date.now()}`;
-          const tool = evt.tool ?? evt.name ?? "tool";
+          const tcId = evt.tool_call_id ?? evt.toolCallId ?? `tc-${Date.now()}`;
+          const tool = evt.tool ?? evt.toolName ?? evt.name ?? "tool";
           const args = typeof evt.args === "string" ? evt.args : JSON.stringify(evt.args ?? {});
           pushActivity(sid, mapToolActivity(tool, "start"));
           setMessagesBySession((prev) => {
@@ -458,8 +458,8 @@ export function useChat() {
         case "tool_execution_end": {
           const id = currentAssistantId.current;
           if (!id) return;
-          const tcId = evt.tool_call_id;
-          const tool = evt.tool ?? evt.name;
+          const tcId = evt.tool_call_id ?? evt.toolCallId;
+          const tool = evt.tool ?? evt.toolName ?? evt.name;
           pushActivity(sid, mapToolActivity(tool, evt.error ? "error" : "success", evt.result));
           setMessagesBySession((prev) => {
             const arr = prev[sid] ?? [];
@@ -699,7 +699,9 @@ interface PiWsEvent {
     };
   };
   tool_call_id?: string;
+  toolCallId?: string;
   tool?: string;
+  toolName?: string;
   name?: string;
   args?: unknown;
   result?: string;
