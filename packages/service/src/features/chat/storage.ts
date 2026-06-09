@@ -71,7 +71,13 @@ export async function getSession(id: string): Promise<DbChatSession | null> {
   return rows[0] ?? null;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function getSessionForContext(id: string, ctx: QueryContext): Promise<DbChatSession | null> {
+  // Guard: non-UUID ids (e.g. the literal "draft" placeholder) must not reach
+  // Postgres — a uuid-typed column comparison would throw 22P02 → ERR_INTERNAL.
+  // Treat them as not-found so callers return a clean 404.
+  if (!UUID_RE.test(id)) return null;
   const db = getDb();
   const rows = shouldFilterByUser(ctx)
     ? await db<DbChatSession[]>`

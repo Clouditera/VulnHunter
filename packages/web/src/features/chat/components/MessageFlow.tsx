@@ -53,6 +53,7 @@ export function MessageFlow({
   streaming,
   onSend,
   onAbort,
+  onEnsureSession,
   onArtifactSelect,
   activity,
   onSuggest,
@@ -62,6 +63,7 @@ export function MessageFlow({
   streaming: boolean;
   onSend: (text: string, images?: ChatImageAttachment[]) => void;
   onAbort: () => void;
+  onEnsureSession?: () => Promise<string | null>;
   onArtifactSelect?: (artifact: ChatArtifactUnion) => void;
   activity?: ChatActivity | null;
   onSuggest?: (text: string, submit?: boolean) => void;
@@ -196,6 +198,7 @@ export function MessageFlow({
         streaming={streaming}
         onSend={onSend}
         onAbort={onAbort}
+        onEnsureSession={onEnsureSession}
       />
     </section>
   );

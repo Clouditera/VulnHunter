@@ -552,6 +552,19 @@ export function useChat() {
     }
   }, []);
 
+  // Materialize a draft into a real (UUID) session and return its id, so callers
+  // that need a persisted session before acting (e.g. uploading an attachment in
+  // a brand-new conversation) don't pass the literal "draft" placeholder id.
+  const ensureSession = useCallback(async (): Promise<string | null> => {
+    if (draftSession && activeId === draftSession.id) {
+      const created = await createSession();
+      if (!created) return null;
+      window.dispatchEvent(new CustomEvent("vh:sessions-changed"));
+      return created.id;
+    }
+    return activeId;
+  }, [draftSession, activeId, createSession]);
+
   const deleteSession = useCallback(
     async (id: string) => {
       try {
@@ -657,6 +670,7 @@ export function useChat() {
     lastError,
     selectSession,
     createSession,
+    ensureSession,
     startDraftSession,
     deleteSession,
     sendPrompt,

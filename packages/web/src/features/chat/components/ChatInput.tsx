@@ -177,12 +177,14 @@ export function ChatInput({
   streaming,
   onSend,
   onAbort,
+  onEnsureSession,
   disabled,
 }: {
   sessionId: string | null;
   streaming: boolean;
   onSend: (text: string, images?: ChatImageAttachment[]) => void;
   onAbort: () => void;
+  onEnsureSession?: () => Promise<string | null>;
   disabled?: boolean;
 }) {
   const [text, setText] = useState("");
@@ -331,22 +333,33 @@ export function ChatInput({
     if (streaming || disabled || uploading) return;
     const trimmed = text.trim();
     if (!trimmed && pending.length === 0) return;
-    if (pending.length > 0 && !sessionId) {
-      setAttachError(i18n.t("chat.attach.errNoSession"));
-      return;
+
+    // Resolve the session id to upload against. In a brand-new conversation the
+    // session is still a "draft" placeholder (sessionId === null) — materialize
+    // it into a real UUID session first, otherwise the upload would POST to
+    // /sessions/draft/upload and the backend would 500 on the invalid uuid.
+    let uploadSessionId = sessionId;
+    if (pending.length > 0 && !uploadSessionId) {
+      if (onEnsureSession) {
+        uploadSessionId = await onEnsureSession();
+      }
+      if (!uploadSessionId) {
+        setAttachError(i18n.t("chat.attach.errNoSession"));
+        return;
+      }
     }
 
     let content = trimmed;
     let attachImages: ChatImageAttachment[] | undefined;
 
-    if (pending.length > 0 && sessionId) {
+    if (pending.length > 0 && uploadSessionId) {
       setUploading(true);
       setAttachError(null);
       try {
         const lines: string[] = [];
         const imgs: ChatImageAttachment[] = [];
         for (const pf of pending) {
-          const res = await api.chat.sessions.upload(sessionId, pf.file);
+          const res = await api.chat.sessions.upload(uploadSessionId, pf.file);
           lines.push(
             `Attachment: [artifact_id: ${res.artifact_id}; original filename: ${res.originalName}](${res.path})`,
           );

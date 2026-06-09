@@ -48,6 +48,7 @@ function ChatPageInner() {
     loading,
     selectSession,
     startDraftSession,
+    ensureSession,
     sendPrompt,
     abort,
   } = useChatContext();
@@ -96,6 +97,7 @@ function ChatPageInner() {
         messages={messages}
         streaming={streaming}
         onSend={sendPrompt}
+        onEnsureSession={ensureSession}
         onAbort={abort}
         onArtifactSelect={handleArtifactSelect}
         activity={activity}
