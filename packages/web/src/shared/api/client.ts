@@ -341,7 +341,7 @@ export const api = {
      *  for terminal tasks. Returns canonical translated events ready for
      *  the LiveLog renderer. */
     events: (id: string) =>
-      request<{ events: Array<Record<string, unknown>> }>(
+      request<{ events: Array<Record<string, unknown>>; total?: number }>(
         `/api/tasks/${id}/events`,
       ),
   },

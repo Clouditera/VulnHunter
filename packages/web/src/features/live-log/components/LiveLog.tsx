@@ -76,6 +76,7 @@ export function LiveLog({ taskId, taskState }: Props) {
   useEffect(() => ensureLiveLogKeyframes(), []);
   const [expanded, setExpanded] = useState(false);
   const [events, setEvents] = useState<LiveLogEvent[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [sources, setSources] = useState<string[]>(["scan"]);
   const [activeSource, setActiveSource] = useState<string>("all");
   const [latestTool, setLatestTool] = useState<string>("");
@@ -116,6 +117,7 @@ export function LiveLog({ taskId, taskState }: Props) {
         // archives can be many thousands of events for a long scan.
         const tail = list;
         setEvents(tail);
+        setTotalCount(Math.max(typeof res.total === "number" ? res.total : 0, tail.length));
         // Populate the source filter chips from what's actually present.
         const srcs = Array.from(
           new Set(tail.map((e) => e.source).filter(Boolean) as string[]),
@@ -189,6 +191,7 @@ export function LiveLog({ taskId, taskState }: Props) {
 
         setEvents((prev) => {
           const next = [...prev, event];
+          setTotalCount((t) => Math.max(t, next.length));
           return next;
         });
 
@@ -380,7 +383,11 @@ export function LiveLog({ taskId, taskState }: Props) {
             fontVariantNumeric: "tabular-nums",
           }}
         >
-          {events.length} {i18n.t("liveLog.events")}
+          {totalCount > events.length
+            ? i18n.t("liveLog.eventsTruncated")
+                .replace("{shown}", String(events.length))
+                .replace("{total}", String(totalCount))
+            : `${events.length} ${i18n.t("liveLog.events")}`}
         </span>
         <span
           style={{

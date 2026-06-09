@@ -68,6 +68,17 @@ export function getAllEvents(taskId: string): EventEntry[] {
   return taskBuffers.get(taskId)?.getAll() ?? [];
 }
 
+/**
+ * Total number of events ever produced for this task (monotonic, unaffected by
+ * ring-buffer eviction). Returns 0 when no buffer exists. Used so the UI can
+ * show "showing latest N of M total" instead of resetting to the 1000 cap on
+ * refresh.
+ */
+export function getEventTotal(taskId: string): number {
+  const buf = taskBuffers.get(taskId);
+  return buf ? buf.currentSeq + 1 : 0;
+}
+
 export function clearTaskBuffer(taskId: string): void {
   taskBuffers.delete(taskId);
 }
