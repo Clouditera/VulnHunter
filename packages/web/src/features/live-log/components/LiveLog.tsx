@@ -630,12 +630,16 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
     const severity = (ev as LiveLogEvent & { severity?: string }).severity;
     const stagesFailed = (ev as LiveLogEvent & { stages_failed?: number }).stages_failed;
     const reason = (ev as LiveLogEvent & { reason?: string }).reason;
-    const isWarning = severity === "warning" || (stagesFailed != null && stagesFailed > 0);
-    icon = isWarning ? { char: "⚠", color: "#b45309" } : { char: "●", color: "#16a34a" };
+    const status = (ev as LiveLogEvent & { status?: string }).status;
+    const state = (ev as LiveLogEvent & { state?: string }).state;
+    const isError = severity === "error" || status === "error" || status === "failed" || state === "failed";
+    const isWarning = !isError && (severity === "warning" || (stagesFailed != null && stagesFailed > 0));
+    icon = isError ? { char: "✕", color: "#dc2626" } : isWarning ? { char: "⚠", color: "#b45309" } : { char: "●", color: "#16a34a" };
     tool = "task";
-    param = reason ?? ev.state ?? (ev as LiveLogEvent & { status?: string }).status ?? "";
-    toolColor = isWarning ? "#b45309" : "#16a34a";
-    if (isWarning) rowBg = "rgba(180,83,9,0.025)";
+    param = reason ?? ev.state ?? status ?? "";
+    toolColor = isError ? "#dc2626" : isWarning ? "#b45309" : "#16a34a";
+    if (isError) rowBg = "rgba(220,38,38,0.03)";
+    else if (isWarning) rowBg = "rgba(180,83,9,0.025)";
   } else if (ev.type === "error") {
     icon = { char: "✕", color: "#dc2626" };
     tool = "error";
