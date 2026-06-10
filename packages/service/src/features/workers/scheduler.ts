@@ -13,6 +13,7 @@ import { getDb } from "../../infra/db/client.js";
 import { countTasksByState, getQueuedTasks, getRunningTaskIds, getTaskById, updateTaskState, clearContinueMode, isContinueMode, type DbTask } from "../tasks/storage.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir } from "./scan-worker.js";
+import { downloadObjectWithRetry } from "./minio-download.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { credentialToWorkerEnv } from "../settings/credential-env.js";
@@ -426,7 +427,11 @@ export class TaskScheduler {
       }
     }
 
-    await minio.fGetObject(this.config.minio.bucket, minioKey, zipPath);
+    // Download with retry: fGetObject right after upload can hit a transient
+    // read-after-write size mismatch (prod task bab9d1d3). The object is
+    // complete server-side (git-clone verifies size on upload); a single
+    // zero-retry call turned the blip into a permanent task failure.
+    await downloadObjectWithRetry(minio, this.config.minio.bucket, minioKey, zipPath);
     execSync(`cd "${srcDir}" && unzip -o -q "${zipPath}"`, { timeout: 60_000, stdio: "pipe" });
     logger.info({ taskId: task.id, minioKey }, "Code package extracted to workspace");
   }
