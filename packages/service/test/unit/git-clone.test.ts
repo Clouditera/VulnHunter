@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const execFile = vi.fn();
 const updateTaskState = vi.fn(async () => undefined);
+const getTaskById = vi.fn(async () => ({ state: "preparing" }) as never);
+const appendEvent = vi.fn();
 const uploadFile = vi.fn(async () => undefined);
 const statObject = vi.fn(async () => ({ size: 100 }));
 
@@ -18,7 +20,8 @@ vi.mock("../../src/infra/minio/client.js", () => ({
   uploadFile,
   getMinio: () => ({ statObject }),
 }));
-vi.mock("../../src/features/tasks/storage.js", () => ({ updateTaskState }));
+vi.mock("../../src/features/tasks/storage.js", () => ({ updateTaskState, getTaskById }));
+vi.mock("../../src/features/events/event-store.js", () => ({ appendEvent }));
 vi.mock("../../src/infra/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -40,10 +43,19 @@ describe("cloneAndUpload", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     statObject.mockResolvedValue({ size: 100 });
+    getTaskById.mockResolvedValue({ state: "preparing" } as never);
   });
 
-  it("clones once and uploads on success (no retry)", async () => {
+  it("clones once and uploads on success, then transitions preparing→queued", async () => {
     ok();
+    await cloneAndUpload("t1", "https://x/repo.git", "main", "bucket");
+    expect(uploadFile).toHaveBeenCalledTimes(1);
+    expect(updateTaskState).toHaveBeenCalledWith("t1", "queued");
+  });
+
+  it("skips queued transition if task was cancelled during clone", async () => {
+    ok();
+    getTaskById.mockResolvedValue({ state: "cancelled" } as never);
     await cloneAndUpload("t1", "https://x/repo.git", "main", "bucket");
     expect(uploadFile).toHaveBeenCalledTimes(1);
     expect(updateTaskState).not.toHaveBeenCalled();

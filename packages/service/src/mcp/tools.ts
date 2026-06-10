@@ -244,7 +244,7 @@ export async function readTaskMetadata(args: {
 // ─── list-tasks ───
 
 export const listTasksSchema = {
-  state: z.enum(["queued", "running", "paused", "completed", "failed", "cancelled"]).optional().describe("Filter by state"),
+  state: z.enum(["queued", "preparing", "running", "paused", "completed", "failed", "cancelled"]).optional().describe("Filter by state"),
   limit: z.number().optional().default(10).describe("Max results (default 10)"),
 };
 
@@ -492,6 +492,8 @@ export async function createMcpTask(args: {
     credentialId: cred.id,
   });
 
+  // Git task starts in `preparing` (cloning) — distinct from `queued`.
+  await taskStorage.updateTaskState(task.id, "preparing");
   cloneAndUpload(
     task.id,
     args.git_url!,
@@ -499,13 +501,13 @@ export async function createMcpTask(args: {
     config.minio.bucket,
   ).catch((err) => logger.error({ err, taskId: task.id }, "MCP create-task: git clone failed"));
 
-  notify({ type: "task_state", taskId: task.id, state: "queued" });
+  notify({ type: "task_state", taskId: task.id, state: "preparing" });
 
   return {
     content: [{
       type: "text",
       text: [
-        `任务「${projectName}」已创建成功，任务 ID \`${task.id}\`，当前状态：排队中（queued）。`,
+        `任务「${projectName}」已创建成功，任务 ID \`${task.id}\`，当前状态：准备中（preparing）。`,
         `来源：${args.git_url}（分支：${args.git_branch ?? "main"}），凭证：${cred.label ?? "default"}。代码克隆在后台进行，就绪后自动开始扫描。`,
       ].join("\n"),
     }],

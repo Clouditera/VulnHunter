@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { uploadFile } from "../../infra/minio/client.js";
-import { checkTaskLimit, createTask } from "../tasks/storage.js";
+import { checkTaskLimit, createTask, updateTaskState } from "../tasks/storage.js";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "../../infra/config.js";
 import { cloneAndUpload } from "./git-clone.js";
@@ -131,6 +131,11 @@ filesRouter.post("/tasks", async (c) => {
     autoSkillIds: body.auto_skill_ids,
     credentialId: body.credential_id,
   });
+
+  // Git tasks start in `preparing` (cloning/zipping/uploading) — distinct from
+  // `queued` (code ready, waiting for a worker). cloneAndUpload flips it to
+  // queued on success, failed on error.
+  await updateTaskState(task.id, "preparing");
 
   // Trigger async git clone (don't block response)
   const cfg = loadConfig();

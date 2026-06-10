@@ -12,13 +12,40 @@ import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { getMinio, uploadFile } from "../../infra/minio/client.js";
-import { updateTaskState } from "../tasks/storage.js";
+import { updateTaskState, getTaskById } from "../tasks/storage.js";
+import { appendEvent } from "../events/event-store.js";
 import { logger } from "../../infra/logger.js";
 import { statSync } from "node:fs";
 
 const CLONE_TIMEOUT_MS = 600_000; // 10 min — large repos (e.g. 450MB) over constrained bandwidth
 const ZIP_TIMEOUT_MS = 180_000;
 const MAX_ATTEMPTS = 3;
+
+/**
+ * Emit a preparation-stage progress line into the task's Live Log ring buffer.
+ * Service-side (no worker needed): renders as `task → <message>` in Live Log.
+ * Used so users see "正在克隆代码…" etc. during the `preparing` phase instead of
+ * a silent "queued".
+ */
+export function emitPrepProgress(
+  taskId: string,
+  message: string,
+  severity: "info" | "warning" | "error" = "info",
+): void {
+  try {
+    appendEvent(taskId, {
+      type: "task_status",
+      source: "prepare",
+      seq: 0, // ring buffer assigns the real seq
+      ts: new Date().toISOString(),
+      status: "running",
+      reason: message,
+      severity,
+    });
+  } catch (err) {
+    logger.warn({ err, taskId }, "Failed to emit prep progress event");
+  }
+}
 
 /** User-readable message for clone-stage failures (vs raw spawnSync stack). */
 const USER_CLONE_FAILURE = "源码仓库较大或网络拥塞，拉取超时，请重试或改用上传 ZIP 压缩包的方式创建任务。";
@@ -59,6 +86,10 @@ export async function cloneAndUpload(
     const zipPath = join(tmpDir, "source.zip");
     try {
       logger.info({ taskId, gitUrl, branch, attempt }, "Starting git clone");
+      emitPrepProgress(
+        taskId,
+        attempt === 1 ? "正在克隆代码…" : `正在重试克隆代码（第 ${attempt} 次）…`,
+      );
 
       // Shallow single-branch clone for speed. Async — does not block event loop.
       await run("git", ["clone", "--depth", "1", "--single-branch", "--branch", branch, gitUrl, repoDir], {
@@ -70,6 +101,7 @@ export async function cloneAndUpload(
         throw new Error("clone produced empty working tree");
       }
 
+      emitPrepProgress(taskId, "正在打包并上传代码…");
       await run("zip", ["-r", zipPath, ".", "-x", ".git/*"], { timeout: ZIP_TIMEOUT_MS, cwd: repoDir });
 
       // Stream upload (avoids reading full zip into memory for large repos).
@@ -84,6 +116,17 @@ export async function cloneAndUpload(
       }
 
       logger.info({ taskId, minioKey, size: zipSize, attempt }, "Git repo cloned and uploaded to MinIO");
+      // Code package is ready — leave `preparing`, enter `queued` so the
+      // scheduler picks it up (queued now means "ready, waiting for a worker").
+      // Guard against a concurrent cancel: only advance if still preparing.
+      const cur = await getTaskById(taskId);
+      if (cur && cur.state !== "preparing") {
+        logger.info({ taskId, state: cur.state }, "Task no longer preparing (cancelled?), skipping queued transition");
+        rmSync(tmpDir, { recursive: true, force: true });
+        return;
+      }
+      emitPrepProgress(taskId, "代码准备完成，等待调度…");
+      await updateTaskState(taskId, "queued");
       rmSync(tmpDir, { recursive: true, force: true });
       return;
     } catch (err) {
@@ -100,6 +143,17 @@ export async function cloneAndUpload(
   }
 
   logger.error({ err: lastErr, taskId, gitUrl }, "Git clone failed");
+  // Guard against a concurrent cancel: only fail if still preparing.
+  const cur = await getTaskById(taskId);
+  if (cur && cur.state !== "preparing") {
+    logger.info({ taskId, state: cur.state }, "Task no longer preparing (cancelled?), skipping failed transition");
+    return;
+  }
+  emitPrepProgress(
+    taskId,
+    unreachable ? USER_REPO_UNREACHABLE : USER_CLONE_FAILURE,
+    "error",
+  );
   await updateTaskState(taskId, "failed", {
     completedAt: new Date(),
     failureReason: unreachable ? USER_REPO_UNREACHABLE : USER_CLONE_FAILURE,

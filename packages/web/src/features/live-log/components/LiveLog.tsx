@@ -91,6 +91,7 @@ export function LiveLog({ taskId, taskState }: Props) {
   const isActive =
     taskState === "running" ||
     taskState === "queued" ||
+    taskState === "preparing" ||
     taskState === "paused" ||
     taskState === "resuming";
   const [, forceI18n] = useState(0);

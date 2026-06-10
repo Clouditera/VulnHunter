@@ -549,7 +549,7 @@ export function WorkspaceTab() {
                 }}
               >
                 <div style={{ fontSize: "13px", fontWeight: 500 }}>
-                  {task.state === "running" || task.state === "queued"
+                  {task.state === "running" || task.state === "queued" || task.state === "preparing"
                     ? i18n.t("workspace.empty.running")
                     : task.state === "cancelled"
                       ? i18n.t("workspace.empty.cancelled")
