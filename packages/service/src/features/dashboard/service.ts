@@ -11,6 +11,7 @@ interface DashboardData {
     total_scans: { value: number; delta: string };
     vulnerabilities: { value: number; delta: string };
     avg_duration_min: { value: number; delta: string };
+    total_tokens: { value: number; delta: string };
   };
   severity_dist: { high: number; medium: number; low: number; info: number };
   review_status_dist: { pending: number; confirmed: number; false_positive: number; ignored: number };
@@ -153,6 +154,20 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
   const avgDurationMs = Number(durationRows[0]?.avg_duration ?? 0);
   const avgDurationMin = Math.round(avgDurationMs / 60_000 * 10) / 10;
 
+  // Total token usage across completed scans in range (sum of per-task total_tokens).
+  const tokenRows = userId
+    ? await db<{ total: string | null }[]>`
+      SELECT COALESCE(SUM(total_tokens), 0) as total FROM tasks
+      WHERE tenant_id = ${tenantId} AND created_by = ${userId} AND state = 'completed'
+        AND created_at >= ${since}
+    `
+    : await db<{ total: string | null }[]>`
+      SELECT COALESCE(SUM(total_tokens), 0) as total FROM tasks
+      WHERE tenant_id = ${tenantId} AND state = 'completed'
+        AND created_at >= ${since}
+    `;
+  const totalTokens = Number(tokenRows[0]?.total ?? 0);
+
   const severityDist = { high: 0, medium: 0, low: 0, info: 0 };
   let totalVulns = 0;
   for (const r of sevRows) {
@@ -206,6 +221,7 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
       total_scans: { value: totalScans, delta: deltas.scans },
       vulnerabilities: { value: totalVulns, delta: deltas.vulns },
       avg_duration_min: { value: avgDurationMin, delta: deltas.duration },
+      total_tokens: { value: totalTokens, delta: "" },
     },
     severity_dist: severityDist,
     review_status_dist: reviewStatusDist,
