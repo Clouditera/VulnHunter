@@ -26,7 +26,7 @@ function formatDuration(ms: number | null): string {
  *  - failed/cancelled: —
  */
 function renderFindingsCell(task: Task): JSX.Element {
-  if (task.state === "running" || task.state === "queued") {
+  if (task.state === "running" || task.state === "queued" || task.state === "preparing") {
     return (
       <span style={{ fontStyle: "italic", opacity: 0.75 }}>
         {i18n.t("tasks.findings.scanning")}
@@ -425,7 +425,7 @@ export function TasksListPage() {
                     </td>
                     <td style={{ padding: "14px 20px" }} onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
-                        {["running", "queued"].includes(task.state) && (
+                        {["running", "queued", "preparing"].includes(task.state) && (
                           <button
                             data-testid="task-cancel-btn"
                             onClick={() => cancelMut.mutate(task.id)}
@@ -452,7 +452,7 @@ export function TasksListPage() {
                             {i18n.t("tasks.cancel")}
                           </button>
                         )}
-                        {!["running", "queued"].includes(task.state) && (
+                        {!["running", "queued", "preparing"].includes(task.state) && (
                           <button
                             data-testid="task-delete-btn"
                             aria-label={i18n.t("tasks.delete")}

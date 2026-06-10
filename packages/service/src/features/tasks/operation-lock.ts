@@ -15,7 +15,7 @@ export async function getActiveTaskOperation(taskId: string): Promise<ActiveOper
 
   // Check scan active
   const [task] = await db<{ id: string; state: string }[]>`
-    SELECT id, state FROM tasks WHERE id = ${taskId} AND state IN ('queued', 'running')
+    SELECT id, state FROM tasks WHERE id = ${taskId} AND state IN ('queued', 'preparing', 'running')
   `;
   if (task) return { type: "scan", id: task.id, state: task.state };
 

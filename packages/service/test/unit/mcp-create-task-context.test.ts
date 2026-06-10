@@ -20,6 +20,7 @@ const sqlCalls: string[] = [];
 
 vi.mock("../../src/features/tasks/storage.js", () => ({
   createTask: createTaskMock,
+  updateTaskState: vi.fn(async () => undefined),
 }));
 vi.mock("../../src/features/settings/storage.js", () => ({
   getDefaultCredential: getDefaultCredentialMock,

@@ -355,7 +355,7 @@ export function TaskDetailPage() {
                 {resumeMut.isPending ? i18n.t("taskDetail.resuming") : i18n.t("taskDetail.resume")}
               </button>
             )}
-            {["running", "queued", "paused"].includes(task.state) && (
+            {["running", "queued", "paused", "preparing"].includes(task.state) && (
               <button
                 data-testid="task-cancel-btn"
                 onClick={() => cancelMut.mutate()}

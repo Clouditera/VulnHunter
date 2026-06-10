@@ -54,7 +54,7 @@ async function assertScanNotBusy(taskId: string): Promise<void> {
 
 export async function cancelTask(taskId: string): Promise<TaskControlResult> {
   const task = await requireTask(taskId);
-  if (!["running", "paused", "queued"].includes(task.state)) {
+  if (!["running", "paused", "queued", "preparing"].includes(task.state)) {
     invalidState(`Task ${task.project_name} is in state '${task.state}' and cannot be cancelled.`);
   }
   await assertScanNotBusy(task.id);

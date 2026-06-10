@@ -5,10 +5,12 @@ import { i18n } from "../i18n/index.js";
  * Matches prototype: soft-tinted bg + colored text, 2px·8px padding, 12px radius.
  * States with a running dot get a pulse.
  */
-type State = "running" | "completed" | "failed" | "queued" | "cancelled" | "paused";
+type State = "running" | "preparing" | "completed" | "failed" | "queued" | "cancelled" | "paused";
 
 const STATE_STYLES: Record<State, { bg: string; fg: string; dot?: boolean }> = {
   running: { bg: "rgba(37, 99, 235, 0.12)", fg: "#2563eb", dot: true },
+  // preparing: cloning/uploading code — in-progress (blue, pulsing) but pre-scan.
+  preparing: { bg: "rgba(37, 99, 235, 0.10)", fg: "#1d4ed8", dot: true },
   completed: { bg: "rgba(22, 163, 74, 0.12)", fg: "#166534" },
   failed: { bg: "rgba(220, 38, 38, 0.12)", fg: "#dc2626" },
   queued: { bg: "rgba(202, 138, 4, 0.12)", fg: "#92400e" },
