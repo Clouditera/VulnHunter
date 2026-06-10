@@ -1104,7 +1104,7 @@ export interface DashboardData {
     total_scans: { value: number; delta: string };
     vulnerabilities: { value: number; delta: string };
     avg_duration_min: { value: number; delta: string };
-    total_tokens_m?: { value: number; delta: string };
+    total_tokens?: { value: number; delta: string };
   };
   severity_dist: Record<string, number>;
   vulnerability_type_top5: Array<{ vuln_type: string; count: number }>;

@@ -20,6 +20,14 @@ const SEV_COLORS = {
 // Distinct palette for vulnerability type bars — rotates through 5 hues.
 const VULN_TYPE_BAR_COLORS = ["#2563eb", "#7c3aed", "#dc2626", "#ea580c", "#0891b2"];
 
+/** Compact token count: 1234 → "1,234", 12345 → "12.3K", 1234567 → "1.23M". */
+function formatTokenCount(n: number): string {
+  if (!n || n <= 0) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 10_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString();
+}
+
 function StatCard({
   label,
   value,
@@ -234,7 +242,7 @@ export function DashboardPage() {
         <StatCard
           testid="dashboard-stat-card-tokens"
           label={i18n.t("dashboard.tokenUsage")}
-          value="—"
+          value={formatTokenCount(stats.total_tokens?.value ?? 0)}
           sub={i18n.t("dashboard.cumulative")}
           icon="activity"
           iconColor="#7c3aed"
