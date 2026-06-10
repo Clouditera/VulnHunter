@@ -205,6 +205,9 @@ export const api = {
         body: JSON.stringify({ email, password }),
       }),
   },
+  git: {
+    branches: (url: string) => request<{ default_branch: string | null; branches: string[] }>(`/api/git/branches?url=${encodeURIComponent(url)}`),
+  },
   tasks: {
     list: (filters?: string | { state?: string; reviewStatus?: string; userId?: string }) => {
       const params = new URLSearchParams();
@@ -224,6 +227,7 @@ export const api = {
         | FormData
         | {
             git_url: string;
+            git_branch?: string;
             project_name?: string;
             display_name?: string;
             credential_id?: string;
