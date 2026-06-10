@@ -147,7 +147,6 @@ export function MessageFlow({
           credentials={credentials}
           credentialId={session.credential_id ?? null}
         />
-        <WorkerBadge state={session.worker_state ?? "idle"} />
       </header>
 
       <ChatActivityBar activity={activity} />
@@ -508,63 +507,6 @@ function ModelChip({
         </div>
       ) : null}
     </div>
-  );
-}
-
-function WorkerBadge({
-  state,
-}: {
-  state: "idle" | "running" | "spawning";
-}) {
-  const cfg = {
-    idle: {
-      bg: "transparent",
-      fg: "var(--text-secondary)",
-      dot: "var(--text-secondary)",
-      key: "chat.worker.idle",
-    },
-    running: {
-      bg: "var(--bg-success)",
-      fg: "var(--bg-success-text)",
-      dot: "#16a34a",
-      key: "chat.worker.running",
-    },
-    spawning: {
-      bg: "var(--bg-warning)",
-      fg: "#9a3412",
-      dot: "#ea580c",
-      key: "chat.worker.spawning",
-    },
-  }[state];
-  return (
-    <span
-      data-testid="chat-worker-badge"
-      data-state={state}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "5px",
-        padding: "3px 10px",
-        borderRadius: "999px",
-        fontSize: "11px",
-        fontWeight: 500,
-        background: cfg.bg,
-        color: cfg.fg,
-        border: state === "idle" ? "1px solid var(--border)" : "1px solid transparent",
-        lineHeight: 1.4,
-      }}
-    >
-      <span
-        style={{
-          width: "6px",
-          height: "6px",
-          borderRadius: "50%",
-          background: cfg.dot,
-          animation: state === "spawning" ? "va-caret-blink 1s infinite" : undefined,
-        }}
-      />
-      {i18n.t(cfg.key)}
-    </span>
   );
 }
 

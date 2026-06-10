@@ -608,9 +608,6 @@ const ZH: Record<string, string> = {
   "chat.artifact.finding": "漏洞",
   "chat.artifact.task": "任务",
   "chat.delete.confirm": "删除对话“{title}”？",
-  "chat.worker.idle": "模型待连接",
-  "chat.worker.running": "模型运行中",
-  "chat.worker.spawning": "模型连接中…",
 
   // Placeholder tabs
   "placeholder.reports": "报告",
@@ -1328,9 +1325,6 @@ const EN: Record<string, string> = {
   "chat.artifact.finding": "Finding",
   "chat.artifact.task": "Task",
   "chat.delete.confirm": "Delete chat “{title}”?",
-  "chat.worker.idle": "Model idle",
-  "chat.worker.running": "Model active",
-  "chat.worker.spawning": "Connecting…",
 
   // Placeholder tabs
   "placeholder.reports": "Reports",
