@@ -115,6 +115,16 @@ export async function getUserById(userId: string): Promise<DbUser | null> {
   return rows[0] ?? null;
 }
 
+export async function listUsersByIds(userIds: string[]): Promise<Pick<DbUser, "id" | "email" | "display_name">[]> {
+  if (userIds.length === 0) return [];
+  const db = getDb();
+  return db<Pick<DbUser, "id" | "email" | "display_name">[]>`
+    SELECT id, email, display_name
+    FROM users
+    WHERE id = ANY(${userIds})
+  `;
+}
+
 export async function listUsers(): Promise<DbUser[]> {
   const db = getDb();
   return db<DbUser[]>`

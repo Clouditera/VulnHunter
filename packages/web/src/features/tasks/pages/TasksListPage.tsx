@@ -25,6 +25,16 @@ function formatDuration(ms: number | null): string {
  *  - completed + zero: “none”
  *  - failed/cancelled: —
  */
+function renderCreatorCell(task: Task): JSX.Element {
+  const creator = task.creator;
+  if (!creator) return <span>—</span>;
+  return (
+    <span title={creator.email || undefined} style={{ fontWeight: 500, color: "var(--text-primary)" }}>
+      {creator.display_name || creator.email || "Unknown"}
+    </span>
+  );
+}
+
 function renderFindingsCell(task: Task): JSX.Element {
   if (task.state === "running" || task.state === "queued" || task.state === "preparing") {
     return (
@@ -330,6 +340,7 @@ export function TasksListPage() {
                   "tasks.col.project",
                   "tasks.col.status",
                   "tasks.col.findings",
+                  ...(isAdmin ? (["tasks.col.creator"] as const) : []),
                   "tasks.col.duration",
                   "tasks.col.created",
                   "tasks.col.actions",
@@ -356,7 +367,7 @@ export function TasksListPage() {
             {isLoading ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={isAdmin ? 7 : 6}
                   style={{ padding: "32px", textAlign: "center", color: "var(--text-secondary)" }}
                 >
                   {i18n.t("tasks.loading")}
@@ -365,7 +376,7 @@ export function TasksListPage() {
             ) : tasks.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={isAdmin ? 7 : 6}
                   style={{ padding: "48px", textAlign: "center", color: "var(--text-secondary)" }}
                 >
                   {i18n.t("tasks.empty")}
@@ -413,6 +424,14 @@ export function TasksListPage() {
                     >
                       {renderFindingsCell(task)}
                     </td>
+                    {isAdmin ? (
+                      <td
+                        data-testid="task-creator-cell"
+                        style={{ padding: "14px 20px", color: "var(--text-secondary)", fontSize: "12px" }}
+                      >
+                        {renderCreatorCell(task)}
+                      </td>
+                    ) : null}
                     <td
                       style={{ padding: "14px 20px", color: "var(--text-secondary)", fontSize: "12px" }}
                     >

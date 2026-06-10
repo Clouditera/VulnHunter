@@ -11,6 +11,8 @@ import { loadConfig } from "../../infra/config.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
+import { listUsersByIds } from "../auth/storage.js";
+import { attachCreatorSummaries, uniqueCreatorIds } from "../auth/creator-summary.js";
 
 export const tasksRouter = new Hono();
 
@@ -49,12 +51,12 @@ tasksRouter.get("/", async (c) => {
     ? await taskStorage.getFindingsSeverityCounts(taskIds)
     : new Map<string, Record<string, number>>();
 
-  const enriched = tasks.map((t) => ({
+  const rows = tasks.map((t) => ({
     ...t,
     severity_counts: severityCounts.get(t.id) ?? { high: 0, medium: 0, low: 0, info: 0 },
   }));
-
-  return c.json({ tasks: enriched });
+  const creators = ctx.role === "admin" ? await listUsersByIds(uniqueCreatorIds(tasks, "created_by")) : [];
+  return c.json({ tasks: attachCreatorSummaries(ctx.role, rows, "created_by", creators) });
 });
 
 // GET /api/tasks/:id

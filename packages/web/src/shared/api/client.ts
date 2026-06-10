@@ -31,6 +31,12 @@ export interface SeverityCounts {
   info: number;
 }
 
+export interface CreatorSummary {
+  id: string;
+  display_name: string;
+  email: string;
+}
+
 export interface TaskProfile {
   project_name?: string | null;
   language?: string | null;
@@ -84,6 +90,8 @@ export interface Task {
   completed_at: string | null;
   /** Populated by GET /api/tasks (list) — absent on single-task GET. */
   severity_counts?: SeverityCounts;
+  /** Admin-only creator summary populated on list endpoints. */
+  creator?: CreatorSummary;
   metadata: TaskMetadata;
   /**
    * Human-readable credential label (e.g. "Mimo V2 Pro — mimo-v2-pro").
@@ -1066,6 +1074,8 @@ export interface ChatSessionApi {
    *  system default is used at spawn time. Backend returns this on
    *  `/api/chat/sessions` list and `/api/chat/sessions/:id`. */
   credential_id?: string | null;
+  /** Admin-only creator summary populated on list endpoints. */
+  creator?: CreatorSummary;
 }
 
 export interface ChatToolCallApi {
