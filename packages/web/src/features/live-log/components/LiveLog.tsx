@@ -47,6 +47,15 @@ function sourceColor(src: string): string {
 }
 
 /**
+ * Order source filter tabs so the lifecycle reads naturally:
+ * `prepare` (clone/upload, happens first) → `scan` → everything else.
+ */
+function orderSources(sources: string[]): string[] {
+  const rank = (s: string) => (s === "prepare" ? 0 : s === "scan" ? 1 : 2);
+  return [...sources].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
+
+/**
  * Inject the ticker slide-in keyframe exactly once. Scoped by a fixed id
  * so React hot-reload / multiple mounts don't duplicate the <style> tag.
  */
@@ -476,7 +485,7 @@ export function LiveLog({ taskId, taskState }: Props) {
               borderBottom: "1px solid var(--divider)",
             }}
           >
-            {["all", ...sources].map((src) => {
+            {["all", ...orderSources(sources)].map((src) => {
               const active = activeSource === src;
               return (
                 <button
