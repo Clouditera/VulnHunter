@@ -7,10 +7,23 @@ interface Props {
   onCreated: () => void;
 }
 
+function isValidHttpGitUrl(value: string): boolean {
+  if (!value || value.startsWith("-")) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function NewTaskModal({ onClose, onCreated }: Props) {
   const [tab, setTab] = useState<"upload" | "git">("upload");
   const [gitUrl, setGitUrl] = useState("");
-  const [gitBranch, setGitBranch] = useState("main");
+  const [gitBranch, setGitBranch] = useState("");
+  const [gitBranches, setGitBranches] = useState<string[]>([]);
+  const [branchLoading, setBranchLoading] = useState(false);
+  const [branchFallback, setBranchFallback] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [auditFocus, setAuditFocus] = useState("");
   const [scanDuration, setScanDuration] = useState<string>("180"); // minutes
@@ -19,6 +32,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const branchFetchSeq = useRef(0);
 
   // Multi-credential support: load all credentials and let user pick one.
   // When only 1 credential exists (or none), we hide the selector and fall
@@ -47,6 +61,42 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [, forceI18n] = useState(0);
   useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
 
+  useEffect(() => {
+    if (tab !== "git") return;
+    const url = gitUrl.trim();
+    branchFetchSeq.current += 1;
+    const seq = branchFetchSeq.current;
+    setGitBranches([]);
+    setBranchFallback(false);
+    if (!isValidHttpGitUrl(url)) {
+      setBranchLoading(false);
+      return;
+    }
+    setBranchLoading(true);
+    const timer = window.setTimeout(() => {
+      api.git.branches(url)
+        .then((res) => {
+          if (branchFetchSeq.current !== seq) return;
+          setGitBranches(res.branches ?? []);
+          setBranchFallback(false);
+          const preferred = res.default_branch && res.branches.includes(res.default_branch)
+            ? res.default_branch
+            : (res.default_branch ?? res.branches[0] ?? "");
+          setGitBranch(preferred);
+        })
+        .catch(() => {
+          if (branchFetchSeq.current !== seq) return;
+          setGitBranches([]);
+          setBranchFallback(true);
+          setGitBranch("");
+        })
+        .finally(() => {
+          if (branchFetchSeq.current === seq) setBranchLoading(false);
+        });
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [gitUrl, tab]);
+
   async function handleCreate() {
     setError("");
     setLoading(true);
@@ -70,6 +120,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         if (!gitUrl) return;
         await api.tasks.create({
           git_url: gitUrl,
+          git_branch: gitBranch.trim() || undefined,
           project_name: gitUrl.split("/").pop(),
           display_name: displayName.trim() || undefined,
           credential_id: credentialId || undefined,
@@ -398,24 +449,52 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                 <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
                   {i18n.t("newTask.branch")}
                 </label>
-                <input
-                  data-testid="git-branch-input"
-                  type="text"
-                  value={gitBranch}
-                  onChange={(e) => setGitBranch(e.target.value)}
-                  placeholder="main"
-                  style={{
-                    width: "100%",
-                    height: "40px",
-                    border: "1px solid var(--border)",
-                    borderRadius: "6px",
-                    padding: "0 12px",
-                    fontSize: "13px",
-                    background: "var(--bg-page)",
-                    color: "var(--text-primary)",
-                    outline: "none",
-                  }}
-                />
+                {branchLoading ? (
+                  <div data-testid="git-branch-loading" style={{ fontSize: "12px", color: "var(--text-secondary)", padding: "10px 0" }}>
+                    {i18n.t("newTask.branchLoading")}
+                  </div>
+                ) : gitBranches.length > 0 ? (
+                  <select
+                    data-testid="git-branch-select"
+                    value={gitBranch}
+                    onChange={(e) => setGitBranch(e.target.value)}
+                    style={{
+                      width: "100%",
+                      height: "40px",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      padding: "0 12px",
+                      fontSize: "13px",
+                      background: "var(--bg-page)",
+                      color: "var(--text-primary)",
+                      outline: "none",
+                    }}
+                  >
+                    {gitBranches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}
+                  </select>
+                ) : (
+                  <>
+                    <input
+                      data-testid="git-branch-input"
+                      type="text"
+                      value={gitBranch}
+                      onChange={(e) => setGitBranch(e.target.value)}
+                      placeholder={branchFallback ? i18n.t("newTask.branchManualPlaceholder") : i18n.t("newTask.branchAutoPlaceholder")}
+                      style={{
+                        width: "100%",
+                        height: "40px",
+                        border: "1px solid var(--border)",
+                        borderRadius: "6px",
+                        padding: "0 12px",
+                        fontSize: "13px",
+                        background: "var(--bg-page)",
+                        color: "var(--text-primary)",
+                        outline: "none",
+                      }}
+                    />
+                    {branchFallback ? <div data-testid="git-branch-fallback" style={{ marginTop: 6, fontSize: "12px", color: "var(--text-secondary)" }}>{i18n.t("newTask.branchFallback")}</div> : null}
+                  </>
+                )}
               </div>
             </div>
           )}

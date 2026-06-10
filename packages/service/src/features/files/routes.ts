@@ -6,6 +6,7 @@ import { checkTaskLimit, createTask, updateTaskState } from "../tasks/storage.js
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "../../infra/config.js";
 import { cloneAndUpload } from "./git-clone.js";
+import { GitRemoteError, listRemoteBranches, validateRemoteGitUrl } from "./git-remote.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 
 export const filesRouter = new Hono();
@@ -53,6 +54,20 @@ filesRouter.use("*", async (c, next) => {
 filesRouter.use("*", async (c, next) => {
   if (c.req.path === "/api/system/activate") return next();
   return requireAuth(c, next);
+});
+
+// GET /api/git/branches — lightweight remote branch discovery (no clone)
+filesRouter.get("/git/branches", async (c) => {
+  const gitUrl = c.req.query("url") ?? "";
+  try {
+    const result = await listRemoteBranches(gitUrl);
+    return c.json(result);
+  } catch (err) {
+    if (err instanceof GitRemoteError) {
+      return c.json({ error: { code: err.code, detail: err.message } }, err.status);
+    }
+    return c.json({ error: { code: "ERR_GIT_REMOTE_UNREACHABLE", detail: "无法访问该源码仓库，请检查仓库地址和分支是否正确，或改用上传 ZIP 压缩包的方式创建任务。" } }, 502);
+  }
 });
 
 // POST /api/tasks  — create from upload or git
@@ -117,15 +132,26 @@ filesRouter.post("/tasks", async (c) => {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "git_url required" } }, 400);
   }
 
+  let safeGitUrl: string;
+  try {
+    safeGitUrl = validateRemoteGitUrl(body.git_url);
+  } catch (err) {
+    if (err instanceof GitRemoteError) {
+      return c.json({ error: { code: err.code, detail: err.message } }, err.status);
+    }
+    throw err;
+  }
+  const requestedBranch = body.git_branch?.trim() || undefined;
+
   const task = await createTask({
     tenantId: ctx.tenantId,
     createdBy: user.userId,
-    projectName: body.project_name ?? new URL(body.git_url).pathname.split("/").pop() ?? "project",
+    projectName: body.project_name ?? new URL(safeGitUrl).pathname.split("/").pop() ?? "project",
     displayName: body.display_name,
     sourceType: "git",
     sourceMeta: {
-      git_url: body.git_url,
-      git_branch: body.git_branch ?? "main",
+      git_url: safeGitUrl,
+      ...(requestedBranch ? { git_branch: requestedBranch } : {}),
       ...scanMetaFromValues(body.audit_focus, body.scan_timeout, body.max_items_per_recon),
     },
     autoSkillIds: body.auto_skill_ids,
@@ -141,8 +167,8 @@ filesRouter.post("/tasks", async (c) => {
   const cfg = loadConfig();
   cloneAndUpload(
     task.id,
-    body.git_url,
-    body.git_branch ?? "main",
+    safeGitUrl,
+    requestedBranch,
     cfg.minio.bucket,
   ).catch((err) => console.error("Background git clone error:", err));
 
