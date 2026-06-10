@@ -24,7 +24,7 @@ const MAX_ATTEMPTS = 3;
 /**
  * Emit a preparation-stage progress line into the task's Live Log ring buffer.
  * Service-side (no worker needed): renders as `task → <message>` in Live Log.
- * Used so users see "正在克隆代码…" etc. during the `preparing` phase instead of
+ * Used so users see "Cloning repository…" etc. during the `preparing` phase instead of
  * a silent "queued".
  */
 export function emitPrepProgress(
@@ -88,7 +88,7 @@ export async function cloneAndUpload(
       logger.info({ taskId, gitUrl, branch, attempt }, "Starting git clone");
       emitPrepProgress(
         taskId,
-        attempt === 1 ? "正在克隆代码…" : `正在重试克隆代码（第 ${attempt} 次）…`,
+        attempt === 1 ? "Cloning repository…" : `Retrying clone (attempt ${attempt})…`,
       );
 
       // Shallow single-branch clone for speed. Async — does not block event loop.
@@ -101,7 +101,7 @@ export async function cloneAndUpload(
         throw new Error("clone produced empty working tree");
       }
 
-      emitPrepProgress(taskId, "正在打包并上传代码…");
+      emitPrepProgress(taskId, "Packaging and uploading code…");
       await run("zip", ["-r", zipPath, ".", "-x", ".git/*"], { timeout: ZIP_TIMEOUT_MS, cwd: repoDir });
 
       // Stream upload (avoids reading full zip into memory for large repos).
@@ -125,7 +125,7 @@ export async function cloneAndUpload(
         rmSync(tmpDir, { recursive: true, force: true });
         return;
       }
-      emitPrepProgress(taskId, "代码准备完成，等待调度…");
+      emitPrepProgress(taskId, "Code ready, waiting for scheduler…");
       await updateTaskState(taskId, "queued");
       rmSync(tmpDir, { recursive: true, force: true });
       return;
