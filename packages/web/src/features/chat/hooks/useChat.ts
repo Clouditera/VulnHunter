@@ -720,6 +720,7 @@ function toDomainSession(s: ChatSessionApi): ChatSession {
     created_at: s.created_at,
     updated_at: s.updated_at,
     preview: s.preview ?? undefined,
+    creator: s.creator,
     worker_state: s.worker_state ?? "idle",
     credential_id: s.credential_id ?? null,
   };

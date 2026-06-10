@@ -93,6 +93,8 @@ export interface ChatSession {
   title: string;
   created_at: string;
   updated_at: string;
+  /** Admin-only creator summary populated on list endpoints. */
+  creator?: { id: string; display_name: string; email: string };
   /** Last message preview (first 100 chars) for the sidebar. */
   preview?: string;
   /** Server-side worker state. `idle` means the worker container is

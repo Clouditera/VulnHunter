@@ -13,6 +13,8 @@ import { getCredentialById, getDefaultOrFirstAvailableCredential } from "../sett
 import { ChatCredentialUnavailableError } from "./errors.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
+import { listUsersByIds } from "../auth/storage.js";
+import { attachCreatorSummaries, uniqueCreatorIds } from "../auth/creator-summary.js";
 
 export const chatRouter = new Hono();
 chatRouter.use("*", licenseGuard);
@@ -27,7 +29,10 @@ async function getOwnedSession(c: any) {
 chatRouter.get("/sessions", async (c) => {
   const ctx = queryContextFromUser(c.get("user"));
   const sessions = await chatStorage.listSessions(ctx);
-  return c.json({ sessions });
+  if (ctx.role !== "admin") return c.json({ sessions });
+
+  const creators = await listUsersByIds(uniqueCreatorIds(sessions, "user_id"));
+  return c.json({ sessions: attachCreatorSummaries(ctx.role, sessions, "user_id", creators) });
 });
 
 // POST /api/chat/sessions — create new session

@@ -24,6 +24,7 @@ interface RecentSession {
   id: string;
   title: string;
   updated_at: string;
+  creator?: { id: string; display_name: string; email: string };
 }
 
 export function AppLayout() {
@@ -43,6 +44,8 @@ export function AppLayout() {
   const [showChangelog, setShowChangelog] = useState(() => shouldShowChangelog());
 
   useNotifications();
+  const { data: systemStatus } = useSystemStatus();
+  const isAdmin = systemStatus?.user?.role === "admin";
 
   function dismissChangelog() {
     markChangelogSeen();
@@ -262,6 +265,15 @@ export function AppLayout() {
                         >
                           {session.title}
                         </div>
+                        {isAdmin && session.creator ? (
+                          <div
+                            data-testid="sidebar-session-creator"
+                            title={session.creator.email}
+                            style={SESSION_CREATOR}
+                          >
+                            {session.creator.display_name || session.creator.email || "Unknown"}
+                          </div>
+                        ) : null}
                         <div style={SESSION_TIME}>{formatRelative(session.updated_at)}</div>
                         <button
                           type="button"
@@ -499,6 +511,7 @@ function toRecentSession(session: ChatSessionApi): RecentSession {
     id: session.id,
     title: session.title?.trim() || "Untitled",
     updated_at: session.updated_at,
+    creator: session.creator,
   };
 }
 
@@ -673,6 +686,15 @@ const SESSION_ROW: CSSProperties = {
 const SESSION_TITLE: CSSProperties = {
   fontSize: "13px",
   fontWeight: 500,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  paddingRight: "16px",
+};
+const SESSION_CREATOR: CSSProperties = {
+  fontSize: "11px",
+  color: "rgba(255,255,255,0.5)",
+  marginTop: "3px",
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
