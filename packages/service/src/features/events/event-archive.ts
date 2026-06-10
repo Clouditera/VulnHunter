@@ -25,8 +25,11 @@ export async function loadTaskEvents(params: {
   // In-memory events (from active tailing)
   const memEvents = getAllEvents(taskId) as EventEntry[];
 
-  // For running/paused tasks with in-memory events, return those directly
-  if (memEvents.length > 0 && ["running", "paused"].includes(taskState)) {
+  // For active pre-terminal tasks with in-memory events, return those
+  // directly. Includes `preparing`/`queued` so the prep-stage progress events
+  // (正在克隆代码… etc.) emitted before any worker exists are surfaced —
+  // there is no MinIO archive yet for these states.
+  if (memEvents.length > 0 && ["running", "paused", "preparing", "queued"].includes(taskState)) {
     return applyFilters(memEvents, source, limit);
   }
 

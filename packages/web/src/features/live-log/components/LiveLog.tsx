@@ -174,6 +174,44 @@ export function LiveLog({ taskId, taskState }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId, isActive]);
 
+  // Seed active pre-running tasks (preparing/queued) from REST once on mount.
+  // These carry prep-stage progress events (正在克隆代码…) in the in-memory
+  // ring buffer before any worker exists. The WS path also delivers them, but
+  // seeding from REST guarantees they appear even if the WS snapshot is missed
+  // in some browser contexts. WS appends are deduped by seq, so no doubles.
+  useEffect(() => {
+    if (!isActive || isRunning) return; // running tasks rely on the WS stream
+    let cancelled = false;
+    api.tasks
+      .events(taskId)
+      .then((res) => {
+        if (cancelled) return;
+        const list = (res.events ?? [])
+          .map((row: Record<string, unknown>) => {
+            const inner = (row?.event as LiveLogEvent | undefined) ?? null;
+            return inner ?? (row as unknown as LiveLogEvent);
+          })
+          .filter(Boolean);
+        if (list.length === 0) return;
+        setEvents((prev) => {
+          const seen = new Set(prev.map((e) => (e as { seq?: number }).seq));
+          const merged = [...prev];
+          for (const e of list) {
+            const s = (e as { seq?: number }).seq;
+            if (s == null || !seen.has(s)) merged.push(e);
+          }
+          merged.sort((a, b) => ((a as { seq?: number }).seq ?? 0) - ((b as { seq?: number }).seq ?? 0));
+          return merged;
+        });
+        setTotalCount((t) => Math.max(t, list.length));
+        const srcs = Array.from(new Set(list.map((e) => e.source).filter(Boolean) as string[]));
+        if (srcs.length > 0) setSources((prev) => Array.from(new Set([...prev, ...srcs])));
+      })
+      .catch(() => { /* empty state handles this */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, isActive, isRunning]);
+
   useEffect(() => {
     if (!isActive) return; // Terminal tasks load via REST above.
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -191,6 +229,12 @@ export function LiveLog({ taskId, taskState }: Props) {
         if (event.type === "ping" || event.type === "snapshot_end") return;
 
         setEvents((prev) => {
+          // Dedup by seq so a REST seed (active-task bootstrap) and the WS
+          // snapshot/live stream don't double-insert the same event.
+          const evSeq = (event as { seq?: number }).seq;
+          if (evSeq != null && prev.some((e) => (e as { seq?: number }).seq === evSeq)) {
+            return prev;
+          }
           const next = [...prev, event];
           setTotalCount((t) => Math.max(t, next.length));
           return next;
