@@ -61,6 +61,21 @@ function isPreviewableImage(mime?: string): boolean {
   return !!mime && ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(mime);
 }
 
+// file-type recognises some TEXT-based formats (notably SVG and XML, which it
+// reports as image/svg+xml or application/xml). Those must NOT fall into the
+// binary branch — the user should read their source. They are shown through
+// the plain-text path (escaped, never inline-rendered) so there is no XSS risk.
+const TEXT_LIKE_DETECTED_MIMES = new Set([
+  "image/svg+xml",
+  "application/xml",
+  "text/xml",
+  "text/html",
+]);
+
+function isTextLikeDetected(mime?: string): boolean {
+  return !!mime && TEXT_LIKE_DETECTED_MIMES.has(mime);
+}
+
 async function downloadZipToTmp(bucket: string, key: string): Promise<string> {
   const minio = getMinio();
   const stream = await minio.getObject(bucket, key);
@@ -144,7 +159,7 @@ export async function classifyCodeFileBuffer(buf: Buffer, filePath: string): Pro
     };
   }
 
-  if (detected || isBinary(buf)) {
+  if (!isTextLikeDetected(detected?.mime) && (detected || isBinary(buf))) {
     return {
       content: "",
       language: "binary",

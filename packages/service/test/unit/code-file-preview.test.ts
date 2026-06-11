@@ -26,6 +26,21 @@ describe("workspace code file preview classification", () => {
     expect(result.content).toContain("<script>");
   });
 
+  it("keeps xml-declared svg as source text (file-type reports application/xml)", async () => {
+    // Real-world case: SVGs that lead with an XML declaration are detected by
+    // file-type as application/xml, which previously fell into the binary
+    // branch (「无法预览」, source hidden). They must show source instead.
+    const svg = Buffer.from(
+      '<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0z"/></svg>',
+    );
+
+    const result = await classifyCodeFileBuffer(svg, "logo.svg");
+
+    expect(result.type).toBe("text");
+    expect(result.content).toContain("<svg");
+    expect(result.data_base64).toBeUndefined();
+  });
+
   it("downgrades images larger than 5MB to binary", async () => {
     const hugePng = Buffer.concat([PNG_1X1, Buffer.alloc(5 * 1024 * 1024)]);
 
