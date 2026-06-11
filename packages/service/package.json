@@ -25,7 +25,8 @@
     "js-yaml": "^4.1.0",
     "zod": "^3.24.1",
     "@modelcontextprotocol/sdk": "^1.9.0",
-    "dockerode": "^4.0.4"
+    "dockerode": "^4.0.4",
+    "file-type": "^20.5.0"
   },
   "devDependencies": {
     "@types/ws": "^8.5.13",

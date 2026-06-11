@@ -852,6 +852,8 @@ export interface WorkspaceFile {
   size_bytes: number;
   is_truncated: boolean;
   type: "text" | "binary" | "image";
+  mime?: string;
+  data_base64?: string;
   vuln_decorations?: WorkspaceVulnDecoration[];
   requested_line?: number;
 }
