@@ -11,9 +11,11 @@ import { join } from "node:path";
 import { writeFile, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { LRUCache } from "./lru-cache.js";
+import { fileTypeFromBuffer } from "file-type";
 
 const FILE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const MAX_FILE_SIZE_BYTES = 1024 * 1024; // 1MB — larger files get truncated
+const MAX_IMAGE_PREVIEW_BYTES = 5 * 1024 * 1024; // 5MB — avoid huge base64 JSON responses
 const fileCache = new LRUCache<string, { content: string; language: string; totalLines: number; truncated: boolean }>(100, FILE_CACHE_TTL_MS);
 
 export interface CodeFileResult {
@@ -23,6 +25,8 @@ export interface CodeFileResult {
   size_bytes: number;
   is_truncated: boolean;
   type: "text" | "binary" | "image";
+  mime?: string;
+  data_base64?: string;
   vuln_decorations?: {
     line: number;
     finding_key: string;
@@ -46,8 +50,15 @@ function detectLanguage(filename: string): string {
 
 function isBinary(buf: Buffer): boolean {
   const sample = buf.slice(0, 8192);
+  if (sample.length === 0) return false;
   const nullCount = sample.filter((b) => b === 0).length;
   return nullCount / sample.length > 0.01;
+}
+
+function isPreviewableImage(mime?: string): boolean {
+  // Do not inline SVG from untrusted repositories: SVG can contain active
+  // content. It remains visible through the normal text/source path.
+  return !!mime && ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(mime);
 }
 
 async function downloadZipToTmp(bucket: string, key: string): Promise<string> {
@@ -99,6 +110,67 @@ async function extractFileFromZip(zipPath: string, targetPath: string): Promise<
   });
 }
 
+async function safeFileTypeFromBuffer(buf: Buffer) {
+  try {
+    return await fileTypeFromBuffer(buf);
+  } catch {
+    return undefined;
+  }
+}
+
+export async function classifyCodeFileBuffer(buf: Buffer, filePath: string): Promise<CodeFileResult> {
+  const detected = await safeFileTypeFromBuffer(buf);
+  if (isPreviewableImage(detected?.mime)) {
+    if (buf.length > MAX_IMAGE_PREVIEW_BYTES) {
+      return {
+        content: "",
+        language: "binary",
+        total_lines: 0,
+        size_bytes: buf.length,
+        is_truncated: false,
+        type: "binary",
+        mime: detected?.mime,
+      };
+    }
+    return {
+      content: "",
+      language: "image",
+      total_lines: 0,
+      size_bytes: buf.length,
+      is_truncated: false,
+      type: "image",
+      mime: detected?.mime,
+      data_base64: buf.toString("base64"),
+    };
+  }
+
+  if (detected || isBinary(buf)) {
+    return {
+      content: "",
+      language: "binary",
+      total_lines: 0,
+      size_bytes: buf.length,
+      is_truncated: false,
+      type: "binary",
+      mime: detected?.mime,
+    };
+  }
+
+  const full = buf.toString("utf-8");
+  const truncated = buf.length > MAX_FILE_SIZE_BYTES;
+  const content = truncated
+    ? buf.slice(0, MAX_FILE_SIZE_BYTES).toString("utf-8") + "\n\n[File truncated — download to view full content]"
+    : full;
+  return {
+    content,
+    language: detectLanguage(filePath),
+    total_lines: full.split("\n").length,
+    size_bytes: buf.length,
+    is_truncated: truncated,
+    type: "text",
+  };
+}
+
 export async function getCodeFile(
   taskId: string,
   bucket: string,
@@ -126,35 +198,16 @@ export async function getCodeFile(
     tmpPath = await downloadZipToTmp(bucket, zipKey);
     const buf = await extractFileFromZip(tmpPath, filePath);
 
-    if (isBinary(buf)) {
-      return {
-        content: "",
-        language: "binary",
-        total_lines: 0,
-        size_bytes: buf.length,
-        is_truncated: false,
-        type: "binary",
-      };
+    const result = await classifyCodeFileBuffer(buf, filePath);
+    if (result.type === "text") {
+      fileCache.set(cacheKey, {
+        content: result.content,
+        language: result.language,
+        totalLines: result.total_lines,
+        truncated: result.is_truncated,
+      });
     }
-
-    const full = buf.toString("utf-8");
-    const truncated = buf.length > MAX_FILE_SIZE_BYTES;
-    const content = truncated
-      ? buf.slice(0, MAX_FILE_SIZE_BYTES).toString("utf-8") + "\n\n[File truncated — download to view full content]"
-      : full;
-    const language = detectLanguage(filePath);
-    const totalLines = full.split("\n").length;
-
-    fileCache.set(cacheKey, { content, language, totalLines, truncated });
-
-    return {
-      content,
-      language,
-      total_lines: totalLines,
-      size_bytes: buf.length,
-      is_truncated: truncated,
-      type: "text",
-    };
+    return result;
   } catch (err) {
     logger.warn({ err, taskId, filePath }, "Failed to extract file from zip");
     return null;

@@ -852,6 +852,17 @@ function CodeViewer({
           >
             {i18n.t("workspace.error.file")}: {(error as Error).message}
           </div>
+        ) : file?.type === "image" && file.data_base64 && file.mime ? (
+          <div
+            data-testid="workspace-image-preview"
+            style={{ padding: "24px", display: "flex", justifyContent: "center", alignItems: "flex-start" }}
+          >
+            <img
+              src={`data:${file.mime};base64,${file.data_base64}`}
+              alt={selectedPath ?? "preview"}
+              style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "6px" }}
+            />
+          </div>
         ) : file?.type === "binary" ? (
           <div style={{ padding: "24px", color: "var(--text-secondary)", fontSize: "12px" }}>
             {i18n.t("workspace.binary")}
