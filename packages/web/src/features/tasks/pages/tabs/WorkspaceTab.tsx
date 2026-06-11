@@ -859,7 +859,7 @@ function CodeViewer({
           >
             <img
               src={`data:${file.mime};base64,${file.data_base64}`}
-              alt={selectedPath ?? "preview"}
+              alt={path ?? "preview"}
               style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "6px" }}
             />
           </div>
