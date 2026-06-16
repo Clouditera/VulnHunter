@@ -18,6 +18,12 @@ const ZH: Record<string, string> = {
   "sidebar.recents": "最近对话",
   "sidebar.collapse": "收起侧栏",
   "sidebar.expand": "展开侧栏",
+  "nav.versionChangelog": "查看更新日志",
+  "changelog.title": "更新日志",
+  "changelog.currentVersion": "当前版本：{version}",
+  "changelog.versionUnavailable": "版本信息不可用",
+  "changelog.latestFallback": "当前版本暂无更新日志，展示最新记录。",
+  "changelog.close": "关闭",
 
   // Tasks
   "tasks.title": "任务",
@@ -742,6 +748,12 @@ const EN: Record<string, string> = {
   "sidebar.recents": "Recents",
   "sidebar.collapse": "Collapse sidebar",
   "sidebar.expand": "Expand sidebar",
+  "nav.versionChangelog": "View changelog",
+  "changelog.title": "Changelog",
+  "changelog.currentVersion": "Current version: {version}",
+  "changelog.versionUnavailable": "Version unavailable",
+  "changelog.latestFallback": "No changelog entry for the current version; showing the latest notes.",
+  "changelog.close": "Close",
 
   // Tasks
   "tasks.title": "Tasks",

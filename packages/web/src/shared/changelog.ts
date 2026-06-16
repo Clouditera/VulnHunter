@@ -1,19 +1,25 @@
-/**
- * Version changelog shown to users in a login popup.
+/*
+ * Version changelog shown in the login popup and the global changelog drawer.
  *
- * To publish a new changelog on release: bump CURRENT_VERSION and replace
- * CHANGELOG_MARKDOWN with the new announcement (Markdown, without the title
- * line — the modal renders the title from CURRENT_VERSION).
- *
+ * To publish a new changelog on release: prepend a CHANGELOG_ENTRIES item.
  * "Seen" state is tracked in localStorage under CHANGELOG_STORAGE_KEY, keyed
- * by version, so each version's popup shows at most once per browser.
+ * by the latest changelog version, so each version's popup shows at most once
+ * per browser.
  */
 
-export const CURRENT_VERSION = "2.2.0";
+export interface ChangelogEntry {
+  version: string;
+  releasedAt?: string;
+  title?: string;
+  markdown: string;
+}
 
-export const CHANGELOG_STORAGE_KEY = "vulnagent_lastSeenVersion";
-
-export const CHANGELOG_MARKDOWN = `
+export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
+  {
+    version: "2.2.0",
+    releasedAt: "2026-06",
+    title: "VulnAgent v2.2.0 更新",
+    markdown: `
 ### 🔍 更精准的漏洞发现
 - 扫描结果分为**漏洞**和**风险**两类，帮你区分处理优先级
 - 每个发现提供 **CVSS 评分**和**攻击价值评估（EV）**，快速判断哪些最需要关注
@@ -33,12 +39,26 @@ export const CHANGELOG_MARKDOWN = `
 ### 🤖 AI 助手升级
 - 通过对话即可**创建任务、查看结果、继续扫描、生成报告**
 - 能区分漏洞和风险，用通俗语言解释安全发现
-`.trim();
+`.trim(),
+  },
+];
+
+export const LATEST_CHANGELOG_ENTRY = CHANGELOG_ENTRIES[0];
+export const CURRENT_CHANGELOG_VERSION = LATEST_CHANGELOG_ENTRY?.version ?? "unknown";
+// Compatibility exports for the login modal and any legacy imports.
+export const CURRENT_VERSION = CURRENT_CHANGELOG_VERSION;
+export const CHANGELOG_MARKDOWN = LATEST_CHANGELOG_ENTRY?.markdown ?? "";
+export const CHANGELOG_STORAGE_KEY = "vulnagent_lastSeenVersion";
+
+export function getChangelogEntry(version?: string): ChangelogEntry | undefined {
+  if (!version) return undefined;
+  return CHANGELOG_ENTRIES.find((entry) => entry.version === version || `v${entry.version}` === version);
+}
 
 export function shouldShowChangelog(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem(CHANGELOG_STORAGE_KEY) !== CURRENT_VERSION;
+    return window.localStorage.getItem(CHANGELOG_STORAGE_KEY) !== CURRENT_CHANGELOG_VERSION;
   } catch {
     return false;
   }
@@ -47,7 +67,7 @@ export function shouldShowChangelog(): boolean {
 export function markChangelogSeen(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(CHANGELOG_STORAGE_KEY, CURRENT_VERSION);
+    window.localStorage.setItem(CHANGELOG_STORAGE_KEY, CURRENT_CHANGELOG_VERSION);
   } catch {
     // localStorage unavailable (private mode / disabled) — silently ignore.
   }

@@ -7,6 +7,7 @@ import { i18n } from "../shared/i18n/index.js";
 import { theme } from "../shared/theme/index.js";
 import { Icon, type IconName } from "../shared/components/Icon.js";
 import { ChangelogModal } from "../shared/components/ChangelogModal.js";
+import { ChangelogDrawer } from "../shared/components/ChangelogDrawer.js";
 import { shouldShowChangelog, markChangelogSeen } from "../shared/changelog.js";
 import { useNotifications } from "../shared/hooks/useNotifications.js";
 import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
@@ -42,6 +43,7 @@ export function AppLayout() {
   const [activeRecentId, setActiveRecentId] = useState<string | null>(null);
   const [sessionRefreshToken, setSessionRefreshToken] = useState(0);
   const [showChangelog, setShowChangelog] = useState(() => shouldShowChangelog());
+  const [showChangelogDrawer, setShowChangelogDrawer] = useState(false);
 
   useNotifications();
   const { data: systemStatus } = useSystemStatus();
@@ -300,6 +302,11 @@ export function AppLayout() {
         )}
 
         <div data-testid="nav-bottom" style={collapsed ? FOOTER_COLLAPSED : FOOTER_EXPANDED}>
+          <VersionEntry
+            collapsed={collapsed}
+            version={systemStatus?.version?.version}
+            onClick={() => setShowChangelogDrawer(true)}
+          />
           <div style={collapsed ? FOOTER_TOGGLES_COLLAPSED : FOOTER_TOGGLES_EXPANDED}>
             <IconToggle
               testid="nav-lang-toggle"
@@ -332,7 +339,30 @@ export function AppLayout() {
       </main>
 
       {showChangelog && <ChangelogModal onClose={dismissChangelog} />}
+      <ChangelogDrawer
+        open={showChangelogDrawer}
+        runtimeVersion={systemStatus?.version?.version}
+        productName="VulnAgent"
+        onClose={() => setShowChangelogDrawer(false)}
+      />
     </div>
+  );
+}
+
+function VersionEntry({ collapsed, version, onClick }: { collapsed: boolean; version?: string; onClick: () => void }) {
+  const label = version ? `VulnAgent v${version}` : "VulnAgent";
+  const compact = version ? `v${version}` : "V";
+  return (
+    <button
+      type="button"
+      data-testid="nav-version-entry"
+      className="va-sidebar-button"
+      onClick={onClick}
+      title={`${label} · ${i18n.t("nav.versionChangelog")}`}
+      style={collapsed ? VERSION_COLLAPSED : VERSION_EXPANDED}
+    >
+      {collapsed ? compact : label}
+    </button>
   );
 }
 
@@ -737,6 +767,32 @@ const FOOTER_COLLAPSED: CSSProperties = {
   gap: "4px",
   borderTop: "1px solid rgba(255,255,255,0.08)",
   flexShrink: 0,
+};
+const VERSION_EXPANDED: CSSProperties = {
+  width: "100%",
+  marginBottom: "6px",
+  padding: "7px 10px",
+  borderRadius: "8px",
+  border: "1px solid rgba(255,255,255,0.08)",
+  background: "rgba(255,255,255,0.04)",
+  color: "rgba(255,255,255,0.62)",
+  fontSize: "11px",
+  fontWeight: 600,
+  textAlign: "left",
+  cursor: "pointer",
+  boxSizing: "border-box",
+};
+const VERSION_COLLAPSED: CSSProperties = {
+  width: "40px",
+  minHeight: "28px",
+  padding: "4px 2px",
+  borderRadius: "8px",
+  border: "1px solid rgba(255,255,255,0.08)",
+  background: "rgba(255,255,255,0.04)",
+  color: "rgba(255,255,255,0.62)",
+  fontSize: "10px",
+  fontWeight: 700,
+  cursor: "pointer",
 };
 const FOOTER_TOGGLES_EXPANDED: CSSProperties = {
   display: "flex",
