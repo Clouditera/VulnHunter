@@ -120,6 +120,7 @@ export async function createUserAccount(params: {
   role: "admin" | "member";
   mustChangePassword?: boolean;
   taskLimit?: number;
+  adminRemark?: string | null;
 }): Promise<storage.DbUser> {
   const passwordHash = await bcrypt.hash(params.password, BCRYPT_COST);
   return storage.createUser({
@@ -129,6 +130,7 @@ export async function createUserAccount(params: {
     displayName: params.displayName,
     mustChangePassword: params.mustChangePassword ?? true,
     taskLimit: params.taskLimit ?? 0,
+    adminRemark: params.adminRemark ?? null,
   });
 }
 

@@ -469,9 +469,9 @@ export const api = {
   },
   users: {
     list: () => request<{ users: UserApi[] }>("/api/users"),
-    create: (data: { email: string; password: string; display_name?: string; role?: string; must_change_password?: boolean; task_limit?: number }) =>
+    create: (data: { email: string; password: string; display_name?: string; role?: string; must_change_password?: boolean; task_limit?: number; admin_remark?: string | null }) =>
       request<{ user: UserApi }>("/api/users", { method: "POST", body: JSON.stringify(data) }),
-    update: (id: string, data: { display_name?: string; role?: string; status?: string; reset_password?: string; task_limit?: number }) =>
+    update: (id: string, data: { display_name?: string; role?: string; status?: string; reset_password?: string; task_limit?: number; admin_remark?: string | null }) =>
       request<{ ok: boolean }>(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<{ ok: boolean }>(`/api/users/${id}`, { method: "DELETE" }),
@@ -801,6 +801,7 @@ export interface UserApi {
   created_at: string;
   task_limit?: number;
   task_count?: number;
+  admin_remark?: string | null;
 }
 
 export interface PocSettingsApi {
