@@ -79,18 +79,26 @@ export async function cloneAndUpload(
 ): Promise<void> {
   let lastErr: unknown = null;
   let unreachable = false;
-  const safeGitUrl = validateRemoteGitUrl(gitUrl);
-  const requestedBranch = branch?.trim() || undefined;
-  let resolvedBranch = requestedBranch;
-  if (!resolvedBranch) {
-    try {
-      resolvedBranch = (await getRemoteDefaultBranch(safeGitUrl)) ?? undefined;
-    } catch (err) {
-      logger.warn({ err, taskId, gitUrl }, "Failed to detect default git branch; falling back to git clone default");
+  let safeGitUrl = "";
+  let resolvedBranch = branch?.trim() || undefined;
+  let canAttemptClone = true;
+  try {
+    safeGitUrl = validateRemoteGitUrl(gitUrl);
+    if (!resolvedBranch) {
+      try {
+        resolvedBranch = (await getRemoteDefaultBranch(safeGitUrl)) ?? undefined;
+      } catch (err) {
+        logger.warn({ err, taskId, gitUrl }, "Failed to detect default git branch; falling back to git clone default");
+      }
     }
+  } catch (err) {
+    lastErr = err;
+    unreachable = true;
+    canAttemptClone = false;
+    logger.warn({ err, taskId, gitUrl }, "Invalid git URL before clone");
   }
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; canAttemptClone && attempt <= MAX_ATTEMPTS; attempt++) {
     const tmpDir = mkdtempSync(join(tmpdir(), `va-git-${taskId}-`));
     const repoDir = join(tmpDir, "repo");
     const zipPath = join(tmpDir, "source.zip");

@@ -85,6 +85,17 @@ describe("createMcpTask context binding", () => {
       credentialId: "cred-session",
     }));
     expect(getCredentialByIdMock).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", tenantId: "tenant-1", role: "member" }), "cred-session");
+    expect(cloneAndUploadMock).toHaveBeenCalledWith("task-1", "https://example.com/project.git", undefined, "vulnagent");
+  });
+
+  it("rejects invalid git urls before creating a task", async () => {
+    const { createMcpTask } = await import("../../src/mcp/tools.js");
+
+    const result = await createMcpTask({ git_url: "/workspace" }, { ...ctx, credentialId: "cred-session" });
+
+    expect(result.content[0].text).toContain("合法的 http(s) Git 仓库地址");
+    expect(createTaskMock).not.toHaveBeenCalled();
+    expect(cloneAndUploadMock).not.toHaveBeenCalled();
   });
 
   it("passes audit_focus and converts scan_duration minutes to scan_timeout seconds", async () => {

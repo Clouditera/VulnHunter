@@ -384,8 +384,8 @@ export async function submitReport(args: {
 export const createTaskSchema = {
   project_name: z.string().optional().describe("Detected project/source name; optional"),
   display_name: z.string().optional().describe("Optional user-facing task display name"),
-  git_url: z.string().optional().describe("Git repository URL (use this OR attachment_id)"),
-  git_branch: z.string().optional().default("main").describe("Git branch (default: main)"),
+  git_url: z.string().optional().describe("Git repository URL (use this OR attachment_id). Must be an http(s) URL."),
+  git_branch: z.string().optional().describe("Git branch. If omitted, the remote default branch is used."),
   attachment_id: z.string().optional().describe("Chat artifact ID of an uploaded zip file (use this OR git_url)"),
   audit_focus: z
     .string()
@@ -480,15 +480,24 @@ export async function createMcpTask(args: {
 
   // Git-based task creation
   const { cloneAndUpload } = await import("../features/files/git-clone.js");
+  const { GitRemoteError, validateRemoteGitUrl } = await import("../features/files/git-remote.js");
+  let safeGitUrl: string;
+  try {
+    safeGitUrl = validateRemoteGitUrl(args.git_url!);
+  } catch (err) {
+    const detail = err instanceof GitRemoteError ? err.message : "Invalid git URL";
+    return { content: [{ type: "text", text: `Error: ${detail}. 请提供合法的 http(s) Git 仓库地址。` }] };
+  }
+  const requestedBranch = args.git_branch?.trim() || undefined;
   const projectName = args.project_name ??
-    new URL(args.git_url!).pathname.split("/").pop()?.replace(/\.git$/, "") ?? "project";
+    new URL(safeGitUrl).pathname.split("/").pop()?.replace(/\.git$/, "") ?? "project";
 
   const task = await taskStorage.createTask({
     createdBy: ctx.userId,
     projectName,
     displayName: args.display_name,
     sourceType: "git",
-    sourceMeta: { git_url: args.git_url!, git_branch: args.git_branch ?? "main", ...scanMeta },
+    sourceMeta: { git_url: safeGitUrl, ...(requestedBranch ? { git_branch: requestedBranch } : {}), ...scanMeta },
     credentialId: cred.id,
   });
 
@@ -496,8 +505,8 @@ export async function createMcpTask(args: {
   await taskStorage.updateTaskState(task.id, "preparing");
   cloneAndUpload(
     task.id,
-    args.git_url!,
-    args.git_branch ?? "main",
+    safeGitUrl,
+    requestedBranch,
     config.minio.bucket,
   ).catch((err) => logger.error({ err, taskId: task.id }, "MCP create-task: git clone failed"));
 
@@ -508,7 +517,7 @@ export async function createMcpTask(args: {
       type: "text",
       text: [
         `任务「${projectName}」已创建成功，任务 ID \`${task.id}\`，当前状态：准备中（preparing）。`,
-        `来源：${args.git_url}（分支：${args.git_branch ?? "main"}），凭证：${cred.label ?? "default"}。代码克隆在后台进行，就绪后自动开始扫描。`,
+        `来源：${safeGitUrl}${requestedBranch ? `（分支：${requestedBranch}）` : "（分支：远程默认）"}，凭证：${cred.label ?? "default"}。代码克隆在后台进行，就绪后自动开始扫描。`,
       ].join("\n"),
     }],
   };
