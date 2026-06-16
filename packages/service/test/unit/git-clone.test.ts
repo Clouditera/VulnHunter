@@ -75,6 +75,16 @@ describe("cloneAndUpload", () => {
     }));
   });
 
+  it("marks invalid git urls failed without invoking git", async () => {
+    ok();
+    await cloneAndUpload("t1", "/workspace", undefined, "bucket");
+
+    expect(execFile).not.toHaveBeenCalled();
+    expect(updateTaskState).toHaveBeenCalledWith("t1", "failed", expect.objectContaining({
+      failureReason: expect.stringContaining("无法访问该源码仓库"),
+    }));
+  });
+
   it("does not retry non-existent repo (clones once, repo-unreachable reason)", async () => {
     fail("fatal: repository not found");
     await cloneAndUpload("t1", "https://x/missing.git", "main", "bucket");
