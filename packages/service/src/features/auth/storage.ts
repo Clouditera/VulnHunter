@@ -10,6 +10,7 @@ export interface DbUser {
   role: string;
   status: string;
   display_name: string;
+  admin_remark: string | null;
   must_change_password: boolean;
   task_limit: number;
   last_login_at: Date | null;
@@ -40,18 +41,20 @@ export async function createUser(params: {
   passwordHash: string;
   role: "admin" | "member";
   displayName?: string;
+  adminRemark?: string | null;
   mustChangePassword?: boolean;
   taskLimit?: number;
 }): Promise<DbUser> {
   const db = getDb();
   const rows = await db<DbUser[]>`
-    INSERT INTO users (tenant_id, email, password_hash, role, display_name, must_change_password, task_limit)
+    INSERT INTO users (tenant_id, email, password_hash, role, display_name, admin_remark, must_change_password, task_limit)
     VALUES (
       ${DEFAULT_TENANT_ID},
       ${params.email},
       ${params.passwordHash},
       ${params.role},
       ${params.displayName ?? params.email.split("@")[0]},
+      ${params.adminRemark ?? null},
       ${params.mustChangePassword ?? false},
       ${params.taskLimit ?? 0}
     )
@@ -143,9 +146,11 @@ export async function updateUser(
     passwordHash?: string;
     mustChangePassword?: boolean;
     taskLimit?: number;
+    adminRemark?: string | null;
   },
 ): Promise<void> {
   const db = getDb();
+  const updateAdminRemark = Object.prototype.hasOwnProperty.call(fields, "adminRemark");
   await db`
     UPDATE users SET
       display_name = COALESCE(${fields.displayName ?? null}, display_name),
@@ -154,6 +159,7 @@ export async function updateUser(
       password_hash = COALESCE(${fields.passwordHash ?? null}, password_hash),
       must_change_password = COALESCE(${fields.mustChangePassword ?? null}, must_change_password),
       task_limit = COALESCE(${fields.taskLimit ?? null}, task_limit),
+      admin_remark = CASE WHEN ${updateAdminRemark} THEN ${fields.adminRemark ?? null} ELSE admin_remark END,
       updated_at = now()
     WHERE id = ${id}
   `;

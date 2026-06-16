@@ -65,6 +65,7 @@ export function UsersSection() {
           <div style={{ width: "24px" }} />
           <div style={{ flex: 1 }}>{i18n.t("settings.users.col.email")}</div>
           <div style={{ width: "120px" }}>{i18n.t("settings.users.col.name")}</div>
+          <div style={{ width: "180px" }}>{i18n.t("settings.users.col.remark")}</div>
           <div style={{ width: "100px" }}>{i18n.t("settings.users.col.role")}</div>
           <div style={{ width: "110px" }}>{i18n.t("settings.users.col.taskLimit")}</div>
           <div style={{ width: "100px" }}>{i18n.t("settings.users.col.lastLogin")}</div>
@@ -92,7 +93,8 @@ export function UsersSection() {
               }} />
             </div>
             <div style={{ flex: 1, fontSize: "13px", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, whiteSpace: "nowrap" }}>{u.email}</div>
-            <div style={{ width: "120px", fontSize: "13px", color: u.display_name ? "var(--text-primary)" : "var(--text-secondary)" }}>{u.display_name || "—"}</div>
+            <div style={{ width: "120px", fontSize: "13px", color: u.display_name ? "var(--text-primary)" : "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.display_name || "—"}</div>
+            <div title={u.admin_remark ?? ""} style={{ width: "180px", fontSize: "12px", color: u.admin_remark ? "var(--text-primary)" : "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.admin_remark || "—"}</div>
             <div style={{ width: "100px" }}>
               <RoleBadge role={u.role} />
             </div>
@@ -183,12 +185,13 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   const [showPwd, setShowPwd] = useState(false);
   const [forceChange, setForceChange] = useState(true);
   const [taskLimit, setTaskLimit] = useState("0");
+  const [adminRemark, setAdminRemark] = useState("");
   const [error, setError] = useState("");
 
   const mut = useMutation({
     mutationFn: () => {
       if (password !== confirmPassword) throw new Error(i18n.t("userModal.err.passwordMismatch"));
-      return api.users.create({ email, password, display_name: displayName || undefined, role, must_change_password: forceChange, task_limit: Math.max(0, Number(taskLimit) || 0) });
+      return api.users.create({ email, password, display_name: displayName || undefined, role, must_change_password: forceChange, task_limit: Math.max(0, Number(taskLimit) || 0), admin_remark: adminRemark.trim() || null });
     },
     onSuccess,
     onError: (err: Error) => setError(err.message),
@@ -208,6 +211,10 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
             </div>
           </Field>
           <Field label={i18n.t("userModal.taskLimit")}><input type="number" min={0} value={taskLimit} onChange={(e) => setTaskLimit(e.target.value)} style={INPUT} /></Field>
+          <Field label={i18n.t("userModal.adminRemark.optional")}>
+            <textarea value={adminRemark} onChange={(e) => setAdminRemark(e.target.value)} maxLength={1000} rows={3} style={{ ...INPUT, height: "auto", resize: "vertical" }} />
+            <div style={HINT}>{i18n.t("userModal.adminRemarkHint")}</div>
+          </Field>
           <Field label={i18n.t("userModal.initialPassword")}>
             <PwdInput value={password} onChange={setPassword} show={showPwd} onToggle={() => setShowPwd(!showPwd)} />
             <div style={HINT}>{i18n.t("userModal.passwordHint")}</div>
@@ -238,10 +245,11 @@ function EditUserModal({ user, onClose, onSuccess }: { user: UserApi; onClose: (
   const [role, setRole] = useState(user.role);
   const [disabled, setDisabled] = useState(user.status === "suspended");
   const [taskLimit, setTaskLimit] = useState(String(user.task_limit ?? 0));
+  const [adminRemark, setAdminRemark] = useState(user.admin_remark ?? "");
   const [error, setError] = useState("");
 
   const mut = useMutation({
-    mutationFn: () => api.users.update(user.id, { display_name: displayName, role, status: disabled ? "suspended" : "active", task_limit: Math.max(0, Number(taskLimit) || 0) }),
+    mutationFn: () => api.users.update(user.id, { display_name: displayName, role, status: disabled ? "suspended" : "active", task_limit: Math.max(0, Number(taskLimit) || 0), admin_remark: adminRemark.trim() || null }),
     onSuccess,
     onError: (err: Error) => setError(err.message),
   });
@@ -260,6 +268,10 @@ function EditUserModal({ user, onClose, onSuccess }: { user: UserApi; onClose: (
             </div>
           </Field>
           <Field label={i18n.t("userModal.taskLimit")}><input type="number" min={0} value={taskLimit} onChange={(e) => setTaskLimit(e.target.value)} style={INPUT} /></Field>
+          <Field label={i18n.t("userModal.adminRemark.optional")}>
+            <textarea value={adminRemark} onChange={(e) => setAdminRemark(e.target.value)} maxLength={1000} rows={3} style={{ ...INPUT, height: "auto", resize: "vertical" }} />
+            <div style={HINT}>{i18n.t("userModal.adminRemarkHint")}</div>
+          </Field>
           <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", color: "var(--text-primary)" }}>
             <ToggleSwitch checked={disabled} onChange={setDisabled} />
             {i18n.t("userModal.disable")}
