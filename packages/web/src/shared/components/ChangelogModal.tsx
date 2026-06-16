@@ -1,6 +1,10 @@
 import type { CSSProperties } from "react";
 import { Markdown } from "../../features/chat/components/Markdown.js";
-import { CHANGELOG_MARKDOWN, CURRENT_VERSION } from "../changelog.js";
+import { LATEST_CHANGELOG_ENTRY } from "../changelog.js";
+
+export function ChangelogContent({ markdown }: { markdown: string }) {
+  return <Markdown content={markdown} />;
+}
 
 /**
  * Login-time changelog popup. Centered modal, scrollable body, single
@@ -8,14 +12,15 @@ import { CHANGELOG_MARKDOWN, CURRENT_VERSION } from "../changelog.js";
  * don't accidentally dismiss the announcement.
  */
 export function ChangelogModal({ onClose }: { onClose: () => void }) {
+  const entry = LATEST_CHANGELOG_ENTRY;
   return (
     <div data-testid="changelog-modal" style={BACKDROP}>
       <div style={MODAL} role="dialog" aria-modal="true" aria-label="Version changelog">
         <div style={HEADER}>
-          <span style={TITLE}>🎉 VulnAgent v{CURRENT_VERSION} 更新</span>
+          <span style={TITLE}>🎉 {entry?.title ?? `VulnAgent v${entry?.version ?? ""} 更新`}</span>
         </div>
         <div className="va-changelog-scroll" style={BODY}>
-          <Markdown content={CHANGELOG_MARKDOWN} />
+          <ChangelogContent markdown={entry?.markdown ?? ""} />
         </div>
         <div style={FOOTER}>
           <button
