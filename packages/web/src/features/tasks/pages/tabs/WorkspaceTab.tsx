@@ -13,6 +13,7 @@ import {
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon } from "../../../../shared/components/Icon.js";
 import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
+import { CodeViewer, EmptyCodePlaceholder } from "../../components/CodeViewer.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Audit progress (审计进展) — green-ramp depth overlay on the code tree        */
@@ -618,9 +619,10 @@ export function WorkspaceTab() {
               loading={fileLoading}
               error={fileError as Error | null}
               vulnLines={vulnLineSet}
+              testIdPrefix="workspace"
             />
           ) : (
-            <EmptyCodePlaceholder />
+            <EmptyCodePlaceholder testId="workspace-empty" />
           )}
         </div>
       </div>
@@ -734,205 +736,6 @@ function TreeRow({
 
       {/* Audit progress badge (审计进展) — A */}
       {audit ? <AuditBadge entry={audit} /> : null}
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Code viewer                                                               */
-/* -------------------------------------------------------------------------- */
-
-function CodeViewer({
-  path,
-  file,
-  loading,
-  error,
-  vulnLines,
-}: {
-  path: string;
-  file: WorkspaceFile | undefined;
-  loading: boolean;
-  error: Error | null;
-  vulnLines: Set<number>;
-}) {
-  const streamRef = useRef<HTMLDivElement | null>(null);
-
-  // When file loads, scroll to the first vuln line (if any).
-  useEffect(() => {
-    if (!file || vulnLines.size === 0) return;
-    const firstLine = Math.min(...Array.from(vulnLines));
-    const t = window.setTimeout(() => {
-      const el = streamRef.current?.querySelector<HTMLElement>(
-        `[data-ln="${firstLine}"]`,
-      );
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 60);
-    return () => window.clearTimeout(t);
-  }, [file, vulnLines]);
-
-  const lines = useMemo(() => (file?.content ?? "").split("\n"), [file]);
-
-  return (
-    <>
-      {/* Code header */}
-      <div
-        data-testid="workspace-code-header"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-          padding: "8px 14px",
-          borderBottom: "1px solid var(--border)",
-          background: "var(--bg-card)",
-          fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-          fontSize: "12px",
-          color: "var(--text-secondary)",
-          flexShrink: 0,
-        }}
-      >
-        <span
-          data-testid="workspace-code-path"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            color: "var(--text-primary)",
-          }}
-        >
-          {path}
-        </span>
-        {file?.total_lines ? (
-          <span>
-            {file.total_lines.toLocaleString()} {i18n.t("workspace.lines")}
-          </span>
-        ) : null}
-        {file?.is_truncated ? (
-          <span
-            style={{
-              padding: "1px 8px",
-              borderRadius: "3px",
-              background: "rgba(220,38,38,0.15)",
-              color: "var(--brand)",
-              fontSize: "11px",
-              fontWeight: 600,
-            }}
-            title={i18n.t("workspace.truncated")}
-          >
-            TRUNCATED
-          </span>
-        ) : null}
-      </div>
-
-      {/* Code body */}
-      <div
-        ref={streamRef}
-        data-testid="workspace-code-body"
-        translate="no"
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflow: "auto",
-          overscrollBehavior: "contain",
-          background: "var(--code-bg)",
-          color: "var(--code-text)",
-          fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-          fontSize: "12px",
-          lineHeight: 1.7,
-          padding: "8px 0",
-        }}
-      >
-        {loading ? (
-          <div style={{ padding: "24px", color: "var(--text-secondary)", fontSize: "12px" }}>
-            {i18n.t("workspace.loading.file")}
-          </div>
-        ) : error ? (
-          <div
-            style={{
-              padding: "24px",
-              color: "var(--brand)",
-              fontSize: "12px",
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {i18n.t("workspace.error.file")}: {(error as Error).message}
-          </div>
-        ) : file?.type === "image" && file.data_base64 && file.mime ? (
-          <div
-            data-testid="workspace-image-preview"
-            style={{ padding: "24px", display: "flex", justifyContent: "center", alignItems: "flex-start" }}
-          >
-            <img
-              src={`data:${file.mime};base64,${file.data_base64}`}
-              alt={path ?? "preview"}
-              style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "6px" }}
-            />
-          </div>
-        ) : file?.type === "binary" ? (
-          <div style={{ padding: "24px", color: "var(--text-secondary)", fontSize: "12px" }}>
-            {i18n.t("workspace.binary")}
-          </div>
-        ) : (
-          lines.map((line, i) => {
-            const ln = i + 1;
-            const isVuln = vulnLines.has(ln);
-            return (
-              <div
-                key={ln}
-                data-ln={ln}
-                data-testid={isVuln ? "workspace-vuln-line" : undefined}
-                style={{
-                  display: "flex",
-                  padding: "0 14px",
-                  background: isVuln ? "var(--code-vuln-bg)" : "transparent",
-                  borderLeft: isVuln
-                    ? "3px solid var(--brand)"
-                    : "3px solid transparent",
-                  whiteSpace: "pre",
-                }}
-              >
-                <span
-                  style={{
-                    color: "var(--code-line-number)",
-                    userSelect: "none",
-                    display: "inline-block",
-                    width: "48px",
-                    textAlign: "right",
-                    marginRight: "14px",
-                    flexShrink: 0,
-                  }}
-                >
-                  {ln}
-                </span>
-                <span style={{ flex: 1, minWidth: 0 }}>{line}</span>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </>
-  );
-}
-
-function EmptyCodePlaceholder() {
-  return (
-    <div
-      data-testid="workspace-empty"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100%",
-        color: "var(--code-comment, #555)",
-        fontSize: "12px",
-        fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-        gap: "10px",
-      }}
-    >
-      <Icon name="code" size={28} style={{ opacity: 0.3 }} />
-      <span>{i18n.t("workspace.select")}</span>
     </div>
   );
 }

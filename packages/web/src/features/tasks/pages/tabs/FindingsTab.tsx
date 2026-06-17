@@ -15,6 +15,7 @@ import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon } from "../../../../shared/components/Icon.js";
 import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
 import { ReviewStatusBadge, ReviewStatusSelect, ReviewHistoryTimeline, ReviewNoteModal, REVIEW_STATUS_META } from "../../components/FindingReviewControls.js";
+import { CodeViewer, EmptyCodePlaceholder } from "../../components/CodeViewer.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Severity helpers                                                          */
@@ -776,9 +777,10 @@ export function FindingsTab() {
                       loading={fileLoading}
                       vulnLines={vulnLineSet}
                       activeLine={activeLine}
+                      testIdPrefix="findings"
                     />
                   ) : (
-                    <EmptyCodePlaceholder />
+                    <EmptyCodePlaceholder testId="findings-code-empty" label={i18n.t("findings.selectToView")} />
                   )}
                 </div>
               </div>
@@ -1147,167 +1149,6 @@ function FileTreeRow({
           {node.vulnCount > 99 ? "99+" : node.vulnCount}
         </span>
       )}
-    </div>
-  );
-}
-
-function CodeViewer({
-  path,
-  file,
-  loading,
-  vulnLines,
-  activeLine,
-}: {
-  path: string;
-  file: WorkspaceFile | undefined;
-  loading: boolean;
-  vulnLines: Set<number>;
-  activeLine: number | null;
-}) {
-  const streamRef = useRef<HTMLDivElement | null>(null);
-
-  // Scroll target line into view when selection changes.
-  useEffect(() => {
-    if (!file) return;
-    const target =
-      activeLine ?? (vulnLines.size > 0 ? Math.min(...Array.from(vulnLines)) : null);
-    if (!target) return;
-    const t = window.setTimeout(() => {
-      const el = streamRef.current?.querySelector<HTMLElement>(
-        `[data-ln="${target}"]`,
-      );
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 60);
-    return () => window.clearTimeout(t);
-  }, [file, activeLine, vulnLines]);
-
-  const lines = useMemo(() => (file?.content ?? "").split("\n"), [file]);
-
-  return (
-    <>
-      <div
-        data-testid="findings-code-header"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-          padding: "8px 14px",
-          borderBottom: "1px solid var(--border)",
-          background: "var(--bg-card)",
-          fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-          fontSize: "12px",
-          color: "var(--text-secondary)",
-          flexShrink: 0,
-        }}
-      >
-        <span
-          style={{
-            flex: 1,
-            minWidth: 0,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            color: "var(--text-primary)",
-          }}
-        >
-          {path}
-          {activeLine ? ` · ${i18n.t("workspace.lines")} ${activeLine}` : ""}
-        </span>
-        {file?.total_lines ? (
-          <span>
-            {file.total_lines.toLocaleString()} {i18n.t("workspace.lines")}
-          </span>
-        ) : null}
-      </div>
-
-      <div
-        ref={streamRef}
-        data-testid="findings-code-body"
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflow: "auto",
-          overscrollBehavior: "contain",
-          background: "var(--code-bg)",
-          color: "var(--code-text)",
-          fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-          fontSize: "12px",
-          lineHeight: 1.7,
-          padding: "8px 0",
-        }}
-      >
-        {loading ? (
-          <div style={{ padding: "24px", color: "#737373", fontSize: "12px" }}>
-            {i18n.t("workspace.loading.file")}
-          </div>
-        ) : file?.type === "binary" ? (
-          <div style={{ padding: "24px", color: "#737373", fontSize: "12px" }}>
-            {i18n.t("workspace.binary")}
-          </div>
-        ) : (
-          lines.map((line, i) => {
-            const ln = i + 1;
-            const isVuln = vulnLines.has(ln);
-            const isActive = ln === activeLine;
-            return (
-              <div
-                key={ln}
-                data-ln={ln}
-                data-testid={isVuln ? "findings-vuln-line" : undefined}
-                data-active={isActive || undefined}
-                style={{
-                  display: "flex",
-                  padding: "0 14px",
-                  background: isVuln ? "rgba(220,38,38,0.14)" : "transparent",
-                  borderLeft: isVuln
-                    ? isActive
-                      ? "4px solid var(--brand)"
-                      : "3px solid var(--brand)"
-                    : "3px solid transparent",
-                  whiteSpace: "pre",
-                }}
-              >
-                <span
-                  style={{
-                    color: "#555",
-                    userSelect: "none",
-                    display: "inline-block",
-                    width: "48px",
-                    textAlign: "right",
-                    marginRight: "14px",
-                    flexShrink: 0,
-                  }}
-                >
-                  {ln}
-                </span>
-                <span style={{ flex: 1, minWidth: 0 }}>{line}</span>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </>
-  );
-}
-
-function EmptyCodePlaceholder() {
-  return (
-    <div
-      data-testid="findings-code-empty"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100%",
-        color: "var(--code-comment, #555)",
-        fontSize: "12px",
-        fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-        gap: "10px",
-      }}
-    >
-      <Icon name="code" size={28} style={{ opacity: 0.3 }} />
-      <span>{i18n.t("findings.selectToView")}</span>
     </div>
   );
 }
