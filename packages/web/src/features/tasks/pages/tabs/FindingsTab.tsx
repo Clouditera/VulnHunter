@@ -618,6 +618,8 @@ export function FindingsTab() {
             display: "flex",
             flexDirection: "column",
             minWidth: 0,
+            minHeight: 0,
+            overflow: "hidden",
             background: "var(--bg-card)",
           }}
         >
@@ -700,7 +702,7 @@ export function FindingsTab() {
           </div>
 
           {/* Tab content — only one rendered at a time */}
-          <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+          <div style={{ flex: 1, minHeight: 0, overflow: rightView === "code" ? "hidden" : "auto" }}>
             {rightView === "detail" && (
               selectedFinding ? (
                 <FindingDetailPanel
@@ -721,7 +723,9 @@ export function FindingsTab() {
                 style={{
                   display: "flex",
                   flex: 1,
+                  height: "100%",
                   minHeight: 0,
+                  overflow: "hidden",
                 }}
               >
                 {/* Inline file tree (left side of code tab) */}
@@ -730,7 +734,9 @@ export function FindingsTab() {
                   style={{
                     width: "220px",
                     flexShrink: 0,
+                    minHeight: 0,
                     overflow: "auto",
+                    overscrollBehavior: "contain",
                     borderRight: "1px solid var(--border)",
                     background: "var(--bg-page)",
                     padding: "6px 0",
@@ -762,7 +768,7 @@ export function FindingsTab() {
                   )}
                 </div>
                 {/* Code viewer (right side of code tab) */}
-                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                   {viewPath ? (
                     <CodeViewer
                       path={viewPath}
@@ -1219,7 +1225,9 @@ function CodeViewer({
         data-testid="findings-code-body"
         style={{
           flex: 1,
+          minHeight: 0,
           overflow: "auto",
+          overscrollBehavior: "contain",
           background: "var(--code-bg)",
           color: "var(--code-text)",
           fontFamily: "'SF Mono', Menlo, Consolas, monospace",
