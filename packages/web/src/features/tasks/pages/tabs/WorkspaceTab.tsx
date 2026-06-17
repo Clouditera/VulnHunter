@@ -479,6 +479,8 @@ export function WorkspaceTab() {
             display: "flex",
             flexDirection: "column",
             minWidth: 0,
+            minHeight: 0,
+            overflow: "hidden",
           }}
         >
           {/* Search bar */}
@@ -528,7 +530,7 @@ export function WorkspaceTab() {
           {auditData?.summary ? <AuditProgressBar s={auditData.summary} /> : null}
 
           {/* Tree list */}
-          <div style={{ flex: 1, overflow: "auto", padding: "6px 0" }}>
+          <div style={{ flex: 1, minHeight: 0, overflow: "auto", overscrollBehavior: "contain", padding: "6px 0" }}>
             {treeLoading ? (
               <div style={TREE_MSG}>{i18n.t("workspace.loading.tree")}</div>
             ) : treeError || flat.length === 0 ? (
@@ -604,6 +606,8 @@ export function WorkspaceTab() {
             display: "flex",
             flexDirection: "column",
             minWidth: 0,
+            minHeight: 0,
+            overflow: "hidden",
             background: "var(--code-bg)",
           }}
         >
@@ -828,7 +832,9 @@ function CodeViewer({
         translate="no"
         style={{
           flex: 1,
+          minHeight: 0,
           overflow: "auto",
+          overscrollBehavior: "contain",
           background: "var(--code-bg)",
           color: "var(--code-text)",
           fontFamily: "'SF Mono', Menlo, Consolas, monospace",
