@@ -51,6 +51,16 @@ export interface FindingYaml {
     ev_score?: number | string;
     ev_priority?: string;
     ev_rationale?: string;
+    // VulnForge audit schema anchors. Only anchors[0] is projected into
+    // findings_meta for list/source-jump; full anchors remain in YAML detail.
+    anchors?: Array<{
+      file_path?: string;
+      line?: number | string;
+      function?: string;
+    }>;
+    // Engine review status is intentionally not mapped to platform
+    // findings_meta.review_status (user review state).
+    review_status?: string;
   };
   // raw_findings/ schema (vulnerability + metadata split)
   vulnerability?: {
@@ -77,6 +87,21 @@ export function toNumberOrNull(value: number | string | null | undefined): numbe
   if (value === null || value === undefined || value === "") return null;
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Coerce a line number that may arrive as number/string; invalid values become undefined. */
+function toLineNumber(value: number | string | null | undefined): number | undefined {
+  const n = toNumberOrNull(value);
+  return n !== null && Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+/** VulnForge audit schema has no severity; derive platform severity from CVSS. */
+export function severityFromCvss(score: number | null | undefined): Severity | undefined {
+  if (score == null) return undefined;
+  if (score >= 7) return "high";
+  if (score >= 4) return "medium";
+  if (score > 0) return "low";
+  return "info";
 }
 
 interface ExtractedMeta {
@@ -114,6 +139,15 @@ export function extractMeta(finding: FindingYaml): ExtractedMeta {
     ev_priority: m?.ev_priority ?? null,
     ev_rationale: m?.ev_rationale ?? null,
   };
+  const firstAnchor = Array.isArray(m?.anchors) ? m.anchors[0] : undefined;
+  const anchorFile = typeof firstAnchor?.file_path === "string" && firstAnchor.file_path.trim()
+    ? firstAnchor.file_path
+    : undefined;
+  const anchorFunction = typeof firstAnchor?.function === "string" && firstAnchor.function.trim()
+    ? firstAnchor.function
+    : undefined;
+  const anchorLine = toLineNumber(firstAnchor?.line);
+  const derivedSeverity = severityFromCvss(scoring.cvss_score);
 
   // If has vulnerability block (raw_findings schema), merge it with metadata
   if (v) {
@@ -121,10 +155,10 @@ export function extractMeta(finding: FindingYaml): ExtractedMeta {
       title: m?.title,
       vuln_type: v.vuln_type ?? m?.vuln_type,
       vuln_type_full_name: m?.vuln_type_full_name,
-      severity: v.severity ?? m?.severity,
-      file_path: (v.file_path ?? m?.file_path ?? "").replace(/^\/workspace\/src\//, ""),
-      line_number: v.line != null ? Number(v.line) : m?.line_number,
-      function: v.function ?? m?.function,
+      severity: derivedSeverity ?? v.severity ?? m?.severity,
+      file_path: (anchorFile ?? v.file_path ?? m?.file_path ?? "").replace(/^\/workspace\/src\//, ""),
+      line_number: anchorLine ?? toLineNumber(v.line) ?? toLineNumber(m?.line_number),
+      function: anchorFunction ?? v.function ?? m?.function,
       language: v.language ?? m?.language,
       group_id: m?.group_id,
       attack_surface: m?.attack_surface ?? v.source,
@@ -133,8 +167,19 @@ export function extractMeta(finding: FindingYaml): ExtractedMeta {
     };
   }
 
-  // judged/tp/ canonical schema — metadata block has everything
-  if (m) return { ...m, ...scoring };
+  // New VulnForge audit / judged canonical schema — metadata block has everything.
+  // Prefer anchors[0] for the platform's primary source jump. Full anchors stay
+  // in the YAML served by the detail endpoint.
+  if (m) {
+    return {
+      ...m,
+      severity: derivedSeverity ?? m.severity,
+      file_path: anchorFile ?? m.file_path,
+      line_number: anchorLine ?? toLineNumber(m.line_number),
+      function: anchorFunction ?? m.function,
+      ...scoring,
+    };
+  }
 
   return { ...scoring };
 }
@@ -274,9 +319,16 @@ async function indexOneYaml(
         severity = EXCLUDED.severity,
         severity_numeric = EXCLUDED.severity_numeric,
         vuln_type = EXCLUDED.vuln_type,
+        vuln_type_full = EXCLUDED.vuln_type_full,
         title = EXCLUDED.title,
+        cwe = EXCLUDED.cwe,
         primary_file = EXCLUDED.primary_file,
         primary_line = EXCLUDED.primary_line,
+        function_name = EXCLUDED.function_name,
+        language = EXCLUDED.language,
+        group_id = EXCLUDED.group_id,
+        attack_surface = EXCLUDED.attack_surface,
+        route_path = EXCLUDED.route_path,
         cvss_vector = EXCLUDED.cvss_vector,
         cvss_score = EXCLUDED.cvss_score,
         ev_vector = EXCLUDED.ev_vector,

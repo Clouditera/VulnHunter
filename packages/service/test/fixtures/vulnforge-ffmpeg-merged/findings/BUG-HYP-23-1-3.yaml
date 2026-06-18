@@ -1,0 +1,75 @@
+metadata:
+  title: OpenSSL DTLS 客户端未校验证书主机名
+  vuln_type: auth
+  cvss_vector: CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N
+  cvss_score: 7.4
+  ev_vector: EV:1.0/R:U/E:U/C:U/I:U
+  ev_score: 0.0
+  ev_priority: P3
+  ev_rationale: 历史静态 finding 按当前报告 schema 自动迁移；未重新评估利用价值。
+  review_status: reproduced
+  anchors:
+  - file_path: libavformat/tls_openssl.c
+    line: 764
+    function: dtls_start
+  cwe: CWE-297
+description:
+  background: FFmpeg 是多媒体处理框架；本报告涉及 libavformat/tls_openssl.c 中的历史静态 finding。
+  detailed_description: 'OpenSSL DTLS 后端在 `tls_verify=1` 时只启用 OpenSSL 的证书链验证，没有把 `dtls://` URL 中的目标主机名或 `verifyhost` 选项设置为证书名称校验目标。受信
+    CA 签发但 SAN/CN 不属于目标主机的证书 仍可完成 DTLS 客户端握手。普通 OpenSSL TLS 分支和其它 TLS 后端都有 hostname verification，对比说明 DTLS/OpenSSL 分支缺失了同等身份校验。
+
+
+    `ff_dtls_protocol` / `dtls://host:port?...tls_verify=1` 客户端连接
+
+
+    网络远端提供的证书链，以及调用方期望校验的 URL host/verifyhost
+
+
+    构建启用 `CONFIG_OPENSSL`，客户端使用 OpenSSL DTLS URLProtocol 并开启 `tls_verify`；远端证书链受信但证书名称 不匹配 `s->host`，且上层没有独立 fingerprint/证书绑定校验。
+
+
+    source: dtls:// URL/verifyhost 目标主机名与远端 DTLS peer 提供的 X.509 证书
+
+
+    sink: SSL_CTX_set_verify() 后未调用 SSL_set1_host()/X509_check_host() 即完成 DTLS 握手'
+  attack_description: 网络中间人或恶意 DTLS 端点使用任意受客户端信任 CA 签发、但不属于目标主机名的证书与 FFmpeg OpenSSL DTLS 客户端握手。由于客户端只验证证书链不验证名称，握手可被接受，攻击者随后可解密或篡改
+    DTLS 承载的媒体/控制数据； 在 DTLS-SRTP 使用场景中，还会控制握手导出的 SRTP keying material。
+code:
+  dataflow:
+  - step: 1
+    location: libavformat/tls.h:77-86
+    description: '`tls_verify` 和 `verifyhost` 作为 TLS/DTLS 公共客户端选项暴露，`verifyhost` 写入 `TLSShared.host`。'
+  - step: 2
+    location: libavformat/tls.c:45-73
+    description: 打开底层 UDP 前解析 query/AVOption，并在未显式设置时把 URL `underlying_host` 复制到 `c->host`。
+  - step: 3
+    location: libavformat/tls_openssl.c:755-766
+    description: OpenSSL DTLS 创建 context 并加载 CA 后，仅调用 `SSL_CTX_set_verify()`；代码注释确认没有匹配 hostname。
+  - step: 4
+    location: libavformat/tls_openssl.c:789-790
+    description: DTLS 客户端只把 `s->host` 传给 SNI，没有调用 `SSL_set1_host()` 或等价证书名称校验 API。
+  - step: 5
+    location: libavformat/tls_openssl.c:813-821,624-650
+    description: 握手完成后直接返回成功，没有读取 peer certificate 并执行 `X509_check_host()`。
+  - step: 6
+    location: libavformat/tls_openssl.c:869-883
+    description: 同文件普通 TLS 客户端路径设置 `SSL_set_hostflags()` 和 `SSL_set1_host()`，证明缺失仅存在于 DTLS/OpenSSL 分支。
+  vulnerable_code: "/* Note, this doesn't check that the peer certificate actually matches the requested hostname. */\nif\
+    \ (s->verify)\n    SSL_CTX_set_verify(c->ctx, SSL_VERIFY_PEER|SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);\n\n...\n\nif (!s->listen\
+    \ && !s->numerichost)\n    SSL_set_tlsext_host_name(c->ssl, s->host);"
+  fix_code: "if (s->verify)\n    SSL_CTX_set_verify(c->ctx, SSL_VERIFY_PEER|SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);\n\nif\
+    \ (!s->listen && !s->numerichost) {\n    SSL_set_hostflags(c->ssl, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);\n    if (!SSL_set1_host(c->ssl,\
+    \ s->host))\n        return AVERROR_EXTERNAL;\n    if (!SSL_set_tlsext_host_name(c->ssl, s->host))\n        return AVERROR_EXTERNAL;\n\
+    }"
+references:
+- libavformat/tls.h:77
+- libavformat/tls.h:86
+- libavformat/tls.c:45
+- libavformat/tls.c:72
+- libavformat/tls_openssl.c:653
+- libavformat/tls_openssl.c:764
+- libavformat/tls_openssl.c:789
+- libavformat/tls_openssl.c:813
+- libavformat/tls_openssl.c:869
+- libavformat/tls_gnutls.c:635
+- libavformat/tls_mbedtls.c:653

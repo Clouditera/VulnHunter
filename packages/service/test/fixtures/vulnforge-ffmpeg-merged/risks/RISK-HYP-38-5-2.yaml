@@ -1,0 +1,130 @@
+metadata:
+  title: "AV1/AAC codec string 生成信任 extradata_size 导致空指针拒绝服务风险"
+  vuln_type: nullptr
+  vuln_type_full_name: "NULL Pointer Dereference / Improper AVCodecParameters Validation"
+  severity: medium
+  permission_requirement: "无需认证；需目标应用、自定义 demuxer 或 mux API 使用者允许攻击者影响不自洽的 AVCodecParameters"
+  file_path: "libavformat/codecstring.c"
+  line_number: 181
+  function: "ff_make_codec_str"
+  source: "codec_id 为 AV1 或 AAC，extradata_size 为正但 extradata 为 NULL 的 AVCodecParameters"
+  sink: "ff_av1_parse_seq_header(par->extradata, par->extradata_size) / par->extradata[0] / AV_RB16(par->extradata)"
+  language: "C"
+  cwe: "CWE-476 / CWE-20"
+  cvss_vector: "CVSS:3.1/AV:L/AC:H/PR:N/UI:R/S:U/C:N/I:N/A:H"
+  cvss_score: 4.7
+description:
+  detailed_description: >-
+    `ff_make_codec_str()` 在 AV1 和 AAC codec string 分支把 `extradata_size` 当作可以安全读取 `extradata` 的证明。
+    AV1 分支只拒绝 size 为 0，随后把 `par->extradata` 传给 `ff_av1_parse_seq_header()`；该 parser 在 size 为正时立即读取
+    `buf[0]`。AAC 分支在 `extradata_size >= 2` 时直接读取 `par->extradata[0]` 与 `AV_RB16(par->extradata)`。
+    因此 public `av_mime_codec_str()`、HLS master playlist `CODECS` 生成、以及 ffprobe 的 `mime_codec_string` 输出在接收
+    “size 为正但指针为 NULL”的不自洽 `AVCodecParameters` 时可能崩溃。FFmpeg 常规 helper 和复制路径通常维护或清理该不变量，
+    所以该问题主要影响 public API/custom demuxer/HLS mux 集成场景，独立影响为拒绝服务。
+  entry_point: "av_mime_codec_str()、HLS write_codec_attr()/hls_write_header()、ffprobe show_stream()"
+  taint_source: "调用方或自定义/异常 demuxer 提供的 AVCodecParameters.extradata_size 与 extradata 指针"
+  trigger_condition: >-
+    `par->codec_id == AV_CODEC_ID_AV1 && par->extradata_size > 0 && par->extradata == NULL`，或
+    `par->codec_id == AV_CODEC_ID_AAC && par->extradata_size >= 2 && par->extradata == NULL`。
+code:
+  vulnerable_code: |-
+    /* libavformat/codecstring.c:177-184 */
+    } else if (par->codec_id == AV_CODEC_ID_AV1) {
+        AV1SequenceParameters seq;
+        int err;
+        if (!par->extradata_size)
+            return AVERROR(EINVAL);
+        if ((err = ff_av1_parse_seq_header(&seq, par->extradata,
+                                           par->extradata_size)) < 0)
+            return err;
+
+    /* libavformat/codecstring.c:204-213 */
+    } else if (par->codec_id == AV_CODEC_ID_AAC) {
+        int aot = 2;
+        if (par->extradata_size >= 2) {
+            aot = par->extradata[0] >> 3;
+            if (aot == 31)
+                aot = ((AV_RB16(par->extradata) >> 5) & 0x3f) + 32;
+        } else if (par->profile != AV_PROFILE_UNKNOWN)
+            aot = par->profile + 1;
+        av_bprintf(out, "mp4a.40.%d", aot);
+    }
+  fix_code: |-
+    /* 修复方向：进入依赖 extradata 的分支前同时校验 pointer 与 size。 */
+    } else if (par->codec_id == AV_CODEC_ID_AV1) {
+        if (!par->extradata || par->extradata_size <= 0)
+            return AVERROR(EINVAL);
+        ret = ff_av1_parse_seq_header(&seq, par->extradata,
+                                      par->extradata_size);
+        if (ret < 0)
+            return ret;
+    } else if (par->codec_id == AV_CODEC_ID_AAC) {
+        int aot = 2;
+        if (par->extradata_size >= 2) {
+            if (!par->extradata)
+                return AVERROR(EINVAL);
+            aot = par->extradata[0] >> 3;
+            if (aot == 31)
+                aot = ((AV_RB16(par->extradata) >> 5) & 0x3f) + 32;
+        } else if (par->profile != AV_PROFILE_UNKNOWN) {
+            aot = par->profile + 1;
+        }
+        av_bprintf(out, "mp4a.40.%d", aot);
+    }
+data_flow:
+  flow_summary: >-
+    不自洽 AVCodecParameters 从 public API、HLS 外层 stream 或 custom demuxer 进入 codec string helper；AV1/AAC 分支只根据
+    `extradata_size` 判断是否解析/读取；NULL `extradata` 到达 parser 或固定偏移读取并导致进程崩溃。
+  taint_path:
+    - step: 1
+      location: "libavformat/avformat.h:2993-3004; libavformat/codecstring.c:224-227"
+      description: "public `av_mime_codec_str()` 接收调用方提供的 `AVCodecParameters` 并直接转发给 `ff_make_codec_str()`。"
+    - step: 2
+      location: "fftools/ffprobe.c:1823-1825"
+      description: "ffprobe 在 stream 展示阶段对 demuxer 产出的 `codecpar` 调用 `av_mime_codec_str()`，没有额外 pointer-size 校验。"
+    - step: 3
+      location: "libavformat/hlsenc.c:2288-2331; libavformat/hlsenc.c:350-364"
+      description: "HLS header 阶段把外层 `AVStream.codecpar` 传入 `write_codec_attr()`，再调用 `ff_make_codec_str()`。"
+    - step: 4
+      location: "libavformat/codecstring.c:181-184; libavformat/av1.c:336-344"
+      description: "AV1 分支只检查 size，parser 在 size 为正时读取 `buf[0]`。"
+    - step: 5
+      location: "libavformat/codecstring.c:207-210"
+      description: "AAC 分支在 `extradata_size >= 2` 时直接读取 NULL `extradata`。"
+attack:
+  attack_payload_example: >-
+    结构性示例（非可运行）：上游传入一个 AV1 或 AAC stream 参数对象，使 `extradata_size` 声明为正数，但 `extradata` 指针为空，
+    然后触发 mime codec string、HLS master playlist 或 ffprobe stream metadata 输出。
+  attack_description: >-
+    目标在生成 codec metadata 时不会把该不自洽状态转换为 `AVERROR(EINVAL)`，而是在 AV1/AAC 分支解引用空指针，导致当前媒体处理任务或进程崩溃。
+remediation:
+  fix_recommendation: >-
+    在 `ff_make_codec_str()` 中为所有依赖 extradata 内容的分支统一执行 `extradata_size > 0` implies `extradata != NULL` 校验；
+    AAC 分支在读取两字节 AudioSpecificConfig 前要求 `extradata` 非 NULL；AV1 分支在调用 parser 前要求指针非 NULL 且 size 为正。
+    同时可在 public `av_mime_codec_str()` 或 mux/ffprobe 调用点增加防御式一致性断言，避免 custom demuxer/API 集成把无效 codecpar 带入文本生成边界。
+  fix_code_example: >-
+    对 AV1：`if (!par->extradata || par->extradata_size <= 0) return AVERROR(EINVAL);`；对 AAC：
+    `if (par->extradata_size >= 2 && !par->extradata) return AVERROR(EINVAL);`。
+references:
+  - "libavformat/codecstring.c:181"
+  - "libavformat/codecstring.c:183"
+  - "libavformat/codecstring.c:207"
+  - "libavformat/codecstring.c:224"
+  - "libavformat/av1.c:343"
+  - "libavformat/hlsenc.c:362"
+  - "libavformat/hlsenc.c:2330"
+  - "fftools/ffprobe.c:1824"
+  - "libavcodec/codec_par.h:61"
+related:
+  - file_path: "libavformat/hlsenc.c"
+    line_number: 350
+    function: "write_codec_attr"
+    source: "HLS 外层 AVStream.codecpar"
+    sink: "ff_make_codec_str() 生成 master playlist CODECS 属性"
+    brief_description: "HLS 内层 stream copy 不保护 `write_codec_attr()` 使用的外层原始 codecpar。"
+  - file_path: "fftools/ffprobe.c"
+    line_number: 1824
+    function: "show_stream"
+    source: "demuxer/custom demuxer 产出的 AVStream.codecpar"
+    sink: "av_mime_codec_str() 输出 mime_codec_string"
+    brief_description: "ffprobe 在元数据输出前未重新校验 extradata 指针与长度一致性。"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSafeWikiFilename, sortWikiPages, slimCoverageMap } from "../../src/features/wiki/routes.js";
+import { PROFILER_ARTIFACT_PATHS, isSafeWikiFilename, sortWikiPages, slimCoverageMap } from "../../src/features/wiki/routes.js";
 
 describe("isSafeWikiFilename", () => {
   it("accepts plain .md basenames", () => {
@@ -36,6 +36,16 @@ describe("sortWikiPages", () => {
   it("works without index/overview present", () => {
     const ordered = sortWikiPages(["b.md", "a.md"]);
     expect(ordered.map((p) => p.name)).toEqual(["a.md", "b.md"]);
+  });
+});
+
+describe("PROFILER_ARTIFACT_PATHS", () => {
+  it("tries root, new knowledge fallback, then legacy profiler path", () => {
+    expect(PROFILER_ARTIFACT_PATHS).toEqual([
+      "profiler.yaml",
+      "knowledge/profiler.yaml",
+      "profiler/project-profiler.yaml",
+    ]);
   });
 });
 
