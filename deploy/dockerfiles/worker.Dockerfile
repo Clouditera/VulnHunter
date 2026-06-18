@@ -1,4 +1,4 @@
-FROM node:20-slim AS base
+FROM node:22-slim AS base
 WORKDIR /opt/vulnagent
 
 # System dependencies (python3 + pyyaml needed by feature-aggregator, project-profiler)
@@ -7,8 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-yaml \
     && rm -rf /var/lib/apt/lists/*
 
-# pi CLI (youngflow spawns it for each stage)
-RUN npm install -g @mariozechner/pi-coding-agent \
+# pi CLI (youngflow spawns it for each stage). Pin the fork validated by VulnForge.
+RUN npm install -g @earendil-works/pi-coding-agent@0.79.6 \
     && pi install npm:pi-mcp-adapter
 
 # youngflow — self-contained release binary (v0.3.8)
@@ -20,10 +20,12 @@ RUN chmod +x /usr/local/bin/youngflow \
 COPY flows/vulnforge /opt/vulnagent/flows/vulnforge
 RUN cd /opt/vulnagent/flows/vulnforge/extensions/output-contract \
     && npm install --omit=dev --no-audit --no-fund \
-    && npm install --omit=dev --no-audit --no-fund @earendil-works/pi-coding-agent
+    && npm install --omit=dev --no-audit --no-fund @earendil-works/pi-coding-agent@0.79.6
 RUN cd /opt/vulnagent/flows/vulnforge/extensions/code-reading-coverage \
     && npm init -y >/dev/null \
-    && npm install --omit=dev --no-audit --no-fund @mariozechner/pi-coding-agent @mariozechner/pi-ai
+    && npm install --omit=dev --no-audit --no-fund \
+      @mariozechner/pi-coding-agent@npm:@earendil-works/pi-coding-agent@0.79.6 \
+      @mariozechner/pi-ai@npm:@earendil-works/pi-ai@0.79.6
 COPY flows/vulnagent-report /opt/vulnagent/flows/vulnagent-report
 
 # Worker bridge (for chat/report modes)

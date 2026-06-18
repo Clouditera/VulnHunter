@@ -38,14 +38,13 @@ echo "[scan] Preflight OK: python3 + VulnForge audit flow available" >&2
 # `${env.V_DEFAULT_MODEL}` / `${env.V_STRONG_MODEL}` (flow model env
 # interpolation, v0.3.7). So we generate, at scan start, from the platform
 # credential env:
-#   - $FLOW_DIR/models.json : one pi-native provider/model definition
-#   - $FLOW_DIR/.env        : V_DEFAULT_MODEL / V_STRONG_MODEL + standard key env
+#   - $FLOW_DIR/models.json : pi-native provider/API details
+#   - $FLOW_DIR/.env        : V_DEFAULT_MODEL / V_STRONG_MODEL + API key env
 #
-# Important: pi does not expand `apiKey: "$ENVVAR"` inside models.json; it
-# treats it as a literal key. Therefore models.json must stay key-free and the
-# provider must be named so pi can resolve the key from process env
-# (OPENAI_API_KEY / ANTHROPIC_API_KEY / ZAI_API_KEY). The real key is injected
-# via .env only.
+# Current worker pi is @earendil-works/pi-coding-agent; its config resolver
+# supports $ENV / ${ENV} templates in models.json. Keep VulnForge's natural
+# three-layer shape: models.json points at an API-key env var, .env carries the
+# secret, and flow.yaml selects model names via ${env.*}.
 # ---------------------------------------------------------------------------
 MODEL_PROTO_TYPE="${MODEL_PROTO_TYPE:-openai-completions}"
 LLM_MODEL_NAME="${LLM_MODEL_NAME:-}"
@@ -98,21 +97,12 @@ if not api_type:
     )
     sys.exit(1)
 
-# Pick a provider name with built-in pi env-key lookup. Custom provider names
-# such as `platform` are listed by pi but cannot resolve keys unless the raw key
-# is embedded in models.json, which we forbid.
+PROVIDER = "platform"
+API_KEY_ENV = "PLATFORM_API_KEY"
+
 lo = f"{model_id} {base_url}".lower()
 is_deepseek = "deepseek" in lo
 is_zai = (not is_deepseek) and ("glm" in lo or "bigmodel" in lo or "zhipu" in lo or "z.ai" in lo)
-if api_type == "anthropic-messages":
-    PROVIDER = "anthropic"
-elif is_zai:
-    PROVIDER = "zai"
-else:
-    # Includes OpenAI-compatible custom endpoints such as DeepSeek; baseUrl in
-    # models.json still points at the custom endpoint, while OPENAI_API_KEY
-    # supplies the platform credential.
-    PROVIDER = "openai"
 
 # Reasoning effort: only known thinking levels become a model suffix.
 THINKING_LEVELS = {"low", "medium", "high", "xhigh"}
@@ -133,6 +123,7 @@ if is_deepseek:
 
 provider_cfg = {
     "api": api_type,
+    "apiKey": f"${API_KEY_ENV}",
     "models": [model_entry],
 }
 if base_url:
@@ -155,14 +146,11 @@ if [ -z "$V_DEFAULT_MODEL" ]; then
   exit 1
 fi
 
-# Write .env for youngflow: model selection + standard provider API key envs +
-# engine tuning. enable_poc is intentionally NOT set (dynamic reproduction is
-# out of scope). We set all compatible standard key envs to cover provider
-# selection without ever writing the secret to models.json.
+# Write .env for youngflow: model selection + API key + engine tuning.
+# enable_poc is intentionally NOT set (dynamic reproduction is out of scope).
+# The secret stays in .env; models.json contains only the env-var name.
 cat > "$FLOW_DIR/.env" << EOF
-OPENAI_API_KEY=${LLM_API_KEY}
-ANTHROPIC_API_KEY=${LLM_API_KEY}
-ZAI_API_KEY=${LLM_API_KEY}
+PLATFORM_API_KEY=${LLM_API_KEY}
 V_DEFAULT_MODEL=${V_DEFAULT_MODEL}
 V_STRONG_MODEL=${V_DEFAULT_MODEL}
 YOUNGFLOW_IDLE_TIMEOUT=${YOUNGFLOW_IDLE_TIMEOUT:-3600}
