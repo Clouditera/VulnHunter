@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN npm install -g @mariozechner/pi-coding-agent \
     && pi install npm:pi-mcp-adapter
 
-# youngflow — self-contained release binary (v0.2.14)
+# youngflow — self-contained release binary (v0.3.8)
 COPY submodules/youngflow/release/youngflow-linux-x64 /usr/local/bin/youngflow
 RUN chmod +x /usr/local/bin/youngflow \
     && youngflow --version
@@ -23,7 +23,7 @@ RUN cd /opt/vulnagent/flows/vulnforge/extensions/output-contract \
     && npm install --omit=dev --no-audit --no-fund @earendil-works/pi-coding-agent
 RUN cd /opt/vulnagent/flows/vulnforge/extensions/code-reading-coverage \
     && npm init -y >/dev/null \
-    && npm install --omit=dev --no-audit --no-fund @mariozechner/pi-coding-agent
+    && npm install --omit=dev --no-audit --no-fund @mariozechner/pi-coding-agent @mariozechner/pi-ai
 COPY flows/vulnagent-report /opt/vulnagent/flows/vulnagent-report
 
 # Worker bridge (for chat/report modes)

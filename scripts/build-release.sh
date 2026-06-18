@@ -36,8 +36,8 @@ JSON
 
 pnpm turbo run build --filter=@vulnagent/service --filter=@vulnagent/web
 pnpm --filter @vulnagent/worker-bridge build
-if [[ ! -f flows/vulnforge/flow.deep.yaml ]]; then
-  echo "missing flows/vulnforge/flow.deep.yaml; run git submodule update --init --recursive" >&2
+if [[ ! -f flows/vulnforge/flow.audit.yaml ]]; then
+  echo "missing flows/vulnforge/flow.audit.yaml; run git submodule update --init --recursive" >&2
   exit 1
 fi
 if [[ ! -f flows/vulnforge/extensions/output-contract/package.json ]]; then
