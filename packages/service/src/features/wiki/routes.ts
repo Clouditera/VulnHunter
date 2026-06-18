@@ -71,6 +71,12 @@ async function listMinioKeys(bucket: string, prefix: string): Promise<string[]> 
 
 /* ── Wiki data loader ── */
 
+export const PROFILER_ARTIFACT_PATHS = [
+  "profiler.yaml",                    // older VulnForge root output
+  "knowledge/profiler.yaml",          // new VulnForge audit knowledge output
+  "profiler/project-profiler.yaml",   // legacy structured flow
+];
+
 interface WikiData {
   profiler: unknown;
   reports: { name: string; format: string; content: string }[];
@@ -81,7 +87,9 @@ interface WikiData {
 
 function loadLocalWikiData(outDir: string): WikiData {
   // 1. Profiler
-  const profilerRaw = readLocalText(join(outDir, "profiler", "project-profiler.yaml"));
+  const profilerRaw = PROFILER_ARTIFACT_PATHS
+    .map((p) => readLocalText(join(outDir, ...p.split("/"))))
+    .find((raw): raw is string => raw !== null);
   const profiler = profilerRaw ? yaml.load(profilerRaw) : null;
 
   // 2. Reports
@@ -116,7 +124,11 @@ function loadLocalWikiData(outDir: string): WikiData {
 }
 
 async function loadMinioWikiData(bucket: string, prefix: string): Promise<WikiData> {
-  const profilerRaw = await readMinioText(bucket, `${prefix}profiler/project-profiler.yaml`);
+  let profilerRaw: string | null = null;
+  for (const path of PROFILER_ARTIFACT_PATHS) {
+    profilerRaw = await readMinioText(bucket, `${prefix}${path}`);
+    if (profilerRaw !== null) break;
+  }
   const profiler = profilerRaw ? yaml.load(profilerRaw) : null;
 
   const reports: WikiData["reports"] = [];
@@ -324,11 +336,10 @@ wikiRouter.get("/:id/profiler", async (c) => {
   const config = loadConfig();
   const isRunning = task.state === "running" || task.state === "paused";
 
-  // VulnForge writes profiler.yaml at output_dir root; legacy flow used
-  // profiler/project-profiler.yaml. Try VulnForge path first, then legacy.
-  let raw = await readArtifact(task.id, config, "profiler.yaml", isRunning);
-  if (raw === null) {
-    raw = await readArtifact(task.id, config, "profiler/project-profiler.yaml", isRunning);
+  let raw: string | null = null;
+  for (const path of PROFILER_ARTIFACT_PATHS) {
+    raw = await readArtifact(task.id, config, path, isRunning);
+    if (raw !== null) break;
   }
   if (raw === null) return c.json({ profiler: null });
 

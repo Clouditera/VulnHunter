@@ -1,42 +1,54 @@
+import { readFileSync } from "node:fs";
+import { load as yamlLoad } from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { extractMeta, toNumberOrNull } from "../../src/features/findings/indexer.js";
+import { extractMeta, severityFromCvss, toNumberOrNull, type FindingYaml } from "../../src/features/findings/indexer.js";
+
+function loadFixture(rel: string): FindingYaml {
+  return yamlLoad(readFileSync(new URL(`../fixtures/vulnforge-ffmpeg-merged/${rel}`, import.meta.url), "utf-8")) as FindingYaml;
+}
 
 describe("extractMeta — CVSS/EV scoring", () => {
-  it("extracts CVSS + EV fields from canonical VulnForge metadata", () => {
-    const meta = extractMeta({
-      metadata: {
-        vuln_type: "bof",
-        vuln_type_full_name: "Off-by-One",
-        severity: "high",
-        file_path: "src/openvpn/dhcp.c",
-        line_number: 277,
-        cwe: "CWE-193 / CWE-787",
-        cvss_vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:H",
-        cvss_score: 7.1,
-        ev_vector: "EV:1.0/R:M/E:D/C:D/I:D",
-        ev_score: 7,
-        ev_priority: "P1",
-        ev_rationale: "EV rationale text",
-      },
-    });
-    expect(meta.cvss_vector).toBe("CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:H");
-    expect(meta.cvss_score).toBe(7.1);
-    expect(meta.ev_vector).toBe("EV:1.0/R:M/E:D/C:D/I:D");
-    expect(meta.ev_score).toBe(7);
-    expect(meta.ev_priority).toBe("P1");
-    expect(meta.ev_rationale).toBe("EV rationale text");
+  it("extracts current ffmpeg-merged finding schema: title, anchors[0], CVSS-derived severity, EV=0", () => {
+    const meta = extractMeta(loadFixture("findings/BUG-HYP-23-1-3.yaml"));
+    expect(meta.title).toBe("OpenSSL DTLS 客户端未校验证书主机名");
+    expect(meta.vuln_type).toBe("auth");
+    expect(meta.cwe).toBe("CWE-297");
+    expect(meta.cvss_vector).toBe("CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N");
+    expect(meta.cvss_score).toBe(7.4);
     expect(meta.severity).toBe("high");
+    expect(meta.file_path).toBe("libavformat/tls_openssl.c");
+    expect(meta.line_number).toBe(764);
+    expect(meta.function).toBe("dtls_start");
+    expect(meta.ev_vector).toBe("EV:1.0/R:U/E:U/C:U/I:U");
+    expect(meta.ev_score).toBe(0);
+    expect(meta.ev_priority).toBe("P3");
+    expect(meta.ev_rationale).toContain("历史静态 finding");
   });
 
-  it("extracts engine title from canonical metadata", () => {
+  it("extracts ffmpeg-merged risk transition schema with file_path/line fallback", () => {
+    const meta = extractMeta(loadFixture("risks/RISK-HYP-38-5-2.yaml"));
+    expect(meta.title).toBe("AV1/AAC codec string 生成信任 extradata_size 导致空指针拒绝服务风险");
+    expect(meta.cvss_score).toBe(4.7);
+    expect(meta.severity).toBe("medium");
+    expect(meta.ev_score).toBeNull();
+    expect(meta.file_path).toBe("libavformat/codecstring.c");
+    expect(meta.line_number).toBe(181);
+    expect(meta.function).toBe("ff_make_codec_str");
+  });
+
+  it("derives severity from CVSS when metadata.severity is absent", () => {
     const meta = extractMeta({
       metadata: {
-        title: "get_instance_fn 路径遍历导致任意 Python 文件加载执行 (RCE)",
+        title: "current schema finding",
         vuln_type: "path",
-        severity: "high",
+        cvss_score: 4.0,
+        anchors: [{ file_path: "app.py", line: "12", function: "load" }],
       },
     });
-    expect(meta.title).toBe("get_instance_fn 路径遍历导致任意 Python 文件加载执行 (RCE)");
+    expect(meta.severity).toBe("medium");
+    expect(meta.file_path).toBe("app.py");
+    expect(meta.line_number).toBe(12);
+    expect(meta.function).toBe("load");
   });
 
   it("leaves title undefined for raw_findings schema without title", () => {
@@ -64,6 +76,22 @@ describe("extractMeta — CVSS/EV scoring", () => {
     expect(meta.ev_score).toBeNull();
     expect(meta.ev_priority).toBeNull();
     expect(meta.ev_rationale).toBeNull();
+    expect(meta.file_path).toBe("app.py");
+    expect(meta.line_number).toBe(7);
+  });
+
+  it("handles missing/invalid anchors without crashing", () => {
+    const meta = extractMeta({
+      metadata: {
+        title: "bad anchor",
+        vuln_type: "misc",
+        cvss_score: 0,
+        anchors: [{ file_path: "", line: "not-a-number" }],
+      },
+    });
+    expect(meta.severity).toBe("info");
+    expect(meta.file_path).toBeUndefined();
+    expect(meta.line_number).toBeUndefined();
   });
 
   it("handles raw_findings vulnerability-block schema with scoring fallback", () => {
@@ -81,6 +109,17 @@ describe("extractMeta — CVSS/EV scoring", () => {
     expect(meta.line_number).toBe(12);
     expect(meta.cvss_score).toBe(9.1);
     expect(meta.ev_priority).toBe("P0");
+  });
+});
+
+describe("severityFromCvss", () => {
+  it("maps CVSS to platform severity without critical tier", () => {
+    expect(severityFromCvss(9.8)).toBe("high");
+    expect(severityFromCvss(7)).toBe("high");
+    expect(severityFromCvss(4)).toBe("medium");
+    expect(severityFromCvss(0.1)).toBe("low");
+    expect(severityFromCvss(0)).toBe("info");
+    expect(severityFromCvss(null)).toBeUndefined();
   });
 });
 

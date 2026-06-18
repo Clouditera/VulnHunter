@@ -4,7 +4,7 @@
  */
 
 import { join } from "node:path";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { load as yamlLoad } from "js-yaml";
 
 import { execSync } from "node:child_process";
@@ -101,6 +101,11 @@ export function missingCredentialFailureReason(credId?: string | null): string {
 const INCREMENTAL_INDEX_INTERVAL_MS = 90_000;
 /** Only sync lightweight business artifacts mid-scan (skip GB-scale session logs). */
 const INCREMENTAL_SYNC_DIRS = ["findings", "risks", "knowledge"];
+const PROFILER_ARTIFACT_PATHS = [
+  "profiler.yaml",
+  "knowledge/profiler.yaml",
+  "profiler/project-profiler.yaml",
+];
 
 export class TaskScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -443,7 +448,10 @@ export class TaskScheduler {
 
     // 1. Profiler data
     try {
-      const profilerPath = join(hostWorkDir, "out", "profiler", "project-profiler.yaml");
+      const profilerPath = PROFILER_ARTIFACT_PATHS
+        .map((p) => join(hostWorkDir, "out", ...p.split("/")))
+        .find((p) => existsSync(p));
+      if (!profilerPath) throw new Error("profiler artifact not found");
       const raw = readFileSync(profilerPath, "utf-8");
       const profiler = yamlLoad(raw) as Record<string, unknown>;
       const techStack = (profiler.tech_stack ?? profiler) as Record<string, unknown>;
