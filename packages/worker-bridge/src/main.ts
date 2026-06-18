@@ -80,6 +80,15 @@ const credProviderMap = new Map<string, { providerKey: string; modelId: string }
 const noAuthProxyTargets = new Map<string, string>();
 const NO_AUTH_DUMMY_KEY = "vulnagent-no-auth";
 
+function getPiDir(): string {
+  return join(process.env.HOME ?? "/root", ".pi", "agent");
+}
+
+function getMcpAdapterPath(): string {
+  return process.env.PI_MCP_ADAPTER_PATH
+    ?? join(getPiDir(), "npm", "node_modules", "pi-mcp-adapter");
+}
+
 function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "");
 }
@@ -89,7 +98,7 @@ function noAuthProxyBaseUrl(targetKey: string): string {
 }
 
 function setupPiConfig(): void {
-  const piDir = join(process.env.HOME ?? "/root", ".pi", "agent");
+  const piDir = getPiDir();
   mkdirSync(piDir, { recursive: true });
 
   const providers: Record<string, unknown> = {};
@@ -108,7 +117,7 @@ function setupPiConfig(): void {
       models: [{ id: MODEL_NAME, input: ["text", "image"], contextWindow: CONTEXT_WINDOW, maxTokens: 16384 }],
     };
     process.env.VH_LLM_API_KEY = API_KEY || NO_AUTH_DUMMY_KEY;
-    providerConfig.apiKey = "VH_LLM_API_KEY";
+    providerConfig.apiKey = "$VH_LLM_API_KEY";
     if (!API_KEY) {
       noAuthProxyTargets.set("primary", stripTrailingSlash(BASE_URL));
     }
@@ -137,7 +146,7 @@ function setupPiConfig(): void {
             models: [{ id: cred.model_id, input: ["text", "image"], contextWindow: parsePositiveInt(String(cred.context_window_tokens ?? ""), DEFAULT_CONTEXT_WINDOW_TOKENS), maxTokens: 16384 }],
           };
           process.env[apiKeyEnv] = cred.api_key || NO_AUTH_DUMMY_KEY;
-          providerConfig.apiKey = apiKeyEnv;
+          providerConfig.apiKey = `$${apiKeyEnv}`;
           if (!cred.api_key) {
             noAuthProxyTargets.set(cred.id, stripTrailingSlash(cred.base_url));
           }
@@ -187,7 +196,7 @@ function spawnPi(): ChildProcess {
     "--model", modelStr,
     "--no-skills",
     "--no-extensions",
-    "-e", "/usr/local/lib/node_modules/pi-mcp-adapter",
+    "-e", getMcpAdapterPath(),
     "--no-prompt-templates",
     "--no-themes",
   ];
@@ -214,7 +223,7 @@ function spawnPi(): ChildProcess {
 
   console.log(`[bridge] Spawning pi: pi ${args.join(" ")}`);
 
-  const piDir = join(process.env.HOME ?? "/root", ".pi", "agent");
+  const piDir = getPiDir();
   const child = spawn("pi", args, {
     stdio: ["pipe", "pipe", "pipe"],
     cwd: "/workspace",
@@ -338,7 +347,7 @@ function generateTitle(messages: Array<{ role: string; content: string }>, crede
       : BASE_URL
         ? `vulnagent/${MODEL_NAME}`
         : `${MODEL_PROTO}/${MODEL_NAME}`;
-    const piDir = join(process.env.HOME ?? "/root", ".pi", "agent");
+    const piDir = getPiDir();
     const tmpSession = join(mkdtempSync(join(tmpdir(), "va-chat-title-")), "session.jsonl");
     const prompt = [
       "请根据下面第一轮对话生成一个会话标题。",

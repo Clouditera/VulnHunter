@@ -114,7 +114,7 @@ export async function diagnoseModelRuntimeCredential(cred: DecryptedLlmCredentia
         MODE: "chat",
         SESSION_ID: diagId,
         SESSION_DIR: "/workspace/chat-session",
-        SERVICE_URL: `http://vulnagent-service:${config.port}`,
+        SERVICE_URL: config.docker.workerServiceUrl,
         CHAT_WORKER_TOKEN: diagId,
         BRIDGE_PORT: "8080",
         IDLE_TIMEOUT_MIN: "2",

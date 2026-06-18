@@ -59,7 +59,7 @@ export async function spawnScanWorker(
       MINIO_ACCESS_KEY: config.minio.accessKey,
       MINIO_SECRET_KEY: config.minio.secretKey,
       MINIO_BUCKET: config.minio.bucket,
-      SERVICE_URL: `http://vulnagent-service:${config.port}`,
+      SERVICE_URL: config.docker.workerServiceUrl,
       ...llmEnv,
     },
   });

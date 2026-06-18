@@ -255,7 +255,7 @@ export class ChatSession {
         SESSION_DIR: "/workspace/chat-session",
         ...credentialToWorkerEnv(cred),
         ALL_CREDENTIALS: allCredsJson,
-        SERVICE_URL: `http://vulnagent-service:${config.port}`,
+        SERVICE_URL: config.docker.workerServiceUrl,
         CHAT_WORKER_TOKEN: this.sessionId,
         CHAT_USER_ID: queryCtx.userId,
         CHAT_USER_ROLE: queryCtx.role,

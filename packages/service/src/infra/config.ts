@@ -30,6 +30,7 @@ export interface ServiceConfig {
     workerImage: string;
     evalWorkerImage: string;
     network: string;
+    workerServiceUrl: string;
   };
   log: {
     level: string;
@@ -62,6 +63,7 @@ export function loadConfig(): ServiceConfig {
       workerImage: optionalEnv("WORKER_IMAGE", "vulnagent-worker:latest"),
       evalWorkerImage: optionalEnv("EVAL_WORKER_IMAGE", "vulnagent-eval-worker:latest"),
       network: optionalEnv("DOCKER_NETWORK", "vulnagent-internal"),
+      workerServiceUrl: optionalEnv("WORKER_SERVICE_URL", "http://service:28080"),
     },
     log: {
       level: optionalEnv("LOG_LEVEL", "info"),
