@@ -1,4 +1,5 @@
 FROM node:22-slim AS base
+ENV HOME=/root
 WORKDIR /opt/vulnagent
 
 # System dependencies (python3 + pyyaml needed by feature-aggregator, project-profiler)
