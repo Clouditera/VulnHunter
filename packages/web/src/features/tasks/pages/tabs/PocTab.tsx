@@ -200,11 +200,33 @@ export function PocTab() {
           overflow: "hidden",
         }}
       >
+        {/* Soft-deprecation banner */}
+        <div
+          data-testid="poc-deprecated-banner"
+          style={{
+            margin: "12px 16px",
+            padding: "10px 14px",
+            borderRadius: "8px",
+            border: "1px solid #bfdbfe",
+            background: "var(--bg-info)",
+            color: "var(--text-primary)",
+            fontSize: "12.5px",
+            lineHeight: 1.5,
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <Icon name="info" size={14} style={{ color: "#2563eb", flexShrink: 0 }} />
+          <span>{i18n.t("poc.deprecated.banner")}</span>
+        </div>
+
         {/* Stats bar */}
         <div
           style={{
             padding: "10px 16px",
             borderBottom: "1px solid var(--divider)",
+            borderTop: "1px solid var(--divider)",
             fontSize: "11px",
             display: "flex",
             flexWrap: "wrap",
@@ -263,8 +285,10 @@ export function PocTab() {
         {/* Footer — Generate button */}
         <div style={{ padding: "12px 16px", borderTop: "1px solid var(--divider)", flexShrink: 0 }}>
           <button
-            onClick={() => setShowGenerateModal(true)}
-            disabled={selected.size === 0}
+            type="button"
+            data-testid="poc-generate-disabled"
+            title={i18n.t("poc.deprecated.tip")}
+            disabled
             style={{
               width: "100%",
               padding: "9px 0",
@@ -272,13 +296,13 @@ export function PocTab() {
               border: "none",
               fontSize: "13px",
               fontWeight: 600,
-              cursor: selected.size > 0 ? "pointer" : "not-allowed",
-              background: selected.size > 0 ? "var(--brand)" : "var(--bg-disabled, #e5e7eb)",
-              color: selected.size > 0 ? "var(--btn-primary-text, #fff)" : "var(--text-secondary)",
-              opacity: selected.size > 0 ? 1 : 0.6,
+              cursor: "not-allowed",
+              background: "var(--bg-disabled, #e5e7eb)",
+              color: "var(--text-secondary)",
+              opacity: 0.6,
             }}
           >
-            生成 POC{selected.size > 0 ? ` (已选 ${selected.size})` : ""}
+            {i18n.t("poc.deprecated.btn")}
           </button>
         </div>
       </div>
@@ -307,10 +331,11 @@ export function PocTab() {
             onPendingClearProcessed={() => setPendingClearForFinding(null)}
           />
         ) : (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-secondary)", fontSize: "13px" }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "18px", color: "var(--text-secondary)", fontSize: "13px", padding: "24px" }}>
+            <DynamicReproPlaceholder />
             <div style={{ textAlign: "center" }}>
               <Icon name="chevron-left" size={32} style={{ opacity: 0.3, marginBottom: "12px" }} />
-              <div>选择漏洞查看 POC 详情</div>
+              <div>选择漏洞查看历史 POC 详情</div>
             </div>
           </div>
         )}
@@ -346,6 +371,50 @@ export function PocTab() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function DynamicReproPlaceholder() {
+  return (
+    <div
+      data-testid="dynamic-repro-placeholder"
+      style={{
+        width: "min(420px, 100%)",
+        border: "1px dashed var(--border)",
+        borderRadius: "10px",
+        background: "var(--bg-page)",
+        padding: "40px 24px",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "10px",
+        textAlign: "center",
+      }}
+    >
+      <div style={{ fontSize: "28px", color: "var(--text-secondary)", opacity: 0.5, lineHeight: 1 }}>✦</div>
+      <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-primary)" }}>{i18n.t("dynamicRepro.title")}</div>
+      <div style={{ fontSize: "12.5px", color: "var(--text-secondary)", lineHeight: 1.6 }}>{i18n.t("dynamicRepro.subtitle")}</div>
+      <button
+        type="button"
+        disabled
+        style={{
+          marginTop: "4px",
+          padding: "7px 16px",
+          border: "none",
+          borderRadius: "6px",
+          background: "var(--bg-disabled, #e5e7eb)",
+          color: "var(--text-secondary)",
+          fontSize: "12px",
+          fontWeight: 600,
+          cursor: "not-allowed",
+          opacity: 0.65,
+          fontFamily: "inherit",
+        }}
+      >
+        {i18n.t("dynamicRepro.btn")}
+      </button>
     </div>
   );
 }
@@ -694,31 +763,24 @@ function ScriptOutputPanel({
             <Icon name="upload" size={12} style={{ transform: "rotate(180deg)" }} />
             下载
           </button>
-          <button
-            onClick={handleRunAgainClick}
-            disabled={!hasScript || isRunning || executionPending}
+          <span
+            data-testid="poc-readonly-badge"
+            title={i18n.t("poc.deprecated.tip")}
             style={{
               padding: "5px 12px",
-              border: "none",
               borderRadius: "5px",
-              background: hasScript && !isRunning && !executionPending ? "var(--brand)" : "var(--bg-disabled)",
-              color: hasScript && !isRunning && !executionPending ? "var(--btn-primary-text, #fff)" : "var(--text-secondary)",
+              background: "var(--bg-disabled)",
+              color: "var(--text-secondary)",
               fontSize: "12px",
               fontWeight: 600,
-              cursor: hasScript && !isRunning && !executionPending ? "pointer" : "not-allowed",
               display: "inline-flex",
               alignItems: "center",
               gap: "4px",
-              fontFamily: "inherit",
             }}
           >
-            {(isRunning || executionPending) ? (
-              <Icon name="loader" size={12} style={{ animation: "spin 1s linear infinite" }} />
-            ) : (
-              <Icon name="activity" size={12} />
-            )}
-            {(isRunning || executionPending) ? "执行中…" : "再次执行"}
-          </button>
+            <Icon name="lock" size={12} />
+            历史只读
+          </span>
         </div>
       </div>
 
@@ -915,26 +977,8 @@ function ScriptOutputPanel({
               <div style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: "12px", lineHeight: 1.7, padding: "24px" }}>
                 尚未执行 POC
                 {hasScript && (
-                  <div style={{ marginTop: "12px" }}>
-                    <button
-                      onClick={handleRunAgainClick}
-                      style={{
-                        padding: "6px 14px",
-                        border: "none",
-                        borderRadius: "5px",
-                        background: "var(--brand)",
-                        color: "#fff",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "5px",
-                        fontFamily: "inherit",
-                      }}
-                    >
-                      <Icon name="activity" size={12} /> 立即执行
-                    </button>
+                  <div style={{ marginTop: "12px", color: "var(--text-secondary)", fontSize: "11.5px" }}>
+                    {i18n.t("poc.deprecated.tip")}
                   </div>
                 )}
               </div>

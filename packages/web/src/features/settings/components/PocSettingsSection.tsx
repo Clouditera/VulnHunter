@@ -19,6 +19,7 @@ export function PocSettingsSection() {
     queryFn: () => api.settings.getPocSettings(),
   });
   const settings = data?.settings;
+  const deprecated = true;
 
   const [serverUrl, setServerUrl] = useState("");
   const [token, setToken] = useState("");
@@ -76,8 +77,28 @@ export function PocSettingsSection() {
         <p style={HEADER_DESC}>{i18n.t("settings.poc.desc")}</p>
       </div>
 
+      <div
+        data-testid="poc-settings-deprecated-banner"
+        style={{
+          marginBottom: "16px",
+          padding: "10px 14px",
+          borderRadius: "8px",
+          border: "1px solid #bfdbfe",
+          background: "var(--bg-info)",
+          color: "var(--text-primary)",
+          fontSize: "12.5px",
+          lineHeight: 1.5,
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+        }}
+      >
+        <Icon name="info" size={14} style={{ color: "#2563eb", flexShrink: 0 }} />
+        <span>{i18n.t("poc.settings.deprecated")}</span>
+      </div>
+
       {/* Help banner — platform-bundled DeVeye toolkit + 3-step guide */}
-      <div style={HELP_BANNER}>
+      <div style={{ ...HELP_BANNER, opacity: deprecated ? 0.55 : 1 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <Icon name="info" size={14} style={{ color: "#2563eb", flexShrink: 0 }} />
           <span style={{ fontSize: "13px", color: "#1e40af" }}>
@@ -85,8 +106,9 @@ export function PocSettingsSection() {
           </span>
         </div>
         <button
-          onClick={() => setHelpExpanded(!helpExpanded)}
-          style={{ ...GHOST_BTN, color: "#2563eb", marginTop: "6px", fontSize: "12px" }}
+          onClick={() => { if (!deprecated) setHelpExpanded(!helpExpanded); }}
+          disabled={deprecated}
+          style={{ ...GHOST_BTN, color: "#2563eb", marginTop: "6px", fontSize: "12px", cursor: deprecated ? "not-allowed" : "pointer", opacity: deprecated ? 0.6 : 1 }}
         >
           {helpExpanded ? "▾" : "▸"} {i18n.t("settings.poc.help.install")}
         </button>
@@ -145,13 +167,14 @@ Expand-Archive deveye-toolkit-*.zip; cd deveye-toolkit
       </div>
 
       {/* Form fields */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px", opacity: deprecated ? 0.55 : 1 }}>
         <div>
           <label style={LABEL}>{i18n.t("settings.poc.serverUrl")}</label>
           <input
             value={serverUrl}
             onChange={(e) => { setServerUrl(e.target.value); setTestResult(null); }}
             placeholder="ws://192.168.x.x:9888"
+            disabled={deprecated}
             style={INPUT}
           />
           <div style={HINT}>{i18n.t("settings.poc.serverUrlHint")}</div>
@@ -165,12 +188,14 @@ Expand-Archive deveye-toolkit-*.zip; cd deveye-toolkit
               value={token}
               onChange={(e) => { setToken(e.target.value); setTestResult(null); }}
               placeholder={i18n.t("settings.poc.tokenHint")}
+              disabled={deprecated}
               style={{ ...INPUT, paddingRight: "40px" }}
             />
             <button
               type="button"
-              onClick={() => setShowToken(!showToken)}
-              style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", ...GHOST_BTN, padding: "4px" }}
+              onClick={() => { if (!deprecated) setShowToken(!showToken); }}
+              disabled={deprecated}
+              style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", ...GHOST_BTN, padding: "4px", cursor: deprecated ? "not-allowed" : "pointer" }}
             >
               <Icon name={showToken ? "eye-off" : "eye"} size={14} />
             </button>
@@ -180,18 +205,18 @@ Expand-Archive deveye-toolkit-*.zip; cd deveye-toolkit
         <div style={{ display: "flex", gap: "16px" }}>
           <div style={{ flex: 1 }}>
             <label style={LABEL}>{i18n.t("settings.poc.timeout")}</label>
-            <input type="number" value={timeout} onChange={(e) => setTimeout_(e.target.value)} min={60} max={7200} style={INPUT} />
+            <input type="number" value={timeout} onChange={(e) => setTimeout_(e.target.value)} min={60} max={7200} disabled={deprecated} style={INPUT} />
           </div>
           <div style={{ flex: 1 }}>
             <label style={LABEL}>{i18n.t("settings.poc.concurrency")}</label>
-            <input type="number" value={concurrency} onChange={(e) => setConcurrency(e.target.value)} min={1} max={5} style={INPUT} />
+            <input type="number" value={concurrency} onChange={(e) => setConcurrency(e.target.value)} min={1} max={5} disabled={deprecated} style={INPUT} />
           </div>
         </div>
 
         {/* Container network mode */}
         <div>
           <label style={LABEL}>{i18n.t("settings.poc.networkMode")}</label>
-          <select value={networkMode} onChange={(e) => setNetworkMode(e.target.value)} style={INPUT}>
+          <select value={networkMode} onChange={(e) => setNetworkMode(e.target.value)} disabled={deprecated} style={INPUT}>
             <option value="bridge">Bridge ({i18n.t("settings.poc.networkBridge")})</option>
             <option value="host">Host ({i18n.t("settings.poc.networkHost")})</option>
           </select>
@@ -228,20 +253,24 @@ Expand-Archive deveye-toolkit-*.zip; cd deveye-toolkit
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
           <button
             onClick={() => testMut.mutate()}
-            disabled={!serverUrl || testMut.isPending}
+            disabled={deprecated || !serverUrl || testMut.isPending}
             style={{
               ...OUTLINE_BTN,
-              opacity: !serverUrl || testMut.isPending ? 0.5 : 1,
+              opacity: deprecated || !serverUrl || testMut.isPending ? 0.5 : 1,
+              cursor: deprecated ? "not-allowed" : OUTLINE_BTN.cursor,
             }}
           >
             {testMut.isPending ? i18n.t("settings.poc.testing") : i18n.t("settings.poc.testConnection")}
           </button>
           <button
             onClick={() => { setSaveLabel("saving"); saveMut.mutate(); }}
-            disabled={saveMut.isPending}
+            disabled={deprecated || saveMut.isPending}
             style={{
               ...PRIMARY_BTN,
-              opacity: saveMut.isPending ? 0.6 : 1,
+              opacity: deprecated || saveMut.isPending ? 0.6 : 1,
+              cursor: deprecated ? "not-allowed" : PRIMARY_BTN.cursor,
+              background: deprecated ? "var(--bg-disabled, #e5e7eb)" : PRIMARY_BTN.background,
+              color: deprecated ? "var(--text-secondary)" : PRIMARY_BTN.color,
             }}
           >
             {saveLabel === "saving" ? "..." : saveLabel === "saved" ? `✓ ${i18n.t("settings.poc.saveSuccess")}` : i18n.t("settings.poc.save")}
