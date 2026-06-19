@@ -47,6 +47,23 @@ function normalizePath(raw: string): string {
   return raw.replace(/^\/+workspace\/+/, "").replace(/^\/+/, "");
 }
 
+interface CodeTarget {
+  path: string;
+  line: number | null;
+}
+
+interface FindingAnchor {
+  file_path?: string;
+  line?: number;
+  function?: string;
+}
+
+interface DataflowStep {
+  step?: number | string;
+  location?: string;
+  description?: string;
+}
+
 /* -------------------------------------------------------------------------- */
 /*  File tree aggregation                                                     */
 /* -------------------------------------------------------------------------- */
@@ -186,6 +203,8 @@ export function FindingsTab() {
   const [fileFilter, setFileFilter] = useState<string | null>(null);
   /** Explicitly view a non-vuln file in right panel (not a finding). */
   const [nonVulnFile, setNonVulnFile] = useState<string | null>(null);
+  /** Explicit source target chosen from new-schema metadata.anchors[]. */
+  const [detailCodeTarget, setDetailCodeTarget] = useState<CodeTarget | null>(null);
   const [treeCollapsed, setTreeCollapsed] = useState<Set<string>>(new Set());
 
   const [LEFT_PANEL_WIDTH, setLeftPanelWidth] = useResizableWidth("findings-left-width", 260, { min: 200, max: 600 });
@@ -257,10 +276,11 @@ export function FindingsTab() {
   /* -------- Right panel: resolve which file to show -------- */
 
   const viewPath: string | null = useMemo(() => {
+    if (detailCodeTarget?.path) return normalizePath(detailCodeTarget.path);
     if (selectedFinding?.primary_file)
       return normalizePath(selectedFinding.primary_file);
     return nonVulnFile;
-  }, [selectedFinding, nonVulnFile]);
+  }, [selectedFinding, nonVulnFile, detailCodeTarget]);
 
   const { data: fileData, isLoading: fileLoading } = useQuery<WorkspaceFile>({
     queryKey: ["workspace-file", task.id, viewPath],
@@ -286,7 +306,7 @@ export function FindingsTab() {
     return set;
   }, [fileData, allFindings, viewPath]);
 
-  const activeLine = selectedFinding?.primary_line ?? null;
+  const activeLine = detailCodeTarget?.line ?? selectedFinding?.primary_line ?? null;
 
   /* -------- Finding detail query (7-section YAML) -------- */
 
@@ -332,6 +352,7 @@ export function FindingsTab() {
   function handlePickFinding(f: FindingMeta) {
     setSelectedFindingId((cur) => (cur === f.id ? null : f.id));
     setNonVulnFile(null);
+    setDetailCodeTarget(null);
   }
 
   function handlePickTreeNode(node: FlatFileNode) {
@@ -343,11 +364,13 @@ export function FindingsTab() {
       // Vulnerable file → filter left list, auto-select first.
       setFileFilter(node.path);
       setNonVulnFile(null);
+      setDetailCodeTarget(null);
       // selectedFindingId will be auto-set by the useEffect above.
     } else {
       // Non-vuln file → clear filter + finding, just display file.
       setFileFilter(null);
       setSelectedFindingId(null);
+      setDetailCodeTarget(null);
       setNonVulnFile(node.path);
     }
   }
@@ -712,7 +735,10 @@ export function FindingsTab() {
                   detail={detailData?.detail}
                   loading={detailLoading}
                   error={detailError as Error | null}
-                  onViewCode={() => setRightView("code")}
+                  onViewCode={(target) => {
+                    if (target) setDetailCodeTarget(target);
+                    setRightView("code");
+                  }}
                 />
               ) : (
                 <EmptyState icon="chevron-left" text={i18n.t("findings.detail.placeholder")} />
@@ -1198,7 +1224,7 @@ function FindingDetailPanel({
   loading: boolean;
   error: Error | null;
   /** Switch to the code tab within the same page (two-column layout). */
-  onViewCode?: () => void;
+  onViewCode?: (target?: CodeTarget) => void;
 }) {
   const navigate = useNavigate();
   const sev = (finding.severity ?? "info").toLowerCase();
@@ -1226,10 +1252,20 @@ function FindingDetailPanel({
     );
   }
 
-  // youngflow's YAML uses `vulnerability` for the core vuln metadata.
-  // Some scanners still emit the schema-v1 `metadata` structure. Fall back.
-  const vuln = (detail.vulnerability ?? detail.metadata ?? {}) as Record<string, unknown>;
+  const metadata = asRecord(detail.metadata);
+  const description = asRecord(detail.description);
+  const code = asRecord(detail.code);
   const refs = detail.references ?? [];
+  const anchors = normalizeAnchors(metadata.anchors);
+  const fallbackAnchor: FindingAnchor | null = finding.primary_file
+    ? {
+        file_path: finding.primary_file,
+        line: finding.primary_line ?? undefined,
+        function: finding.function_name ?? undefined,
+      }
+    : null;
+  const primaryAnchor = anchors[0] ?? fallbackAnchor;
+  const dataflow = normalizeDataflow(code.dataflow);
   const strFromField = (obj: Record<string, unknown>, ...keys: string[]): string | undefined => {
     for (const k of keys) {
       const v = obj[k];
@@ -1237,6 +1273,19 @@ function FindingDetailPanel({
       if (typeof v === "number") return String(v);
     }
     return undefined;
+  };
+  const viewSource = (anchor: FindingAnchor | null | undefined) => {
+    const path = anchor?.file_path ?? finding.primary_file;
+    if (!path) return;
+    const line = typeof anchor?.line === "number" ? anchor.line : finding.primary_line ?? null;
+    if (onViewCode) {
+      onViewCode({ path: normalizePath(path), line });
+    } else {
+      const params = new URLSearchParams();
+      params.set("file", normalizePath(path));
+      if (line) params.set("line", String(line));
+      navigate(`/tasks/${taskId}/workspace?${params.toString()}`);
+    }
   };
 
   return (
@@ -1276,23 +1325,12 @@ function FindingDetailPanel({
         >
           {sev}
         </span>
-        {finding.primary_file ? (
+        {primaryAnchor?.file_path ? (
           <button
             type="button"
             data-testid="finding-view-in-code"
             title={i18n.t("findings.viewInCode")}
-            onClick={() => {
-              if (onViewCode) {
-                // Same-page: switch to code tab within the two-column layout.
-                onViewCode();
-              } else {
-                // Cross-page fallback: navigate to workspace tab.
-                const params = new URLSearchParams();
-                params.set("file", normalizePath(finding.primary_file!));
-                if (finding.primary_line) params.set("line", String(finding.primary_line));
-                navigate(`/tasks/${taskId}/workspace?${params.toString()}`);
-              }
-            }}
+            onClick={() => viewSource(primaryAnchor)}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -1330,6 +1368,8 @@ function FindingDetailPanel({
       {/* CVSS / Exploit-Value scoring card (VulnForge) */}
       <CvssEvCard finding={finding} />
 
+      <AnchorSection anchors={anchors} onViewCode={viewSource} />
+
       {/* Metadata row (inline, always visible) */}
       <div
         data-testid="finding-section-metadata"
@@ -1342,67 +1382,47 @@ function FindingDetailPanel({
       >
         <MetaField
           label={i18n.t("findings.field.vulnType")}
-          value={strFromField(vuln, "vuln_type_full_name", "vuln_type")}
+          value={strFromField(metadata, "vuln_type_full_name", "vuln_type") ?? finding.vuln_type_full ?? finding.vuln_type ?? undefined}
         />
-        <MetaField label={i18n.t("findings.field.function")} value={strFromField(vuln, "function")} mono />
-        <MetaField label={i18n.t("findings.field.language")} value={strFromField(vuln, "language")} />
+        <MetaField label={i18n.t("findings.field.cwe")} value={strFromField(metadata, "cwe") ?? finding.cwe ?? undefined} />
+        <MetaField label={i18n.t("findings.field.function")} value={primaryAnchor?.function ?? finding.function_name ?? undefined} mono />
+        <MetaField label={i18n.t("findings.field.language")} value={strFromField(metadata, "language")} />
         <MetaField
           label={i18n.t("findings.field.permission")}
-          value={strFromField(vuln, "permission_requirement")}
+          value={strFromField(metadata, "permission_requirement")}
         />
-        <MetaField label={i18n.t("findings.field.source")} value={strFromField(vuln, "source")} mono />
-        <MetaField label={i18n.t("findings.field.sink")} value={strFromField(vuln, "sink")} mono />
+        <MetaField label={i18n.t("findings.field.source")} value={strFromField(metadata, "source")} mono />
+        <MetaField label={i18n.t("findings.field.sink")} value={strFromField(metadata, "sink")} mono />
       </div>
 
       <FlexibleSection
         testid="finding-section-description"
         title={i18n.t("findings.section.description")}
-        raw={detail.description}
+        raw={description}
         defaultOpen
         structuredFields={[
+          [i18n.t("findings.field.background"), "background"],
           [i18n.t("findings.field.entryPoint"), "entry_point"],
           [i18n.t("findings.field.taintSource"), "taint_source"],
           [i18n.t("findings.field.trigger"), "trigger_condition"],
+          [i18n.t("findings.field.payload"), "attack_payload_description"],
+          [i18n.t("findings.section.attack"), "attack_description"],
         ]}
         leadingField="detailed_description"
       />
 
+      <DataflowSection dataflow={dataflow} />
+
       <FlexibleSection
         testid="finding-section-code"
         title={i18n.t("findings.section.code")}
-        raw={detail.code}
+        raw={code}
         defaultOpen
         codeTone="bad"
         structuredCodePairs={[
           [i18n.t("findings.field.vulnerableCode"), "vulnerable_code", "bad"],
           [i18n.t("findings.field.fixCode"), "fix_code", "good"],
         ]}
-      />
-
-      <FlexibleSection
-        testid="finding-section-dataflow"
-        title={i18n.t("findings.section.dataFlow")}
-        raw={detail.data_flow}
-      />
-
-      <FlexibleSection
-        testid="finding-section-attack"
-        title={i18n.t("findings.section.attack")}
-        raw={detail.attack}
-        structuredFields={[
-          [i18n.t("findings.field.payload"), "attack_payload_example", { code: true, tone: "neutral" }],
-        ]}
-        leadingField="attack_description"
-      />
-
-      <FlexibleSection
-        testid="finding-section-remediation"
-        title={i18n.t("findings.section.remediation")}
-        raw={detail.remediation}
-        structuredFields={[
-          [i18n.t("findings.field.fixCode"), "fix_code_example", { code: true, tone: "good" }],
-        ]}
-        leadingField="fix_recommendation"
       />
 
       {refs.length > 0 && (
@@ -1440,6 +1460,132 @@ function FindingDetailPanel({
         </Section>
       )}
     </div>
+  );
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function normalizeAnchors(value: unknown): FindingAnchor[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((raw) => asRecord(raw))
+    .map((raw) => {
+      const filePath = typeof raw.file_path === "string" ? raw.file_path : undefined;
+      const line = typeof raw.line === "number" ? raw.line : Number(raw.line);
+      const fn = typeof raw.function === "string" ? raw.function : undefined;
+      return {
+        file_path: filePath,
+        line: Number.isFinite(line) ? line : undefined,
+        function: fn,
+      };
+    })
+    .filter((anchor) => !!anchor.file_path);
+}
+
+function normalizeDataflow(value: unknown): DataflowStep[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((raw) => asRecord(raw))
+    .map((raw) => ({
+      step: typeof raw.step === "number" || typeof raw.step === "string" ? raw.step : undefined,
+      location: typeof raw.location === "string" ? raw.location : undefined,
+      description: typeof raw.description === "string" ? raw.description : undefined,
+    }))
+    .filter((step) => step.step != null || step.location || step.description);
+}
+
+function AnchorSection({
+  anchors,
+  onViewCode,
+}: {
+  anchors: FindingAnchor[];
+  onViewCode: (anchor: FindingAnchor | null | undefined) => void;
+}) {
+  if (anchors.length <= 1) return null;
+
+  return (
+    <div data-testid="finding-anchors" style={{ marginBottom: "14px" }}>
+      <div style={{ ...SUBLABEL_STYLE, marginBottom: "6px" }}>
+        {i18n.t("findings.anchors.title")} ({anchors.length})
+      </div>
+      <div style={{ border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden", background: "var(--bg-card)" }}>
+        {anchors.map((anchor, index) => {
+          const line = anchor.line ? `:${anchor.line}` : "";
+          const isPrimary = index === 0;
+          return (
+            <button
+              key={`${anchor.file_path}:${anchor.line ?? ""}:${index}`}
+              type="button"
+              data-testid="finding-anchor-row"
+              data-primary={isPrimary || undefined}
+              onClick={() => onViewCode(anchor)}
+              style={{
+                width: "100%",
+                minHeight: "30px",
+                padding: "6px 10px",
+                border: "none",
+                borderTop: index === 0 ? "none" : "1px solid var(--divider)",
+                borderLeft: `2px solid ${isPrimary ? "var(--brand)" : "transparent"}`,
+                background: "transparent",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                cursor: "pointer",
+                textAlign: "left",
+                fontFamily: "inherit",
+                color: "var(--text-primary)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--bg-hover)";
+                const arrow = e.currentTarget.querySelector("[data-anchor-arrow]") as HTMLSpanElement | null;
+                if (arrow) arrow.style.color = "var(--brand)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                const arrow = e.currentTarget.querySelector("[data-anchor-arrow]") as HTMLSpanElement | null;
+                if (arrow) arrow.style.color = "var(--text-secondary)";
+              }}
+            >
+              <Icon name="code" size={12} style={{ color: "var(--text-secondary)", flexShrink: 0 }} />
+              <span style={{ ...VALUE_STYLE, fontFamily: "'SF Mono', Menlo, Consolas, monospace", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {normalizePath(anchor.file_path ?? "")}{line}
+                {anchor.function && <span style={{ color: "var(--text-secondary)", fontFamily: "inherit" }}> · {anchor.function}</span>}
+              </span>
+              <span data-anchor-arrow style={{ color: "var(--text-secondary)", fontSize: "13px", flexShrink: 0 }}>→</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DataflowSection({ dataflow }: { dataflow: DataflowStep[] }) {
+  if (dataflow.length === 0) return null;
+  return (
+    <Section testid="finding-section-dataflow" title={i18n.t("findings.section.dataFlow")} defaultOpen>
+      <ol style={{ margin: 0, paddingLeft: "20px", display: "flex", flexDirection: "column", gap: "10px" }}>
+        {dataflow.map((step, index) => (
+          <li key={`${step.step ?? index}:${step.location ?? ""}`} style={{ ...VALUE_STYLE, paddingLeft: "2px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                {i18n.t("findings.taintStep").replace("{n}", String(step.step ?? index + 1))}
+              </span>
+              {step.location && (
+                <code style={{ fontSize: "11.5px", color: "var(--text-primary)", fontFamily: "'SF Mono', Menlo, Consolas, monospace", wordBreak: "break-all" }}>
+                  {step.location}
+                </code>
+              )}
+            </div>
+            {step.description && <p style={{ ...PARA_STYLE, marginTop: "4px" }}>{step.description}</p>}
+          </li>
+        ))}
+      </ol>
+    </Section>
   );
 }
 
