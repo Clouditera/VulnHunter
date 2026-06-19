@@ -6,9 +6,10 @@ artifacts:
   skills: skills/
   tasks: tasks/
   env_file: .env
+  models_json: models.json
 
 defaults:
-  model: anthropic/claude-sonnet-4-6:medium
+  model: ${env.V_DEFAULT_MODEL}
   max_parallel: 1
   agent: report-writer.md
   tools:

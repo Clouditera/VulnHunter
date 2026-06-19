@@ -38,17 +38,120 @@ elif [ -d "/workspace/skill" ]; then
   fi
 fi
 
-# Write .env for youngflow model config
+# ---------------------------------------------------------------------------
+# Model config for YoungFlow 0.3.x / pi 0.79.x.
+#
+# Report mode is independent from scan-mode and also needs pi-native
+# models.json. YoungFlow 0.3.x does not translate the legacy flat LLM_* env
+# vars into pi config; the flow declares `artifacts.models_json: models.json`
+# and resolves its model through `${env.V_DEFAULT_MODEL}`.
+# ---------------------------------------------------------------------------
+if ! command -v python3 &>/dev/null; then
+  echo "[report] FATAL: python3 not found — required for models.json generation" >&2
+  exit 1
+fi
+
+MODEL_PROTO_TYPE="${MODEL_PROTO_TYPE:-openai-completions}"
+LLM_MODEL_NAME="${LLM_MODEL_NAME:-}"
+LLM_BASE_URL="${LLM_BASE_URL:-}"
+LLM_API_KEY="${LLM_API_KEY:-}"
+MODEL_EFFORT="${MODEL_EFFORT:-off}"
+LLM_CONTEXT_WINDOW_TOKENS="${LLM_CONTEXT_WINDOW_TOKENS:-128000}"
+
+if [ -z "$LLM_MODEL_NAME" ] || [ -z "$LLM_API_KEY" ]; then
+  echo "[report] FATAL: model credential not configured (LLM_MODEL_NAME / LLM_API_KEY missing). Configure a model in Settings before generating reports." >&2
+  exit 1
+fi
+
+V_DEFAULT_MODEL="$(
+  MODEL_PROTO_TYPE="$MODEL_PROTO_TYPE" \
+  LLM_MODEL_NAME="$LLM_MODEL_NAME" \
+  LLM_BASE_URL="$LLM_BASE_URL" \
+  LLM_CONTEXT_WINDOW_TOKENS="$LLM_CONTEXT_WINDOW_TOKENS" \
+  MODEL_EFFORT="$MODEL_EFFORT" \
+  python3 - "$FLOW_DIR/models.json" <<'PY'
+import json, os, sys
+
+out_path = sys.argv[1]
+proto = (os.environ.get("MODEL_PROTO_TYPE") or "openai-completions").strip()
+model_id = (os.environ.get("LLM_MODEL_NAME") or "").strip()
+base_url = (os.environ.get("LLM_BASE_URL") or "").strip().rstrip("/")
+effort = (os.environ.get("MODEL_EFFORT") or "off").strip().lower()
+try:
+    ctx = int(os.environ.get("LLM_CONTEXT_WINDOW_TOKENS") or "128000")
+except ValueError:
+    ctx = 128000
+if ctx < 1000 or ctx > 10_000_000:
+    ctx = 128000
+
+API_TYPE_MAP = {
+    "openai": "openai-completions",
+    "openai-completions": "openai-completions",
+    "openai-responses": "openai-responses",
+    "anthropic": "anthropic-messages",
+    "anthropic-messages": "anthropic-messages",
+}
+api_type = API_TYPE_MAP.get(proto)
+if not api_type:
+    sys.stderr.write(
+        f"[report] FATAL: unknown MODEL_PROTO_TYPE '{proto}'. "
+        f"Valid: {', '.join(sorted(API_TYPE_MAP))}\n"
+    )
+    sys.exit(1)
+
+PROVIDER = "platform"
+API_KEY_ENV = "PLATFORM_API_KEY"
+
+lo = f"{model_id} {base_url}".lower()
+is_deepseek = "deepseek" in lo
+is_zai = (not is_deepseek) and ("glm" in lo or "bigmodel" in lo or "zhipu" in lo or "z.ai" in lo)
+THINKING_LEVELS = {"low", "medium", "high", "xhigh"}
+is_thinking = effort in THINKING_LEVELS
+
+model_entry = {
+    "id": model_id,
+    "input": ["text"],
+    "contextWindow": ctx,
+    "maxTokens": 16384,
+}
+if is_thinking or is_deepseek or is_zai:
+    model_entry["reasoning"] = True
+if is_deepseek:
+    model_entry["compat"] = {"supportsDeveloperRole": False}
+
+provider_cfg = {
+    "api": api_type,
+    "apiKey": f"${API_KEY_ENV}",
+    "models": [model_entry],
+}
+if base_url:
+    provider_cfg["baseUrl"] = base_url
+
+models = {"providers": {PROVIDER: provider_cfg}}
+with open(out_path, "w", encoding="utf-8") as f:
+    json.dump(models, f, ensure_ascii=False, indent=2)
+    f.write("\n")
+
+model_string = f"{PROVIDER}/{model_id}"
+if is_thinking:
+    model_string += f":{effort}"
+sys.stdout.write(model_string)
+PY
+)"
+
+if [ -z "$V_DEFAULT_MODEL" ]; then
+  echo "[report] FATAL: failed to generate models.json / resolve V_DEFAULT_MODEL" >&2
+  exit 1
+fi
+
 cat > "$FLOW_DIR/.env" << ENVEOF
-LLM_MODEL_NAME=${LLM_MODEL_NAME:-}
-LLM_BASE_URL=${LLM_BASE_URL:-}
-LLM_API_KEY=${LLM_API_KEY:-}
-MODEL_PROTO_TYPE=${MODEL_PROTO_TYPE:-openai}
-MODEL_EFFORT=${MODEL_EFFORT:-medium}
-LLM_CONTEXT_WINDOW_TOKENS=${LLM_CONTEXT_WINDOW_TOKENS:-128000}
+PLATFORM_API_KEY=${LLM_API_KEY}
+V_DEFAULT_MODEL=${V_DEFAULT_MODEL}
 YOUNGFLOW_IDLE_TIMEOUT=${YOUNGFLOW_IDLE_TIMEOUT:-3600}
 YOUNGFLOW_ERROR_RETRIES=${YOUNGFLOW_ERROR_RETRIES:-5}
 ENVEOF
+
+echo "[report] Generated models.json + .env (model=$V_DEFAULT_MODEL, api=$MODEL_PROTO_TYPE, ctx=$LLM_CONTEXT_WINDOW_TOKENS)" >&2
 
 mkdir -p /workspace/.service-logs
 rm -f "$SERVICE_LOG"
