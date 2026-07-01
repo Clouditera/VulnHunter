@@ -151,11 +151,12 @@ export function OverviewTab() {
   const confirmedCount = findings.filter((f) => f.review_status === "confirmed").length;
   const falsePositiveCount = findings.filter((f) => f.review_status === "false_positive").length;
   const reproducedCount = pocSummaryData?.summary?.reproduced ?? 0;
-  const profile = task.metadata?.profile ?? {};
   const exec = task.metadata?.execution ?? {};
 
   const tokenUsage = getTokenUsage(task);
   const toolCalls = Number(exec.tool_call_count ?? task.tool_call_count ?? 0);
+  const modelName = getExecutionModelName(task);
+  const concurrency = getExecutionConcurrency(task);
 
   // All findings sorted by severity weight desc
   const sevWeight: Record<string, number> = { high: 4, medium: 3, low: 2, info: 1 };
@@ -251,19 +252,6 @@ export function OverviewTab() {
         })()}
         <CredentialField task={task} />
         <ScanBudgetField task={task} />
-        <KV label={i18n.t("overview.language")} value={profile.language ?? null} />
-        <KV
-          label={i18n.t("overview.buildSystem")}
-          value={profile.build_system ?? null}
-        />
-        <KV
-          label={i18n.t("overview.files")}
-          value={profile.total_files != null ? profile.total_files.toLocaleString() : null}
-        />
-        <KV
-          label={i18n.t("overview.loc")}
-          value={profile.total_loc != null ? profile.total_loc.toLocaleString() : null}
-        />
       </Card>
 
       {/* Vulnerability Overview — factual counts, no risk score */}
@@ -457,14 +445,18 @@ export function OverviewTab() {
           label={i18n.t("overview.created")}
           value={task.created_at ? formatDateTime(task.created_at) : null}
         />
-        <KV
-          label={i18n.t("overview.model")}
-          value={exec.model ? shortenModel(exec.model) : null}
-        />
-        {/* Concurrency is a per-scan system setting (not per-task); leave "—"
-            until the backend starts writing scheduler.max_parallel into
-            tasks.metadata.execution. */}
-        <KV label={i18n.t("overview.concurrency")} value={null} />
+        {modelName && (
+          <KV
+            label={i18n.t("overview.model")}
+            value={shortenModel(modelName)}
+          />
+        )}
+        {concurrency != null && (
+          <KV
+            label={i18n.t("overview.concurrency")}
+            value={concurrency.toLocaleString()}
+          />
+        )}
         <TokenUsageBlock usage={tokenUsage} />
         <KV
           label={i18n.t("overview.toolCalls")}
@@ -545,6 +537,32 @@ function ProfilerCard({ profiler }: { profiler: ProfilerData }) {
       )}
     </Card>
   );
+}
+
+function getExecutionModelName(task: Task): string | null {
+  const exec = task.metadata?.execution ?? {};
+  const model = typeof exec.model === "string" ? exec.model.trim() : "";
+  if (model) return model;
+  const credentialLabel = typeof task.credential_label === "string" ? task.credential_label.trim() : "";
+  return credentialLabel || null;
+}
+
+function getExecutionConcurrency(task: Task): number | null {
+  const exec = (task.metadata?.execution ?? {}) as Record<string, unknown>;
+  const metadata = (task.metadata ?? {}) as Record<string, unknown>;
+  const scheduler = metadata.scheduler as Record<string, unknown> | undefined;
+  const candidates = [
+    exec.concurrency,
+    exec.max_parallel,
+    exec.youngflow_max_parallel,
+    exec.agent_parallel,
+    scheduler?.max_parallel,
+  ];
+  for (const value of candidates) {
+    const n = typeof value === "number" ? value : Number.parseInt(String(value ?? ""), 10);
+    if (Number.isFinite(n) && n > 0) return Math.trunc(n);
+  }
+  return null;
 }
 
 function getTokenUsage(task: Task) {

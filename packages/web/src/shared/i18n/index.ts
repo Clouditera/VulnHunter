@@ -176,7 +176,7 @@ const ZH: Record<string, string> = {
   "overview.model": "模型",
   "overview.concurrency": "并发度",
   "overview.tokenUsage": "Token 用量",
-  "overview.aiUsage": "AI 用量",
+  "overview.aiUsage": "Token 用量",
   "overview.totalTokens": "总 Token 用量",
   "overview.inputTokensShort": "输入",
   "overview.outputTokensShort": "输出",
@@ -186,7 +186,7 @@ const ZH: Record<string, string> = {
   "overview.toolCalls": "工具调用",
 
   // Overview
-  "overview.projectProfile": "工程画像",
+  "overview.projectProfile": "工程配置",
   "overview.vulnerabilityOverview": "漏洞概览",
   "overview.executionSummary": "执行摘要",
   "overview.profilerCard": "项目画像",
@@ -917,7 +917,7 @@ const EN: Record<string, string> = {
   "overview.model": "Model",
   "overview.concurrency": "Concurrency",
   "overview.tokenUsage": "Token Usage",
-  "overview.aiUsage": "AI Usage",
+  "overview.aiUsage": "Token Usage",
   "overview.totalTokens": "Total Tokens",
   "overview.inputTokensShort": "Input",
   "overview.outputTokensShort": "Output",
@@ -927,7 +927,7 @@ const EN: Record<string, string> = {
   "overview.toolCalls": "Tool Calls",
 
   // Overview
-  "overview.projectProfile": "Project Profile",
+  "overview.projectProfile": "Engineering Config",
   "overview.vulnerabilityOverview": "Vulnerability Overview",
   "overview.executionSummary": "Execution Summary",
   "overview.profilerCard": "Project Profile",
