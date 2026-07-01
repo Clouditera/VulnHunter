@@ -13,6 +13,7 @@ import { logger } from "../../infra/logger.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import { listUsersByIds } from "../auth/storage.js";
 import { attachCreatorSummaries, uniqueCreatorIds } from "../auth/creator-summary.js";
+import { originalArchiveDownloadSpec } from "./original-archive.js";
 
 export const tasksRouter = new Hono();
 
@@ -57,6 +58,38 @@ tasksRouter.get("/", async (c) => {
   }));
   const creators = ctx.role === "admin" ? await listUsersByIds(uniqueCreatorIds(tasks, "created_by")) : [];
   return c.json({ tasks: attachCreatorSummaries(ctx.role, rows, "created_by", creators) });
+});
+
+// GET /api/tasks/:id/source-archive — download the original uploaded package.
+tasksRouter.get("/:id/source-archive", async (c) => {
+  const ctx = queryContextFromUser(c.get("user"));
+  const task = await taskStorage.getTaskById(ctx, c.req.param("id"));
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+
+  const spec = originalArchiveDownloadSpec(task);
+  if (!spec) {
+    return c.json({ error: { code: "ERR_SOURCE_ARCHIVE_NOT_AVAILABLE", message: "Original uploaded archive is not available for this task" } }, 404);
+  }
+
+  const config = loadConfig();
+  const minio = getMinio();
+  let stat: { size?: number };
+  try {
+    stat = await minio.statObject(config.minio.bucket, spec.minioKey);
+  } catch (err) {
+    logger.warn({ err, taskId: task.id, minioKey: spec.minioKey }, "Original source archive not found in MinIO");
+    return c.json({ error: { code: "ERR_SOURCE_ARCHIVE_NOT_FOUND", message: "Original uploaded archive is missing" } }, 404);
+  }
+
+  const stream = await minio.getObject(config.minio.bucket, spec.minioKey);
+  const encoded = encodeURIComponent(spec.filename);
+  return new Response(stream as unknown as ReadableStream, {
+    headers: {
+      "Content-Type": spec.contentType,
+      "Content-Disposition": `attachment; filename="${spec.safeFilename}"; filename*=UTF-8''${encoded}`,
+      ...(stat.size != null ? { "Content-Length": String(stat.size) } : {}),
+    },
+  });
 });
 
 // GET /api/tasks/:id

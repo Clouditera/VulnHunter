@@ -217,9 +217,24 @@ export function OverviewTab() {
                 <KV
                   label={i18n.t("overview.filename")}
                   value={
-                    <span style={{ wordBreak: "break-all" }}>
-                      {sm.filename}
-                    </span>
+                    task.source_type === "upload" ? (
+                      <a
+                        href={`/api/tasks/${task.id}/source-archive`}
+                        download={sm.filename}
+                        title={i18n.t("overview.downloadOriginalArchive")}
+                        style={{
+                          color: "var(--primary)",
+                          wordBreak: "break-all",
+                          textDecoration: "none",
+                        }}
+                      >
+                        {sm.filename}
+                      </a>
+                    ) : (
+                      <span style={{ wordBreak: "break-all" }}>
+                        {sm.filename}
+                      </span>
+                    )
                   }
                 />
               )}
