@@ -223,9 +223,11 @@ export function OverviewTab() {
                         download={sm.filename}
                         title={i18n.t("overview.downloadOriginalArchive")}
                         style={{
-                          color: "var(--primary)",
+                          color: "var(--text-primary)",
                           wordBreak: "break-all",
-                          textDecoration: "none",
+                          textDecoration: "underline",
+                          textUnderlineOffset: "2px",
+                          cursor: "pointer",
                         }}
                       >
                         {sm.filename}
