@@ -6,8 +6,8 @@
  * uploads report files to MinIO.
  */
 
-import { join } from "node:path";
-import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { execSync } from "node:child_process";
 import {
   createWorkerContainer,
@@ -21,9 +21,330 @@ import { getSkill, updateReportStatus, getReport } from "./storage.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { notify } from "../notifications/index.js";
 import { logger } from "../../infra/logger.js";
-import { getTaskById } from "../tasks/storage.js";
+import { getTaskById, type DbTask } from "../tasks/storage.js";
+import { countFindingsBySeverity, countFindingsByItemType } from "../findings/storage.js";
+import { listPocResults } from "../poc/storage.js";
 import { getDb } from "../../infra/db/client.js";
 import type { ServiceConfig } from "../../infra/config.js";
+
+interface MaterializedReportContext {
+  findingCount: number;
+  riskCount: number;
+  wikiPages: number;
+  sourceAvailable: boolean;
+}
+
+function sourceMetaObject(task: DbTask): Record<string, unknown> {
+  const raw = task.source_meta;
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    } catch {
+      return {};
+    }
+  }
+  return raw as Record<string, unknown>;
+}
+
+export function safeContextFilename(name: string, fallback = "item"): string {
+  const safe = name
+    .trim()
+    .replace(/[\\/\r\n\t\0]/g, "_")
+    .replace(/[^A-Za-z0-9._-]/g, "_")
+    .replace(/^\.+$/, fallback);
+  return safe || fallback;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream as AsyncIterable<Buffer | string>) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+async function listMinioKeys(bucket: string, prefix: string): Promise<string[]> {
+  const minio = getMinio();
+  return new Promise((resolve, reject) => {
+    const keys: string[] = [];
+    const stream = minio.listObjects(bucket, prefix, true);
+    stream.on("data", (obj) => { if (obj.name) keys.push(obj.name); });
+    stream.on("end", () => resolve(keys));
+    stream.on("error", reject);
+  });
+}
+
+export function extractArchiveToSource(archivePath: string, filename: string, sourceDir: string): void {
+  const lower = filename.toLowerCase();
+  const archive = shellQuote(archivePath);
+  const dest = shellQuote(sourceDir);
+  if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) {
+    execSync(`tar -xzf ${archive} -C ${dest}`, { timeout: 120_000, stdio: "pipe" });
+    return;
+  }
+  if (lower.endsWith(".tar.bz2") || lower.endsWith(".tbz2")) {
+    execSync(`tar -xjf ${archive} -C ${dest}`, { timeout: 120_000, stdio: "pipe" });
+    return;
+  }
+  execSync(`unzip -o -q ${archive} -d ${dest}`, { timeout: 120_000, stdio: "pipe" });
+}
+
+async function materializeSourceArchive(params: {
+  task: DbTask;
+  hostWorkDir: string;
+  config: ServiceConfig;
+}): Promise<{ available: boolean; filename?: string; minioKey?: string; path?: string; error?: string }> {
+  const { task, hostWorkDir, config } = params;
+  const meta = sourceMetaObject(task);
+  const minioKey = typeof meta.minio_key === "string" && meta.minio_key.trim()
+    ? meta.minio_key.trim()
+    : `code-packages/${task.id}.zip`;
+  const filename = typeof meta.filename === "string" && meta.filename.trim()
+    ? meta.filename.trim()
+    : basename(minioKey) || "source.zip";
+  const sourceDir = join(hostWorkDir, "source");
+  const archivePath = join(hostWorkDir, "source-archive");
+
+  try {
+    rmSync(sourceDir, { recursive: true, force: true });
+    mkdirSync(sourceDir, { recursive: true });
+    await getMinio().fGetObject(config.minio.bucket, minioKey, archivePath);
+    extractArchiveToSource(archivePath, filename, sourceDir);
+    return { available: true, filename, minioKey, path: "/workspace/source" };
+  } catch (err) {
+    logger.warn({ err, taskId: task.id, minioKey }, "Failed to materialize source archive for report context");
+    rmSync(sourceDir, { recursive: true, force: true });
+    return { available: false, filename, minioKey, error: String(err) };
+  }
+}
+
+async function materializeReportContext(params: {
+  task: DbTask;
+  reportId: string;
+  skillName: string;
+  hostWorkDir: string;
+  contextDir: string;
+  config: ServiceConfig;
+}): Promise<MaterializedReportContext> {
+  const { task, reportId, skillName, hostWorkDir, contextDir, config } = params;
+  const db = getDb();
+  const bucket = config.minio.bucket;
+  const findingsDir = join(contextDir, "findings");
+  const wikiDir = join(contextDir, "wiki");
+  const pocDir = join(contextDir, "poc");
+  const reviewedDir = join(contextDir, "reviewed");
+  mkdirSync(findingsDir, { recursive: true });
+  mkdirSync(wikiDir, { recursive: true });
+  mkdirSync(pocDir, { recursive: true });
+  mkdirSync(reviewedDir, { recursive: true });
+
+  const findingsMeta = await db<Array<{
+    finding_key: string;
+    severity: string;
+    vuln_type: string | null;
+    vuln_type_full: string | null;
+    cwe: string | null;
+    cvss_vector: string | null;
+    cvss_score: number | null;
+    primary_file: string | null;
+    primary_line: number | null;
+    function_name: string | null;
+    item_type: "finding" | "risk";
+    review_status: string;
+    yaml_minio_key: string;
+  }>>`
+    SELECT finding_key, severity, vuln_type, vuln_type_full, cwe, cvss_vector, cvss_score,
+           primary_file, primary_line, function_name, item_type, review_status, yaml_minio_key
+    FROM findings_meta
+    WHERE task_id = ${task.id}
+    ORDER BY severity_numeric DESC, finding_key
+  `;
+
+  const { load } = await import("js-yaml");
+  const findingIndex: Array<Record<string, unknown>> = [];
+  for (const f of findingsMeta) {
+    const filename = `${safeContextFilename(f.finding_key)}.yaml`;
+    const targetPath = join(findingsDir, filename);
+    let title = f.finding_key;
+    let raw = "";
+    try {
+      raw = (await streamToBuffer(await getMinio().getObject(bucket, f.yaml_minio_key))).toString("utf-8");
+      writeFileSync(targetPath, raw);
+      const doc = load(raw) as Record<string, unknown> | null;
+      title = typeof doc?.title === "string" && doc.title.trim() ? doc.title : f.finding_key;
+    } catch (err) {
+      logger.warn({ err, taskId: task.id, findingKey: f.finding_key, minioKey: f.yaml_minio_key }, "Failed to materialize finding YAML");
+      writeFileSync(targetPath, `# YAML unavailable for ${f.finding_key}\n`);
+    }
+    findingIndex.push({
+      finding_key: f.finding_key,
+      item_type: f.item_type,
+      severity: f.severity,
+      title,
+      vuln_type: f.vuln_type,
+      vuln_type_full: f.vuln_type_full,
+      cwe: f.cwe,
+      cvss_vector: f.cvss_vector,
+      cvss_score: f.cvss_score,
+      primary_file: f.primary_file,
+      primary_line: f.primary_line,
+      function_name: f.function_name,
+      review_status: f.review_status,
+      yaml_path: `/workspace/context/findings/${filename}`,
+    });
+  }
+  writeFileSync(join(findingsDir, "index.json"), JSON.stringify(findingIndex, null, 2));
+
+  let wikiPages = 0;
+  try {
+    const wiki = await import("../wiki/routes.js");
+    const isRunning = task.state === "running" || task.state === "paused";
+    const pageNames = await wiki.listWikiPageNames(task, config);
+    for (const pageName of pageNames) {
+      const content = await wiki.readWikiPageContent(task, config, pageName, isRunning);
+      if (content !== null) {
+        writeFileSync(join(wikiDir, safeContextFilename(pageName, "wiki.md")), content);
+        wikiPages += 1;
+      }
+    }
+    for (const relPath of wiki.PROFILER_ARTIFACT_PATHS) {
+      const raw = await wiki.readArtifact(task.id, config, relPath, isRunning);
+      if (raw !== null) {
+        writeFileSync(join(contextDir, "profiler.yaml"), raw);
+        break;
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, taskId: task.id }, "Failed to materialize wiki/profiler context");
+  }
+
+  const pocResults = await listPocResults(task.id).catch((err) => {
+    logger.warn({ err, taskId: task.id }, "Failed to list POC results for report context");
+    return [];
+  });
+  writeFileSync(join(pocDir, "results.json"), JSON.stringify(pocResults, null, 2));
+  for (const result of pocResults) {
+    const base = safeContextFilename(result.finding_key);
+    writeFileSync(join(pocDir, `${base}.json`), JSON.stringify(result, null, 2));
+    const artifacts = [
+      ["poc.sh", result.poc_script_minio_key],
+      ["result.json", result.result_json_minio_key],
+      ["run.log", result.run_log_minio_key],
+    ] as const;
+    for (const [suffix, key] of artifacts) {
+      if (!key) continue;
+      try {
+        await getMinio().fGetObject(bucket, key, join(pocDir, `${base}-${suffix}`));
+      } catch (err) {
+        logger.warn({ err, taskId: task.id, findingKey: result.finding_key, key }, "Failed to materialize POC artifact");
+      }
+    }
+  }
+
+  try {
+    const reviewedPrefix = `scan-outputs/${task.id}/reviewed/`;
+    const reviewedKeys = await listMinioKeys(bucket, reviewedPrefix);
+    for (const key of reviewedKeys) {
+      const rel = key.slice(reviewedPrefix.length).split("/").map((p) => safeContextFilename(p)).join("/");
+      const targetPath = join(reviewedDir, rel);
+      mkdirSync(dirname(targetPath), { recursive: true });
+      await getMinio().fGetObject(bucket, key, targetPath);
+    }
+    writeFileSync(join(reviewedDir, "index.json"), JSON.stringify(reviewedKeys.map((key) => ({
+      minio_key: key,
+      path: `/workspace/context/reviewed/${key.slice(reviewedPrefix.length).split("/").map((p) => safeContextFilename(p)).join("/")}`,
+    })), null, 2));
+  } catch (err) {
+    logger.warn({ err, taskId: task.id }, "Failed to materialize reviewed artifacts");
+  }
+
+  const severityCounts = await countFindingsBySeverity(task.id, "all");
+  const itemCounts = await countFindingsByItemType(task.id);
+  const taskMetadata = {
+    task_id: task.id,
+    report_id: reportId,
+    project_name: task.project_name,
+    display_name: task.display_name,
+    state: task.state,
+    source_type: task.source_type,
+    source_meta: task.source_meta,
+    created_at: task.created_at,
+    started_at: task.started_at,
+    completed_at: task.completed_at,
+    duration_ms: task.duration_ms,
+    risk_score: task.risk_score,
+    failure_reason: task.failure_reason,
+    findings_indexed_at: task.findings_indexed_at,
+    metadata: task.metadata,
+    token_usage: {
+      input_tokens: task.input_tokens,
+      output_tokens: task.output_tokens,
+      cache_read_tokens: task.cache_read_tokens,
+      cache_write_tokens: task.cache_write_tokens,
+      total_tokens: task.total_tokens,
+      total_tokens_in: task.total_tokens_in,
+      total_tokens_out: task.total_tokens_out,
+      tool_call_count: task.tool_call_count,
+      stage_count: task.stage_count,
+    },
+    counts: {
+      severity: severityCounts,
+      item_type: itemCounts,
+      total_items: findingIndex.length,
+    },
+  };
+  writeFileSync(join(contextDir, "task-metadata.json"), JSON.stringify(taskMetadata, null, 2));
+
+  const source = await materializeSourceArchive({ task, hostWorkDir, config });
+  const contextIndex = {
+    schema_version: 2,
+    task_id: task.id,
+    report_id: reportId,
+    project_name: task.project_name,
+    skill_name: skillName,
+    generated_at: new Date().toISOString(),
+    data_contract: "rich-file-materialization",
+    instructions: [
+      "This file is an entry index, not the full data payload.",
+      "Enumerate every item in /workspace/context/findings/index.json; it includes both findings and risks and is not truncated.",
+      "Read each /workspace/context/findings/<finding_key>.yaml for full CWE/CVSS/code/data_flow/attack/remediation/anchors/reviewed details.",
+      "Use /workspace/context/task-metadata.json for project configuration and execution summary.",
+      "Use /workspace/context/wiki/*.md and /workspace/context/profiler.yaml for project knowledge/profile.",
+      "Use /workspace/context/poc/ and /workspace/context/reviewed/ for POC/reviewed artifacts when present.",
+      "Use /workspace/source as the read-only source tree for file:line verification and code snippets when present.",
+    ],
+    paths: {
+      task_metadata: "/workspace/context/task-metadata.json",
+      findings_index: "/workspace/context/findings/index.json",
+      findings_dir: "/workspace/context/findings",
+      wiki_dir: "/workspace/context/wiki",
+      profiler: existsSync(join(contextDir, "profiler.yaml")) ? "/workspace/context/profiler.yaml" : null,
+      poc_dir: "/workspace/context/poc",
+      reviewed_dir: "/workspace/context/reviewed",
+      source_dir: source.available ? "/workspace/source" : null,
+    },
+    counts: {
+      findings: findingIndex.filter((f) => f.item_type === "finding").length,
+      risks: findingIndex.filter((f) => f.item_type === "risk").length,
+      total_items: findingIndex.length,
+      wiki_pages: wikiPages,
+      poc_results: pocResults.length,
+    },
+    source,
+  };
+  writeFileSync(join(contextDir, "report-context.json"), JSON.stringify(contextIndex, null, 2));
+
+  return {
+    findingCount: contextIndex.counts.findings,
+    riskCount: contextIndex.counts.risks,
+    wikiPages,
+    sourceAvailable: source.available,
+  };
+}
 
 export async function spawnReportWorker(params: {
   taskId: string;
@@ -74,68 +395,30 @@ export async function spawnReportWorker(params: {
   execSync(`cd "${skillDir}" && unzip -o -q "${skillZipPath}"`, { timeout: 30_000, stdio: "pipe" });
   logger.info({ reportId, skillId, skillDir }, "Report skill extracted");
 
-  // Generate report context JSON with findings data
+  // Materialize full report context as files. The YoungFlow report runtime is
+  // file-based (not MCP-based), so report-context.json is only an entry index;
+  // rich data lives under /workspace/context/*.
   const task = await getTaskById(taskId);
-  const db = getDb();
-  const findingsMeta = await db<{
-    finding_key: string; severity: string; vuln_type: string | null;
-    primary_file: string | null; primary_line: number | null;
-    yaml_minio_key: string;
-  }[]>`
-    SELECT finding_key, severity, vuln_type, primary_file, primary_line, yaml_minio_key
-    FROM findings_meta WHERE task_id = ${taskId}
-    ORDER BY severity_numeric DESC, finding_key
-  `;
-
-  // Read YAML details for each finding from MinIO
-  const findingsDetail: Array<{
-    finding_key: string; severity: string; vuln_type: string | null;
-    primary_file: string | null; primary_line: number | null;
-    title: string; description: string;
-  }> = [];
-  for (const f of findingsMeta) {
-    let title = f.finding_key;
-    let description = "";
-    try {
-      const minio = getMinio();
-      const stream = await minio.getObject(config.minio.bucket, f.yaml_minio_key);
-      const chunks: Buffer[] = [];
-      for await (const chunk of stream) chunks.push(Buffer.from(chunk));
-      const yamlText = Buffer.concat(chunks).toString("utf-8");
-      const { load } = await import("js-yaml");
-      const doc = load(yamlText) as Record<string, unknown>;
-      title = (doc.title as string) ?? f.finding_key;
-      description = (doc.description as string) ?? (doc.summary as string) ?? "";
-    } catch { /* use defaults */ }
-    findingsDetail.push({
-      finding_key: f.finding_key,
-      severity: f.severity,
-      vuln_type: f.vuln_type,
-      primary_file: f.primary_file,
-      primary_line: f.primary_line,
-      title,
-      description,
-    });
-  }
-
-  const context = {
-    task_id: taskId,
-    report_id: reportId,
-    project_name: task?.project_name ?? "unknown",
-    scan_completed_at: task?.completed_at?.toISOString() ?? null,
-    finding_count: findingsDetail.length,
-    findings_by_severity: {
-      critical: findingsDetail.filter(f => f.severity === "critical").length,
-      high: findingsDetail.filter(f => f.severity === "high").length,
-      medium: findingsDetail.filter(f => f.severity === "medium").length,
-      low: findingsDetail.filter(f => f.severity === "low").length,
-      info: findingsDetail.filter(f => f.severity === "info").length,
+  if (!task) throw new Error(`Task not found: ${taskId}`);
+  const materializedContext = await materializeReportContext({
+    task,
+    reportId,
+    skillName: skill.name,
+    hostWorkDir,
+    contextDir,
+    config,
+  });
+  logger.info(
+    {
+      reportId,
+      taskId,
+      findingCount: materializedContext.findingCount,
+      riskCount: materializedContext.riskCount,
+      wikiPages: materializedContext.wikiPages,
+      sourceMounted: materializedContext.sourceAvailable,
     },
-    findings: findingsDetail,
-    skill_name: skill.name,
-  };
-  writeFileSync(join(contextDir, "report-context.json"), JSON.stringify(context, null, 2));
-  logger.info({ reportId, findingCount: findingsDetail.length }, "Report context generated");
+    "Rich report context materialized",
+  );
 
   // Container
   const containerName = `va-report-${reportId}`;
@@ -160,6 +443,9 @@ export async function spawnReportWorker(params: {
     cpuQuota: 100000,
     memoryBytes: 2 * 1024 * 1024 * 1024,
     env,
+    extraMounts: materializedContext.sourceAvailable
+      ? [{ Type: "bind", Source: join(hostWorkDir, "source"), Target: "/workspace/source", ReadOnly: true }]
+      : undefined,
   });
 
   await container.start();

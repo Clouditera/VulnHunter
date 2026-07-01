@@ -19,7 +19,7 @@ echo "[report] Starting report worker: task=$TASK_ID report=$REPORT_ID"
 
 FLOW_DIR="/opt/vulnagent/flows/vulnagent-report"
 
-mkdir -p /workspace/reports /workspace/context
+mkdir -p /workspace/reports /workspace/context/findings /workspace/context/wiki /workspace/context/poc /workspace/context/reviewed
 
 # Copy flow to workspace so we can inject uploaded skill
 cp -r "$FLOW_DIR" /workspace/flow
