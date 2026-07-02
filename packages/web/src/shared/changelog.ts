@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "2.2.1",
+    releasedAt: "2026-07",
+    title: "VulnAgent v2.2.1 更新",
+    markdown: `
+### 📝 问题修复
+修复报告生成功能内容缺失的问题。
+
+### 🚀 体验优化
+优化任务详情展示、代码预览、Chat 附件交互等功能。
+`.trim(),
+  },
+  {
     version: "2.2.0",
     releasedAt: "2026-06",
     title: "VulnAgent v2.2.0 更新",
