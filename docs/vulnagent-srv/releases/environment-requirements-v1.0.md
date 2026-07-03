@@ -1,8 +1,8 @@
 ---
-title: VulnAgent 1.0.4 环境要求
+title: VulnAgent 2.2.1 环境要求
 ---
 
-# VulnAgent 1.0.4 环境要求
+# VulnAgent 2.2.1 环境要求
 
 ## 服务器
 
