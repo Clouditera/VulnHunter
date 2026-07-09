@@ -61,6 +61,24 @@ docker build -f deploy/dockerfiles/eval-worker.Dockerfile -t "vulnagent-eval-wor
 docker pull "$POSTGRES_IMAGE"
 docker pull "$MINIO_IMAGE"
 
+validate_no_runtime_sourcemaps() {
+  local image="$1" paths="$2"
+  docker run --rm "$image" sh -lc "
+    if find $paths -type f \\( -name '*.map' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) | grep -q .; then
+      echo 'release validation failed: map/declaration files found in $image' >&2
+      find $paths -type f \\( -name '*.map' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) | head -20 >&2
+      exit 1
+    fi
+    if grep -RIl 'sourceMappingURL' $paths 2>/dev/null | grep -q .; then
+      echo 'release validation failed: sourceMappingURL references found in $image' >&2
+      grep -RIl 'sourceMappingURL' $paths 2>/dev/null | head -20 >&2
+      exit 1
+    fi
+  "
+}
+validate_no_runtime_sourcemaps "vulnagent-service:$VERSION" "/app/packages /app/public"
+validate_no_runtime_sourcemaps "vulnagent-web:$VERSION" "/usr/share/nginx/html"
+
 docker save "vulnagent-service:$VERSION" -o "$OUT/images/vulnagent-service.tar"
 docker save "vulnagent-web:$VERSION" -o "$OUT/images/vulnagent-web.tar"
 docker save "vulnagent-worker:$VERSION" -o "$OUT/images/vulnagent-worker.tar"
@@ -99,6 +117,15 @@ fi
 cp -r docs/vulnagent-srv/releases/. "$OUT/docs/"
 cp deploy/README.md "$OUT/docs/install.md" 2>/dev/null || true
 chmod +x "$OUT"/*.sh
+if find "$OUT" -type f ! -path "$OUT/images/*" \( -name "*.map" -o -name "*.d.ts" -o -name "*.d.ts.map" \) | grep -q .; then
+  echo "release validation failed: map/declaration files found in release files" >&2
+  find "$OUT" -type f ! -path "$OUT/images/*" \( -name "*.map" -o -name "*.d.ts" -o -name "*.d.ts.map" \) | head -20 >&2
+  exit 1
+fi
+if find "$OUT" -type f ! -path "$OUT/images/*" ! -path "$OUT/.secrets/license-public.pem" -print0 | xargs -0 grep -Il "sourceMappingURL" | grep -q .; then
+  echo "release validation failed: sourceMappingURL found in release files" >&2
+  exit 1
+fi
 
 (
   cd "$OUT"

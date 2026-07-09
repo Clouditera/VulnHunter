@@ -54,6 +54,12 @@ COPY --chown=vulnagent:nodejs submodules/DevEye/packages/chrome-extension/dist /
 COPY --chown=vulnagent:nodejs worker-assets/deveye-toolkit/setup.sh /opt/deveye-toolkits/setup/setup.sh
 COPY --chown=vulnagent:nodejs worker-assets/deveye-toolkit/setup.bat /opt/deveye-toolkits/setup/setup.bat
 
+# Customer runtime images should not expose TypeScript declarations or sourcemaps.
+RUN find /app/packages -type f \( -name "*.map" -o -name "*.d.ts" -o -name "*.d.ts.map" \) -delete && \
+    find /app/packages -type f -name "*.js" -exec sed -i '/^\/\/# sourceMappingURL=/d' {} + && \
+    find /app/public -type f -name "*.map" -delete && \
+    find /app/public -type f -name "*.js" -exec sed -i '/sourceMappingURL=/d' {} +
+
 USER vulnagent
 EXPOSE 8080
 
