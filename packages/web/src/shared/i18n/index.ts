@@ -414,7 +414,7 @@ const ZH: Record<string, string> = {
   "settings.upload.sourceArchiveMax": "源码包上传上限",
   "settings.upload.sourceArchiveDesc": "设置创建任务时允许上传的源码压缩包最大大小。",
   "settings.upload.currentLimit": "当前上限",
-  "settings.upload.currentLimitValue": "当前上限：{max} MB",
+  "settings.upload.currentLimitValue": "当前部署环境允许的最大文件大小为 {max} MB",
   "settings.upload.exceedsCeiling": "不能超过当前可配置上限 {max} MB。",
 
   // New Task Modal
@@ -1166,7 +1166,7 @@ const EN: Record<string, string> = {
   "settings.upload.sourceArchiveMax": "Source archive upload limit",
   "settings.upload.sourceArchiveDesc": "Set the maximum source archive size allowed when creating a task.",
   "settings.upload.currentLimit": "Current limit",
-  "settings.upload.currentLimitValue": "Current limit: {max} MB",
+  "settings.upload.currentLimitValue": "The current deployment environment allows files up to {max} MB",
   "settings.upload.exceedsCeiling": "Must not exceed the current configurable limit of {max} MB.",
 
   // New Task Modal

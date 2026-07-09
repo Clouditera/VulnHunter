@@ -1940,7 +1940,7 @@ export function SettingsPage() {
                   {i18n.t("settings.saveBtn")}
                 </button>
                 <span data-testid="settings-source-archive-current-limit" style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                  {i18n.t("settings.upload.currentLimitValue").replace("{max}", String(config?.source_archive_upload_max_mb ?? config?.upload_zip_max_mb ?? sourceArchiveUploadMax))}
+                  {i18n.t("settings.upload.currentLimitValue").replace("{max}", String(sourceArchiveUploadCeilingMb()))}
                 </span>
               </div>
             </Field>
