@@ -19,6 +19,143 @@ compose() {
     return 127
   fi
 }
+json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  printf '%s' "$s"
+}
+version_field() {
+  local key="$1"
+  [[ -f VERSION.json ]] || return 0
+  sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" VERSION.json | head -n 1
+}
+container_exists() {
+  docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$1"
+}
+image_exists() {
+  docker image inspect "$1" >/dev/null 2>&1
+}
+required_images() {
+  printf '%s\n' \
+    "${SERVICE_IMAGE:-vulnagent-service:latest}" \
+    "${WEB_IMAGE:-vulnagent-web:latest}" \
+    "${WORKER_IMAGE:-vulnagent-worker:latest}" \
+    "${EVAL_WORKER_IMAGE:-vulnagent-eval-worker:latest}" \
+    "${POSTGRES_IMAGE:-postgres:16-alpine}" \
+    "${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}" \
+    | awk 'NF && !seen[$0]++'
+}
+validate_local_images() {
+  local missing=()
+  while IFS= read -r image; do
+    [[ -n "$image" ]] || continue
+    if ! image_exists "$image"; then
+      missing+=("$image")
+    fi
+  done < <(required_images)
+  if (( ${#missing[@]} > 0 )); then
+    echo "[install] required Docker images are missing locally; refusing to contact external registries." >&2
+    printf '[install] missing image: %s\n' "${missing[@]}" >&2
+    echo "[install] Ensure the offline release images/*.tar files are present and rerun ./install.sh." >&2
+    exit 1
+  fi
+}
+compose_up_detached() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose up -d --pull never
+  elif command -v docker-compose >/dev/null 2>&1; then
+    validate_local_images
+    docker-compose up -d --no-build
+  else
+    echo "[install] Docker Compose is required: install Docker Compose v2 ('docker compose') or legacy docker-compose" >&2
+    return 127
+  fi
+}
+non_empty_dir() {
+  local dir="$1"
+  [[ -d "$dir" ]] || return 1
+  find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | grep -q .
+}
+existing_install_marker() {
+  local data_dir="$1"
+  if [[ -f .vulnagent-install.json ]]; then echo ".vulnagent-install.json"; return 0; fi
+  if [[ -f .env ]]; then echo ".env"; return 0; fi
+  if [[ -f "$data_dir/.secrets/vulnagent-master.key" ]]; then echo "$data_dir/.secrets/vulnagent-master.key"; return 0; fi
+  if [[ -f "$data_dir/.install_id" ]]; then echo "$data_dir/.install_id"; return 0; fi
+  if [[ -f "$data_dir/db/PG_VERSION" ]] || non_empty_dir "$data_dir/db"; then echo "$data_dir/db"; return 0; fi
+  if non_empty_dir "$data_dir/minio"; then echo "$data_dir/minio"; return 0; fi
+  for c in vulnagent-service vulnagent-web vulnagent-db vulnagent-minio; do
+    if container_exists "$c"; then echo "container:$c"; return 0; fi
+  done
+  return 1
+}
+refuse_existing_install() {
+  local marker="$1"
+  echo "[install] existing VulnAgent installation marker detected: $marker" >&2
+  echo "[install] install.sh is only for a clean first install directory." >&2
+  echo "[install] For same-directory upgrades, run: ./upgrade.sh" >&2
+  echo "[install] If .env is missing but old DATA_DIR still exists, restore the old .env from backup or contact support; refusing to generate new secrets over existing data." >&2
+  exit 1
+}
+write_install_manifest() {
+  local status_json="$1"
+  local now version git_commit youngflow install_id tmp
+  now="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+  version="$(version_field version)"
+  git_commit="$(version_field gitCommit)"
+  youngflow="$(version_field youngflowVersion)"
+  install_id="$(printf '%s' "$status_json" | sed -n 's/.*"installation_id":"\([^"]*\)".*/\1/p')"
+  [[ -n "$install_id" ]] || install_id="$(printf '%s' "$status_json" | sed -n 's/.*"machine_code":"\([^"]*\)".*/\1/p')"
+  tmp=".vulnagent-install.json.tmp"
+  cat > "$tmp" << JSON
+{
+  "schema_version": 1,
+  "product": "vulnagent",
+  "install_dir": "$(json_escape "$ROOT")",
+  "data_dir": "$(json_escape "${DATA_DIR:-$DATA_DIR_DEFAULT}")",
+  "edition": "$(json_escape "${EDITION:-community}")",
+  "installed_at": "$now",
+  "updated_at": "$now",
+  "installation_id": "$(json_escape "$install_id")",
+  "installed_version": {
+    "version": "$(json_escape "$version")",
+    "git_commit": "$(json_escape "$git_commit")",
+    "youngflow_version": "$(json_escape "$youngflow")"
+  },
+  "current_version": {
+    "version": "$(json_escape "$version")",
+    "git_commit": "$(json_escape "$git_commit")",
+    "youngflow_version": "$(json_escape "$youngflow")"
+  },
+  "compose": {
+    "file": "docker-compose.yml",
+    "network": "vulnagent-internal",
+    "containers": ["vulnagent-web", "vulnagent-service", "vulnagent-db", "vulnagent-minio"]
+  },
+  "managed_files": [
+    { "path": ".env", "kind": "config", "preserve": true, "secret_values": true },
+    { "path": ".secrets/license-public.pem", "kind": "license_public_key", "preserve": true, "secret_values": false },
+    { "path": "${DATA_DIR}/.secrets/vulnagent-master.key", "kind": "master_key", "preserve": true, "secret_values": true },
+    { "path": "${DATA_DIR}/.install_id", "kind": "installation_id", "preserve": true, "secret_values": false }
+  ],
+  "managed_dirs": [
+    { "path": "${DATA_DIR}/db", "kind": "postgres_data", "preserve": true },
+    { "path": "${DATA_DIR}/minio", "kind": "object_storage", "preserve": true },
+    { "path": "${DATA_DIR}/workspaces", "kind": "worker_workspaces", "preserve": true }
+  ],
+  "release_images": {
+    "service": "$(json_escape "${SERVICE_IMAGE:-}")",
+    "web": "$(json_escape "${WEB_IMAGE:-}")",
+    "worker": "$(json_escape "${WORKER_IMAGE:-}")",
+    "evalWorker": "$(json_escape "${EVAL_WORKER_IMAGE:-}")"
+  }
+}
+JSON
+  mv "$tmp" .vulnagent-install.json
+  echo "[install] wrote install manifest: .vulnagent-install.json"
+}
 
 require_cmd docker
 require_cmd openssl
@@ -58,6 +195,11 @@ port_available() {
     ! (echo >"/dev/tcp/127.0.0.1/$port") >/dev/null 2>&1
   fi
 }
+
+candidate_data_dir="${DATA_DIR:-$(default_data_dir)}"
+if marker="$(existing_install_marker "$candidate_data_dir")"; then
+  refuse_existing_install "$marker"
+fi
 
 if [[ ! -f .env ]]; then
   if [[ -z "${DATA_DIR:-}" ]] && ! is_tty; then
@@ -193,9 +335,10 @@ if [[ -d images ]]; then
     docker load -i "$img"
   done
 fi
+validate_local_images
 
 echo "[install] starting VulnAgent..."
-compose up -d
+compose_up_detached
 
 url="http://127.0.0.1:${WEB_PORT}/api/system/status"
 for i in {1..60}; do
@@ -211,7 +354,10 @@ for i in {1..60}; do
   sleep 2
 done
 
-machine_code="$(curl -fsS "$url" | sed -n 's/.*"installationId":"\([^"]*\)".*/\1/p')"
+status_json="$(curl -fsS "$url")"
+write_install_manifest "$status_json"
+machine_code="$(printf '%s' "$status_json" | sed -n 's/.*"installation_id":"\([^"]*\)".*/\1/p')"
+[[ -n "$machine_code" ]] || machine_code="$(printf '%s' "$status_json" | sed -n 's/.*"machine_code":"\([^"]*\)".*/\1/p')"
 echo ""
 echo "VulnAgent installed."
 echo "URL: http://$(hostname -I 2>/dev/null | awk '{print $1}'):${WEB_PORT}/"
