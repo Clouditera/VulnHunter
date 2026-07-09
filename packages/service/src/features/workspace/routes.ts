@@ -2,17 +2,10 @@ import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { getCodeFile, getCodeTree } from "./code-viewer.js";
-import { getTaskById } from "../tasks/storage.js";
 import { loadConfig } from "../../infra/config.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import { getAccessibleTask } from "../tasks/access.js";
-
-/** Resolve the actual MinIO zip key for a task (may differ from default pattern) */
-async function resolveZipKey(taskId: string): Promise<string | undefined> {
-  const task = await getTaskById(taskId);
-  const meta = task?.source_meta as Record<string, string> | undefined;
-  return meta?.minio_key || undefined;
-}
+import { resolveArchiveIdentity } from "../source-archives/detect.js";
 
 export const workspaceRouter = new Hono();
 workspaceRouter.use("*", licenseGuard);
@@ -25,8 +18,8 @@ workspaceRouter.get("/:taskId/workspace/tree", async (c) => {
   if (!task) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   const config = loadConfig();
 
-  const zipKey = await resolveZipKey(taskId);
-  const tree = await getCodeTree(taskId, config.minio.bucket, zipKey);
+  const archive = resolveArchiveIdentity({ taskId, sourceMeta: task.source_meta });
+  const tree = await getCodeTree(taskId, config.minio.bucket, archive.minioKey, archive.filename);
   return c.json({ tree });
 });
 
@@ -43,8 +36,8 @@ workspaceRouter.get("/:taskId/workspace/file", async (c) => {
     return c.json({ error: { code: "ERR_INTERNAL", detail: "path required" } }, 400);
   }
 
-  const zipKey = await resolveZipKey(taskId);
-  const result = await getCodeFile(taskId, config.minio.bucket, filePath, zipKey);
+  const archive = resolveArchiveIdentity({ taskId, sourceMeta: task.source_meta });
+  const result = await getCodeFile(taskId, config.minio.bucket, filePath, archive.minioKey, archive.filename);
   if (!result) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
 
   // Add line context hint for frontend

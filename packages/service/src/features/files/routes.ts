@@ -4,10 +4,17 @@ import { licenseGuard } from "../../middleware/license-guard.js";
 import { uploadFile } from "../../infra/minio/client.js";
 import { checkTaskLimit, createTask, updateTaskState } from "../tasks/storage.js";
 import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { writeFile, unlink } from "node:fs/promises";
 import { loadConfig } from "../../infra/config.js";
 import { cloneAndUpload } from "./git-clone.js";
 import { GitRemoteError, listRemoteBranches, validateRemoteGitUrl } from "./git-remote.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
+import { detectSourceArchive, stripSourceArchiveExtension } from "../source-archives/detect.js";
+import { inspectSourceArchive } from "../source-archives/extract.js";
+import { SourceArchiveError, sourceArchiveErrorResponse } from "../source-archives/errors.js";
+import { getSourceArchivePolicy } from "../source-archives/policy.js";
 
 export const filesRouter = new Hono();
 
@@ -85,30 +92,52 @@ filesRouter.post("/tasks", async (c) => {
 
   if (contentType.includes("multipart/form-data")) {
     // Upload mode
+    const policy = await getSourceArchivePolicy();
+    const contentLength = Number(c.req.header("content-length") ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > policy.max_bytes + 1024 * 1024) {
+      return c.json({ error: { code: "ERR_SOURCE_ARCHIVE_TOO_LARGE", message: `Source archive exceeds ${policy.max_mb} MB`, limit_mb: policy.max_mb } }, 413);
+    }
+
     const formData = await c.req.formData();
     const file = formData.get("file") as File | null;
     if (!file) return c.json({ error: { code: "ERR_INTERNAL", detail: "file required" } }, 400);
 
-    const maxBytes = 500 * 1024 * 1024;
-    if (file.size > maxBytes) {
-      return c.json({ error: { code: "ERR_TASK_UPLOAD_TOO_LARGE" } }, 413);
+    if (file.size > policy.max_bytes) {
+      return c.json({ error: { code: "ERR_SOURCE_ARCHIVE_TOO_LARGE", message: `Source archive exceeds ${policy.max_mb} MB`, limit_mb: policy.max_mb } }, 413);
+    }
+
+    const detected = detectSourceArchive(file.name);
+    if (!detected) {
+      return c.json({ error: { code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_FORMAT", message: `Unsupported source archive format. Supported: ${policy.extensions.join(", ")}`, extensions: policy.extensions } }, 400);
     }
 
     const credentialId = (formData.get("credential_id") as string | null) || undefined;
     const displayName = (formData.get("display_name") as string | null) || undefined;
     const taskId = randomUUID();
-    const minioKey = `code-packages/${taskId}.zip`;
+    const minioKey = `code-packages/${taskId}${detected.storageExtension}`;
 
     const arrayBuffer = await file.arrayBuffer();
-    await uploadFile(config.minio.bucket, minioKey, Buffer.from(arrayBuffer), file.size);
+    const buffer = Buffer.from(arrayBuffer);
+    const tmpPath = join(tmpdir(), `va-source-archive-${taskId}${detected.storageExtension}`);
+    try {
+      await writeFile(tmpPath, buffer);
+      await inspectSourceArchive(tmpPath, file.name, policy);
+    } catch (err) {
+      if (err instanceof SourceArchiveError) return c.json(sourceArchiveErrorResponse(err), err.status as 400 | 413);
+      return c.json(sourceArchiveErrorResponse(new SourceArchiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Cannot read source archive")), 400);
+    } finally {
+      await unlink(tmpPath).catch(() => {});
+    }
+
+    await uploadFile(config.minio.bucket, minioKey, buffer, file.size);
 
     const task = await createTask({
       tenantId: ctx.tenantId,
       createdBy: user.userId,
-      projectName: file.name.replace(/\.(zip|tar\.gz|tar\.bz2)$/, ""),
+      projectName: stripSourceArchiveExtension(file.name),
       displayName,
       sourceType: "upload",
-      sourceMeta: { filename: file.name, minio_key: minioKey, size_bytes: file.size, ...scanMetaFromForm(formData) },
+      sourceMeta: { filename: file.name, minio_key: minioKey, size_bytes: file.size, archive_format: detected.format, ...scanMetaFromForm(formData) },
       credentialId,
     });
 

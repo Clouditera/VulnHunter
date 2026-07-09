@@ -1,9 +1,7 @@
 /**
- * Code viewer: extracts individual files from code-packages/<taskId>.zip in MinIO.
- * Uses yauzl for random-access zip extraction (no full unzip needed).
+ * Code viewer: extracts individual files from uploaded source archives in MinIO.
  */
 
-import yauzl from "yauzl";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
 import { tmpdir } from "node:os";
@@ -12,6 +10,7 @@ import { writeFile, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { LRUCache } from "./lru-cache.js";
 import { fileTypeFromBuffer } from "file-type";
+import { listArchiveEntries, readArchiveFile, type ArchiveEntry } from "../source-archives/reader.js";
 
 const FILE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const MAX_FILE_SIZE_BYTES = 1024 * 1024; // 1MB — larger files get truncated
@@ -76,10 +75,10 @@ function isTextLikeDetected(mime?: string): boolean {
   return !!mime && TEXT_LIKE_DETECTED_MIMES.has(mime);
 }
 
-async function downloadZipToTmp(bucket: string, key: string): Promise<string> {
+async function downloadArchiveToTmp(bucket: string, key: string): Promise<string> {
   const minio = getMinio();
   const stream = await minio.getObject(bucket, key);
-  const tmpPath = join(tmpdir(), `va-zip-${randomUUID()}.zip`);
+  const tmpPath = join(tmpdir(), `va-source-archive-${randomUUID()}`);
 
   const chunks: Buffer[] = [];
   await new Promise<void>((resolve, reject) => {
@@ -90,39 +89,6 @@ async function downloadZipToTmp(bucket: string, key: string): Promise<string> {
 
   await writeFile(tmpPath, Buffer.concat(chunks));
   return tmpPath;
-}
-
-async function extractFileFromZip(zipPath: string, targetPath: string): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
-      if (err || !zipfile) return reject(err ?? new Error("Cannot open zip"));
-
-      zipfile.readEntry();
-      zipfile.on("entry", (entry: yauzl.Entry) => {
-        const entryPath = entry.fileName.replace(/^\//, "");
-        if (entryPath === targetPath || entryPath.endsWith("/" + targetPath)) {
-          zipfile.openReadStream(entry, (err2, stream) => {
-            if (err2 || !stream) {
-              zipfile.close();
-              return reject(err2 ?? new Error("Cannot open stream"));
-            }
-            const chunks: Buffer[] = [];
-            stream.on("data", (c: Buffer) => chunks.push(c));
-            stream.on("end", () => {
-              zipfile.close();
-              resolve(Buffer.concat(chunks));
-            });
-            stream.on("error", (e) => { zipfile.close(); reject(e); });
-          });
-        } else {
-          zipfile.readEntry();
-        }
-      });
-
-      zipfile.on("end", () => reject(new Error(`File not found in zip: ${targetPath}`)));
-      zipfile.on("error", reject);
-    });
-  });
 }
 
 async function safeFileTypeFromBuffer(buf: Buffer) {
@@ -191,6 +157,7 @@ export async function getCodeFile(
   bucket: string,
   filePath: string,
   overrideZipKey?: string,
+  archiveFilename = "source.zip",
 ): Promise<CodeFileResult | null> {
   const cacheKey = `${taskId}:${filePath}`;
   const cached = fileCache.get(cacheKey);
@@ -210,8 +177,8 @@ export async function getCodeFile(
   let tmpPath: string | null = null;
 
   try {
-    tmpPath = await downloadZipToTmp(bucket, zipKey);
-    const buf = await extractFileFromZip(tmpPath, filePath);
+    tmpPath = await downloadArchiveToTmp(bucket, zipKey);
+    const buf = await readArchiveFile(tmpPath, archiveFilename, filePath);
 
     const result = await classifyCodeFileBuffer(buf, filePath);
     if (result.type === "text") {
@@ -224,7 +191,7 @@ export async function getCodeFile(
     }
     return result;
   } catch (err) {
-    logger.warn({ err, taskId, filePath }, "Failed to extract file from zip");
+    logger.warn({ err, taskId, filePath }, "Failed to extract file from source archive");
     return null;
   } finally {
     if (tmpPath) {
@@ -237,47 +204,25 @@ export async function getCodeTree(
   taskId: string,
   bucket: string,
   overrideZipKey?: string,
+  archiveFilename = "source.zip",
 ): Promise<{ name: string; type: "file" | "dir"; hasVuln?: boolean; children?: unknown[] }[]> {
   const zipKey = overrideZipKey ?? `code-packages/${taskId}.zip`;
   let tmpPath: string | null = null;
 
   try {
-    tmpPath = await downloadZipToTmp(bucket, zipKey);
-    const entries = await listZipEntries(tmpPath);
+    tmpPath = await downloadArchiveToTmp(bucket, zipKey);
+    const entries = await listArchiveEntries(tmpPath, archiveFilename);
 
     // Build tree from flat list
     return buildTree(entries);
   } catch (err) {
-    logger.warn({ err, taskId }, "Failed to list zip entries");
+    logger.warn({ err, taskId }, "Failed to list source archive entries");
     return [];
   } finally {
     if (tmpPath) {
       await unlink(tmpPath).catch(() => {});
     }
   }
-}
-
-interface ZipEntry {
-  path: string;
-  isDir: boolean;
-}
-
-async function listZipEntries(zipPath: string): Promise<ZipEntry[]> {
-  return new Promise((resolve, reject) => {
-    const entries: ZipEntry[] = [];
-    yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
-      if (err || !zipfile) return reject(err ?? new Error("Cannot open zip"));
-
-      zipfile.readEntry();
-      zipfile.on("entry", (entry: yauzl.Entry) => {
-        const isDir = entry.fileName.endsWith("/");
-        entries.push({ path: entry.fileName.replace(/\/$/, ""), isDir });
-        zipfile.readEntry();
-      });
-      zipfile.on("end", () => resolve(entries));
-      zipfile.on("error", reject);
-    });
-  });
 }
 
 type TreeNode = { name: string; type: "file" | "dir"; children?: TreeNode[] };
@@ -288,7 +233,7 @@ interface BuildNode {
   children: Record<string, BuildNode>;
 }
 
-function buildTree(entries: ZipEntry[]): TreeNode[] {
+function buildTree(entries: ArchiveEntry[]): TreeNode[] {
   const dirPaths = new Set<string>();
   for (const e of entries) {
     if (e.isDir) dirPaths.add(e.path);

@@ -5,7 +5,6 @@
 
 import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { execSync } from "node:child_process";
 import {
   createWorkerContainer,
   ensureWorkDir,
@@ -21,6 +20,9 @@ import * as pocStorage from "./storage.js";
 import { notify } from "../notifications/index.js";
 import { logger } from "../../infra/logger.js";
 import type { ServiceConfig } from "../../infra/config.js";
+import { resolveArchiveIdentity } from "../source-archives/detect.js";
+import { extractSourceArchive } from "../source-archives/extract.js";
+import { getSourceArchivePolicy } from "../source-archives/policy.js";
 
 export function getEvalHostWorkDir(dataDir: string, jobId: string): string {
   return join(dataDir, "eval-workspaces", jobId);
@@ -63,15 +65,11 @@ export async function spawnEvalWorker(
   mkdirSync(logsDir, { recursive: true });
 
   // Download source code from MinIO
-  let meta = task.source_meta as { minio_key?: string } | string;
-  if (typeof meta === "string") {
-    try { meta = JSON.parse(meta); } catch { meta = {}; }
-  }
-  const minioKey = (meta as { minio_key?: string })?.minio_key ?? `code-packages/${task.id}.zip`;
+  const archive = resolveArchiveIdentity({ taskId: task.id, sourceMeta: task.source_meta });
   const minio = getMinio();
-  const zipPath = join(hostWorkDir, "source.zip");
-  await minio.fGetObject(config.minio.bucket, minioKey, zipPath);
-  execSync(`cd "${subjectDir}" && unzip -o -q "${zipPath}"`, { timeout: 60_000, stdio: "pipe" });
+  const archivePath = join(hostWorkDir, "source-archive");
+  await minio.fGetObject(config.minio.bucket, archive.minioKey, archivePath);
+  await extractSourceArchive(archivePath, archive.filename, subjectDir, await getSourceArchivePolicy());
 
   // Stage selected findings as YAML files into input/findings/
   const allFindings = await listFindings({ taskId: job.task_id });

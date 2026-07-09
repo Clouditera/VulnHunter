@@ -1,11 +1,20 @@
 import { useState, useRef, useEffect } from "react";
-import { api, type LlmCredential } from "../../../shared/api/client.js";
+import { api, type LlmCredential, type SourceArchivePolicy } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 
 interface Props {
   onClose: () => void;
   onCreated: () => void;
 }
+
+const DEFAULT_SOURCE_ARCHIVE_POLICY: SourceArchivePolicy = {
+  max_mb: 500,
+  max_bytes: 500 * 1024 * 1024,
+  source_archive_upload_ceiling_mb: 2048,
+  formats: ["zip", "tar", "tar.gz"],
+  extensions: [".zip", ".tar", ".tar.gz", ".tgz"],
+  accept: ".zip,.tar,.tar.gz,.tgz",
+};
 
 function isValidHttpGitUrl(value: string): boolean {
   if (!value || value.startsWith("-")) return false;
@@ -15,6 +24,11 @@ function isValidHttpGitUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function fileHasSupportedExtension(file: File, policy: SourceArchivePolicy): boolean {
+  const name = file.name.toLowerCase();
+  return policy.extensions.some((ext) => name.endsWith(ext.toLowerCase()));
 }
 
 export function NewTaskModal({ onClose, onCreated }: Props) {
@@ -31,6 +45,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [loading, setLoading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [archivePolicy, setArchivePolicy] = useState<SourceArchivePolicy>(DEFAULT_SOURCE_ARCHIVE_POLICY);
   const fileRef = useRef<HTMLInputElement>(null);
   const branchFetchSeq = useRef(0);
 
@@ -60,6 +75,14 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   }, []);
   const [, forceI18n] = useState(0);
   useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
+
+  useEffect(() => {
+    let mounted = true;
+    api.tasks.sourceArchivePolicy()
+      .then((policy) => { if (mounted) setArchivePolicy(policy); })
+      .catch(() => { /* keep default policy for older services */ });
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     if (tab !== "git") return;
@@ -108,6 +131,14 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
     try {
       if (tab === "upload") {
         if (!file) return;
+        if (!fileHasSupportedExtension(file, archivePolicy)) {
+          setError(i18n.t("newTask.unsupportedArchive").replace("{extensions}", archivePolicy.extensions.join(", ")));
+          return;
+        }
+        if (file.size > archivePolicy.max_bytes) {
+          setError(i18n.t("newTask.uploadTooLarge").replace("{max}", String(archivePolicy.max_mb)));
+          return;
+        }
         const fd = new FormData();
         fd.append("file", file);
         if (credentialId) fd.append("credential_id", credentialId);
@@ -135,6 +166,14 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         setError(i18n.t("taskLimit.exceeded")
           .replace("{used}", String(e.used ?? "N"))
           .replace("{limit}", String(e.limit ?? "N")));
+      } else if (e.code === "ERR_TASK_UPLOAD_TOO_LARGE" || e.code === "ERR_SOURCE_ARCHIVE_TOO_LARGE") {
+        setError(i18n.t("newTask.uploadTooLarge").replace("{max}", String(archivePolicy.max_mb)));
+      } else if (e.code === "ERR_SOURCE_ARCHIVE_UNSUPPORTED_FORMAT") {
+        setError(i18n.t("newTask.unsupportedArchive").replace("{extensions}", archivePolicy.extensions.join(", ")));
+      } else if (e.code?.startsWith("ERR_SOURCE_ARCHIVE_")) {
+        setError(i18n.t("newTask.invalidArchive"));
+      } else if (e.code === "ERR_UPLOAD_GATEWAY_LIMIT" || e.message.includes("HTTP 413")) {
+        setError(i18n.t("newTask.uploadGatewayLimit"));
       } else {
         setError(e.message || String(err));
       }
@@ -334,7 +373,10 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                 onDrop={(e) => {
                   e.preventDefault();
                   const dropped = e.dataTransfer.files[0];
-                  if (dropped) setFile(dropped);
+                  if (dropped) {
+                    setError("");
+                    setFile(dropped);
+                  }
                 }}
               >
                 <div style={{ fontSize: "32px", marginBottom: "8px" }}>📦</div>
@@ -348,7 +390,9 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                       {i18n.t("newTask.dropzone")}
                     </p>
                     <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0 }}>
-                      .zip .tar.gz .tar.bz2
+                      {i18n.t("newTask.supportedArchives")
+                        .replace("{extensions}", archivePolicy.extensions.join(", "))
+                        .replace("{max}", String(archivePolicy.max_mb))}
                     </p>
                   </>
                 )}
@@ -356,9 +400,15 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
               <input
                 ref={fileRef}
                 type="file"
-                accept=".zip,.tar.gz,.tar.bz2"
+                accept={archivePolicy.accept}
                 style={{ display: "none" }}
-                onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])}
+                onChange={(e) => {
+                  const selected = e.target.files?.[0];
+                  if (selected) {
+                    setError("");
+                    setFile(selected);
+                  }
+                }}
               />
 
               {/* Upload progress bar — only visible during active upload */}

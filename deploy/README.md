@@ -33,6 +33,8 @@ Open `http://<server>:23000/`, activate license, bootstrap admin, then configure
 - Data dir: root defaults to `/opt/vulnagent/data`; normal-user interactive installs default to `$HOME/vulnagent-data`.
   - `install.sh` sets `SERVICE_UID/SERVICE_GID` to the installer user for normal-user installs so the service can read/write the data dir and secrets.
 - Master key: `$DATA_DIR/.secrets/vulnagent-master.key`
+- Source archive upload limits use two layers: `UPLOAD_GATEWAY_LIMIT_MB` is the deployment ceiling and drives packaged web nginx plus the maximum value admins can configure; Settings controls the user-facing source archive upload limit and must be `<= UPLOAD_GATEWAY_LIMIT_MB`.
+- Enterprise/license information: official customer release packages set `EDITION=enterprise` and include `.secrets/license-public.pem`. For older installs that do not show license information, set `EDITION=enterprise` in `.env`, ensure `LICENSE_PUBLIC_KEY_FILE=./.secrets/license-public.pem` and `VULNAGENT_LICENSE_PUBLIC_KEY_FILE=/run/secrets/license-public.pem`, then restart `service`/`web` and activate with the customer license.
 
 ## Troubleshooting
 

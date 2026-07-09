@@ -14,6 +14,7 @@ import { queryContextFromUser } from "../../infra/query-context.js";
 import { listUsersByIds } from "../auth/storage.js";
 import { attachCreatorSummaries, uniqueCreatorIds } from "../auth/creator-summary.js";
 import { originalArchiveDownloadSpec } from "./original-archive.js";
+import { getSourceArchivePolicy } from "../source-archives/policy.js";
 
 export const tasksRouter = new Hono();
 
@@ -58,6 +59,11 @@ tasksRouter.get("/", async (c) => {
   }));
   const creators = ctx.role === "admin" ? await listUsersByIds(uniqueCreatorIds(tasks, "created_by")) : [];
   return c.json({ tasks: attachCreatorSummaries(ctx.role, rows, "created_by", creators) });
+});
+
+// GET /api/tasks/source-archive-policy — upload policy for New Task UI.
+tasksRouter.get("/source-archive-policy", async (c) => {
+  return c.json(await getSourceArchivePolicy());
 });
 
 // GET /api/tasks/:id/source-archive — download the original uploaded package.

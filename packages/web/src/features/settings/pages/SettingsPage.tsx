@@ -341,6 +341,7 @@ export function SettingsPage() {
 
   const [maxParallel, setMaxParallel] = useState<number>(3);
   const [youngflowMaxParallel, setYoungflowMaxParallel] = useState<number>(3);
+  const [sourceArchiveUploadMax, setSourceArchiveUploadMax] = useState<number>(500);
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
@@ -382,6 +383,7 @@ export function SettingsPage() {
           setConfig(cfgResp.config);
           setMaxParallel(cfgResp.config.max_parallel_scan);
           setYoungflowMaxParallel(cfgResp.config.youngflow_max_parallel ?? 3);
+          setSourceArchiveUploadMax(cfgResp.config.source_archive_upload_max_mb ?? cfgResp.config.upload_zip_max_mb ?? 500);
         }
       }
       const cl = credList as { credentials: LlmCredential[] } | undefined;
@@ -603,6 +605,33 @@ export function SettingsPage() {
       setTimeout(() => setToast(null), 2800);
     } finally {
       setSaving(false);
+    }
+  }
+
+  function sourceArchiveUploadCeilingMb(): number {
+    return config?.source_archive_upload_ceiling_mb ?? config?.upload_gateway_limit_mb ?? 2048;
+  }
+
+  async function saveSourceArchiveUploadLimit(nextValue: number) {
+    if (!config) return;
+    const ceiling = sourceArchiveUploadCeilingMb();
+    const next = Math.max(1, Math.trunc(nextValue || 500));
+    if (next > ceiling) {
+      setToast({ kind: "err", msg: i18n.t("settings.upload.exceedsCeiling").replace("{max}", String(ceiling)) });
+      setTimeout(() => setToast(null), 2800);
+      return;
+    }
+    if ((config.source_archive_upload_max_mb ?? config.upload_zip_max_mb ?? 500) === next) return;
+    try {
+      await api.settings.updateSystemConfig({ source_archive_upload_max_mb: next });
+      setConfig({ ...config, source_archive_upload_max_mb: next, upload_zip_max_mb: next });
+      setSourceArchiveUploadMax(next);
+      setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
+      setTimeout(() => setToast(null), 2200);
+    } catch (err) {
+      setToast({ kind: "err", msg: (err as Error)?.message || i18n.t("settings.saveError") });
+      setTimeout(() => setToast(null), 2800);
+      setSourceArchiveUploadMax(config.source_archive_upload_max_mb ?? config.upload_zip_max_mb ?? 500);
     }
   }
 
@@ -1871,6 +1900,50 @@ export function SettingsPage() {
             <div style={{ color: "var(--text-muted)", fontSize: "13px" }}>
               {i18n.t("settings.engine.estimatedModelConcurrency").replace("{scan}", String(maxParallel)).replace("{agent}", String(youngflowMaxParallel)).replace("{total}", String(maxParallel * youngflowMaxParallel))}
             </div>
+          </SettingsCard>
+
+          {/* ============================================================= */}
+          {/*  Source Archive Upload                                        */}
+          {/* ============================================================= */}
+          <SettingsCard
+            icon="upload"
+            title={i18n.t("settings.upload.sourceArchiveMax")}
+            desc={i18n.t("settings.upload.sourceArchiveDesc")}
+            testid="settings-card-source-archive-upload"
+          >
+            <Field label={i18n.t("settings.upload.currentLimit")}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                <input
+                  type="number"
+                  data-testid="settings-source-archive-upload-max"
+                  min={1}
+                  max={sourceArchiveUploadCeilingMb()}
+                  value={sourceArchiveUploadMax}
+                  onChange={(e) => setSourceArchiveUploadMax(Number(e.target.value))}
+                  onBlur={(e) => saveSourceArchiveUploadLimit(Number(e.target.value))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      saveSourceArchiveUploadLimit(Number((e.target as HTMLInputElement).value));
+                    }
+                  }}
+                  style={{ width: "120px", height: "36px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 10px", background: "var(--bg-page)", color: "var(--text-primary)" }}
+                />
+                <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>MB</span>
+                <button
+                  type="button"
+                  data-testid="settings-source-archive-upload-save"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => saveSourceArchiveUploadLimit(sourceArchiveUploadMax)}
+                  style={{ height: "32px", border: "1px solid var(--brand)", borderRadius: "6px", background: "var(--brand)", color: "#fff", padding: "0 12px", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}
+                >
+                  {i18n.t("settings.saveBtn")}
+                </button>
+                <span data-testid="settings-source-archive-current-limit" style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                  {i18n.t("settings.upload.currentLimitValue").replace("{max}", String(config?.source_archive_upload_max_mb ?? config?.upload_zip_max_mb ?? sourceArchiveUploadMax))}
+                </span>
+              </div>
+            </Field>
           </SettingsCard>
           </>}
         </>

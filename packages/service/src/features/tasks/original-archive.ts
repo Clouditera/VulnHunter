@@ -1,24 +1,11 @@
 import type { DbTask } from "./storage.js";
+import { contentTypeForSourceArchive, sourceMetaObject } from "../source-archives/detect.js";
 
 export interface OriginalArchiveDownloadSpec {
   filename: string;
   safeFilename: string;
   minioKey: string;
   contentType: string;
-}
-
-function sourceMetaObject(task: Pick<DbTask, "source_meta">): Record<string, unknown> {
-  const raw = task.source_meta;
-  if (!raw) return {};
-  if (typeof raw === "string") {
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
-    } catch {
-      return {};
-    }
-  }
-  return raw as Record<string, unknown>;
 }
 
 export function safeDownloadFilename(filename: string): string {
@@ -32,11 +19,7 @@ export function safeDownloadFilename(filename: string): string {
 }
 
 export function contentTypeForArchive(filename: string): string {
-  const lower = filename.toLowerCase();
-  if (lower.endsWith(".zip")) return "application/zip";
-  if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) return "application/gzip";
-  if (lower.endsWith(".tar.bz2") || lower.endsWith(".tbz2")) return "application/x-bzip2";
-  return "application/octet-stream";
+  return contentTypeForSourceArchive(filename);
 }
 
 export function originalArchiveDownloadSpec(
@@ -44,7 +27,7 @@ export function originalArchiveDownloadSpec(
 ): OriginalArchiveDownloadSpec | null {
   if (task.source_type !== "upload") return null;
 
-  const meta = sourceMetaObject(task);
+  const meta = sourceMetaObject(task.source_meta);
   const filename = typeof meta.filename === "string" && meta.filename.trim()
     ? meta.filename.trim()
     : `${task.project_name || task.id}.zip`;

@@ -16,8 +16,12 @@ vi.mock("../../src/infra/db/client.js", () => ({
 
 const { updateSystemConfig, getSystemConfig } = await import("../../src/features/settings/storage.js");
 
-describe("system config concurrency validation", () => {
-  beforeEach(() => { config = { max_parallel_scan: 3, youngflow_max_parallel: 3 }; });
+describe("system config validation", () => {
+  beforeEach(() => {
+    config = { max_parallel_scan: 3, youngflow_max_parallel: 3 };
+    delete process.env.UPLOAD_GATEWAY_LIMIT_MB;
+    delete process.env.VULNAGENT_UPLOAD_GATEWAY_LIMIT_MB;
+  });
 
   it("saves valid youngflow_max_parallel as an object", async () => {
     await updateSystemConfig({ youngflow_max_parallel: 10 });
@@ -28,8 +32,32 @@ describe("system config concurrency validation", () => {
   });
 
   it("rejects out-of-range youngflow_max_parallel", async () => {
-    await expect(updateSystemConfig({ youngflow_max_parallel: 0 })).rejects.toThrow("invalid youngflow_max_parallel");
-    await expect(updateSystemConfig({ youngflow_max_parallel: 11 })).rejects.toThrow("invalid youngflow_max_parallel");
+    await expect(updateSystemConfig({ youngflow_max_parallel: 0 })).rejects.toThrow("youngflow_max_parallel must be an integer between 1 and 10");
+    await expect(updateSystemConfig({ youngflow_max_parallel: 11 })).rejects.toThrow("youngflow_max_parallel must be an integer between 1 and 10");
+  });
+
+  it("uses deployment upload ceiling for source archive setting validation", async () => {
+    process.env.UPLOAD_GATEWAY_LIMIT_MB = "4096";
+    await updateSystemConfig({ source_archive_upload_max_mb: 4096 });
+    await expect(getSystemConfig()).resolves.toMatchObject({
+      source_archive_upload_max_mb: 4096,
+      upload_zip_max_mb: 4096,
+      source_archive_upload_ceiling_mb: 4096,
+      upload_gateway_limit_mb: 4096,
+      source_archive_effective_max_mb: 4096,
+    });
+    await expect(updateSystemConfig({ source_archive_upload_max_mb: 4097 })).rejects.toThrow("source_archive_upload_max_mb must be an integer between 1 and 4096");
+  });
+
+  it("clamps read-side source archive setting to lowered deployment ceiling", async () => {
+    config = { max_parallel_scan: 3, youngflow_max_parallel: 3, source_archive_upload_max_mb: 4096, upload_zip_max_mb: 4096 };
+    process.env.UPLOAD_GATEWAY_LIMIT_MB = "500";
+    await expect(getSystemConfig()).resolves.toMatchObject({
+      source_archive_upload_max_mb: 500,
+      upload_zip_max_mb: 500,
+      source_archive_upload_ceiling_mb: 500,
+      source_archive_effective_max_mb: 500,
+    });
   });
 
   it("keeps config object-shaped across consecutive updates", async () => {

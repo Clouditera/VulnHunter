@@ -80,6 +80,22 @@ sed -i "s|^SERVICE_IMAGE=.*|SERVICE_IMAGE=vulnagent-service:$VERSION|" "$OUT/.en
 sed -i "s|^WEB_IMAGE=.*|WEB_IMAGE=vulnagent-web:$VERSION|" "$OUT/.env.example"
 sed -i "s|^WORKER_IMAGE=.*|WORKER_IMAGE=vulnagent-worker:$VERSION|" "$OUT/.env.example"
 sed -i "s|^EVAL_WORKER_IMAGE=.*|EVAL_WORKER_IMAGE=vulnagent-eval-worker:$VERSION|" "$OUT/.env.example"
+if grep -q "^EDITION=" "$OUT/.env.example"; then
+  sed -i "s|^EDITION=.*|EDITION=enterprise|" "$OUT/.env.example"
+else
+  printf '\nEDITION=enterprise\n' >> "$OUT/.env.example"
+fi
+
+# Enterprise release guardrails. Official customer/offline packages must boot with
+# license routes/UI enabled and must never ship private issuer material.
+grep -qx "EDITION=enterprise" "$OUT/.env.example" || { echo "release validation failed: .env.example must set EDITION=enterprise" >&2; exit 1; }
+[[ -s "$OUT/.secrets/license-public.pem" ]] || { echo "release validation failed: missing .secrets/license-public.pem" >&2; exit 1; }
+grep -q "VULNAGENT_LICENSE_PUBLIC_KEY_FILE:.*run/secrets/license-public.pem" "$OUT/docker-compose.yml" || { echo "release validation failed: compose missing VULNAGENT_LICENSE_PUBLIC_KEY_FILE" >&2; exit 1; }
+grep -q "LICENSE_PUBLIC_KEY_FILE.*run/secrets/license-public.pem:ro" "$OUT/docker-compose.yml" || { echo "release validation failed: compose missing license public key mount" >&2; exit 1; }
+if find "$OUT" -type f ! -path "$OUT/images/*" ! -path "$OUT/.secrets/license-public.pem" -print0 | xargs -0 grep -Il "BEGIN .*PRIVATE KEY" | grep -q .; then
+  echo "release validation failed: private key material detected in release files" >&2
+  exit 1
+fi
 cp -r docs/vulnagent-srv/releases/. "$OUT/docs/"
 cp deploy/README.md "$OUT/docs/install.md" 2>/dev/null || true
 chmod +x "$OUT"/*.sh

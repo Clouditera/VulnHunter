@@ -15,7 +15,7 @@ describe("safeContextFilename", () => {
 });
 
 describe("extractArchiveToSource", () => {
-  it("extracts tar.gz source archives into the report source directory", () => {
+  it("extracts tar.gz source archives into the report source directory", async () => {
     const root = mkdtempSync(join(tmpdir(), "report-source-"));
     try {
       const inputDir = join(root, "input");
@@ -26,7 +26,7 @@ describe("extractArchiveToSource", () => {
       const archive = join(root, "source.tar.gz");
       execSync(`tar -czf ${JSON.stringify(archive)} -C ${JSON.stringify(inputDir)} .`);
 
-      extractArchiveToSource(archive, "source.tar.gz", sourceDir);
+      await extractArchiveToSource(archive, "source.tar.gz", sourceDir);
 
       expect(readFileSync(join(sourceDir, "app.c"), "utf-8")).toContain("int main");
     } finally {

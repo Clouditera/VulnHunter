@@ -884,17 +884,17 @@ function CvssEvCard({ finding }: { finding: FindingMeta }) {
       }}
     >
       {hasCvss && (
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap", minWidth: 0 }}>
           <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-secondary)", width: "42px", flexShrink: 0 }}>CVSS</span>
-          {finding.cvss_vector && (
-            <code style={{ fontSize: "11px", color: "var(--text-primary)", fontFamily: "monospace", wordBreak: "break-all" }}>
-              {finding.cvss_vector}
-            </code>
-          )}
           {finding.cvss_score != null && (
-            <span style={{ marginLeft: "auto", fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>
+            <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)", flexShrink: 0 }}>
               {finding.cvss_score}
             </span>
+          )}
+          {finding.cvss_vector && (
+            <code style={{ fontSize: "11px", color: "var(--text-primary)", fontFamily: "monospace", wordBreak: "break-all", whiteSpace: "normal", minWidth: 0 }}>
+              {finding.cvss_vector}
+            </code>
           )}
         </div>
       )}

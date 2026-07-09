@@ -56,7 +56,8 @@ describe("contentTypeForArchive", () => {
   it("maps supported source archive extensions", () => {
     expect(contentTypeForArchive("a.zip")).toBe("application/zip");
     expect(contentTypeForArchive("a.tgz")).toBe("application/gzip");
-    expect(contentTypeForArchive("a.tar.bz2")).toBe("application/x-bzip2");
+    expect(contentTypeForArchive("a.tar")).toBe("application/x-tar");
+    expect(contentTypeForArchive("a.tar.bz2")).toBe("application/octet-stream");
     expect(contentTypeForArchive("a.bin")).toBe("application/octet-stream");
   });
 });

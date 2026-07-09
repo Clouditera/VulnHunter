@@ -2,6 +2,21 @@ import type { SystemStatus } from "@vulnagent/shared";
 
 const BASE = "";
 
+type ApiErrorShape = { error?: { code?: string; detail?: string; message?: string; used?: number; limit?: number } };
+
+type ClientError = Error & { code: string; used?: number; limit?: number };
+
+function buildApiError(status: number, body?: ApiErrorShape | null): ClientError {
+  const error = body?.error;
+  const code = error?.code ?? (status === 413 ? "ERR_UPLOAD_GATEWAY_LIMIT" : "ERR_INTERNAL");
+  const detail = error?.detail ?? error?.message ?? (status === 413 ? "HTTP 413" : code);
+  const err = new Error(detail) as ClientError;
+  err.code = code;
+  err.used = error?.used;
+  err.limit = error?.limit;
+  return err;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     credentials: "include",
@@ -10,15 +25,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    const error = (body as { error?: { code?: string; detail?: string; message?: string; used?: number; limit?: number } })?.error;
-    const code = error?.code ?? "ERR_INTERNAL";
-    const detail = error?.detail ?? error?.message ?? code;
-    const err = new Error(detail) as Error & { code: string; used?: number; limit?: number };
-    err.code = code;
-    err.used = error?.used;
-    err.limit = error?.limit;
-    throw err;
+    const body = await res.json().catch(() => null) as ApiErrorShape | null;
+    throw buildApiError(res.status, body);
   }
 
   return res.json() as Promise<T>;
@@ -222,6 +230,7 @@ export const api = {
       return request<{ tasks: Task[] }>(`/api/tasks${qs ? `?${qs}` : ""}`);
     },
     get: (id: string) => request<{ task: Task }>(`/api/tasks/${id}`),
+    sourceArchivePolicy: () => request<SourceArchivePolicy>("/api/tasks/source-archive-policy"),
     create: (
       body:
         | FormData
@@ -237,7 +246,11 @@ export const api = {
           },
     ) =>
       body instanceof FormData
-        ? fetch("/api/tasks", { method: "POST", credentials: "include", body }).then((r) => r.json() as Promise<{ task: Task }>)
+        ? fetch("/api/tasks", { method: "POST", credentials: "include", body }).then(async (r) => {
+            const parsed = await r.json().catch(() => null) as ApiErrorShape | { task: Task } | null;
+            if (!r.ok) throw buildApiError(r.status, parsed as ApiErrorShape | null);
+            return parsed as { task: Task };
+          })
         : request<{ task: Task }>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
     /**
      * Upload a FormData body with progress events.
@@ -265,19 +278,11 @@ export const api = {
               reject(err);
             }
           } else {
-            let msg = `HTTP ${xhr.status}`;
             try {
-              const parsed = JSON.parse(xhr.responseText);
-              const error = parsed?.error;
-              msg = error?.message ?? error?.code ?? msg;
-              const err = new Error(msg) as Error & { code?: string; used?: number; limit?: number };
-              err.code = error?.code;
-              err.used = error?.used;
-              err.limit = error?.limit;
-              reject(err);
+              reject(buildApiError(xhr.status, JSON.parse(xhr.responseText)));
               return;
             } catch {}
-            reject(new Error(msg));
+            reject(buildApiError(xhr.status));
           }
         };
         xhr.onerror = () => reject(new Error("Network error"));
@@ -698,6 +703,17 @@ export interface ModelDiagnosticResult {
   checks: ModelDiagnosticCheck[];
 }
 
+export interface SourceArchivePolicy {
+  max_mb: number;
+  max_bytes: number;
+  gateway_max_mb?: number;
+  effective_max_mb?: number;
+  source_archive_upload_ceiling_mb: number;
+  formats: string[];
+  extensions: string[];
+  accept: string;
+}
+
 export interface SystemConfig {
   max_parallel_scan: number;
   youngflow_max_parallel: number;
@@ -709,7 +725,11 @@ export interface SystemConfig {
   chat_memory_gb: number;
   report_cpu_limit: number;
   report_memory_gb: number;
+  source_archive_upload_max_mb: number;
   upload_zip_max_mb: number;
+  upload_gateway_limit_mb?: number;
+  source_archive_upload_ceiling_mb?: number;
+  source_archive_effective_max_mb?: number;
   git_repo_max_mb: number;
   live_log_buffer_cap: number;
   chat_idle_timeout_min: number;

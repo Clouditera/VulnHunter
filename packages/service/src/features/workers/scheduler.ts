@@ -7,7 +7,6 @@ import { join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { load as yamlLoad } from "js-yaml";
 
-import { execSync } from "node:child_process";
 import { logger } from "../../infra/logger.js";
 import { getDb } from "../../infra/db/client.js";
 import { countTasksByState, getQueuedTasks, getRunningTaskIds, getTaskById, updateTaskState, clearContinueMode, isContinueMode, type DbTask } from "../tasks/storage.js";
@@ -26,6 +25,9 @@ import { onReportContainerDie } from "../reports/report-worker.js";
 import { onEvalContainerDie, onPocRunContainerDie, tickPocScheduler } from "../poc/scheduler.js";
 import { notify } from "../notifications/index.js";
 import type { ServiceConfig } from "../../infra/config.js";
+import { resolveArchiveIdentity } from "../source-archives/detect.js";
+import { extractSourceArchive } from "../source-archives/extract.js";
+import { getSourceArchivePolicy } from "../source-archives/policy.js";
 
 export function summarizeExecutionEvents(lines: string[]): {
   inputTokens: number;
@@ -406,15 +408,10 @@ export class TaskScheduler {
     const srcDir = join(hostWorkDir, "src");
     ensureWorkDir(srcDir);
 
-    // Download code package from MinIO and extract
-    // Defensive: source_meta may be double-serialized JSONB string
-    let meta = task.source_meta as { minio_key?: string } | string;
-    if (typeof meta === "string") {
-      try { meta = JSON.parse(meta); } catch { meta = {}; }
-    }
-    const minioKey = (meta as { minio_key?: string })?.minio_key ?? `code-packages/${task.id}.zip`;
-
-    const zipPath = join(hostWorkDir, "source.zip");
+    // Download code package from MinIO and extract.
+    const archive = resolveArchiveIdentity({ taskId: task.id, sourceMeta: task.source_meta });
+    const minioKey = archive.minioKey;
+    const archivePath = join(hostWorkDir, "source-archive");
     const minio = getMinio();
 
     // Wait for code package (git clone runs async after task creation; large repos
@@ -423,7 +420,7 @@ export class TaskScheduler {
     for (let attempt = 0; attempt < maxWaitSec; attempt++) {
       try {
         await minio.statObject(this.config.minio.bucket, minioKey);
-        break; // zip exists
+        break; // archive exists
       } catch {
         if (attempt === maxWaitSec - 1) {
           throw new Error(`Code package not ready after ${maxWaitSec}s: ${minioKey}`);
@@ -436,9 +433,9 @@ export class TaskScheduler {
     // read-after-write size mismatch (prod task bab9d1d3). The object is
     // complete server-side (git-clone verifies size on upload); a single
     // zero-retry call turned the blip into a permanent task failure.
-    await downloadObjectWithRetry(minio, this.config.minio.bucket, minioKey, zipPath);
-    execSync(`cd "${srcDir}" && unzip -o -q "${zipPath}"`, { timeout: 60_000, stdio: "pipe" });
-    logger.info({ taskId: task.id, minioKey }, "Code package extracted to workspace");
+    await downloadObjectWithRetry(minio, this.config.minio.bucket, minioKey, archivePath);
+    await extractSourceArchive(archivePath, archive.filename, srcDir, await getSourceArchivePolicy());
+    logger.info({ taskId: task.id, minioKey, filename: archive.filename }, "Code package extracted to workspace");
   }
 
   private async extractMetadata(taskId: string): Promise<void> {

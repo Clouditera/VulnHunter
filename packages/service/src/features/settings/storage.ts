@@ -3,6 +3,7 @@ import { MasterKeyVault, CredentialDecryptError, CredentialKeyUnavailableError }
 import { join } from "node:path";
 import type { QueryContext } from "../../infra/query-context.js";
 import { shouldFilterByUser } from "../../infra/query-context.js";
+import { deploymentUploadCeilingMb, normalizeSourceArchiveUploadMaxMb } from "../source-archives/limits.js";
 
 let _vault: MasterKeyVault | null = null;
 
@@ -440,37 +441,64 @@ export async function checkCredentialHealth(): Promise<{
   };
 }
 
+function normalizeSystemConfig(rawConfig: Record<string, unknown>): Record<string, unknown> {
+  const cfg = { ...rawConfig };
+  const ceilingMb = deploymentUploadCeilingMb();
+  const uploadMb = normalizeSourceArchiveUploadMaxMb(cfg, ceilingMb);
+  cfg.source_archive_upload_max_mb = uploadMb;
+  cfg.upload_zip_max_mb = uploadMb;
+  cfg.upload_gateway_limit_mb = ceilingMb;
+  cfg.source_archive_upload_ceiling_mb = ceilingMb;
+  cfg.source_archive_effective_max_mb = uploadMb;
+  return cfg;
+}
+
 export async function getSystemConfig(): Promise<Record<string, unknown>> {
   const db = getDb();
   const rows = await db<{ config: Record<string, unknown> | string }[]>`
     SELECT config FROM system_config WHERE id = 1
   `;
   const raw = rows[0]?.config;
-  if (!raw) return {};
+  if (!raw) return normalizeSystemConfig({});
   if (typeof raw === "string") {
     try {
       const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+      return normalizeSystemConfig(parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {});
     } catch {
-      return {};
+      return normalizeSystemConfig({});
     }
   }
-  return raw;
+  return normalizeSystemConfig(raw);
 }
 
 function validateBoundedInt(key: string, value: unknown, fallback: number, min: number, max: number): number {
   if (value == null) return fallback;
   const n = Number(value);
-  if (!Number.isInteger(n) || n < min || n > max) throw new Error(`invalid ${key}`);
+  if (!Number.isInteger(n) || n < min || n > max) {
+    throw new Error(`${key} must be an integer between ${min} and ${max}`);
+  }
   return n;
 }
+
+const DERIVED_SYSTEM_CONFIG_KEYS = [
+  "upload_gateway_limit_mb",
+  "source_archive_upload_ceiling_mb",
+  "source_archive_effective_max_mb",
+];
 
 export async function updateSystemConfig(patch: Record<string, unknown>): Promise<void> {
   const db = getDb();
   const current = await getSystemConfig();
   const merged = { ...current, ...patch };
+  for (const key of DERIVED_SYSTEM_CONFIG_KEYS) delete merged[key];
+  if (patch.upload_zip_max_mb != null && patch.source_archive_upload_max_mb == null) {
+    merged.source_archive_upload_max_mb = patch.upload_zip_max_mb;
+  }
+  const ceilingMb = deploymentUploadCeilingMb();
   merged.max_parallel_scan = validateBoundedInt("max_parallel_scan", merged.max_parallel_scan, 3, 1, 10);
   merged.youngflow_max_parallel = validateBoundedInt("youngflow_max_parallel", merged.youngflow_max_parallel, 3, 1, 10);
+  merged.source_archive_upload_max_mb = validateBoundedInt("source_archive_upload_max_mb", merged.source_archive_upload_max_mb, Math.min(500, ceilingMb), 1, ceilingMb);
+  merged.upload_zip_max_mb = merged.source_archive_upload_max_mb;
   await db`
     UPDATE system_config SET config = ${db.json(merged as never)}::jsonb, updated_at = now()
     WHERE id = 1

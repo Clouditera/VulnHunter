@@ -6,7 +6,7 @@
  * uploads report files to MinIO.
  */
 
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { execSync } from "node:child_process";
 import {
@@ -26,26 +26,15 @@ import { countFindingsBySeverity, countFindingsByItemType } from "../findings/st
 import { listPocResults } from "../poc/storage.js";
 import { getDb } from "../../infra/db/client.js";
 import type { ServiceConfig } from "../../infra/config.js";
+import { resolveArchiveIdentity } from "../source-archives/detect.js";
+import { extractSourceArchive } from "../source-archives/extract.js";
+import { buildSourceArchivePolicy, getSourceArchivePolicy, type SourceArchivePolicy } from "../source-archives/policy.js";
 
 interface MaterializedReportContext {
   findingCount: number;
   riskCount: number;
   wikiPages: number;
   sourceAvailable: boolean;
-}
-
-function sourceMetaObject(task: DbTask): Record<string, unknown> {
-  const raw = task.source_meta;
-  if (!raw) return {};
-  if (typeof raw === "string") {
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
-    } catch {
-      return {};
-    }
-  }
-  return raw as Record<string, unknown>;
 }
 
 export function safeContextFilename(name: string, fallback = "item"): string {
@@ -55,10 +44,6 @@ export function safeContextFilename(name: string, fallback = "item"): string {
     .replace(/[^A-Za-z0-9._-]/g, "_")
     .replace(/^\.+$/, fallback);
   return safe || fallback;
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
@@ -78,34 +63,18 @@ async function listMinioKeys(bucket: string, prefix: string): Promise<string[]> 
   });
 }
 
-export function extractArchiveToSource(archivePath: string, filename: string, sourceDir: string): void {
-  const lower = filename.toLowerCase();
-  const archive = shellQuote(archivePath);
-  const dest = shellQuote(sourceDir);
-  if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) {
-    execSync(`tar -xzf ${archive} -C ${dest}`, { timeout: 120_000, stdio: "pipe" });
-    return;
-  }
-  if (lower.endsWith(".tar.bz2") || lower.endsWith(".tbz2")) {
-    execSync(`tar -xjf ${archive} -C ${dest}`, { timeout: 120_000, stdio: "pipe" });
-    return;
-  }
-  execSync(`unzip -o -q ${archive} -d ${dest}`, { timeout: 120_000, stdio: "pipe" });
+export async function extractArchiveToSource(archivePath: string, filename: string, sourceDir: string, policy: SourceArchivePolicy = buildSourceArchivePolicy({})): Promise<void> {
+  await extractSourceArchive(archivePath, filename, sourceDir, policy);
 }
-
 async function materializeSourceArchive(params: {
   task: DbTask;
   hostWorkDir: string;
   config: ServiceConfig;
 }): Promise<{ available: boolean; filename?: string; minioKey?: string; path?: string; error?: string }> {
   const { task, hostWorkDir, config } = params;
-  const meta = sourceMetaObject(task);
-  const minioKey = typeof meta.minio_key === "string" && meta.minio_key.trim()
-    ? meta.minio_key.trim()
-    : `code-packages/${task.id}.zip`;
-  const filename = typeof meta.filename === "string" && meta.filename.trim()
-    ? meta.filename.trim()
-    : basename(minioKey) || "source.zip";
+  const archive = resolveArchiveIdentity({ taskId: task.id, sourceMeta: task.source_meta });
+  const minioKey = archive.minioKey;
+  const filename = archive.filename;
   const sourceDir = join(hostWorkDir, "source");
   const archivePath = join(hostWorkDir, "source-archive");
 
@@ -113,7 +82,7 @@ async function materializeSourceArchive(params: {
     rmSync(sourceDir, { recursive: true, force: true });
     mkdirSync(sourceDir, { recursive: true });
     await getMinio().fGetObject(config.minio.bucket, minioKey, archivePath);
-    extractArchiveToSource(archivePath, filename, sourceDir);
+    await extractArchiveToSource(archivePath, filename, sourceDir, await getSourceArchivePolicy());
     return { available: true, filename, minioKey, path: "/workspace/source" };
   } catch (err) {
     logger.warn({ err, taskId: task.id, minioKey }, "Failed to materialize source archive for report context");

@@ -7,6 +7,8 @@ services:
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-23000}:80"
+    environment:
+      UPLOAD_GATEWAY_LIMIT_MB: "${UPLOAD_GATEWAY_LIMIT_MB:-2048}"
     networks:
       - vulnagent-internal
     depends_on:
@@ -36,6 +38,7 @@ services:
       EVAL_WORKER_IMAGE: "${EVAL_WORKER_IMAGE:-vulnagent-eval-worker:latest}"
       DOCKER_NETWORK: "vulnagent-internal"
       WORKER_SERVICE_URL: "${WORKER_SERVICE_URL:-http://service:28080}"
+      UPLOAD_GATEWAY_LIMIT_MB: "${UPLOAD_GATEWAY_LIMIT_MB:-2048}"
       DATA_DIR: "${DATA_DIR:-/opt/vulnagent/data}"
       VULNAGENT_MASTER_KEY_FILE: "${VULNAGENT_MASTER_KEY_FILE:-/run/secrets/vulnagent-master.key}"
       VULNAGENT_LICENSE_PUBLIC_KEY_FILE: "${VULNAGENT_LICENSE_PUBLIC_KEY_FILE:-/run/secrets/license-public.pem}"
