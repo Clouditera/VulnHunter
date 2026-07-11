@@ -15,8 +15,8 @@ export const SOURCE_MANIFEST_SCHEMA_VERSION = "source-manifest/v1" as const;
 export interface SourceManifestLimits {
   maxEntries: number;
   maxFiles: number;
-  maxTotalBytes: number;
-  maxSingleFileBytes: number;
+  maxTotalHashBytes: number;
+  maxSingleFileHashBytes: number;
   maxDepth: number;
   maxIndexedMarkers: number;
 }
@@ -24,8 +24,8 @@ export interface SourceManifestLimits {
 export const DEFAULT_SOURCE_MANIFEST_LIMITS: SourceManifestLimits = {
   maxEntries: 20_000,
   maxFiles: 10_000,
-  maxTotalBytes: 64 * 1024 * 1024,
-  maxSingleFileBytes: 2 * 1024 * 1024,
+  maxTotalHashBytes: 64 * 1024 * 1024,
+  maxSingleFileHashBytes: 2 * 1024 * 1024,
   maxDepth: 32,
   maxIndexedMarkers: 256,
 };
@@ -58,7 +58,8 @@ export interface SourceManifest {
   schema_version: typeof SOURCE_MANIFEST_SCHEMA_VERSION;
   source: {
     kind: SourceManifestSourceKind;
-    identity_sha256: string;
+    projection_sha256: string;
+    identity_scope: "bounded_manifest_projection";
   };
   root_candidates: Array<{ path: string; marker_paths: string[] }>;
   tree: SourceManifestEntry[];
@@ -67,7 +68,8 @@ export interface SourceManifest {
     directories_observed: number;
     bytes_observed: number;
     bytes_hashed: number;
-    excluded_sensitive_files: number;
+    excluded_sensitive_entries: number;
+    excluded_vcs_entries: number;
     extensions: Array<{ extension: string; files: number; bytes: number }>;
     languages: Array<{ language: string; files: number; bytes: number }>;
   };
@@ -126,6 +128,7 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
 };
 
 const SENSITIVE_BASENAMES = /^(?:\.env(?:\..*)?|id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?|.*\.(?:pem|key|p12|pfx|jks|keystore)|credentials(?:\..*)?|secrets?(?:\..*)?)$/i;
+const VCS_METADATA_BASENAMES = new Set([".git", ".hg", ".svn"]);
 const CONTROL_OR_BACKSLASH = /[\\\u0000-\u001f\u007f]/;
 
 function compareText(a: string, b: string): number {
@@ -166,6 +169,10 @@ function extensionOf(path: string): string | null {
 
 function isSensitivePath(path: string): boolean {
   return path.split("/").some((part) => SENSITIVE_BASENAMES.test(part));
+}
+
+function isVcsMetadataPath(path: string): boolean {
+  return path.split("/").some((part) => VCS_METADATA_BASENAMES.has(part.toLowerCase()));
 }
 
 function hashOpenFile(fd: number, size: number): string {
@@ -241,7 +248,8 @@ export function generateSourceManifest(
   let directoriesObserved = 1;
   let bytesObserved = 0;
   let bytesHashed = 0;
-  let excludedSensitiveFiles = 0;
+  let excludedSensitiveEntries = 0;
+  let excludedVcsEntries = 0;
   let stopped = false;
 
   try {
@@ -283,6 +291,19 @@ export function generateSourceManifest(
             throw new SourceManifestError("ERR_SOURCE_ENTRY_UNSAFE");
           }
           if (!isWithin(stableRoot, actual)) throw new SourceManifestError("ERR_SOURCE_ENTRY_UNSAFE");
+          if (!stat.isDirectory() && !stat.isFile()) throw new SourceManifestError("ERR_SOURCE_ENTRY_UNSAFE");
+          if (stat.isFile() && stat.nlink !== 1) throw new SourceManifestError("ERR_SOURCE_ENTRY_UNSAFE");
+
+          if (isVcsMetadataPath(path)) {
+            excludedVcsEntries++;
+            warnings.add("vcs_metadata_excluded");
+            continue;
+          }
+          if (isSensitivePath(path)) {
+            excludedSensitiveEntries++;
+            warnings.add("sensitive_entries_excluded");
+            continue;
+          }
 
           if (stat.isDirectory()) {
             directoriesObserved++;
@@ -292,7 +313,6 @@ export function generateSourceManifest(
             if (stopped) return;
             continue;
           }
-          if (!stat.isFile() || stat.nlink !== 1) throw new SourceManifestError("ERR_SOURCE_ENTRY_UNSAFE");
           if (filesObserved >= limits.maxFiles) {
             truncationReasons.add("max_files");
             stopped = true;
@@ -301,19 +321,6 @@ export function generateSourceManifest(
 
           filesObserved++;
           bytesObserved += stat.size;
-          if (isSensitivePath(path)) {
-            excludedSensitiveFiles++;
-            warnings.add("sensitive_paths_excluded");
-            let sensitiveHash = "unhashed";
-            if (stat.size <= limits.maxSingleFileBytes && bytesHashed + stat.size <= limits.maxTotalBytes) {
-              sensitiveHash = hashOpenFile(fd, stat.size);
-              bytesHashed += stat.size;
-            } else {
-              truncationReasons.add(stat.size > limits.maxSingleFileBytes ? "max_single_file_bytes" : "max_total_bytes");
-            }
-            identityParts.push(`s\0${digest(path)}\0${stat.size}\0${sensitiveHash}`);
-            continue;
-          }
 
           const extension = extensionOf(path);
           if (extension) {
@@ -324,10 +331,10 @@ export function generateSourceManifest(
           }
 
           let sha256: string | null = null;
-          if (stat.size > limits.maxSingleFileBytes) {
-            truncationReasons.add("max_single_file_bytes");
-          } else if (bytesHashed + stat.size > limits.maxTotalBytes) {
-            truncationReasons.add("max_total_bytes");
+          if (stat.size > limits.maxSingleFileHashBytes) {
+            truncationReasons.add("max_single_file_hash_bytes");
+          } else if (bytesHashed + stat.size > limits.maxTotalHashBytes) {
+            truncationReasons.add("max_total_hash_bytes");
           } else {
             sha256 = hashOpenFile(fd, stat.size);
             bytesHashed += stat.size;
@@ -352,6 +359,8 @@ export function generateSourceManifest(
     };
 
     walk(`/proc/self/fd/${rootFd}`, ".", 1);
+    identityParts.push(`excluded_sensitive_entries\0${excludedSensitiveEntries}`);
+    identityParts.push(`excluded_vcs_entries\0${excludedVcsEntries}`);
   } finally {
     closeSync(rootFd);
   }
@@ -380,7 +389,8 @@ export function generateSourceManifest(
     schema_version: SOURCE_MANIFEST_SCHEMA_VERSION,
     source: {
       kind: options.sourceKind ?? "directory",
-      identity_sha256: digest(identityParts.sort().join("\n")),
+      projection_sha256: digest(identityParts.sort().join("\n")),
+      identity_scope: "bounded_manifest_projection",
     },
     root_candidates: roots,
     tree,
@@ -389,7 +399,8 @@ export function generateSourceManifest(
       directories_observed: directoriesObserved,
       bytes_observed: bytesObserved,
       bytes_hashed: bytesHashed,
-      excluded_sensitive_files: excludedSensitiveFiles,
+      excluded_sensitive_entries: excludedSensitiveEntries,
+      excluded_vcs_entries: excludedVcsEntries,
       extensions: extensionStats,
       languages: [...languageMap.entries()]
         .map(([language, value]) => ({ language, ...value }))

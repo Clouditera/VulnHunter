@@ -8,10 +8,11 @@
   "properties": {
     "schema_version": { "const": "source-manifest/v1" },
     "source": {
-      "type": "object", "additionalProperties": false, "required": ["kind", "identity_sha256"],
+      "type": "object", "additionalProperties": false, "required": ["kind", "projection_sha256", "identity_scope"],
       "properties": {
         "kind": { "enum": ["archive", "git", "directory"] },
-        "identity_sha256": { "$ref": "#/$defs/sha256" }
+        "projection_sha256": { "$ref": "#/$defs/sha256", "description": "Identity of the bounded, non-sensitive manifest projection; not a complete source-content digest when entries are excluded or hashing is truncated." },
+        "identity_scope": { "const": "bounded_manifest_projection" }
       }
     },
     "root_candidates": {
@@ -32,11 +33,11 @@
     },
     "statistics": {
       "type": "object", "additionalProperties": false,
-      "required": ["files_observed", "directories_observed", "bytes_observed", "bytes_hashed", "excluded_sensitive_files", "extensions", "languages"],
+      "required": ["files_observed", "directories_observed", "bytes_observed", "bytes_hashed", "excluded_sensitive_entries", "excluded_vcs_entries", "extensions", "languages"],
       "properties": {
         "files_observed": { "$ref": "#/$defs/count" }, "directories_observed": { "$ref": "#/$defs/count" },
         "bytes_observed": { "$ref": "#/$defs/count" }, "bytes_hashed": { "$ref": "#/$defs/count" },
-        "excluded_sensitive_files": { "$ref": "#/$defs/count" },
+        "excluded_sensitive_entries": { "$ref": "#/$defs/count" }, "excluded_vcs_entries": { "$ref": "#/$defs/count" },
         "extensions": { "type": "array", "items": { "$ref": "#/$defs/stat" } },
         "languages": { "type": "array", "items": { "$ref": "#/$defs/languageStat" } }
       }
@@ -69,7 +70,7 @@
   "$defs": {
     "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "count": { "type": "integer", "minimum": 0 },
-    "path": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^(?:\\.|(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000-\\u001f\\u007f]+)$" },
+    "path": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^(?:\\.|(?![A-Za-z]:)(?!(?:.*\\/)?\\.{1,2}(?:\\/|$))[^/\\\\\\u0000-\\u001f\\u007f]+(?:/[^/\\\\\\u0000-\\u001f\\u007f]+)*)$" },
     "stat": {
       "type": "object", "additionalProperties": false, "required": ["extension", "files", "bytes"],
       "properties": { "extension": { "type": "string", "minLength": 1, "maxLength": 32 }, "files": { "$ref": "#/$defs/count" }, "bytes": { "$ref": "#/$defs/count" } }
@@ -79,10 +80,10 @@
       "properties": { "language": { "type": "string", "minLength": 1, "maxLength": 64 }, "files": { "$ref": "#/$defs/count" }, "bytes": { "$ref": "#/$defs/count" } }
     },
     "limits": {
-      "type": "object", "additionalProperties": false, "required": ["maxEntries", "maxFiles", "maxTotalBytes", "maxSingleFileBytes", "maxDepth", "maxIndexedMarkers"],
+      "type": "object", "additionalProperties": false, "required": ["maxEntries", "maxFiles", "maxTotalHashBytes", "maxSingleFileHashBytes", "maxDepth", "maxIndexedMarkers"],
       "properties": {
-        "maxEntries": { "type": "integer", "minimum": 1 }, "maxFiles": { "type": "integer", "minimum": 1 }, "maxTotalBytes": { "type": "integer", "minimum": 1 },
-        "maxSingleFileBytes": { "type": "integer", "minimum": 1 }, "maxDepth": { "type": "integer", "minimum": 1 },
+        "maxEntries": { "type": "integer", "minimum": 1 }, "maxFiles": { "type": "integer", "minimum": 1 }, "maxTotalHashBytes": { "type": "integer", "minimum": 1, "description": "Maximum aggregate regular-file bytes read only for hashing." },
+        "maxSingleFileHashBytes": { "type": "integer", "minimum": 1, "description": "Maximum bytes read from one regular file only for hashing." }, "maxDepth": { "type": "integer", "minimum": 1 },
         "maxIndexedMarkers": { "type": "integer", "minimum": 1 }
       }
     }
