@@ -53,11 +53,6 @@ if [[ ! -f flows/vulnforge/extensions/output-contract/package.json ]]; then
   echo "missing flows/vulnforge/extensions/output-contract/package.json; run git submodule update --init --recursive" >&2
   exit 1
 fi
-if [[ ! -x submodules/youngflow/release/youngflow-linux-x64 ]]; then
-  echo "missing submodules/youngflow/release/youngflow-linux-x64; run git submodule update --init --recursive" >&2
-  exit 1
-fi
-
 docker build -f deploy/dockerfiles/service.Dockerfile \
   --build-arg VULNAGENT_VERSION="$VERSION" \
   --build-arg VULNAGENT_BUILD_TIME="$BUILD_TIME" \
@@ -65,10 +60,9 @@ docker build -f deploy/dockerfiles/service.Dockerfile \
   --build-arg YOUNGFLOW_VERSION="$YOUNGFLOW_VERSION" \
   -t "vulnagent-service:$VERSION" -t vulnagent-service:latest .
 docker build -f deploy/dockerfiles/web.Dockerfile -t "vulnagent-web:$VERSION" -t vulnagent-web:latest .
-docker build -f deploy/dockerfiles/worker.Dockerfile \
-  --build-arg VULNFORGE_VERSION="$VULNFORGE_VERSION" \
-  --build-arg VULNFORGE_COMMIT="$VULNFORGE_COMMIT" \
-  -t "vulnagent-worker:$VERSION" -t vulnagent-worker:latest .
+VULNFORGE_VERSION="$VULNFORGE_VERSION" VULNFORGE_COMMIT="$VULNFORGE_COMMIT" \
+  scripts/build-worker-image.sh "vulnagent-worker:$VERSION"
+docker tag "vulnagent-worker:$VERSION" vulnagent-worker:latest
 docker build -f deploy/dockerfiles/eval-worker.Dockerfile -t "vulnagent-eval-worker:$VERSION" -t vulnagent-eval-worker:latest .
 docker pull "$POSTGRES_IMAGE"
 docker pull "$MINIO_IMAGE"
