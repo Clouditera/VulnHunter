@@ -11,10 +11,9 @@ import {
 const script = fileURLToPath(new URL("../../../../worker-assets/scan-mode.sh", import.meta.url));
 
 function captureArgv(env: Record<string, string> = {}): { argv: string[]; stderr: string } {
-  const result = spawnSync("bash", [script], {
+  const result = spawnSync("bash", ["-c", 'source "$1"; build_youngflow_args; log_input_summary; printf "%s\\0" "${YOUNGFLOW_ARGS[@]}"', "argv-test", script], {
     env: {
       PATH: process.env.PATH ?? "",
-      VULNFORGE_ARGV_TEST_MODE: "1",
       ...env,
     },
     encoding: null,
@@ -163,6 +162,7 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
     const source = readFileSync(script, "utf8");
     expect(source).not.toContain("--user-instruction");
     expect(source).not.toContain("--sandbox-config");
+    expect(source).not.toContain("VULNFORGE_ARGV_TEST_MODE");
     const { stderr } = captureArgv({
       VULNFORGE_AUDIT_SCOPE: "secret-scope-body",
       VULNFORGE_VULN_FOCUS: "secret-focus-body",
@@ -174,5 +174,22 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
     expect(stderr).not.toContain("secret-user-body");
     expect(stderr).not.toContain("secret-sched-body");
     expect(stderr).toContain("enable_poc=false enable_exp=false sandbox_cfg_present=false");
+    expect(stderr).toContain(`sched_instr_chars=${[..."secret-sched-body"].length}`);
+  });
+
+  it("formal entry cannot be bypassed by legacy test-mode or FLOW_DIR env", () => {
+    const result = spawnSync("bash", [script], {
+      env: {
+        PATH: process.env.PATH ?? "",
+        VULNFORGE_ARGV_TEST_MODE: "1",
+        FLOW_DIR: "/tmp/untrusted-flow",
+      },
+      encoding: "utf8",
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("TASK_ID is required");
+
+    const { argv } = captureArgv({ FLOW_DIR: "/tmp/untrusted-flow" });
+    expect(argv[0]).toBe("/opt/vulnagent/flows/vulnforge/flow.audit.yaml");
   });
 });

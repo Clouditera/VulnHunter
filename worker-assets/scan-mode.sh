@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-FLOW_DIR="${FLOW_DIR:-/opt/vulnagent/flows/vulnforge}"
+FLOW_DIR="/opt/vulnagent/flows/vulnforge"
 FLOW_FILE="$FLOW_DIR/flow.audit.yaml"
 STATIC_ONLY_SCHED_INSTR="平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；完成静态审计后进入报告阶段。"
 
@@ -19,7 +19,8 @@ build_youngflow_args() {
   if [ -n "${VULNFORGE_VULN_FOCUS:-}" ]; then
     YOUNGFLOW_ARGS+=(--vuln-focus "$VULNFORGE_VULN_FOCUS")
   fi
-  YOUNGFLOW_ARGS+=(--sched-instr "${VULNFORGE_SCHED_INSTR:-$STATIC_ONLY_SCHED_INSTR}")
+  EFFECTIVE_SCHED_INSTR="${VULNFORGE_SCHED_INSTR:-$STATIC_ONLY_SCHED_INSTR}"
+  YOUNGFLOW_ARGS+=(--sched-instr "$EFFECTIVE_SCHED_INSTR")
   if [ -n "${VULNFORGE_USER_INSTR:-}" ]; then
     YOUNGFLOW_ARGS+=(--user-instr "$VULNFORGE_USER_INSTR")
   fi
@@ -43,18 +44,11 @@ build_youngflow_args() {
 }
 
 log_input_summary() {
-  echo "[scan] VulnForge inputs: audit_scope_present=$([ -n "${VULNFORGE_AUDIT_SCOPE:-}" ] && echo true || echo false) audit_scope_chars=${#VULNFORGE_AUDIT_SCOPE} vuln_focus_present=$([ -n "${VULNFORGE_VULN_FOCUS:-}" ] && echo true || echo false) vuln_focus_chars=${#VULNFORGE_VULN_FOCUS} user_instr_present=$([ -n "${VULNFORGE_USER_INSTR:-}" ] && echo true || echo false) user_instr_chars=${#VULNFORGE_USER_INSTR} sched_instr_present=true sched_instr_chars=${#VULNFORGE_SCHED_INSTR} enable_poc=false enable_exp=false sandbox_cfg_present=false" >&2
+  local effective_sched_instr="${EFFECTIVE_SCHED_INSTR:-${VULNFORGE_SCHED_INSTR:-$STATIC_ONLY_SCHED_INSTR}}"
+  echo "[scan] VulnForge inputs: audit_scope_present=$([ -n "${VULNFORGE_AUDIT_SCOPE:-}" ] && echo true || echo false) audit_scope_chars=${#VULNFORGE_AUDIT_SCOPE} vuln_focus_present=$([ -n "${VULNFORGE_VULN_FOCUS:-}" ] && echo true || echo false) vuln_focus_chars=${#VULNFORGE_VULN_FOCUS} user_instr_present=$([ -n "${VULNFORGE_USER_INSTR:-}" ] && echo true || echo false) user_instr_chars=${#VULNFORGE_USER_INSTR} sched_instr_present=true sched_instr_chars=${#effective_sched_instr} enable_poc=false enable_exp=false sandbox_cfg_present=false" >&2
 }
 
-# Black-box argv contract mode. It uses the exact production array builder but
-# does not require credentials, write files, or invoke YoungFlow.
-if [ "${VULNFORGE_ARGV_TEST_MODE:-0}" = "1" ]; then
-  build_youngflow_args
-  log_input_summary
-  printf '%s\0' "${YOUNGFLOW_ARGS[@]}"
-  exit 0
-fi
-
+main() {
 TASK_ID="${TASK_ID:?TASK_ID is required}"
 SERVICE_LOG="/workspace/.service-logs/youngflow.service.jsonl"
 
@@ -243,4 +237,9 @@ finish_log
 trap - EXIT
 
 echo "[scan] Done (exit=$EXIT)" >&2
-exit $EXIT
+return "$EXIT"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
