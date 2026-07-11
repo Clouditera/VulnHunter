@@ -14,6 +14,33 @@ import {
 
 import type { DbTask } from "../tasks/storage.js";
 
+export const STATIC_ONLY_SCHED_INSTR = "平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；完成静态审计后进入报告阶段。";
+
+export function assertDynamicInputPolicy(enablePoc: boolean, enableExp: boolean, sandboxCfg?: string): void {
+  if (enableExp && !enablePoc) throw new Error("enable_exp requires enable_poc");
+  if ((enablePoc || enableExp) && !sandboxCfg?.trim()) {
+    throw new Error("dynamic verification requires a validated sandbox_cfg");
+  }
+}
+
+function optionalTextMeta(meta: DbTask["source_meta"] | null | undefined, key: string): string {
+  const value = meta?.[key];
+  if (typeof value !== "string") return "";
+  const normalized = value.trim();
+  if (normalized.includes("\0")) throw new Error(`Invalid NUL in task metadata: ${key}`);
+  return normalized;
+}
+
+export function scanInputEnvFromMeta(meta: DbTask["source_meta"] | null | undefined): Record<string, string> {
+  const canonicalUserInstr = optionalTextMeta(meta, "user_instr");
+  return {
+    VULNFORGE_AUDIT_SCOPE: optionalTextMeta(meta, "audit_scope"),
+    VULNFORGE_VULN_FOCUS: optionalTextMeta(meta, "vuln_focus"),
+    VULNFORGE_SCHED_INSTR: STATIC_ONLY_SCHED_INSTR,
+    VULNFORGE_USER_INSTR: canonicalUserInstr || optionalTextMeta(meta, "audit_focus"),
+  };
+}
+
 export function getHostWorkDir(dataDir: string, taskId: string): string {
   return join(dataDir, "workspaces", taskId);
 }
@@ -47,11 +74,12 @@ export async function spawnScanWorker(
     cpuQuota: 200000,
     memoryBytes: 4 * 1024 * 1024 * 1024,
     env: {
+      ...llmEnv,
       MODE: "scan",
       TASK_ID: task.id,
       RESUME: resume ? "1" : "0",
       CONTINUE: continueMode ? "1" : "0",
-      AUDIT_FOCUS: stringMeta(task.source_meta, "audit_focus"),
+      ...scanInputEnvFromMeta(task.source_meta),
       SCAN_TIMEOUT: stringMeta(task.source_meta, "scan_timeout"),
       MAX_ITEMS_PER_RECON: stringMeta(task.source_meta, "max_items_per_recon"),
       RECURSION_LIMIT: stringMeta(task.source_meta, "recursion_limit"),
@@ -60,7 +88,6 @@ export async function spawnScanWorker(
       MINIO_SECRET_KEY: config.minio.secretKey,
       MINIO_BUCKET: config.minio.bucket,
       SERVICE_URL: config.docker.workerServiceUrl,
-      ...llmEnv,
     },
   });
 

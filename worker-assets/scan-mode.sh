@@ -1,9 +1,61 @@
 #!/bin/bash
 set -e
 
-TASK_ID="${TASK_ID:?TASK_ID is required}"
-FLOW_DIR="/opt/vulnagent/flows/vulnforge"
+FLOW_DIR="${FLOW_DIR:-/opt/vulnagent/flows/vulnforge}"
 FLOW_FILE="$FLOW_DIR/flow.audit.yaml"
+STATIC_ONLY_SCHED_INSTR="平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；完成静态审计后进入报告阶段。"
+
+build_youngflow_args() {
+  YOUNGFLOW_ARGS=(
+    "$FLOW_FILE"
+    --work-dir /workspace/src
+    --output-dir /workspace/out
+    --json-log
+    --max-parallel "${YOUNGFLOW_MAX_PARALLEL:-3}"
+  )
+  if [ -n "${VULNFORGE_AUDIT_SCOPE:-}" ]; then
+    YOUNGFLOW_ARGS+=(--audit-scope "$VULNFORGE_AUDIT_SCOPE")
+  fi
+  if [ -n "${VULNFORGE_VULN_FOCUS:-}" ]; then
+    YOUNGFLOW_ARGS+=(--vuln-focus "$VULNFORGE_VULN_FOCUS")
+  fi
+  YOUNGFLOW_ARGS+=(--sched-instr "${VULNFORGE_SCHED_INSTR:-$STATIC_ONLY_SCHED_INSTR}")
+  if [ -n "${VULNFORGE_USER_INSTR:-}" ]; then
+    YOUNGFLOW_ARGS+=(--user-instr "$VULNFORGE_USER_INSTR")
+  fi
+
+  # M1-02 hard gate: task metadata/env cannot enable dynamic execution and no
+  # sandbox_cfg is accepted until a validated Prepare allocation exists.
+  YOUNGFLOW_ARGS+=(--enable-poc false --enable-exp false)
+
+  if [ -n "${UNTIL:-}" ]; then
+    YOUNGFLOW_ARGS+=(--until "$UNTIL")
+  fi
+  if [ -n "${RECURSION_LIMIT:-}" ]; then
+    YOUNGFLOW_ARGS+=(--recursion-limit "$RECURSION_LIMIT")
+  fi
+  if [ "${RESUME:-0}" = "1" ]; then
+    YOUNGFLOW_ARGS+=(--resume)
+  fi
+  if [ "${CONTINUE:-0}" = "1" ]; then
+    YOUNGFLOW_ARGS+=(--continue)
+  fi
+}
+
+log_input_summary() {
+  echo "[scan] VulnForge inputs: audit_scope_present=$([ -n "${VULNFORGE_AUDIT_SCOPE:-}" ] && echo true || echo false) audit_scope_chars=${#VULNFORGE_AUDIT_SCOPE} vuln_focus_present=$([ -n "${VULNFORGE_VULN_FOCUS:-}" ] && echo true || echo false) vuln_focus_chars=${#VULNFORGE_VULN_FOCUS} user_instr_present=$([ -n "${VULNFORGE_USER_INSTR:-}" ] && echo true || echo false) user_instr_chars=${#VULNFORGE_USER_INSTR} sched_instr_present=true sched_instr_chars=${#VULNFORGE_SCHED_INSTR} enable_poc=false enable_exp=false sandbox_cfg_present=false" >&2
+}
+
+# Black-box argv contract mode. It uses the exact production array builder but
+# does not require credentials, write files, or invoke YoungFlow.
+if [ "${VULNFORGE_ARGV_TEST_MODE:-0}" = "1" ]; then
+  build_youngflow_args
+  log_input_summary
+  printf '%s\0' "${YOUNGFLOW_ARGS[@]}"
+  exit 0
+fi
+
+TASK_ID="${TASK_ID:?TASK_ID is required}"
 SERVICE_LOG="/workspace/.service-logs/youngflow.service.jsonl"
 
 finish_log() {
@@ -166,33 +218,8 @@ mkdir -p /workspace/.service-logs
 rm -f "$SERVICE_LOG"
 
 YOUNGFLOW_MAX_PARALLEL=${YOUNGFLOW_MAX_PARALLEL:-3}
-YOUNGFLOW_ARGS=(
-  "$FLOW_FILE"
-  --work-dir /workspace/src
-  --output-dir /workspace/out
-  --json-log
-  --max-parallel "$YOUNGFLOW_MAX_PARALLEL"
-)
-
-# Optional: stop after a specific stage (debug/Phase 0).
-if [ -n "${UNTIL:-}" ]; then
-  YOUNGFLOW_ARGS+=(--until "$UNTIL")
-fi
-if [ -n "${RECURSION_LIMIT:-}" ]; then
-  YOUNGFLOW_ARGS+=(--recursion-limit "$RECURSION_LIMIT")
-fi
-# Map the platform's free-text audit focus to the flow's user_instruction input.
-if [ -n "${AUDIT_FOCUS:-}" ]; then
-  YOUNGFLOW_ARGS+=(--user-instruction "$AUDIT_FOCUS")
-fi
-# NOTE: --enable-poc is deliberately never passed (default ""): static-only
-# cutover, no Docker-based dynamic reproduction this round.
-if [ "${RESUME:-0}" = "1" ]; then
-  YOUNGFLOW_ARGS+=(--resume)
-fi
-if [ "${CONTINUE:-0}" = "1" ]; then
-  YOUNGFLOW_ARGS+=(--continue)
-fi
+build_youngflow_args
+log_input_summary
 
 # Scan-duration termination: wrap youngflow in coreutils `timeout`.
 EFFECTIVE_TIMEOUT="${SCAN_TIMEOUT:-216000}"
