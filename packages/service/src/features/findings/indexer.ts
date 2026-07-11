@@ -385,7 +385,8 @@ export async function indexFindings(taskId: string, bucket: string): Promise<num
       .map((key) => matchFindingObjectKey(taskId, key))
       .filter((candidate): candidate is FindingCandidate => candidate?.sourceKind === "canonical_v2" || candidate?.sourceKind === "legacy_finding");
   } catch (error) {
-    logger.debug({ taskId, error_class: safeErrorClass(error) }, "Failed to list findings prefix");
+    logger.warn({ code: "WARN_FINDING_DISCOVERY_FAILED", taskId, prefix: "findings", error_class: safeErrorClass(error) }, "Finding discovery failed closed");
+    return 0;
   }
 
   const candidates = [...findingsCandidates];
@@ -396,7 +397,8 @@ export async function indexFindings(taskId: string, bucket: string): Promise<num
         .map((key) => matchFindingObjectKey(taskId, key))
         .filter((candidate): candidate is FindingCandidate => candidate?.sourceKind === "legacy_raw"));
     } catch (error) {
-      logger.debug({ taskId, error_class: safeErrorClass(error) }, "Failed to list raw findings prefix");
+      logger.warn({ code: "WARN_FINDING_DISCOVERY_FAILED", taskId, prefix: "raw_findings", error_class: safeErrorClass(error) }, "Finding discovery failed closed");
+      return 0;
     }
   }
 
@@ -406,7 +408,8 @@ export async function indexFindings(taskId: string, bucket: string): Promise<num
       .map((key) => matchFindingObjectKey(taskId, key))
       .filter((candidate): candidate is FindingCandidate => candidate?.sourceKind === "legacy_risk"));
   } catch (error) {
-    logger.debug({ taskId, error_class: safeErrorClass(error) }, "Failed to list risks prefix");
+    logger.warn({ code: "WARN_FINDING_DISCOVERY_FAILED", taskId, prefix: "risks", error_class: safeErrorClass(error) }, "Finding discovery failed closed");
+    return 0;
   }
 
   const { winners, collisions } = selectFindingCandidates(candidates);

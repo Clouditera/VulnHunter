@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   listed: new Map<string, string[]>(),
+  listErrors: new Set<string>(),
   yaml: new Map<string, string>(),
   rows: new Map<string, any>(),
   timestampUpdates: 0,
@@ -46,6 +47,10 @@ vi.mock("../../src/infra/minio/client.js", () => ({
     listObjects: (_bucket: string, prefix: string) => {
       const emitter = new EventEmitter();
       queueMicrotask(() => {
+        if (state.listErrors.has(prefix)) {
+          emitter.emit("error", new Error("list failed"));
+          return;
+        }
         for (const name of state.listed.get(prefix) ?? []) emitter.emit("data", { name });
         emitter.emit("end");
       });
@@ -85,6 +90,7 @@ metadata:
 
 beforeEach(() => {
   state.listed.clear();
+  state.listErrors.clear();
   state.yaml.clear();
   state.rows.clear();
   state.timestampUpdates = 0;
@@ -155,6 +161,29 @@ describe("VulnForge 2 discovery/upsert isolation", () => {
     expect(state.rows.get(`${taskId}:BUG-2`)).toMatchObject({ item_type: "finding", finding_class: "risk" });
     expect(state.rows.get(`${taskId}:RISK-1`)).toMatchObject({ item_type: "risk", finding_class: null });
     expect(state.timestampUpdates).toBe(1);
+  });
+
+  it("fails closed when findings discovery errors and never uses visible raw/risk objects", async () => {
+    state.listErrors.add(`${base}findings/`);
+    state.listed.set(`${base}raw_findings/`, [`${base}raw_findings/SAME.yaml`]);
+    state.listed.set(`${base}risks/`, [`${base}risks/SAME.yaml`]);
+    state.yaml.set(`${base}raw_findings/SAME.yaml`, valid());
+    state.yaml.set(`${base}risks/SAME.yaml`, valid());
+    expect(await indexFindings(taskId, "bucket")).toBe(0);
+    expect(state.rows.size).toBe(0);
+    expect(state.timestampUpdates).toBe(0);
+    expect(state.warnings).toContainEqual(expect.objectContaining({ code: "WARN_FINDING_DISCOVERY_FAILED", prefix: "findings" }));
+  });
+
+  it("fails closed before upsert when risks discovery errors after findings success", async () => {
+    const canonical = `${base}findings/BUG-1/report.yaml`;
+    state.listed.set(`${base}findings/`, [canonical]);
+    state.yaml.set(canonical, valid());
+    state.listErrors.add(`${base}risks/`);
+    expect(await indexFindings(taskId, "bucket")).toBe(0);
+    expect(state.rows.size).toBe(0);
+    expect(state.timestampUpdates).toBe(0);
+    expect(state.warnings).toContainEqual(expect.objectContaining({ code: "WARN_FINDING_DISCOVERY_FAILED", prefix: "risks" }));
   });
 
   it("uses raw fallback when findings has only ignored nested objects", async () => {
