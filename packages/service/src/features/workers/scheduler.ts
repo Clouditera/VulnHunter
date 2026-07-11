@@ -9,7 +9,7 @@ import { load as yamlLoad } from "js-yaml";
 
 import { logger } from "../../infra/logger.js";
 import { getDb } from "../../infra/db/client.js";
-import { countTasksByState, getQueuedTasks, getRunningTaskIds, getTaskById, updateTaskState, clearContinueMode, isContinueMode, type DbTask } from "../tasks/storage.js";
+import { countTasksByState, getQueuedTasks, getRunningTaskIds, getTaskById, updateTaskState, clearContinueMode, isContinueMode, mergeTaskMetadata, type DbTask } from "../tasks/storage.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir } from "./scan-worker.js";
 import { downloadObjectWithRetry } from "./minio-download.js";
@@ -21,6 +21,7 @@ import { indexFindings } from "../findings/indexer.js";
 import { syncOutputsToMinio, downloadOutputsFromMinio } from "./sync-outputs.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { onChatContainerDie } from "../chat/chat-session.js";
+import { appendEvent } from "../events/event-store.js";
 import { onReportContainerDie } from "../reports/report-worker.js";
 import { onEvalContainerDie, onPocRunContainerDie, tickPocScheduler } from "../poc/scheduler.js";
 import { notify } from "../notifications/index.js";
@@ -28,6 +29,13 @@ import type { ServiceConfig } from "../../infra/config.js";
 import { resolveArchiveIdentity } from "../source-archives/detect.js";
 import { extractSourceArchive } from "../source-archives/extract.js";
 import { getSourceArchivePolicy } from "../source-archives/policy.js";
+import {
+  evaluateAuditCompletion,
+  isSameAuditCompletion,
+  mapAuditCompletionFinalState,
+  mergeExecutionWarnings,
+} from "./audit-completion.js";
+import type { TaskAuditCompletion, TaskEngineRun } from "@vulnagent/shared";
 
 export function summarizeExecutionEvents(lines: string[]): {
   inputTokens: number;
@@ -186,7 +194,17 @@ export class TaskScheduler {
             }
           }
         } else {
-          const ok = exitCode === 0;
+          const workerExitCode = exitCode ?? -1;
+          const ok = workerExitCode === 0;
+          const hostWorkDir = getHostWorkDir(this.config.dataDir, taskId);
+          const engineRun = currentTask?.metadata?.engine_run as TaskEngineRun | undefined;
+          const completion = evaluateAuditCompletion({
+            outDir: join(hostWorkDir, "out"),
+            engineRun,
+          });
+          const previousCompletion = currentTask?.metadata?.audit_completion;
+          const shouldEmitTerminal = !isSameAuditCompletion(previousCompletion, completion);
+
           // Clear continue_mode flag (whether success or failure) so a later
           // restart isn't misread as a continue run.
           try {
@@ -215,14 +233,40 @@ export class TaskScheduler {
             }
           }
 
-          const durationMs = await this.computeDuration(taskId);
-          const newState = ok ? "completed" : "failed";
-          await updateTaskState(taskId, newState, {
-            completedAt: new Date(),
-            durationMs,
-            failureReason: ok ? undefined : `Worker exited with code ${exitCode}`,
-          }).catch((err) => logger.error({ err, taskId }, "Failed to update task on die"));
-          notify({ type: "task_state", taskId, state: newState as import("@vulnagent/shared").TaskState });
+          const mapped = mapAuditCompletionFinalState(workerExitCode, completion);
+          if (shouldEmitTerminal) {
+            await this.persistAuditCompletion(taskId, completion).catch((err) =>
+              logger.error({ err, taskId }, "Failed to persist audit completion metadata"),
+            );
+
+            const durationMs = await this.computeDuration(taskId);
+            await updateTaskState(taskId, mapped.state, {
+              completedAt: new Date(),
+              durationMs,
+              failureReason: mapped.failureReason,
+            }).catch((err) => logger.error({ err, taskId }, "Failed to update task on die"));
+
+            if (workerExitCode === 0 && completion.error_code) {
+              appendEvent(taskId, {
+                type: "error",
+                source: "service",
+                seq: 0,
+                ts: new Date().toISOString(),
+                code: completion.error_code,
+                summary: completion.reason ?? "Audit completion gate failed",
+              });
+            }
+            appendEvent(taskId, {
+              type: "task_status",
+              source: "service",
+              seq: 0,
+              ts: new Date().toISOString(),
+              status: mapped.state === "completed" ? "completed" : "failed",
+              severity: mapped.severity,
+              reason: mapped.eventReason,
+            });
+            notify({ type: "task_state", taskId, state: mapped.state });
+          }
         }
       }
     });
@@ -438,6 +482,20 @@ export class TaskScheduler {
     logger.info({ taskId: task.id, minioKey, filename: archive.filename }, "Code package extracted to workspace");
   }
 
+  private async persistAuditCompletion(taskId: string, completion: TaskAuditCompletion): Promise<void> {
+    const task = await getTaskById(taskId);
+    const execution = task?.metadata?.execution;
+    const existingWarning = execution && typeof execution === "object"
+      ? (execution as Record<string, unknown>).warning
+      : undefined;
+    const warning = mergeExecutionWarnings(existingWarning, completion);
+    const patch: import("@vulnagent/shared").TaskMetadata = {
+      audit_completion: completion,
+    };
+    if (warning) patch.execution = { warning };
+    await mergeTaskMetadata(taskId, patch);
+  }
+
   private async extractMetadata(taskId: string): Promise<void> {
     const db = getDb();
     const hostWorkDir = getHostWorkDir(this.config.dataDir, taskId);
@@ -518,9 +576,10 @@ export class TaskScheduler {
       }
     } catch { /* ok */ }
 
-    // Save metadata
+    // Merge metadata: engine_run/audit_completion and future top-level keys
+    // are durable run provenance and must not be erased by profiler extraction.
     if (Object.keys(metadata).length > 0) {
-      await db`UPDATE tasks SET metadata = ${JSON.stringify(metadata)}::jsonb WHERE id = ${taskId}`;
+      await mergeTaskMetadata(taskId, metadata);
       logger.info({ taskId, keys: Object.keys(metadata) }, "Task metadata extracted");
     }
   }

@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { ServiceConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
-import { updateTaskState } from "../tasks/storage.js";
+import { mergeTaskMetadata, updateTaskState } from "../tasks/storage.js";
 import { notify } from "../notifications/index.js";
 import {
   createWorkerContainer,
@@ -13,6 +14,7 @@ import {
 } from "./docker-client.js";
 
 import type { DbTask } from "../tasks/storage.js";
+import { createAuditCompletionEngineRun, fingerprintAuditCompletion } from "./audit-completion.js";
 
 export const STATIC_ONLY_SCHED_INSTR = "平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；完成静态审计后进入报告阶段。";
 
@@ -64,6 +66,15 @@ export async function spawnScanWorker(
     const old = docker.getContainer(`va-scan-${task.id}`);
     await old.remove({ force: true });
   } catch { /* ok, doesn't exist */ }
+
+  if (!resume) {
+    const engineRun = createAuditCompletionEngineRun(
+      randomUUID(),
+      new Date().toISOString(),
+      continueMode ? fingerprintAuditCompletion(join(hostWorkDir, "out")) : null,
+    );
+    await mergeTaskMetadata(task.id, { engine_run: engineRun });
+  }
 
   const container = await createWorkerContainer({
     taskId: task.id,

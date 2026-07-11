@@ -1,5 +1,5 @@
 import { getDb } from "../../infra/db/client.js";
-import type { TaskState } from "@vulnagent/shared";
+import type { TaskMetadata, TaskState } from "@vulnagent/shared";
 import type { QueryContext } from "../../infra/query-context.js";
 import { shouldFilterByUser } from "../../infra/query-context.js";
 
@@ -31,7 +31,7 @@ export interface DbTask {
   completed_at: Date | null;
   duration_ms: number | null;
   findings_indexed_at: Date | null;
-  metadata: Record<string, unknown>;
+  metadata: TaskMetadata;
   credential_id: string | null;
 }
 
@@ -239,6 +239,24 @@ export async function queueTaskForResume(id: string): Promise<void> {
         completed_at = NULL,
         failure_reason = NULL,
         duration_ms = NULL
+    WHERE id = ${id}
+  `;
+}
+
+export async function mergeTaskMetadata(id: string, patch: TaskMetadata): Promise<void> {
+  const db = getDb();
+  const json = db.json(patch as never);
+  await db`
+    UPDATE tasks
+    SET metadata =
+      (COALESCE(metadata, '{}'::jsonb) || ${json}::jsonb) ||
+      CASE WHEN ${json}::jsonb ? 'execution'
+        THEN jsonb_build_object(
+          'execution',
+          COALESCE(metadata->'execution', '{}'::jsonb) || (${json}::jsonb->'execution')
+        )
+        ELSE '{}'::jsonb
+      END
     WHERE id = ${id}
   `;
 }

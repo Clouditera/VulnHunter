@@ -1,4 +1,4 @@
-import type { FindingDynamicMeta, SystemStatus } from "@vulnagent/shared";
+import type { FindingDynamicMeta, SystemStatus, TaskMetadata as SharedTaskMetadata } from "@vulnagent/shared";
 
 const BASE = "";
 
@@ -69,10 +69,9 @@ export interface TaskExecution {
   tool_call_count?: number | null;
 }
 
-export interface TaskMetadata {
+export interface TaskMetadata extends SharedTaskMetadata {
   profile?: TaskProfile;
   execution?: TaskExecution;
-  [key: string]: unknown;
 }
 
 export interface Task {
