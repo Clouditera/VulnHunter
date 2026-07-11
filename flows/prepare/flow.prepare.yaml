@@ -1,0 +1,29 @@
+version: "1.0"
+timeout: 660
+recursion_limit: 8
+artifacts:
+  agents: agents/
+  skills: skills/
+  tasks: tasks/
+  schemas: schemas/
+  extensions: extensions/
+  env_file: .env
+  models_json: models.json
+defaults:
+  model: ${env.V_PREPARE_MODEL}
+  max_parallel: 1
+  agent: prepare-agent.md
+  tools:
+    - read_project_manifest
+    - read_project_file
+    - submit_plan
+stages:
+  - id: prepare
+    name: Prepare source assessment
+    type: single
+    skills: [prepare-tool-protocol]
+    extensions: [prepare-tools]
+    task: prepare.md
+    timeout: 600
+    error_strategy: stop
+    execution_policy: prepare-restricted

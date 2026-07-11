@@ -1,0 +1,9 @@
+{
+  "name": "prepare-tools",
+  "private": true,
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "npm:@earendil-works/pi-coding-agent@0.79.6",
+    "ajv": "8.17.1",
+    "yaml": "2.7.0"
+  }
+}

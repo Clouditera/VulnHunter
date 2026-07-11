@@ -1,3 +1,4 @@
 packages:
   - "packages/*"
   - "packages/enterprise/license-issuer"
+  - "flows/prepare/extensions/prepare-tools"

@@ -1,0 +1,589 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://schemas.vulnagent.local/prepare/assessment-plan/1.0"
+title: VulnAgent Prepare Source Assessment and Sandbox Plan v1.0
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - source_assessment
+  - sandbox_plan
+  - warnings
+properties:
+  schema_version:
+    const: "1.0"
+  source_assessment:
+    $ref: "#/$defs/sourceAssessment"
+  sandbox_plan:
+    oneOf:
+      - type: "null"
+      - $ref: "#/$defs/sandboxPlan"
+  warnings:
+    type: array
+    maxItems: 64
+    items:
+      $ref: "#/$defs/warning"
+allOf:
+  - if:
+      properties:
+        source_assessment:
+          properties:
+            status:
+              const: complete
+          required: [status]
+      required: [source_assessment]
+    then:
+      properties:
+        source_assessment:
+          properties:
+            missing_components:
+              maxItems: 0
+            uncertainties:
+              maxItems: 0
+            stage_readiness:
+              properties:
+                static_audit:
+                  properties:
+                    status:
+                      const: ready
+        sandbox_plan:
+          $ref: "#/$defs/sandboxPlan"
+  - if:
+      properties:
+        source_assessment:
+          properties:
+            status:
+              const: incomplete
+          required: [status]
+      required: [source_assessment]
+    then:
+      properties:
+        source_assessment:
+          properties:
+            missing_components:
+              minItems: 1
+        sandbox_plan:
+          type: "null"
+  - if:
+      properties:
+        source_assessment:
+          properties:
+            status:
+              const: uncertain
+          required: [status]
+      required: [source_assessment]
+    then:
+      properties:
+        source_assessment:
+          properties:
+            uncertainties:
+              minItems: 1
+        sandbox_plan:
+          type: "null"
+
+$defs:
+  confidence:
+    type: number
+    minimum: 0
+    maximum: 1
+
+  shortText:
+    type: string
+    minLength: 1
+    maxLength: 512
+    pattern: "^[^\\x00-\\x1F]*$"
+
+  identifier:
+    type: string
+    minLength: 1
+    maxLength: 64
+    pattern: "^[a-z][a-z0-9_.:-]*$"
+
+  relativePath:
+    type: string
+    minLength: 1
+    maxLength: 512
+    pattern: "^(?:\\.|(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\x00-\\x1F]+)$"
+
+  stageName:
+    type: string
+    enum: [static_audit, build, poc, exp]
+
+  stageState:
+    type: object
+    additionalProperties: false
+    required: [status, reasons]
+    properties:
+      status:
+        type: string
+        enum: [ready, limited, blocked, unknown, not_requested]
+      reasons:
+        type: array
+        maxItems: 16
+        items:
+          $ref: "#/$defs/shortText"
+
+  stageReadiness:
+    type: object
+    additionalProperties: false
+    required: [static_audit, build, poc, exp]
+    properties:
+      static_audit:
+        $ref: "#/$defs/stageState"
+      build:
+        $ref: "#/$defs/stageState"
+      poc:
+        $ref: "#/$defs/stageState"
+      exp:
+        $ref: "#/$defs/stageState"
+
+  evidence:
+    type: object
+    additionalProperties: false
+    required: [path, signal, observation]
+    properties:
+      path:
+        $ref: "#/$defs/relativePath"
+      line_start:
+        type: integer
+        minimum: 1
+        maximum: 10000000
+      line_end:
+        type: integer
+        minimum: 1
+        maximum: 10000000
+      signal:
+        type: string
+        enum:
+          - project_metadata
+          - build_entrypoint
+          - dependency_declaration
+          - missing_reference
+          - source_tree_shape
+          - generated_source_reference
+          - submodule_reference
+          - container_definition
+          - full_system_indicator
+          - asset_reference
+          - documentation
+          - other
+      observation:
+        $ref: "#/$defs/shortText"
+
+  missingComponent:
+    type: object
+    additionalProperties: false
+    required:
+      - category
+      - name
+      - expected_by
+      - evidence_paths
+      - impact
+      - recoverable_from_submission
+    properties:
+      category:
+        type: string
+        enum:
+          - base_source
+          - first_party_component
+          - submodule
+          - generated_source
+          - build_manifest
+          - dependency
+          - asset
+          - configuration
+          - unknown
+      name:
+        $ref: "#/$defs/shortText"
+      expected_by:
+        $ref: "#/$defs/shortText"
+      evidence_paths:
+        type: array
+        minItems: 1
+        maxItems: 32
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/relativePath"
+      impact:
+        type: array
+        minItems: 1
+        maxItems: 4
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/stageName"
+      recoverable_from_submission:
+        type: boolean
+
+  externalDependency:
+    type: object
+    additionalProperties: false
+    required:
+      - name
+      - role
+      - availability
+      - integrity
+      - required_for
+      - declared_by
+      - locator_hint
+    properties:
+      name:
+        $ref: "#/$defs/shortText"
+      role:
+        type: string
+        enum:
+          - base_project_source
+          - first_party_component
+          - submodule
+          - generated_source_tool
+          - system_package
+          - language_package
+          - build_tool
+          - runtime_service
+          - dataset
+          - other
+          - unknown
+      availability:
+        type: string
+        enum: [present, declared_download, missing, unknown]
+      integrity:
+        type: string
+        enum: [pinned, unpinned, unknown, not_applicable]
+      required_for:
+        type: array
+        minItems: 1
+        maxItems: 4
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/stageName"
+      declared_by:
+        type: array
+        minItems: 1
+        maxItems: 32
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/relativePath"
+      locator_hint:
+        type: string
+        maxLength: 256
+        pattern: "^[^\\x00-\\x1F]*$"
+
+  uncertainty:
+    type: object
+    additionalProperties: false
+    required: [code, description, evidence_paths, impact]
+    properties:
+      code:
+        type: string
+        enum:
+          - ambiguous_scope
+          - conflicting_evidence
+          - unreadable_required_file
+          - unsupported_manifest
+          - insufficient_evidence
+          - unknown
+      description:
+        $ref: "#/$defs/shortText"
+      evidence_paths:
+        type: array
+        minItems: 1
+        maxItems: 32
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/relativePath"
+      impact:
+        type: array
+        minItems: 1
+        maxItems: 4
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/stageName"
+
+  userRecommendation:
+    type: object
+    additionalProperties: false
+    required: [code, message]
+    properties:
+      code:
+        type: string
+        enum:
+          - submit_complete_project
+          - include_base_source
+          - include_submodules
+          - include_generated_sources_or_generator
+          - include_build_files
+          - separate_projects
+          - provide_asset
+          - clarify_scope
+          - contact_admin
+          - retry
+          - other
+      message:
+        $ref: "#/$defs/shortText"
+
+  sourceAssessment:
+    type: object
+    additionalProperties: false
+    required:
+      - status
+      - submission_shape
+      - intended_project
+      - root_candidates
+      - missing_components
+      - external_dependencies
+      - uncertainties
+      - stage_readiness
+      - confidence
+      - summary
+      - evidence
+      - user_recommendations
+    properties:
+      status:
+        type: string
+        enum: [complete, incomplete, uncertain]
+      submission_shape:
+        type: string
+        enum:
+          - project
+          - monorepo
+          - multi_project
+          - patch_set
+          - test_corpus
+          - vendor_fragment
+          - unknown
+      intended_project:
+        $ref: "#/$defs/shortText"
+      root_candidates:
+        type: array
+        minItems: 1
+        maxItems: 64
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/relativePath"
+      missing_components:
+        type: array
+        maxItems: 128
+        items:
+          $ref: "#/$defs/missingComponent"
+      external_dependencies:
+        type: array
+        maxItems: 128
+        items:
+          $ref: "#/$defs/externalDependency"
+      uncertainties:
+        type: array
+        maxItems: 64
+        items:
+          $ref: "#/$defs/uncertainty"
+      stage_readiness:
+        $ref: "#/$defs/stageReadiness"
+      confidence:
+        $ref: "#/$defs/confidence"
+      summary:
+        $ref: "#/$defs/shortText"
+      evidence:
+        type: array
+        minItems: 1
+        maxItems: 128
+        items:
+          $ref: "#/$defs/evidence"
+      user_recommendations:
+        type: array
+        maxItems: 32
+        items:
+          $ref: "#/$defs/userRecommendation"
+
+  requiredAsset:
+    type: object
+    additionalProperties: false
+    required: [asset_type, asset_id, version_constraint, architecture, os_family, reason]
+    properties:
+      asset_type:
+        type: string
+        enum: [guest_image, firmware, kernel, rootfs, container_image, toolchain, dataset, other]
+      asset_id:
+        $ref: "#/$defs/identifier"
+      version_constraint:
+        type: string
+        minLength: 1
+        maxLength: 128
+      architecture:
+        $ref: "#/$defs/identifier"
+      os_family:
+        $ref: "#/$defs/identifier"
+      reason:
+        $ref: "#/$defs/shortText"
+
+  target:
+    type: object
+    additionalProperties: false
+    required: [project_types, languages, build_systems, architectures, os_families, target_classes]
+    properties:
+      project_types:
+        type: array
+        minItems: 1
+        maxItems: 32
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/identifier"
+      languages:
+        type: array
+        minItems: 1
+        maxItems: 32
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/identifier"
+      build_systems:
+        type: array
+        maxItems: 32
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/identifier"
+      architectures:
+        type: array
+        minItems: 1
+        maxItems: 16
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/identifier"
+      os_families:
+        type: array
+        minItems: 1
+        maxItems: 16
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/identifier"
+      target_classes:
+        type: array
+        minItems: 1
+        maxItems: 16
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/identifier"
+
+  dependencyEgress:
+    type: object
+    additionalProperties: false
+    required: [required, reasons]
+    properties:
+      required:
+        type: boolean
+      reasons:
+        type: array
+        maxItems: 16
+        items:
+          $ref: "#/$defs/shortText"
+
+  requirements:
+    type: object
+    additionalProperties: false
+    required:
+      - required_capabilities
+      - optional_capabilities
+      - requires_full_system
+      - requires_nested_docker
+      - requires_qemu_guest
+      - required_assets
+      - dependency_egress
+    properties:
+      required_capabilities:
+        type: array
+        minItems: 1
+        maxItems: 32
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/identifier"
+      optional_capabilities:
+        type: array
+        maxItems: 32
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/identifier"
+      requires_full_system:
+        type: boolean
+      requires_nested_docker:
+        type: boolean
+      requires_qemu_guest:
+        type: boolean
+      required_assets:
+        type: array
+        maxItems: 32
+        items:
+          $ref: "#/$defs/requiredAsset"
+      dependency_egress:
+        $ref: "#/$defs/dependencyEgress"
+    allOf:
+      - if:
+          properties:
+            requires_nested_docker:
+              const: true
+          required: [requires_nested_docker]
+        then:
+          properties:
+            required_capabilities:
+              contains:
+                const: docker
+      - if:
+          properties:
+            requires_qemu_guest:
+              const: true
+          required: [requires_qemu_guest]
+        then:
+          properties:
+            requires_full_system:
+              const: true
+            required_capabilities:
+              contains:
+                const: qemu_system
+            required_assets:
+              minItems: 1
+
+  profileRecommendation:
+    type: object
+    additionalProperties: false
+    required: [recommended_profile_id, alternative_profile_ids, confidence, reason]
+    properties:
+      recommended_profile_id:
+        oneOf:
+          - type: "null"
+          - $ref: "#/$defs/identifier"
+      alternative_profile_ids:
+        type: array
+        maxItems: 16
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/identifier"
+      confidence:
+        $ref: "#/$defs/confidence"
+      reason:
+        $ref: "#/$defs/shortText"
+
+  warning:
+    type: object
+    additionalProperties: false
+    required: [code, message, evidence_paths]
+    properties:
+      code:
+        $ref: "#/$defs/identifier"
+      message:
+        $ref: "#/$defs/shortText"
+      evidence_paths:
+        type: array
+        maxItems: 32
+        uniqueItems: true
+        items:
+          $ref: "#/$defs/relativePath"
+
+  sandboxPlan:
+    type: object
+    additionalProperties: false
+    required: [target, requirements, profile_recommendation, confidence, reason]
+    properties:
+      target:
+        $ref: "#/$defs/target"
+      requirements:
+        $ref: "#/$defs/requirements"
+      profile_recommendation:
+        $ref: "#/$defs/profileRecommendation"
+      confidence:
+        $ref: "#/$defs/confidence"
+      reason:
+        $ref: "#/$defs/shortText"
