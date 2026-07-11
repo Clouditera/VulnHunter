@@ -73,7 +73,12 @@ export async function spawnScanWorker(
       new Date().toISOString(),
       continueMode ? fingerprintAuditCompletion(join(hostWorkDir, "out")) : null,
     );
-    await mergeTaskMetadata(task.id, { engine_run: engineRun });
+    await mergeTaskMetadata(task.id, {
+      engine_run: engineRun,
+      // A new logical run must not inherit the previous run's warning. Current
+      // stage/completion warnings are merged again during terminal handling.
+      execution: { warning: null },
+    });
   }
 
   const container = await createWorkerContainer({

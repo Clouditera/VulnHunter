@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TaskEngineRun } from "@vulnagent/shared";
 import {
   AUDIT_COMPLETION_CONTRACT,
@@ -11,7 +11,11 @@ import {
   isSameAuditCompletion,
   mapAuditCompletionFinalState,
   mergeExecutionWarnings,
+  needsTerminalStateReconciliation,
 } from "../../src/features/workers/audit-completion.js";
+
+const broadcastSpy = vi.hoisted(() => vi.fn());
+vi.mock("../../src/features/events/ws-live-log.js", () => ({ broadcastEvent: broadcastSpy }));
 
 const roots: string[] = [];
 const fixtureDir = new URL("../fixtures/audit-completion/", import.meta.url);
@@ -113,6 +117,14 @@ describe("audit completion C01-C13", () => {
     const second = workspace();
     writeFileSync(second.file, "status: &s complete\nreason: *s\n");
     expect(evaluateAuditCompletion({ outDir: second.out, engineRun: marker() }).status).toBe("unsafe");
+
+    const parentLink = workspace();
+    const outsideReport = join(parentLink.root, "outside-report");
+    mkdirSync(outsideReport);
+    writeFileSync(join(outsideReport, "completion.yaml"), fixture("complete.yaml"));
+    rmSync(join(parentLink.out, "report"), { recursive: true });
+    symlinkSync(outsideReport, join(parentLink.out, "report"));
+    expect(evaluateAuditCompletion({ outDir: parentLink.out, engineRun: marker() }).status).toBe("unsafe");
   });
 
   it("C09 rejects empty and oversized files", () => {
@@ -172,11 +184,59 @@ describe("audit completion C14-C18 and security", () => {
     expect(first.sha256).toBe(second.sha256);
   });
 
-  it("C16 merges stage and incomplete warnings", () => {
+  it("C16 clears prior-run warning and de-duplicates current warnings", () => {
+    const completeWs = workspace();
+    writeFileSync(completeWs.file, fixture("complete.yaml"));
+    const complete = evaluateAuditCompletion({ outDir: completeWs.out, engineRun: marker() });
+    // New run marker and extractMetadata both write null when the current run
+    // has no warning; this removes a Continue run's stale warning.
+    expect(mergeExecutionWarnings(null, complete)).toBeUndefined();
+    const scanWorker = readFileSync(new URL("../../src/features/workers/scan-worker.ts", import.meta.url), "utf8");
+    expect(scanWorker).toContain("execution: { warning: null }");
+
+    const incompleteWs = workspace();
+    writeFileSync(incompleteWs.file, fixture("incomplete.yaml"));
+    const incomplete = evaluateAuditCompletion({ outDir: incompleteWs.out, engineRun: marker() });
+    const once = mergeExecutionWarnings("2 agent/stage failures", incomplete)!;
+    const twice = mergeExecutionWarnings(once, incomplete)!;
+    expect(twice).toBe(once);
+    expect(twice.match(/2 agent\/stage failures/g)).toHaveLength(1);
+    expect(twice.match(/审计未完整：/g)).toHaveLength(1);
+  });
+
+  it("reconciles metadata-present/running tasks but not settled terminal tasks", () => {
+    expect(needsTerminalStateReconciliation("running", null, "completed")).toBe(true);
+    expect(needsTerminalStateReconciliation("completed", null, "completed")).toBe(true);
+    expect(needsTerminalStateReconciliation("completed", new Date(), "completed")).toBe(false);
+  });
+
+  it("normalizes multiline completion reasons only in terminal events", () => {
     const { out, file } = workspace();
-    writeFileSync(file, fixture("incomplete.yaml"));
-    const result = evaluateAuditCompletion({ outDir: out, engineRun: marker() });
-    expect(mergeExecutionWarnings("2 agent/stage failures", result)).toContain("2 agent/stage failures；审计未完整：");
+    writeFileSync(file, 'status: incomplete\nreason: "first\\nsecond\\tthird"\n');
+    const completion = evaluateAuditCompletion({ outDir: out, engineRun: marker() });
+    expect(completion.reason).toBe("first\nsecond\tthird");
+    expect(mapAuditCompletionFinalState(0, completion).eventReason).toBe("审计未完整：first second third");
+  });
+
+  it("appends then broadcasts the stored event with its real sequence", async () => {
+    broadcastSpy.mockClear();
+    const { appendAndBroadcastCompletionEvent } = await import("../../src/features/workers/scheduler.js");
+    const { clearTaskBuffer, getAllEvents } = await import("../../src/features/events/event-store.js");
+    clearTaskBuffer("broadcast-task");
+    appendAndBroadcastCompletionEvent("broadcast-task", {
+      type: "task_status",
+      source: "service",
+      seq: 0,
+      ts: "now",
+      status: "completed",
+      severity: "warning",
+      reason: "incomplete",
+    });
+    const [entry] = getAllEvents("broadcast-task");
+    expect(entry.seq).toBe(0);
+    expect(entry.event.seq).toBe(0);
+    expect(broadcastSpy).toHaveBeenCalledWith("broadcast-task", entry.seq, entry.event);
+    clearTaskBuffer("broadcast-task");
   });
 
   it("C17 incremental sync list does not include report", () => {

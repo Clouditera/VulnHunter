@@ -115,7 +115,10 @@ function readCompletionFile(outDir: string): ReadResult {
     }
     let actualPath: string;
     try {
-      actualPath = realpathSync(path);
+      // Bind containment to the object already opened with O_NOFOLLOW. Never
+      // fall back to resolving `path`: a parent directory can be swapped
+      // between open and realpath, producing a different object (TOCTOU).
+      actualPath = realpathSync(`/proc/self/fd/${fd}`);
     } catch {
       return { kind: "unsafe", fingerprint: null };
     }
@@ -238,6 +241,10 @@ export function evaluateAuditCompletion(options: AuditCompletionEvaluationOption
   };
 }
 
+function eventLine(value: string): string {
+  return value.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 export function mapAuditCompletionFinalState(
   workerExitCode: number,
   completion: TaskAuditCompletion,
@@ -259,7 +266,7 @@ export function mapAuditCompletionFinalState(
     };
   }
   if (completion.status === "incomplete") {
-    const reason = `审计未完整：${completion.reason}`;
+    const reason = eventLine(`审计未完整：${completion.reason}`);
     return { state: "completed", severity: "warning", eventReason: reason };
   }
   return {
@@ -270,10 +277,23 @@ export function mapAuditCompletionFinalState(
 }
 
 export function mergeExecutionWarnings(existing: unknown, completion: TaskAuditCompletion): string | undefined {
-  const warnings: string[] = [];
-  if (typeof existing === "string" && existing.trim()) warnings.push(existing.trim());
-  if (completion.status === "incomplete" && completion.reason) warnings.push(`审计未完整：${completion.reason}`);
-  return warnings.length > 0 ? warnings.join("；") : undefined;
+  const existingWarning = typeof existing === "string" ? existing.trim() : "";
+  if (completion.status !== "incomplete" || !completion.reason) {
+    return existingWarning || undefined;
+  }
+  const completionWarning = `审计未完整：${completion.reason}`;
+  if (existingWarning === completionWarning || existingWarning.endsWith(`；${completionWarning}`)) {
+    return existingWarning;
+  }
+  return existingWarning ? `${existingWarning}；${completionWarning}` : completionWarning;
+}
+
+export function needsTerminalStateReconciliation(
+  currentState: TaskState | undefined,
+  completedAt: Date | string | null | undefined,
+  mappedState: TaskState,
+): boolean {
+  return currentState !== mappedState || !completedAt;
 }
 
 export function isSameAuditCompletion(a: unknown, b: TaskAuditCompletion): boolean {

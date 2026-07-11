@@ -22,6 +22,7 @@ import { syncOutputsToMinio, downloadOutputsFromMinio } from "./sync-outputs.js"
 import { getMinio } from "../../infra/minio/client.js";
 import { onChatContainerDie } from "../chat/chat-session.js";
 import { appendEvent } from "../events/event-store.js";
+import { broadcastEvent } from "../events/ws-live-log.js";
 import { onReportContainerDie } from "../reports/report-worker.js";
 import { onEvalContainerDie, onPocRunContainerDie, tickPocScheduler } from "../poc/scheduler.js";
 import { notify } from "../notifications/index.js";
@@ -34,8 +35,9 @@ import {
   isSameAuditCompletion,
   mapAuditCompletionFinalState,
   mergeExecutionWarnings,
+  needsTerminalStateReconciliation,
 } from "./audit-completion.js";
-import type { TaskAuditCompletion, TaskEngineRun } from "@vulnagent/shared";
+import type { LiveLogEvent, TaskAuditCompletion, TaskEngineRun } from "@vulnagent/shared";
 
 export function summarizeExecutionEvents(lines: string[]): {
   inputTokens: number;
@@ -111,6 +113,11 @@ export function missingCredentialFailureReason(credId?: string | null): string {
 const INCREMENTAL_INDEX_INTERVAL_MS = 90_000;
 /** Only sync lightweight business artifacts mid-scan (skip GB-scale session logs). */
 const INCREMENTAL_SYNC_DIRS = ["findings", "risks", "knowledge"];
+
+export function appendAndBroadcastCompletionEvent(taskId: string, event: LiveLogEvent): void {
+  const entry = appendEvent(taskId, event);
+  broadcastEvent(taskId, entry.seq, entry.event);
+}
 const PROFILER_ARTIFACT_PATHS = [
   "profiler.yaml",
   "knowledge/profiler.yaml",
@@ -234,20 +241,28 @@ export class TaskScheduler {
           }
 
           const mapped = mapAuditCompletionFinalState(workerExitCode, completion);
-          if (shouldEmitTerminal) {
-            await this.persistAuditCompletion(taskId, completion).catch((err) =>
-              logger.error({ err, taskId }, "Failed to persist audit completion metadata"),
-            );
+          await this.persistAuditCompletion(taskId, completion).catch((err) =>
+            logger.error({ err, taskId }, "Failed to persist audit completion metadata"),
+          );
 
+          const reconcileState = needsTerminalStateReconciliation(
+            currentTask?.state,
+            currentTask?.completed_at,
+            mapped.state,
+          );
+          if (reconcileState) {
             const durationMs = await this.computeDuration(taskId);
             await updateTaskState(taskId, mapped.state, {
               completedAt: new Date(),
               durationMs,
               failureReason: mapped.failureReason,
             }).catch((err) => logger.error({ err, taskId }, "Failed to update task on die"));
+            notify({ type: "task_state", taskId, state: mapped.state });
+          }
 
+          if (shouldEmitTerminal) {
             if (workerExitCode === 0 && completion.error_code) {
-              appendEvent(taskId, {
+              appendAndBroadcastCompletionEvent(taskId, {
                 type: "error",
                 source: "service",
                 seq: 0,
@@ -256,7 +271,7 @@ export class TaskScheduler {
                 summary: completion.reason ?? "Audit completion gate failed",
               });
             }
-            appendEvent(taskId, {
+            appendAndBroadcastCompletionEvent(taskId, {
               type: "task_status",
               source: "service",
               seq: 0,
@@ -265,7 +280,6 @@ export class TaskScheduler {
               severity: mapped.severity,
               reason: mapped.eventReason,
             });
-            notify({ type: "task_state", taskId, state: mapped.state });
           }
         }
       }
@@ -491,8 +505,8 @@ export class TaskScheduler {
     const warning = mergeExecutionWarnings(existingWarning, completion);
     const patch: import("@vulnagent/shared").TaskMetadata = {
       audit_completion: completion,
+      execution: { warning: warning ?? null },
     };
-    if (warning) patch.execution = { warning };
     await mergeTaskMetadata(taskId, patch);
   }
 
@@ -536,7 +550,7 @@ export class TaskScheduler {
         stages_completed: summary.flowStagesCompleted || summary.stageCount,
         stages_total: summary.flowStagesTotal || summary.stageCount,
         stages_failed: summary.flowStagesFailed,
-        warning: summary.flowStagesFailed > 0 ? `${summary.flowStagesFailed} agent/stage failures` : undefined,
+        warning: summary.flowStagesFailed > 0 ? `${summary.flowStagesFailed} agent/stage failures` : null,
         input_tokens: summary.inputTokens,
         output_tokens: summary.outputTokens,
         cache_read_tokens: summary.cacheReadTokens,
