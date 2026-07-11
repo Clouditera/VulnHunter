@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vulnagent.local/schemas/source-manifest-v1.schema.json",
+  "title": "VulnAgent deterministic source manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source", "root_candidates", "tree", "statistics", "markers", "signals", "limits", "truncation", "warnings"],
+  "properties": {
+    "schema_version": { "const": "source-manifest/v1" },
+    "source": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "identity_sha256"],
+      "properties": {
+        "kind": { "enum": ["archive", "git", "directory"] },
+        "identity_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "root_candidates": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false, "required": ["path", "marker_paths"],
+        "properties": { "path": { "$ref": "#/$defs/path" }, "marker_paths": { "type": "array", "items": { "$ref": "#/$defs/path" } } }
+      }
+    },
+    "tree": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false, "required": ["path", "type", "size", "sha256", "extension"],
+        "properties": {
+          "path": { "$ref": "#/$defs/path" }, "type": { "enum": ["directory", "file"] },
+          "size": { "type": "integer", "minimum": 0 }, "sha256": { "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+          "extension": { "type": ["string", "null"], "maxLength": 32 }
+        }
+      }
+    },
+    "statistics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["files_observed", "directories_observed", "bytes_observed", "bytes_hashed", "excluded_sensitive_files", "extensions", "languages"],
+      "properties": {
+        "files_observed": { "$ref": "#/$defs/count" }, "directories_observed": { "$ref": "#/$defs/count" },
+        "bytes_observed": { "$ref": "#/$defs/count" }, "bytes_hashed": { "$ref": "#/$defs/count" },
+        "excluded_sensitive_files": { "$ref": "#/$defs/count" },
+        "extensions": { "type": "array", "items": { "$ref": "#/$defs/stat" } },
+        "languages": { "type": "array", "items": { "$ref": "#/$defs/languageStat" } }
+      }
+    },
+    "markers": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false, "required": ["path", "kind", "name", "size", "sha256"],
+        "properties": {
+          "path": { "$ref": "#/$defs/path" }, "kind": { "enum": ["build", "dependency", "readme", "container", "workspace"] },
+          "name": { "type": "string", "minLength": 1, "maxLength": 64 }, "size": { "$ref": "#/$defs/count" }, "sha256": { "$ref": "#/$defs/sha256" }
+        }
+      }
+    },
+    "signals": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false, "required": ["kind", "paths", "count"],
+        "properties": {
+          "kind": { "enum": ["submodule", "generated_source", "patch", "test_corpus", "vendor_fragment", "multi_root"] },
+          "paths": { "type": "array", "items": { "$ref": "#/$defs/path" } }, "count": { "$ref": "#/$defs/count" }
+        }
+      }
+    },
+    "limits": { "$ref": "#/$defs/limits" },
+    "truncation": {
+      "type": "object", "additionalProperties": false, "required": ["truncated", "reasons"],
+      "properties": { "truncated": { "type": "boolean" }, "reasons": { "type": "array", "items": { "type": "string", "maxLength": 64 } } }
+    },
+    "warnings": { "type": "array", "items": { "type": "string", "maxLength": 64 } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "path": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^(?:\\.|(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000-\\u001f\\u007f]+)$" },
+    "stat": {
+      "type": "object", "additionalProperties": false, "required": ["extension", "files", "bytes"],
+      "properties": { "extension": { "type": "string", "minLength": 1, "maxLength": 32 }, "files": { "$ref": "#/$defs/count" }, "bytes": { "$ref": "#/$defs/count" } }
+    },
+    "languageStat": {
+      "type": "object", "additionalProperties": false, "required": ["language", "files", "bytes"],
+      "properties": { "language": { "type": "string", "minLength": 1, "maxLength": 64 }, "files": { "$ref": "#/$defs/count" }, "bytes": { "$ref": "#/$defs/count" } }
+    },
+    "limits": {
+      "type": "object", "additionalProperties": false, "required": ["maxEntries", "maxFiles", "maxTotalBytes", "maxSingleFileBytes", "maxDepth", "maxIndexedMarkers"],
+      "properties": {
+        "maxEntries": { "type": "integer", "minimum": 1 }, "maxFiles": { "type": "integer", "minimum": 1 }, "maxTotalBytes": { "type": "integer", "minimum": 1 },
+        "maxSingleFileBytes": { "type": "integer", "minimum": 1 }, "maxDepth": { "type": "integer", "minimum": 1 },
+        "maxIndexedMarkers": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}
