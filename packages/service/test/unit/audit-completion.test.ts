@@ -125,6 +125,13 @@ describe("audit completion C01-C13", () => {
     rmSync(join(parentLink.out, "report"), { recursive: true });
     symlinkSync(outsideReport, join(parentLink.out, "report"));
     expect(evaluateAuditCompletion({ outDir: parentLink.out, engineRun: marker() }).status).toBe("unsafe");
+
+    const rootLink = workspace();
+    const outsideRoot = workspace();
+    writeFileSync(outsideRoot.file, fixture("complete.yaml"));
+    rmSync(rootLink.out, { recursive: true });
+    symlinkSync(outsideRoot.out, rootLink.out);
+    expect(evaluateAuditCompletion({ outDir: rootLink.out, engineRun: marker() }).status).toBe("unsafe");
   });
 
   it("C09 rejects empty and oversized files", () => {

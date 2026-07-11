@@ -90,26 +90,34 @@ function containsSensitiveReason(reason: string): boolean {
 }
 
 function readCompletionFile(outDir: string): ReadResult {
-  let root: string;
+  let rootFd: number;
   try {
-    root = realpathSync(outDir);
+    rootFd = openSync(outDir, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "ENOENT"
       ? { kind: "missing", fingerprint: null }
       : { kind: "unsafe", fingerprint: null };
   }
-  const path = join(root, "report", "completion.yaml");
-  let fd: number;
-  try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") return { kind: "missing", fingerprint: null };
-    return { kind: "unsafe", fingerprint: null };
-  }
 
   try {
-    const stat = fstatSync(fd);
+    let root: string;
+    try {
+      root = realpathSync(`/proc/self/fd/${rootFd}`);
+    } catch {
+      return { kind: "unsafe", fingerprint: null };
+    }
+    const path = join(`/proc/self/fd/${rootFd}`, "report", "completion.yaml");
+    let fd: number;
+    try {
+      fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return { kind: "missing", fingerprint: null };
+      return { kind: "unsafe", fingerprint: null };
+    }
+
+    try {
+      const stat = fstatSync(fd);
     if (!stat.isFile() || stat.size < 1 || stat.size > MAX_BYTES) {
       return { kind: "unsafe", fingerprint: null };
     }
@@ -164,9 +172,12 @@ function readCompletionFile(outDir: string): ReadResult {
     const reason = sanitizeReason(record.reason);
     if (!reason || [...reason].length > MAX_REASON_CHARS) return { kind: "invalid", fingerprint };
     if (containsSensitiveReason(reason)) return { kind: "unsafe", fingerprint };
-    return { kind: "valid", fingerprint, status: record.status, reason };
+      return { kind: "valid", fingerprint, status: record.status, reason };
+    } finally {
+      closeSync(fd);
+    }
   } finally {
-    closeSync(fd);
+    closeSync(rootFd);
   }
 }
 
