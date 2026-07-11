@@ -7,7 +7,15 @@ import { load as yamlLoad } from "js-yaml";
 import { getDb } from "../../infra/db/client.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
-import type { Severity } from "@vulnagent/shared";
+import {
+  isExpStatus,
+  isFindingClass,
+  isPocStatus,
+  type ExpStatus,
+  type FindingClass,
+  type PocStatus,
+  type Severity,
+} from "@vulnagent/shared";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -61,6 +69,10 @@ export interface FindingYaml {
     // Engine review status is intentionally not mapped to platform
     // findings_meta.review_status (user review state).
     review_status?: string;
+    finding_class?: unknown;
+    poc_status?: unknown;
+    exp_status?: unknown;
+    affected_versions?: unknown;
   };
   // raw_findings/ schema (vulnerability + metadata split)
   vulnerability?: {
@@ -123,12 +135,73 @@ interface ExtractedMeta {
   ev_score: number | null;
   ev_priority: string | null;
   ev_rationale: string | null;
+  finding_class: FindingClass | null;
+  poc_status: PocStatus | null;
+  exp_status: ExpStatus | null;
+  affected_versions: string | null;
+}
+
+export interface DynamicProjection {
+  finding_class: FindingClass | null;
+  poc_status: PocStatus | null;
+  exp_status: ExpStatus | null;
+  affected_versions: string | null;
+  warnings: Array<{
+    code: "WARN_FINDING_ENUM_UNKNOWN" | "WARN_FINDING_ENUM_INVALID_TYPE" | "WARN_FINDING_REQUIRED_FIELD_MISSING" | "WARN_FINDING_AFFECTED_VERSIONS_INVALID_TYPE";
+    field: "finding_class" | "poc_status" | "exp_status" | "affected_versions";
+    raw_type: string;
+  }>;
+}
+
+function rawType(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
+}
+
+export function normalizeFindingDynamicMeta(metadata: FindingYaml["metadata"], canonical: boolean): DynamicProjection {
+  const warnings: DynamicProjection["warnings"] = [];
+  const normalizeEnum = <T extends FindingClass | PocStatus | ExpStatus>(
+    field: "finding_class" | "poc_status" | "exp_status",
+    value: unknown,
+    guard: (candidate: unknown) => candidate is T,
+    required: boolean,
+  ): T | null => {
+    if (value == null || (typeof value === "string" && value.trim() === "")) {
+      if (canonical && required) warnings.push({ code: "WARN_FINDING_REQUIRED_FIELD_MISSING", field, raw_type: rawType(value) });
+      return null;
+    }
+    if (typeof value !== "string") {
+      warnings.push({ code: "WARN_FINDING_ENUM_INVALID_TYPE", field, raw_type: rawType(value) });
+      return "unknown" as T;
+    }
+    const trimmed = value.trim();
+    if (guard(trimmed)) return trimmed;
+    warnings.push({ code: "WARN_FINDING_ENUM_UNKNOWN", field, raw_type: "string" });
+    return "unknown" as T;
+  };
+
+  const affectedRaw = metadata?.affected_versions;
+  let affectedVersions: string | null = null;
+  if (affectedRaw != null) {
+    if (typeof affectedRaw === "string") affectedVersions = affectedRaw.trim() || null;
+    else warnings.push({ code: "WARN_FINDING_AFFECTED_VERSIONS_INVALID_TYPE", field: "affected_versions", raw_type: rawType(affectedRaw) });
+  }
+
+  return {
+    finding_class: normalizeEnum("finding_class", metadata?.finding_class, isFindingClass, true),
+    poc_status: normalizeEnum("poc_status", metadata?.poc_status, isPocStatus, true),
+    exp_status: normalizeEnum("exp_status", metadata?.exp_status, isExpStatus, false),
+    affected_versions: affectedVersions,
+    warnings,
+  };
 }
 
 /** Normalize finding YAML into a flat metadata object regardless of schema version */
 export function extractMeta(finding: FindingYaml): ExtractedMeta {
   const v = finding.vulnerability;
   const m = finding.metadata;
+  const dynamic = normalizeFindingDynamicMeta(m, false);
 
   // CVSS/EV only exist on the canonical metadata block (VulnForge schema).
   const scoring = {
@@ -164,6 +237,10 @@ export function extractMeta(finding: FindingYaml): ExtractedMeta {
       attack_surface: m?.attack_surface ?? v.source,
       cwe: m?.cwe,
       ...scoring,
+      finding_class: dynamic.finding_class,
+      poc_status: dynamic.poc_status,
+      exp_status: dynamic.exp_status,
+      affected_versions: dynamic.affected_versions,
     };
   }
 
@@ -178,10 +255,20 @@ export function extractMeta(finding: FindingYaml): ExtractedMeta {
       line_number: anchorLine ?? toLineNumber(m.line_number),
       function: anchorFunction ?? m.function,
       ...scoring,
+      finding_class: dynamic.finding_class,
+      poc_status: dynamic.poc_status,
+      exp_status: dynamic.exp_status,
+      affected_versions: dynamic.affected_versions,
     };
   }
 
-  return { ...scoring };
+  return {
+    ...scoring,
+    finding_class: dynamic.finding_class,
+    poc_status: dynamic.poc_status,
+    exp_status: dynamic.exp_status,
+    affected_versions: dynamic.affected_versions,
+  };
 }
 
 async function readYamlFromMinio(bucket: string, key: string): Promise<string> {
@@ -207,89 +294,187 @@ async function listMinioObjects(bucket: string, prefix: string): Promise<string[
   });
 }
 
+export type FindingSourceKind = "canonical_v2" | "legacy_finding" | "legacy_raw" | "legacy_risk";
+
+export interface FindingCandidate {
+  objectKey: string;
+  findingKey: string;
+  itemType: "finding" | "risk";
+  sourceKind: FindingSourceKind;
+  priority: 400 | 300 | 200 | 100;
+  canonical: boolean;
+}
+
+const LEGACY_FILE_RE = /^([A-Za-z0-9][A-Za-z0-9._-]{0,199})\.(yaml|yml)$/;
+const CANONICAL_ID_RE = /^BUG-[A-Za-z0-9._-]+$/;
+
+/** Exact, task-scoped object-key matcher. Nested YAML is deliberately ignored. */
+export function matchFindingObjectKey(taskId: string, objectKey: string): FindingCandidate | null {
+  const taskPrefix = `scan-outputs/${taskId}/`;
+  if (!objectKey.startsWith(taskPrefix)) return null;
+  const relative = objectKey.slice(taskPrefix.length);
+
+  const canonical = /^findings\/([^/]+)\/report\.yaml$/.exec(relative);
+  if (canonical) {
+    const findingKey = canonical[1]!;
+    if (findingKey.length <= 200 && CANONICAL_ID_RE.test(findingKey) && findingKey !== "BUG-") {
+      return { objectKey, findingKey, itemType: "finding", sourceKind: "canonical_v2", priority: 400, canonical: true };
+    }
+    return null;
+  }
+
+  const specs: Array<{ prefix: string; itemType: "finding" | "risk"; sourceKind: FindingSourceKind; priority: 300 | 200 | 100 }> = [
+    { prefix: "findings/", itemType: "finding", sourceKind: "legacy_finding", priority: 300 },
+    { prefix: "raw_findings/", itemType: "finding", sourceKind: "legacy_raw", priority: 200 },
+    { prefix: "risks/", itemType: "risk", sourceKind: "legacy_risk", priority: 100 },
+  ];
+  for (const spec of specs) {
+    if (!relative.startsWith(spec.prefix)) continue;
+    const rest = relative.slice(spec.prefix.length);
+    if (rest.includes("/")) return null;
+    const match = LEGACY_FILE_RE.exec(rest);
+    if (!match || match[1] === "report") return null;
+    return {
+      objectKey,
+      findingKey: match[1]!,
+      itemType: spec.itemType,
+      sourceKind: spec.sourceKind,
+      priority: spec.priority,
+      canonical: false,
+    };
+  }
+  return null;
+}
+
+export function selectFindingCandidates(candidates: FindingCandidate[]): {
+  winners: FindingCandidate[];
+  collisions: Array<{ winner: FindingCandidate; loser: FindingCandidate }>;
+} {
+  const groups = new Map<string, FindingCandidate[]>();
+  for (const candidate of candidates) {
+    const values = groups.get(candidate.findingKey) ?? [];
+    values.push(candidate);
+    groups.set(candidate.findingKey, values);
+  }
+  const winners: FindingCandidate[] = [];
+  const collisions: Array<{ winner: FindingCandidate; loser: FindingCandidate }> = [];
+  for (const findingKey of [...groups.keys()].sort()) {
+    const values = groups.get(findingKey)!.sort((a, b) => b.priority - a.priority || (a.objectKey < b.objectKey ? -1 : a.objectKey > b.objectKey ? 1 : 0));
+    const winner = values[0]!;
+    winners.push(winner);
+    for (const loser of values.slice(1)) collisions.push({ winner, loser });
+  }
+  return { winners, collisions };
+}
+
+function safeErrorClass(error: unknown): string {
+  return error instanceof Error && error.name ? error.name : "UnknownError";
+}
+
 export async function indexFindings(taskId: string, bucket: string): Promise<number> {
   const db = getDb();
-
-  // Resolve tenant from the task record (indexer runs as a system action from
-  // the scheduler, but findings_meta is tenant-scoped). Fall back to default.
   const taskRows = await db<{ tenant_id: string }[]>`
     SELECT tenant_id FROM tasks WHERE id = ${taskId} LIMIT 1
   `;
   const tenantId = taskRows[0]?.tenant_id ?? DEFAULT_TENANT_ID;
 
-  // findings/ is the canonical source of truth for confirmed vulnerabilities.
-  // It contains the final, deduplicated, judged results from YoungFlow.
-  // Fallback to raw_findings/ for older scans that predate the findings/ convention.
-  const findingPrefixes = [
-    `scan-outputs/${taskId}/findings/`,
-    `scan-outputs/${taskId}/raw_findings/`,
-  ];
+  let findingsCandidates: FindingCandidate[] = [];
+  try {
+    const keys = await listMinioObjects(bucket, `scan-outputs/${taskId}/findings/`);
+    findingsCandidates = keys
+      .map((key) => matchFindingObjectKey(taskId, key))
+      .filter((candidate): candidate is FindingCandidate => candidate?.sourceKind === "canonical_v2" || candidate?.sourceKind === "legacy_finding");
+  } catch (error) {
+    logger.debug({ taskId, error_class: safeErrorClass(error) }, "Failed to list findings prefix");
+  }
 
-  let findingKeys: string[] = [];
-  for (const prefix of findingPrefixes) {
+  const candidates = [...findingsCandidates];
+  if (findingsCandidates.length === 0) {
     try {
-      const keys = await listMinioObjects(bucket, prefix);
-      const filtered = keys.filter((k) => k.endsWith(".yaml") || k.endsWith(".yml"));
-      if (filtered.length > 0) {
-        findingKeys = filtered;
-        logger.info({ taskId, prefix, count: filtered.length }, "Found findings at prefix");
-        break;
-      }
-    } catch (err) {
-      logger.debug({ err, taskId, prefix }, "Failed to list findings at prefix");
+      const keys = await listMinioObjects(bucket, `scan-outputs/${taskId}/raw_findings/`);
+      candidates.push(...keys
+        .map((key) => matchFindingObjectKey(taskId, key))
+        .filter((candidate): candidate is FindingCandidate => candidate?.sourceKind === "legacy_raw"));
+    } catch (error) {
+      logger.debug({ taskId, error_class: safeErrorClass(error) }, "Failed to list raw findings prefix");
     }
   }
 
-  // risks/ holds VulnForge RISK-*.yaml items (same schema, item_type='risk').
-  let riskKeys: string[] = [];
   try {
     const keys = await listMinioObjects(bucket, `scan-outputs/${taskId}/risks/`);
-    riskKeys = keys.filter((k) => k.endsWith(".yaml") || k.endsWith(".yml"));
-    if (riskKeys.length > 0) {
-      logger.info({ taskId, count: riskKeys.length }, "Found risks at prefix");
-    }
-  } catch (err) {
-    logger.debug({ err, taskId }, "Failed to list risks prefix");
+    candidates.push(...keys
+      .map((key) => matchFindingObjectKey(taskId, key))
+      .filter((candidate): candidate is FindingCandidate => candidate?.sourceKind === "legacy_risk"));
+  } catch (error) {
+    logger.debug({ taskId, error_class: safeErrorClass(error) }, "Failed to list risks prefix");
   }
 
-  if (findingKeys.length === 0 && riskKeys.length === 0) {
-    logger.info({ taskId }, "No findings/risks YAML files found in any prefix");
+  const { winners, collisions } = selectFindingCandidates(candidates);
+  for (const { winner, loser } of collisions) {
+    logger.warn({
+      code: "WARN_FINDING_SOURCE_COLLISION",
+      taskId,
+      findingKey: winner.findingKey,
+      winner_key: winner.objectKey,
+      winner_source: winner.sourceKind,
+      loser_key: loser.objectKey,
+      loser_source: loser.sourceKind,
+    }, "Finding source collision; deterministic winner selected");
+  }
+
+  if (winners.length === 0) {
+    logger.info({ taskId }, "No accepted findings/risks candidates found");
     return 0;
   }
 
   let indexed = 0;
-  for (const key of findingKeys) {
-    indexed += await indexOneYaml(db, taskId, tenantId, bucket, key, "finding");
-  }
-  for (const key of riskKeys) {
-    indexed += await indexOneYaml(db, taskId, tenantId, bucket, key, "risk");
+  let failed = 0;
+  for (const candidate of winners) {
+    const success = await indexOneCandidate(db, taskId, tenantId, bucket, candidate);
+    if (success) indexed++;
+    else failed++;
   }
 
-  // Mark as indexed
-  await db`
-    UPDATE tasks SET findings_indexed_at = now() WHERE id = ${taskId}
-  `;
+  if (failed === 0) {
+    await db`UPDATE tasks SET findings_indexed_at = now() WHERE id = ${taskId}`;
+  } else {
+    logger.warn({ code: "WARN_FINDING_INDEX_PARTIAL", taskId, indexed, failed }, "Finding indexing completed partially; timestamp not advanced");
+  }
 
-  logger.info({ taskId, indexed, findings: findingKeys.length, risks: riskKeys.length }, "Findings indexed");
+  logger.info({ taskId, indexed, failed, selected: winners.length }, "Findings indexed");
   return indexed;
 }
 
-/** Index a single finding/risk YAML into findings_meta. Returns 1 on success, 0 on skip/error. */
-async function indexOneYaml(
+/** Index one selected winner. A failure never falls back to collision losers. */
+async function indexOneCandidate(
   db: ReturnType<typeof getDb>,
   taskId: string,
   tenantId: string,
   bucket: string,
-  key: string,
-  itemType: "finding" | "risk",
-): Promise<number> {
-  const findingKey = key.split("/").pop()?.replace(/\.ya?ml$/, "") ?? key;
+  candidate: FindingCandidate,
+): Promise<boolean> {
   try {
-    const raw = await readYamlFromMinio(bucket, key);
-    const finding = yamlLoad(raw) as FindingYaml;
-    if (!finding?.metadata && !finding?.vulnerability) return 0;
+    const raw = await readYamlFromMinio(bucket, candidate.objectKey);
+    const parsed = yamlLoad(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new TypeError("Invalid finding YAML root");
+    const finding = parsed as FindingYaml;
+    if ((!finding.metadata || typeof finding.metadata !== "object" || Array.isArray(finding.metadata))
+      && (!finding.vulnerability || typeof finding.vulnerability !== "object" || Array.isArray(finding.vulnerability))) {
+      throw new TypeError("Finding YAML lacks metadata/vulnerability object");
+    }
 
     const meta = extractMeta(finding);
+    const dynamic = normalizeFindingDynamicMeta(finding.metadata, candidate.canonical);
+    for (const warning of dynamic.warnings) {
+      logger.warn({
+        code: warning.code,
+        taskId,
+        findingKey: candidate.findingKey,
+        object_key: candidate.objectKey,
+        field: warning.field,
+        raw_type: warning.raw_type,
+      }, "Finding dynamic metadata normalized with warning");
+    }
     const severity = normalizeSeverity(meta.severity ?? "");
     const severityNumeric = SEVERITY_NUMERIC[severity];
 
@@ -300,9 +485,10 @@ async function indexOneYaml(
         cwe, primary_file, primary_line, function_name, language,
         group_id, attack_surface, route_path, schema_version,
         cvss_vector, cvss_score, ev_vector, ev_score, ev_priority, ev_rationale,
+        finding_class, poc_status, exp_status, affected_versions,
         item_type, title
       ) VALUES (
-        ${taskId}, ${tenantId}, ${findingKey}, ${key},
+        ${taskId}, ${tenantId}, ${candidate.findingKey}, ${candidate.objectKey},
         ${severity}, ${severityNumeric}, ${meta.vuln_type ?? null},
         ${meta.vuln_type_full_name ?? null},
         ${meta.cwe ?? null}, ${meta.file_path ?? null},
@@ -313,9 +499,12 @@ async function indexOneYaml(
         ${meta.cvss_vector}, ${meta.cvss_score},
         ${meta.ev_vector}, ${meta.ev_score},
         ${meta.ev_priority}, ${meta.ev_rationale},
-        ${itemType}, ${meta.title ?? null}
+        ${dynamic.finding_class}, ${dynamic.poc_status},
+        ${dynamic.exp_status}, ${dynamic.affected_versions},
+        ${candidate.itemType}, ${meta.title ?? null}
       )
       ON CONFLICT (task_id, finding_key) DO UPDATE SET
+        yaml_minio_key = EXCLUDED.yaml_minio_key,
         severity = EXCLUDED.severity,
         severity_numeric = EXCLUDED.severity_numeric,
         vuln_type = EXCLUDED.vuln_type,
@@ -335,12 +524,23 @@ async function indexOneYaml(
         ev_score = EXCLUDED.ev_score,
         ev_priority = EXCLUDED.ev_priority,
         ev_rationale = EXCLUDED.ev_rationale,
+        finding_class = EXCLUDED.finding_class,
+        poc_status = EXCLUDED.poc_status,
+        exp_status = EXCLUDED.exp_status,
+        affected_versions = EXCLUDED.affected_versions,
         item_type = EXCLUDED.item_type,
         indexed_at = now()
     `;
-    return 1;
-  } catch (err) {
-    logger.warn({ err, key }, "Failed to index finding");
-    return 0;
+    return true;
+  } catch (error) {
+    logger.warn({
+      code: "WARN_FINDING_INDEX_FAILED",
+      taskId,
+      findingKey: candidate.findingKey,
+      object_key: candidate.objectKey,
+      source_kind: candidate.sourceKind,
+      error_class: safeErrorClass(error),
+    }, "Failed to index selected finding candidate");
+    return false;
   }
 }
