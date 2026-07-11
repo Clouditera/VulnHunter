@@ -8,9 +8,16 @@ MINIO_IMAGE="${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:16-alpine}"
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-YOUNGFLOW_VERSION="${YOUNGFLOW_VERSION:-0.2.14}"
+YOUNGFLOW_VERSION="${YOUNGFLOW_VERSION:-0.3.8}"
+VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0}"
+VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-058da50be533b4605ff2e1614cef77b5c2d936bd}"
 
 git submodule update --init --recursive
+ACTUAL_VULNFORGE_COMMIT="$(git -C flows/vulnforge rev-parse HEAD)"
+if [[ "$ACTUAL_VULNFORGE_COMMIT" != "$VULNFORGE_COMMIT" ]]; then
+  echo "VulnForge baseline mismatch: expected $VULNFORGE_COMMIT, got $ACTUAL_VULNFORGE_COMMIT" >&2
+  exit 1
+fi
 
 rm -rf "$OUT"
 mkdir -p "$OUT/images" "$OUT/docs" "$OUT/.secrets"
@@ -22,6 +29,8 @@ cat > "$OUT/VERSION.json" << JSON
   "buildTime": "$BUILD_TIME",
   "gitCommit": "$GIT_COMMIT",
   "youngflowVersion": "$YOUNGFLOW_VERSION",
+  "vulnforgeVersion": "$VULNFORGE_VERSION",
+  "vulnforgeCommit": "$VULNFORGE_COMMIT",
   "licenseSchema": "v1",
   "images": {
     "service": "vulnagent-service:$VERSION",
@@ -56,7 +65,10 @@ docker build -f deploy/dockerfiles/service.Dockerfile \
   --build-arg YOUNGFLOW_VERSION="$YOUNGFLOW_VERSION" \
   -t "vulnagent-service:$VERSION" -t vulnagent-service:latest .
 docker build -f deploy/dockerfiles/web.Dockerfile -t "vulnagent-web:$VERSION" -t vulnagent-web:latest .
-docker build -f deploy/dockerfiles/worker.Dockerfile -t "vulnagent-worker:$VERSION" -t vulnagent-worker:latest .
+docker build -f deploy/dockerfiles/worker.Dockerfile \
+  --build-arg VULNFORGE_VERSION="$VULNFORGE_VERSION" \
+  --build-arg VULNFORGE_COMMIT="$VULNFORGE_COMMIT" \
+  -t "vulnagent-worker:$VERSION" -t vulnagent-worker:latest .
 docker build -f deploy/dockerfiles/eval-worker.Dockerfile -t "vulnagent-eval-worker:$VERSION" -t vulnagent-eval-worker:latest .
 docker pull "$POSTGRES_IMAGE"
 docker pull "$MINIO_IMAGE"
