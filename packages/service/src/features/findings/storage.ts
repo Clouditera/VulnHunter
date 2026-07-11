@@ -1,10 +1,10 @@
 import { getDb } from "../../infra/db/client.js";
-import type { Severity, FindingReviewStatus } from "@vulnagent/shared";
+import type { Severity, FindingReviewStatus, FindingDynamicMeta } from "@vulnagent/shared";
 import { FINDING_REVIEW_STATUSES } from "@vulnagent/shared";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
-export interface DbFindingMeta {
+export interface DbFindingMeta extends FindingDynamicMeta {
   id: string;
   task_id: string;
   finding_key: string;

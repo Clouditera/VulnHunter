@@ -1,4 +1,4 @@
-import type { SystemStatus } from "@vulnagent/shared";
+import type { FindingDynamicMeta, SystemStatus } from "@vulnagent/shared";
 
 const BASE = "";
 
@@ -155,7 +155,7 @@ export type FindingReviewStatus = 'pending' | 'confirmed' | 'false_positive' | '
 
 export type FindingItemType = "finding" | "risk";
 
-export interface FindingMeta {
+export interface FindingMeta extends FindingDynamicMeta {
   id: string;
   task_id: string;
   finding_key: string;
