@@ -147,7 +147,7 @@ function validateLimits(limits: SourceManifestLimits): void {
 
 function relativePath(parent: string, name: string): string {
   const path = parent === "." ? name : `${parent}/${name}`;
-  if (path.startsWith("/") || path === ".." || path.startsWith("../") || CONTROL_OR_BACKSLASH.test(path)) {
+  if (path.startsWith("/") || /^[A-Za-z]:/.test(path) || path === ".." || path.startsWith("../") || CONTROL_OR_BACKSLASH.test(path)) {
     throw new SourceManifestError("ERR_SOURCE_PATH_INVALID");
   }
   const normalized = posix.normalize(path);

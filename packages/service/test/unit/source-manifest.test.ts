@@ -229,5 +229,11 @@ describe("deterministic source manifest", () => {
       expect(validateManifest(invalid), `${invalidPath}: ${JSON.stringify(validateManifest.errors)}`).toBe(false);
     }
     expect(() => generateSourceManifest(source, { limits: { maxFiles: 0 } })).toThrow(TypeError);
+
+    const drivePathSource = root("drive-path");
+    file(drivePathSource, "C:relative", "must be rejected by producer");
+    expect(() => generateSourceManifest(drivePathSource)).toThrowError(
+      expect.objectContaining({ code: "ERR_SOURCE_PATH_INVALID" }),
+    );
   });
 });
