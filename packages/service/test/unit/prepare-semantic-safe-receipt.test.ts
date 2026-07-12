@@ -18,7 +18,7 @@ const fixed = {
 function receipt(overrides: Record<string, unknown> = {}) {
   return { ...fixed, sequence: 1, phase: "run_start", state: "running", attempted_runs: 1, completed_runs: 0,
     worker_exit_code: null, worker_signal: null, spawn_error_code: null, prepare_error_code: null,
-    runtime_category: null, oracle_rule: null, safe_counters: emptySafeCounters(), timestamp: "2026-07-12T00:00:00.000Z", ...overrides };
+    runtime_category: null, oracle_rule: null, model_activity: "unknown", safe_counters: emptySafeCounters(), timestamp: "2026-07-12T00:00:00.000Z", ...overrides };
 }
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
@@ -27,14 +27,20 @@ describe("M3-04 safe failure classification", () => {
     const raw = "provider error\nERR_PREPARE_SCHEMA_INVALID\nDONE: exit=3 duration=123ms turns=4 tools=3 tokens_in=11 tokens_out=12 tokens_cache_read=13 tokens_cache_write=14 tokens_total=50 api_errors=1 retries=2";
     expect(classifyRestrictedRun({ stderr: raw, status: 3, durationMs: 999 })).toEqual({
       worker_exit_code: 3, worker_signal: null, spawn_error_code: null,
-      prepare_error_code: "ERR_PREPARE_SCHEMA_INVALID", runtime_category: "provider_failure",
-      safe_counters: { duration_ms: 123, turns: 4, tools: 3, tokens_in: 11, tokens_out: 12, tokens_cache_read: 13, tokens_cache_write: 14, tokens_total: 50, api_errors: 1, retries: 2 },
+      prepare_error_code: "ERR_PREPARE_SCHEMA_INVALID", runtime_category: "provider_failure", model_activity: "provider_failure_observed",
+      safe_counters: { duration_ms: 123, turns: 4, tools: 3, submit_calls: 0, submit_validation_failures: 0, tokens_in: 11, tokens_out: 12, tokens_cache_read: 13, tokens_cache_write: 14, tokens_total: 50, api_errors: 1, retries: 2 },
     });
     expect(classifyRestrictedRun({ stderr: "ERR_PREPARE_FAKE", status: 3 }).prepare_error_code).toBeNull();
     expect(classifyRestrictedRun({ stderr: "provider retries exhausted", status: 3 }).runtime_category).toBe("provider_retries_exhausted");
     expect(classifyRestrictedRun({ stderr: "restricted extension error", status: 3 }).runtime_category).toBe("restricted_extension_failure");
     expect(classifyRestrictedRun({ stderr: "restricted process error", status: 3 }).runtime_category).toBe("restricted_process_failure");
     expect(classifyRestrictedRun({ stderr: "prepare token budget exceeded", status: 3 }).runtime_category).toBe("prepare_policy_budget_exceeded");
+    const done = "DONE: exit=3 duration=10ms turns=4 tools=3 tokens_in=10 tokens_out=10 tokens_cache_read=0 tokens_cache_write=0 tokens_total=20 api_errors=0 retries=0";
+    const invalid = "submit_plan: submit_plan(plan=<redacted>, serialized_bytes=2)\nsubmit_plan validation failed (<redacted>)\n";
+    expect(classifyRestrictedRun({ stderr: invalid.repeat(3) + done, status: 3 })).toMatchObject({ runtime_category: "prepare_validation_exhausted", model_activity: "response_observed", safe_counters: { submit_calls: 3, submit_validation_failures: 3 } });
+    expect(classifyRestrictedRun({ stderr: invalid + done, status: 3 }).runtime_category).toBe("prepare_validation_failed");
+    expect(classifyRestrictedRun({ stderr: done, status: 3 })).toMatchObject({ runtime_category: "prepare_no_submit", model_activity: "response_observed" });
+    expect(classifyRestrictedRun({ stderr: `submit_plan: submit_plan(plan=<redacted>, serialized_bytes=2)\n${done}`, status: 3 }).runtime_category).toBe("prepare_postflight_or_policy_failure");
   });
 
   it("classifies timeout, signal, spawn error and local artifact gates", () => {

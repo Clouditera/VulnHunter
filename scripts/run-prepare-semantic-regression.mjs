@@ -89,12 +89,13 @@ function progress(fixtureId, runIndex, phase, state, fields = {}) {
     ...fixedProgress, sequence: ++sequence, fixture_id: fixtureId, run_index: runIndex, phase, state,
     attempted_runs: attemptedRuns, completed_runs: completedRuns,
     worker_exit_code: null, worker_signal: null, spawn_error_code: null, prepare_error_code: null,
-    runtime_category: null, oracle_rule: null, safe_counters: emptySafeCounters(), timestamp: new Date().toISOString(), ...fields,
+    runtime_category: null, oracle_rule: null, model_activity: "unknown", safe_counters: emptySafeCounters(), timestamp: new Date().toISOString(), ...fields,
   });
 }
+class SafeHarnessFailure extends Error {}
 function safeFailure(fixtureId, runIndex, phase, category, rule = null, fields = {}) {
   progress(fixtureId, runIndex, phase, "failed", { runtime_category: category, oracle_rule: rule, ...fields });
-  throw new Error(`SAFE_FAILURE fixture=${fixtureId} run=${runIndex} phase=${phase} category=${category}${rule ? ` rule=${rule}` : ""}`);
+  throw new SafeHarnessFailure(`SAFE_FAILURE fixture=${fixtureId} run=${runIndex} phase=${phase} category=${category}${rule ? ` rule=${rule}` : ""}`);
 }
 
 for (const id of selected) {
@@ -104,7 +105,7 @@ for (const id of selected) {
   const manifest = generateSourceManifest(selectedFixture.source, { sourceKind: selectedFixture.kind, limits });
   const normalizedRuns = [];
   const digests = [];
-  let lastCounters = emptySafeCounters();
+  let lastCounters = emptySafeCounters(); let lastModelActivity = "unknown";
   for (let run = 1; run <= options.runs; run++) {
     attemptedRuns++; progress(id, run, "run_start", "running");
     const temp = mkdtempSync(join(tmpdir(), `prepare-semantic-${id}-`)); chmodSync(temp, 0o700);
@@ -127,44 +128,52 @@ for (const id of selected) {
     const started = performance.now();
     const executed = spawnSync("docker", dockerArgs, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 720_000 });
     const classified = classifyRestrictedRun({ stdout: executed.stdout, stderr: executed.stderr, status: executed.status, signal: executed.signal, errorCode: executed.error?.code, durationMs: performance.now() - started });
-    lastCounters = classified.safe_counters;
+    lastCounters = classified.safe_counters; lastModelActivity = classified.model_activity;
     executed.stdout = ""; executed.stderr = "";
+    let activePhase = "container_exit";
     try {
       progress(id, run, "container_exit", executed.status === 0 ? "running" : "failed", classified);
-      if (executed.status !== 0) throw new Error(`SAFE_FAILURE fixture=${id} run=${run} phase=container_exit category=${classified.runtime_category ?? "unknown"}`);
+      if (executed.status !== 0) throw new SafeHarnessFailure(`SAFE_FAILURE fixture=${id} run=${run} phase=container_exit category=${classified.runtime_category ?? "unknown"}`);
+      activePhase = "artifact_gate";
       const outputNames = readdirSync(output).sort();
       const planPath = join(output, "assessment-plan.json");
       const planExists = existsSync(planPath);
       const artifactFailure = classifyArtifactGate({ outputNames, controlEntries: readdirSync(control).length, planExists, planMode: planExists ? statSync(planPath).mode & 0o777 : null });
-      if (artifactFailure) safeFailure(id, run, "artifact_gate", artifactFailure, null, { safe_counters: lastCounters });
-      progress(id, run, "artifact_gate", "running", { safe_counters: lastCounters });
+      if (artifactFailure) safeFailure(id, run, "artifact_gate", artifactFailure, null, { safe_counters: lastCounters, model_activity: lastModelActivity });
+      progress(id, run, "artifact_gate", "running", { safe_counters: lastCounters, model_activity: lastModelActivity });
+      activePhase = "parent_gate";
       const readPlan = spawnSync("docker", ["run", "--rm", "--entrypoint", "cat", "-v", `${output}:/out:ro`, options.image, "/out/assessment-plan.json"], { maxBuffer: 1024 * 1024 });
       const planBytes = readPlan.stdout;
       let plan; let parseable = false;
       if (readPlan.status === 0) try { plan = JSON.parse(planBytes.toString("utf8")); parseable = true; } catch {}
       const parentFailure = classifyParentGate({ readable: readPlan.status === 0, parseable });
-      if (parentFailure) safeFailure(id, run, "parent_gate", parentFailure, null, { safe_counters: lastCounters });
-      progress(id, run, "parent_gate", "running", { safe_counters: lastCounters });
+      if (parentFailure) safeFailure(id, run, "parent_gate", parentFailure, null, { safe_counters: lastCounters, model_activity: lastModelActivity });
+      progress(id, run, "parent_gate", "running", { safe_counters: lastCounters, model_activity: lastModelActivity });
+      activePhase = "oracle_gate";
+      const oracleSourceTexts = selectedFixture.kind === "directory" ? sourceTexts(selectedFixture.source) : [];
       let normalized;
       try {
         normalized = assertPrepareSemanticOracle(plan, expected, {
           capabilityCatalog: oracle.planner_input_defaults.capability_catalog.capabilities,
-          sourceTexts: selectedFixture.kind === "directory" ? sourceTexts(selectedFixture.source) : [],
+          sourceTexts: oracleSourceTexts,
         });
       } catch (error) {
         const rule = error instanceof PrepareSemanticOracleError ? error.rule : "unknown";
-        safeFailure(id, run, "oracle_gate", "oracle_mismatch", rule, { safe_counters: lastCounters });
+        safeFailure(id, run, "oracle_gate", "oracle_mismatch", rule, { safe_counters: lastCounters, model_activity: lastModelActivity });
       }
-      progress(id, run, "oracle_gate", "running", { safe_counters: lastCounters });
+      progress(id, run, "oracle_gate", "running", { safe_counters: lastCounters, model_activity: lastModelActivity });
       normalizedRuns.push(normalized); digests.push(canonicalPlanDigest(planBytes));
-      completedRuns++; progress(id, run, "run_complete", "passed", { safe_counters: lastCounters });
+      completedRuns++; progress(id, run, "run_complete", "passed", { safe_counters: lastCounters, model_activity: lastModelActivity });
+    } catch (error) {
+      if (error instanceof SafeHarnessFailure) throw error;
+      safeFailure(id, run, activePhase, "harness_internal", null, { safe_counters: lastCounters, model_activity: lastModelActivity });
     } finally {
       spawnSync("docker", ["rm", "-f", containerName], { stdio: "ignore" });
       rmSync(temp, { recursive: true, force: true });
     }
   }
   const stable = JSON.stringify(normalizedRuns[0]);
-  if (!normalizedRuns.every((item) => JSON.stringify(item) === stable)) safeFailure(id, 3, "oracle_gate", "oracle_mismatch", "unknown", { safe_counters: lastCounters });
+  if (!normalizedRuns.every((item) => JSON.stringify(item) === stable)) safeFailure(id, 3, "oracle_gate", "oracle_mismatch", "unknown", { safe_counters: lastCounters, model_activity: lastModelActivity });
   result.fixtures.push({ id, runs: options.runs, normalized: normalizedRuns[0], plan_sha256: digests });
   process.stdout.write(`${id}: PASS (${options.runs} runs)\n`);
 }

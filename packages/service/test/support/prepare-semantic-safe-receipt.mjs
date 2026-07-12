@@ -8,7 +8,8 @@ export const PREPARE_ERROR_CODES = new Set([
 ]);
 export const RUNTIME_CATEGORIES = new Set([
   "provider_failure", "provider_retries_exhausted", "restricted_extension_failure",
-  "restricted_process_failure", "prepare_policy_budget_exceeded", "container_nonzero",
+  "restricted_process_failure", "prepare_policy_budget_exceeded", "prepare_validation_exhausted",
+  "prepare_validation_failed", "prepare_no_submit", "prepare_postflight_or_policy_failure", "container_nonzero",
   "container_timeout", "container_signal", "output_set_invalid", "plan_missing", "plan_mode_invalid",
   "plan_parse_invalid", "control_not_cleaned", "oracle_mismatch", "harness_internal", "unknown",
 ]);
@@ -26,11 +27,12 @@ const PHASES = new Set(["run_start", "container_exit", "artifact_gate", "parent_
 const STATES = new Set(["running", "passed", "failed", "cancelled", "wall_timeout"]);
 const SIGNALS = new Set(["SIGTERM", "SIGKILL", "SIGINT", "SIGHUP", "SIGABRT"]);
 const SPAWN_ERRORS = new Set(["ETIMEDOUT", "ENOENT", "EACCES", "OTHER"]);
-const COUNTERS = ["duration_ms", "turns", "tools", "tokens_in", "tokens_out", "tokens_cache_read", "tokens_cache_write", "tokens_total", "api_errors", "retries"];
+const COUNTERS = ["duration_ms", "turns", "tools", "submit_calls", "submit_validation_failures", "tokens_in", "tokens_out", "tokens_cache_read", "tokens_cache_write", "tokens_total", "api_errors", "retries"];
+const MODEL_ACTIVITY = new Set(["response_observed", "provider_failure_observed", "no_response_observed", "unknown"]);
 const RECEIPT_KEYS = new Set([
   "schema_version", "sequence", "fixture_id", "run_index", "phase", "state", "attempted_runs",
   "completed_runs", "worker_exit_code", "worker_signal", "spawn_error_code", "prepare_error_code",
-  "runtime_category", "oracle_rule", "safe_counters", "timestamp", "run_uuid", "main_commit",
+  "runtime_category", "oracle_rule", "model_activity", "safe_counters", "timestamp", "run_uuid", "main_commit",
   "oracle_sha256", "image_id",
 ]);
 
@@ -49,7 +51,7 @@ export function validateSafeProgress(receipt) {
   if (!nonnegativeInteger(receipt.attempted_runs) || !nonnegativeInteger(receipt.completed_runs) || receipt.completed_runs > receipt.attempted_runs) throw new Error("invalid run counters");
   if (!nullable(receipt.worker_exit_code, Number.isSafeInteger) || !nullable(receipt.worker_signal, (value) => SIGNALS.has(value))) throw new Error("invalid process result");
   if (!nullable(receipt.spawn_error_code, (value) => SPAWN_ERRORS.has(value)) || !nullable(receipt.prepare_error_code, (value) => PREPARE_ERROR_CODES.has(value))) throw new Error("invalid safe error code");
-  if (!nullable(receipt.runtime_category, (value) => RUNTIME_CATEGORIES.has(value)) || !nullable(receipt.oracle_rule, (value) => ORACLE_RULES.has(value))) throw new Error("invalid safe classification");
+  if (!nullable(receipt.runtime_category, (value) => RUNTIME_CATEGORIES.has(value)) || !nullable(receipt.oracle_rule, (value) => ORACLE_RULES.has(value)) || !MODEL_ACTIVITY.has(receipt.model_activity)) throw new Error("invalid safe classification");
   if (!receipt.safe_counters || typeof receipt.safe_counters !== "object" || Object.keys(receipt.safe_counters).some((key) => !COUNTERS.includes(key))) throw new Error("invalid safe counters");
   for (const key of COUNTERS) if (!nonnegativeInteger(receipt.safe_counters[key])) throw new Error("invalid safe counter");
   if (typeof receipt.timestamp !== "string" || !/^\d{4}-\d\d-\d\dT/.test(receipt.timestamp)) throw new Error("invalid timestamp");
@@ -75,7 +77,7 @@ export function writeSafeProgress(path, receipt) {
 }
 
 export function emptySafeCounters(durationMs = 0) {
-  return { duration_ms: Math.max(0, Math.trunc(durationMs)), turns: 0, tools: 0, tokens_in: 0, tokens_out: 0, tokens_cache_read: 0, tokens_cache_write: 0, tokens_total: 0, api_errors: 0, retries: 0 };
+  return { duration_ms: Math.max(0, Math.trunc(durationMs)), turns: 0, tools: 0, submit_calls: 0, submit_validation_failures: 0, tokens_in: 0, tokens_out: 0, tokens_cache_read: 0, tokens_cache_write: 0, tokens_total: 0, api_errors: 0, retries: 0 };
 }
 
 function exactPrepareCode(raw) {
@@ -85,11 +87,13 @@ function exactPrepareCode(raw) {
 
 function parseSafeCounters(raw, fallbackDuration) {
   const counters = emptySafeCounters(fallbackDuration);
+  counters.submit_calls = [...raw.matchAll(/\bsubmit_plan: submit_plan\(plan=<redacted>(?:,|\))/g)].length;
+  counters.submit_validation_failures = [...raw.matchAll(/\bsubmit_plan validation failed \(<redacted>\)/g)].length;
   const matches = [...raw.matchAll(/DONE: exit=-?\d+ duration=(\d+)ms turns=(\d+) tools=(\d+) tokens_in=(\d+) tokens_out=(\d+) tokens_cache_read=(\d+) tokens_cache_write=(\d+) tokens_total=(\d+) api_errors=(\d+) retries=(\d+)/g)];
   const match = matches.at(-1);
-  if (!match) return counters;
+  if (!match) return { counters, doneObserved: false };
   ["duration_ms", "turns", "tools", "tokens_in", "tokens_out", "tokens_cache_read", "tokens_cache_write", "tokens_total", "api_errors", "retries"].forEach((key, index) => { counters[key] = Number(match[index + 1]); });
-  return counters;
+  return { counters, doneObserved: true };
 }
 
 export function classifyArtifactGate({ outputNames, controlEntries, planExists, planMode }) {
@@ -108,6 +112,8 @@ export function classifyRestrictedRun({ stdout = "", stderr = "", status = null,
   const raw = `${String(stdout).slice(-8 * 1024 * 1024)}\n${String(stderr).slice(-8 * 1024 * 1024)}`;
   const spawn = errorCode == null ? null : SPAWN_ERRORS.has(errorCode) ? errorCode : "OTHER";
   const safeSignal = signal != null && SIGNALS.has(signal) ? signal : null;
+  const { counters, doneObserved } = parseSafeCounters(raw, durationMs);
+  const providerFailure = raw.includes("provider retries exhausted") || raw.includes("provider error");
   let runtime = null;
   if (spawn === "ETIMEDOUT") runtime = "container_timeout";
   else if (spawn) runtime = "harness_internal";
@@ -117,6 +123,13 @@ export function classifyRestrictedRun({ stdout = "", stderr = "", status = null,
   else if (raw.includes("restricted extension error")) runtime = "restricted_extension_failure";
   else if (raw.includes("restricted process error")) runtime = "restricted_process_failure";
   else if (/prepare (?:turn|token) budget exceeded|idle_timeout|event=timeout/.test(raw)) runtime = "prepare_policy_budget_exceeded";
+  else if (status !== 0 && counters.submit_validation_failures >= 3) runtime = "prepare_validation_exhausted";
+  else if (status !== 0 && counters.submit_validation_failures > 0) runtime = "prepare_validation_failed";
+  else if (status !== 0 && doneObserved && counters.submit_calls === 0) runtime = "prepare_no_submit";
+  else if (status !== 0 && counters.submit_calls > 0) runtime = "prepare_postflight_or_policy_failure";
   else if (status !== 0) runtime = "container_nonzero";
-  return { worker_exit_code: Number.isSafeInteger(status) ? status : null, worker_signal: safeSignal, spawn_error_code: spawn, prepare_error_code: exactPrepareCode(raw), runtime_category: runtime, safe_counters: parseSafeCounters(raw, durationMs) };
+  const modelActivity = providerFailure ? "provider_failure_observed"
+    : doneObserved && (counters.turns > 0 || counters.tokens_total > 0) ? "response_observed"
+      : doneObserved ? "no_response_observed" : "unknown";
+  return { worker_exit_code: Number.isSafeInteger(status) ? status : null, worker_signal: safeSignal, spawn_error_code: spawn, prepare_error_code: exactPrepareCode(raw), runtime_category: runtime, model_activity: modelActivity, safe_counters: counters };
 }
