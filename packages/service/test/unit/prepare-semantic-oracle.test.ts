@@ -6,11 +6,20 @@ import { load as loadYaml } from "js-yaml";
 import { describe, expect, it } from "vitest";
 import { generateSourceManifest } from "../../src/features/prepare/source-manifest.js";
 import { assertPrepareSemanticOracle, normalizePreparePlan } from "../support/prepare-semantic-oracle.mjs";
+import { PrepareSemanticOracleError } from "../support/prepare-semantic-safe-receipt.mjs";
 
 const repo = resolve(import.meta.dirname, "../../../..");
 const fixtureRoot = join(repo, "packages/service/test/fixtures/prepare-semantic");
 const oracle = loadYaml(readFileSync(join(fixtureRoot, "oracles-v1.yaml"), "utf8")) as any;
 const sha256 = (value: Buffer | string) => createHash("sha256").update(value).digest("hex");
+
+function expectRule(run: () => unknown, rule: string): void {
+  try { run(); throw new Error("oracle unexpectedly passed"); }
+  catch (error) {
+    expect(error).toBeInstanceOf(PrepareSemanticOracleError);
+    expect((error as PrepareSemanticOracleError).rule).toBe(rule);
+  }
+}
 
 function canonicalPlan(expected: any): any {
   const missing = (expected.missing_categories ?? []).map((category: string, index: number) => ({
@@ -131,7 +140,7 @@ describe("M3-04 normalized semantic oracle", () => {
     ]) {
       const unsafe = structuredClone(plan);
       unsafe.source_assessment.user_recommendations.forEach((item: any) => { item.message = message; });
-      expect(() => assertPrepareSemanticOracle(unsafe, expected)).toThrow(/forbidden recommendation/);
+      expectRule(() => assertPrepareSemanticOracle(unsafe, expected), "forbidden_recommendation");
     }
     const safelyNegated = structuredClone(plan);
     safelyNegated.source_assessment.user_recommendations.forEach((item: any) => {
@@ -144,30 +153,31 @@ describe("M3-04 normalized semantic oracle", () => {
     });
     expect(() => assertPrepareSemanticOracle(ordinaryUse, expected)).not.toThrow();
     plan.source_assessment.root_candidates.pop();
-    expect(() => assertPrepareSemanticOracle(plan, expected)).toThrow(/exact 20 case roots/);
+    expectRule(() => assertPrepareSemanticOracle(plan, expected), "stonesoup_roots");
   });
 
   it("fails closed on status drift, invented capability, profile selection, tool escape, paths and excerpts", () => {
     const fixture = oracle.fixtures[0];
     const base = canonicalPlan(fixture.expected);
-    const check = (mutate: (plan: any) => void, options: any = {}) => {
+    const check = (rule: string, mutate: (plan: any) => void, options: any = {}) => {
       const plan = structuredClone(base); mutate(plan);
-      expect(() => assertPrepareSemanticOracle(plan, fixture.expected, { capabilityCatalog: oracle.planner_input_defaults.capability_catalog.capabilities, ...options })).toThrow();
+      expectRule(() => assertPrepareSemanticOracle(plan, fixture.expected, { capabilityCatalog: oracle.planner_input_defaults.capability_catalog.capabilities, ...options }), rule);
     };
-    check((plan) => { plan.source_assessment.status = "uncertain"; });
-    check((plan) => { plan.sandbox_plan.requirements.required_capabilities.push("invented_root_vm"); });
-    check((plan) => { plan.sandbox_plan.profile_recommendation.recommended_profile_id = "profile-secret"; });
-    check(() => {}, { toolCalls: ["bash"] });
+    check("status", (plan) => { plan.source_assessment.status = "uncertain"; });
+    check("required_capabilities", (plan) => { plan.sandbox_plan.requirements.required_capabilities.push("invented_root_vm"); });
+    check("profile_recommendation", (plan) => { plan.sandbox_plan.profile_recommendation.recommended_profile_id = "profile-secret"; });
+    check("unauthorized_tool", () => {}, { toolCalls: ["bash"] });
     for (const path of [
       "/source/project", "/control/private", "/output/plan", "/input/planner.json", "/workspace/src",
       "/work/tree", "/opt/app", "/tmp/file", "/home/user", "/root/key", "/etc/passwd", "/var/lib/data", "/run/secrets/key",
       "C:\\source\\project", "D:/input/planner.json",
-    ]) check((plan) => { plan.source_assessment.summary = `internal path ${path}`; });
+    ]) check("internal_path", (plan) => { plan.source_assessment.summary = `internal path ${path}`; });
     const urlPlan = structuredClone(base);
     urlPlan.source_assessment.summary = "Public declarations: https://example.invalid/source/project and https://example.invalid/var/data";
     expect(() => assertPrepareSemanticOracle(urlPlan, fixture.expected, { capabilityCatalog: oracle.planner_input_defaults.capability_catalog.capabilities })).not.toThrow();
     const excerpt = "A".repeat(80);
-    check((plan) => { plan.source_assessment.summary = excerpt; }, { sourceTexts: [excerpt] });
+    check("source_excerpt", (plan) => { plan.source_assessment.summary = excerpt; }, { sourceTexts: [excerpt] });
+    check("sensitive_content", (plan) => { plan.source_assessment.summary = "api_key=synthetic-secret"; });
   });
 
   it("accepts equivalent Chinese completeness concepts", () => {

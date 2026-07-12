@@ -1,11 +1,13 @@
 #!/usr/bin/env node
+import { performance } from "node:perf_hooks";
 import { randomUUID } from "node:crypto";
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { assertPrepareSemanticOracle, canonicalPlanDigest } from "../packages/service/test/support/prepare-semantic-oracle.mjs";
+import { PrepareSemanticOracleError, classifyArtifactGate, classifyParentGate, classifyRestrictedRun, emptySafeCounters, writeSafeProgress } from "../packages/service/test/support/prepare-semantic-safe-receipt.mjs";
 
 const repo = resolve(import.meta.dirname, "..");
 const require = createRequire(join(repo, "packages/service/package.json"));
@@ -15,12 +17,12 @@ const oracle = yaml.load(readFileSync(join(fixtureRoot, "oracles-v1.yaml"), "utf
 
 function usage(message) {
   if (message) process.stderr.write(`${message}\n`);
-  process.stderr.write("Usage: run-prepare-semantic-regression.mjs --image IMAGE --models FILE --model MODEL --model-label LABEL [--runs 3] [--fixture ID] [--stonesoup-source DIR] [--network NAME] [--results FILE]\n");
+  process.stderr.write("Usage: run-prepare-semantic-regression.mjs --image IMAGE --models FILE --model MODEL --model-label LABEL [--runs 3] [--fixture ID] [--stonesoup-source DIR] [--network NAME] [--results FILE] [--safe-progress FILE]\n");
   process.exit(message ? 2 : 0);
 }
 
 const args = process.argv.slice(2);
-const options = { runs: oracle.repeat_runs, fixtures: [], network: null, stonesoup: null, results: null };
+const options = { runs: oracle.repeat_runs, fixtures: [], network: null, stonesoup: null, results: null, safeProgress: null };
 for (let i = 0; i < args.length; i++) {
   const key = args[i];
   if (key === "--help") usage();
@@ -35,12 +37,16 @@ for (let i = 0; i < args.length; i++) {
   else if (key === "--stonesoup-source") options.stonesoup = resolve(value);
   else if (key === "--network") options.network = value;
   else if (key === "--results") options.results = resolve(value);
+  else if (key === "--safe-progress") options.safeProgress = resolve(value);
   else usage(`unknown option ${key}`);
 }
 if (!options.image || !options.models || !options.model || !options.modelLabel) usage("image, models, model and model-label are required");
 if (!/^[A-Za-z0-9_.:@/-]{1,128}$/.test(options.modelLabel)) usage("model-label must be a non-secret identifier");
 if (!Number.isSafeInteger(options.runs) || options.runs !== 3) usage("frozen stability gate requires exactly 3 runs");
 if (!statSync(options.models).isFile()) usage("models must be a file");
+const safeRunUuid = process.env.M304_SAFE_RUN_UUID ?? "";
+const safeMainCommit = process.env.M304_SAFE_MAIN_COMMIT ?? "";
+if (options.safeProgress && (!/^[0-9a-f-]{36}$/.test(safeRunUuid) || !/^[0-9a-f]{40}$/.test(safeMainCommit) || !/^sha256:[0-9a-f]{64}$/.test(options.image))) usage("safe progress requires fixed run UUID, commit and immutable image ID");
 let generateSourceManifest;
 try {
   ({ generateSourceManifest } = await import("../packages/service/dist/features/prepare/source-manifest.js"));
@@ -73,7 +79,23 @@ function sourceTexts(root) {
 }
 
 const runtime = { image: options.image, youngflow: runtimeVersion("youngflow"), pi: runtimeVersion("pi"), model: options.modelLabel };
-const result = { schema_version: "prepare-semantic-regression/v1", oracle_sha256: canonicalPlanDigest(readFileSync(join(fixtureRoot, "oracles-v1.yaml"))), runtime, fixtures: [] };
+const oracleSha = canonicalPlanDigest(readFileSync(join(fixtureRoot, "oracles-v1.yaml")));
+const result = { schema_version: "prepare-semantic-regression/v1", oracle_sha256: oracleSha, runtime, fixtures: [] };
+let sequence = 0; let attemptedRuns = 0; let completedRuns = 0;
+const fixedProgress = { schema_version: "prepare-semantic-safe-progress/v1", run_uuid: safeRunUuid, main_commit: safeMainCommit, oracle_sha256: oracleSha, image_id: options.image };
+function progress(fixtureId, runIndex, phase, state, fields = {}) {
+  if (!options.safeProgress) return;
+  writeSafeProgress(options.safeProgress, {
+    ...fixedProgress, sequence: ++sequence, fixture_id: fixtureId, run_index: runIndex, phase, state,
+    attempted_runs: attemptedRuns, completed_runs: completedRuns,
+    worker_exit_code: null, worker_signal: null, spawn_error_code: null, prepare_error_code: null,
+    runtime_category: null, oracle_rule: null, safe_counters: emptySafeCounters(), timestamp: new Date().toISOString(), ...fields,
+  });
+}
+function safeFailure(fixtureId, runIndex, phase, category, rule = null, fields = {}) {
+  progress(fixtureId, runIndex, phase, "failed", { runtime_category: category, oracle_rule: rule, ...fields });
+  throw new Error(`SAFE_FAILURE fixture=${fixtureId} run=${runIndex} phase=${phase} category=${category}${rule ? ` rule=${rule}` : ""}`);
+}
 
 for (const id of selected) {
   const selectedFixture = generated.get(id);
@@ -82,7 +104,9 @@ for (const id of selected) {
   const manifest = generateSourceManifest(selectedFixture.source, { sourceKind: selectedFixture.kind, limits });
   const normalizedRuns = [];
   const digests = [];
+  let lastCounters = emptySafeCounters();
   for (let run = 1; run <= options.runs; run++) {
+    attemptedRuns++; progress(id, run, "run_start", "running");
     const temp = mkdtempSync(join(tmpdir(), `prepare-semantic-${id}-`)); chmodSync(temp, 0o700);
     const control = join(temp, "control"); const output = join(temp, "output"); mkdirSync(control, { mode: 0o700 }); mkdirSync(output, { mode: 0o700 });
     const planner = join(temp, "planner.json");
@@ -100,32 +124,47 @@ for (const id of selected) {
       "-v", `${selectedFixture.source}:/source:ro`, "-v", `${control}:/control`, "-v", `${output}:/output`,
       "-v", `${planner}:/input/planner.json:ro`, "-v", `${options.models}:/opt/vulnagent/flows/prepare/models.json:ro`, options.image,
     );
+    const started = performance.now();
     const executed = spawnSync("docker", dockerArgs, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 720_000 });
+    const classified = classifyRestrictedRun({ stdout: executed.stdout, stderr: executed.stderr, status: executed.status, signal: executed.signal, errorCode: executed.error?.code, durationMs: performance.now() - started });
+    lastCounters = classified.safe_counters;
+    executed.stdout = ""; executed.stderr = "";
     try {
-      if (executed.status !== 0) throw new Error(`${id} run ${run}: restricted flow exit ${executed.status ?? "timeout"}`);
+      progress(id, run, "container_exit", executed.status === 0 ? "running" : "failed", classified);
+      if (executed.status !== 0) throw new Error(`SAFE_FAILURE fixture=${id} run=${run} phase=container_exit category=${classified.runtime_category ?? "unknown"}`);
       const outputNames = readdirSync(output).sort();
-      if (JSON.stringify(outputNames) !== JSON.stringify(["assessment-plan.json"])) throw new Error(`${id} run ${run}: output set is not exact`);
-      if (readdirSync(control).length !== 0) throw new Error(`${id} run ${run}: private control directory was not cleaned`);
       const planPath = join(output, "assessment-plan.json");
-      if ((statSync(planPath).mode & 0o777) !== 0o600) throw new Error(`${id} run ${run}: plan mode is not 0600`);
+      const planExists = existsSync(planPath);
+      const artifactFailure = classifyArtifactGate({ outputNames, controlEntries: readdirSync(control).length, planExists, planMode: planExists ? statSync(planPath).mode & 0o777 : null });
+      if (artifactFailure) safeFailure(id, run, "artifact_gate", artifactFailure, null, { safe_counters: lastCounters });
+      progress(id, run, "artifact_gate", "running", { safe_counters: lastCounters });
       const readPlan = spawnSync("docker", ["run", "--rm", "--entrypoint", "cat", "-v", `${output}:/out:ro`, options.image, "/out/assessment-plan.json"], { maxBuffer: 1024 * 1024 });
-      if (readPlan.status !== 0) throw new Error(`${id} run ${run}: cannot read committed plan`);
       const planBytes = readPlan.stdout;
-      const plan = JSON.parse(planBytes.toString("utf8"));
-      const normalized = assertPrepareSemanticOracle(plan, expected, {
-        capabilityCatalog: oracle.planner_input_defaults.capability_catalog.capabilities,
-        sourceTexts: selectedFixture.kind === "directory" ? sourceTexts(selectedFixture.source) : [],
-      });
+      let plan; let parseable = false;
+      if (readPlan.status === 0) try { plan = JSON.parse(planBytes.toString("utf8")); parseable = true; } catch {}
+      const parentFailure = classifyParentGate({ readable: readPlan.status === 0, parseable });
+      if (parentFailure) safeFailure(id, run, "parent_gate", parentFailure, null, { safe_counters: lastCounters });
+      progress(id, run, "parent_gate", "running", { safe_counters: lastCounters });
+      let normalized;
+      try {
+        normalized = assertPrepareSemanticOracle(plan, expected, {
+          capabilityCatalog: oracle.planner_input_defaults.capability_catalog.capabilities,
+          sourceTexts: selectedFixture.kind === "directory" ? sourceTexts(selectedFixture.source) : [],
+        });
+      } catch (error) {
+        const rule = error instanceof PrepareSemanticOracleError ? error.rule : "unknown";
+        safeFailure(id, run, "oracle_gate", "oracle_mismatch", rule, { safe_counters: lastCounters });
+      }
+      progress(id, run, "oracle_gate", "running", { safe_counters: lastCounters });
       normalizedRuns.push(normalized); digests.push(canonicalPlanDigest(planBytes));
+      completedRuns++; progress(id, run, "run_complete", "passed", { safe_counters: lastCounters });
     } finally {
       spawnSync("docker", ["rm", "-f", containerName], { stdio: "ignore" });
-      // Raw model output, tool results, sessions and the full plan are never copied
-      // into regression evidence. Only normalized fields and digests survive.
       rmSync(temp, { recursive: true, force: true });
     }
   }
   const stable = JSON.stringify(normalizedRuns[0]);
-  if (!normalizedRuns.every((item) => JSON.stringify(item) === stable)) throw new Error(`${id}: normalized semantic fields drifted across runs`);
+  if (!normalizedRuns.every((item) => JSON.stringify(item) === stable)) safeFailure(id, 3, "oracle_gate", "oracle_mismatch", "unknown", { safe_counters: lastCounters });
   result.fixtures.push({ id, runs: options.runs, normalized: normalizedRuns[0], plan_sha256: digests });
   process.stdout.write(`${id}: PASS (${options.runs} runs)\n`);
 }
