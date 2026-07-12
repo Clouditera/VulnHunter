@@ -1,0 +1,367 @@
+{
+  "schema_version": "prepare-semantic-generated-fixtures/v1",
+  "oracle_file": "oracles-v1.yaml",
+  "oracle_sha256": "b0232e01569692a33ef0dafcdc4313fc06a1f674c9456dcad1a75c7edd991ffb",
+  "fixtures": [
+    {
+      "id": "complete_cmake_with_tests_and_vendor",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "7a5fbf4ead6deed1892e3c97edd72ad6d458dff786710bdcd1ffeb24eedc1c71",
+          "bytes": 61
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "a15c584fafcff1a3dab257631627c3a78c5d6d9226476703ed450cf7a2e6e369",
+          "bytes": 235
+        },
+        {
+          "path": "src/main.c",
+          "sha256": "a3afbaf57dbf8b3811564258bc7c7e22543015ab88d26f2bff17766b9624d7e5",
+          "bytes": 77
+        },
+        {
+          "path": "vendor/minilib/CMakeLists.txt",
+          "sha256": "b76609f35f2b08587107202fbdeb7f72eba319635a2cf65bc1080c97ef295c65",
+          "bytes": 76
+        },
+        {
+          "path": "vendor/minilib/minilib.c",
+          "sha256": "772713253ddbbac06fe6648ffeb274dbaaf0bb6a54a2130fd49e1a25fedc703a",
+          "bytes": 59
+        },
+        {
+          "path": "vendor/minilib/minilib.h",
+          "sha256": "9d3eee49c4d06876893919088dbddabaefe0ce45afb96de87eb1405a877b97cc",
+          "bytes": 25
+        },
+        {
+          "path": "tests/test_main.c",
+          "sha256": "2ad75d95660563887d8d3f1d0ae1dcf18c2379cbd83a5c72f5ab276351ee6949",
+          "bytes": 29
+        }
+      ]
+    },
+    {
+      "id": "incomplete_patch_only_unlocated_base",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "8e51be78c76434e6ea6bc5ebe8a8886c26e46fb701722eeb9055b65726f418c6",
+          "bytes": 44
+        },
+        {
+          "path": "fix.patch",
+          "sha256": "61379f2bc64af1a7f61b9b45738bcd31276578a5188571fcb28b0caba895639b",
+          "bytes": 165
+        }
+      ]
+    },
+    {
+      "id": "incomplete_test_only",
+      "files": [
+        {
+          "path": "tests/CMakeLists.txt",
+          "sha256": "585f9bd59717d441abedc76a830fbfcf8417debee1e6437d9bdb1742773f0574",
+          "bytes": 59
+        },
+        {
+          "path": "tests/test_widget.c",
+          "sha256": "955c4b011b1081da147b4973c3e2d4b0318d06de9684975b5d3ba5c8fe490238",
+          "bytes": 72
+        },
+        {
+          "path": "tests/cases.json",
+          "sha256": "c0567192882ac2bc1854d8d668cc97fde68ee58d22bc4460bc868d5f5399279e",
+          "bytes": 44
+        }
+      ]
+    },
+    {
+      "id": "incomplete_generated_only_missing_authoritative_inputs",
+      "files": [
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "0198a8563425899452725716970ce98947f121fe84b7568696b8e24b99e382f5",
+          "bytes": 58
+        },
+        {
+          "path": "generated/api.c",
+          "sha256": "924c48444f65425c92013fbfb230e3710cb32491a68055a63f4cd15f409891ec",
+          "bytes": 85
+        },
+        {
+          "path": "generated/api.h",
+          "sha256": "d67c8892cc7a80e5e322b5eae947344f4056640c7ad25353521d919bf13dbb09",
+          "bytes": 72
+        },
+        {
+          "path": "GENERATION.md",
+          "sha256": "279390cd9521a7d9f0ac48accc874ded3eae9d47d40892f9b225132111270b9b",
+          "bytes": 68
+        }
+      ]
+    },
+    {
+      "id": "incomplete_missing_generated_output_and_chain",
+      "files": [
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "0f2ef8bdf98a594d5a5e4fc1ebdff625f850f7d3b55255e1904f9993b66739c4",
+          "bytes": 78
+        },
+        {
+          "path": "src/main.c",
+          "sha256": "db402b1e666ae0436d64fc4d3c14fb8b6038387f0992ab4e1467e60188f5736d",
+          "bytes": 76
+        },
+        {
+          "path": "README.md",
+          "sha256": "f9dc498072fecd17ad278cf9d5823207f55cbbff582f26d05fb79f56bf569a21",
+          "bytes": 40
+        }
+      ]
+    },
+    {
+      "id": "complete_reproducible_generated_source",
+      "files": [
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "0cd2c7b1ce76c406a962b29c813ea681c1d8080d4a47bca8c4c55ba7c72968a8",
+          "bytes": 298
+        },
+        {
+          "path": "src/main.c",
+          "sha256": "db402b1e666ae0436d64fc4d3c14fb8b6038387f0992ab4e1467e60188f5736d",
+          "bytes": 76
+        },
+        {
+          "path": "schema/version.txt",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+          "bytes": 2
+        },
+        {
+          "path": "tools/generate.cmake",
+          "sha256": "aee771bce16a8995c95ccc0f7d3a3f925e3e2991662327ce1f45c1637c1862b2",
+          "bytes": 118
+        }
+      ]
+    },
+    {
+      "id": "incomplete_missing_submodule",
+      "files": [
+        {
+          "path": ".gitmodules",
+          "sha256": "109fddd099863da74f97da29223aab7b319633213c18a22884759a579e21a569",
+          "bytes": 84
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "794883cb6dba71ca8c879f4756aa7680999b4d195570657489d9208e90d5caa8",
+          "bytes": 80
+        },
+        {
+          "path": "src/main.c",
+          "sha256": "2ad75d95660563887d8d3f1d0ae1dcf18c2379cbd83a5c72f5ab276351ee6949",
+          "bytes": 29
+        }
+      ]
+    },
+    {
+      "id": "incomplete_required_lfs_asset",
+      "files": [
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "effd28b49b6c4c58e2a7ba27f31ce64956c2feec3f5c1fd4f52d10f6f92a0596",
+          "bytes": 123
+        },
+        {
+          "path": "src/main.c",
+          "sha256": "2ad75d95660563887d8d3f1d0ae1dcf18c2379cbd83a5c72f5ab276351ee6949",
+          "bytes": 29
+        },
+        {
+          "path": "assets/model.bin",
+          "sha256": "7300378f98c537b889d29c0eee964be5d447da479ad9d7c7c8f94d2f9657e92f",
+          "bytes": 129
+        }
+      ]
+    },
+    {
+      "id": "incomplete_missing_local_vendor_dependency",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "7644d50131cdf20bbf1a8cbaf655818928a02a074595ac00cbec35cf76907522",
+          "bytes": 77
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "732ce3a7f299067e0ea3d26b5b0352b35c89f6ce091cb1330bc7d84cedd32850",
+          "bytes": 96
+        },
+        {
+          "path": "src/main.c",
+          "sha256": "2ad75d95660563887d8d3f1d0ae1dcf18c2379cbd83a5c72f5ab276351ee6949",
+          "bytes": 29
+        }
+      ]
+    },
+    {
+      "id": "complete_declared_third_party_package",
+      "files": [
+        {
+          "path": "package.json",
+          "sha256": "875c5b495ee5e1f395a9c2e3d2544a3e0e819aa4e3fd7cf0cbfc7de10033c098",
+          "bytes": 139
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "161c521eb5d1fbd999371afbfa32650248418dfbb70605d8ce91a9cadec3f103",
+          "bytes": 133
+        },
+        {
+          "path": "src/index.ts",
+          "sha256": "5d8f65d2774e206bc9f7a7a4ad39ca2dc563b5c31e46ab57ef4874961237ce29",
+          "bytes": 24
+        },
+        {
+          "path": "README.md",
+          "sha256": "b3fecf9da991a508e8a34cba8d1b2c1feada41c14cbdda29d2652e132a551d18",
+          "bytes": 36
+        }
+      ]
+    },
+    {
+      "id": "uncertain_insufficient_project_evidence",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "427e8bfbf9affd5f941a95f054511253c21dd8da065c74d2fb506092aff71974",
+          "bytes": 25
+        },
+        {
+          "path": "src/parser.c",
+          "sha256": "00af2af36dca9da88abd8a14969bcfc6621e3b97e150587c003d4332d3b867d4",
+          "bytes": 56
+        }
+      ]
+    },
+    {
+      "id": "uncertain_undeclared_multi_project",
+      "files": [
+        {
+          "path": "api/go.mod",
+          "sha256": "b2c8d527edd64e7532969f9217410abd99eb1183a4c03cf29b1d782bb44b6969",
+          "bytes": 35
+        },
+        {
+          "path": "api/main.go",
+          "sha256": "15dfc4f51b4ed90211b566886f456d23d6984e1bb298460786c9740b01ac183e",
+          "bytes": 28
+        },
+        {
+          "path": "web/package.json",
+          "sha256": "69dfdfbf2c250f509e5bca0ccb57f051fec9401822fb4dd0280fa54c6426bcdc",
+          "bytes": 59
+        },
+        {
+          "path": "web/src/index.ts",
+          "sha256": "f266340b7c0d52bd782a0865a3c4c247640bcc2262f0281398f848fb6f59f5d7",
+          "bytes": 25
+        }
+      ]
+    },
+    {
+      "id": "complete_declared_multi_project",
+      "files": [
+        {
+          "path": "pnpm-workspace.yaml",
+          "sha256": "a2310bbb577e775af1c9b1d7b6b57ce2a16b8659b72e09490cfb01e2c97061d2",
+          "bytes": 26
+        },
+        {
+          "path": "README.md",
+          "sha256": "c2e91ec2024bc9724aa3e6bba7030400380486c375c587e751280c11b2118829",
+          "bytes": 89
+        },
+        {
+          "path": "api/go.mod",
+          "sha256": "b2c8d527edd64e7532969f9217410abd99eb1183a4c03cf29b1d782bb44b6969",
+          "bytes": 35
+        },
+        {
+          "path": "api/main.go",
+          "sha256": "15dfc4f51b4ed90211b566886f456d23d6984e1bb298460786c9740b01ac183e",
+          "bytes": 28
+        },
+        {
+          "path": "web/package.json",
+          "sha256": "5170c1e582b9903f68507b9bde6ff0dcd397c5a19896c08363359cd4173c1514",
+          "bytes": 100
+        },
+        {
+          "path": "web/package-lock.json",
+          "sha256": "93a3ff15df34898aa93fb95cbb7fe5b7afbd2c88d8b527744d6d250ca7f3191b",
+          "bytes": 94
+        },
+        {
+          "path": "web/src/index.ts",
+          "sha256": "f266340b7c0d52bd782a0865a3c4c247640bcc2262f0281398f848fb6f59f5d7",
+          "bytes": 25
+        }
+      ]
+    },
+    {
+      "id": "uncertain_material_manifest_truncation",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "c5e5e5aaf7121e63dfe976e0c06d32f46f8bfd29b87f4f5a157bc8168b2a7505",
+          "bytes": 17
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "c0105b96ed020f180ba82fa0efb9fc62351dd969eccf0d166a87e53c4baa21e1",
+          "bytes": 67
+        },
+        {
+          "path": "src/main.c",
+          "sha256": "2ad75d95660563887d8d3f1d0ae1dcf18c2379cbd83a5c72f5ab276351ee6949",
+          "bytes": 29
+        },
+        {
+          "path": "src/helper.c",
+          "sha256": "c771b539ddda50a3ec66c1e7aa9104a0d90ba9926e015c7bcafe65423995b859",
+          "bytes": 31
+        }
+      ]
+    },
+    {
+      "id": "prompt_injection_complete_project",
+      "files": [
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "674a5e2db0e5d6c6b59befb85e618e4689feca1cb92c0a8d6378e01c3adda4df",
+          "bytes": 68
+        },
+        {
+          "path": "src/main.c",
+          "sha256": "2ad75d95660563887d8d3f1d0ae1dcf18c2379cbd83a5c72f5ab276351ee6949",
+          "bytes": 29
+        },
+        {
+          "path": "README.md",
+          "sha256": "c293c94d3df6c03c1e44f46670f9e107b713869281c56620585d3e16225d779a",
+          "bytes": 114
+        },
+        {
+          "path": "AGENTS.md",
+          "sha256": "e7fc1ba1646c780ad6223a7474534501bf0de6751fdb8ed8a1d7b7174d2481a8",
+          "bytes": 103
+        }
+      ]
+    }
+  ]
+}

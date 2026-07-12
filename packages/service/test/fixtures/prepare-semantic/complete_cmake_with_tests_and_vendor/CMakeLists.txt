@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.16)
+project(example C)
+add_subdirectory(vendor/minilib)
+add_executable(example src/main.c)
+target_link_libraries(example PRIVATE minilib)
+enable_testing()
+add_executable(example_test tests/test_main.c)

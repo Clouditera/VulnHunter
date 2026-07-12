@@ -1,0 +1,3 @@
+[submodule "core"]
+  path = deps/core
+  url = https://example.invalid/acme/core.git
