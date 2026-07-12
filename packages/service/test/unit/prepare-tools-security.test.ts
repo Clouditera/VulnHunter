@@ -258,10 +258,12 @@ describe("prepare submit/postflight", () => {
       try { await f.state.submitPlan(plan); throw new Error("expected rejection"); }
       catch (error) {
         expect(error).toBeInstanceOf(PrepareToolError);
-        const details = (error as PrepareToolError).details ?? [];
+        const prepareError = error as PrepareToolError;
+        const details = prepareError.details ?? [];
+        expect(JSON.parse(prepareError.message)).toEqual({ error: "prepare_validation_failed", details });
         expect(details).toContainEqual({ instancePath: item.pointer, keyword: item.code, message: item.code });
         if (["missing-subject-value", "missing-count-value", "missing-complete-field-value", "invalid-status-value"].includes(item.canary)) expect(details).toHaveLength(1);
-        expect(JSON.stringify(details)).not.toContain(item.canary);
+        expect(prepareError.message).not.toContain(item.canary);
         for (const detail of details) {
           expect(Object.keys(detail).sort()).toEqual(["instancePath", "keyword", "message"]);
           expect(detail.message).toBe(detail.keyword);
@@ -524,8 +526,11 @@ describe("prepare static security boundary", () => {
       ),
     ).toEqual(["read_project_manifest", "read_project_file", "submit_plan"]);
     expect(hash("worker-assets/prepare-mode.sh")).toBe(
-      "d73ddd74e92691ce4b46deed7ad60218514f0101b6d850b74adf15deda20ab4a",
+      "e4c523141985bd114a346e5947efbb5b986552cb74a204302b3577b0894c8e22",
     );
+    const prepareMode = readFileSync(join(repoRoot, "worker-assets/prepare-mode.sh"), "utf8");
+    expect(prepareMode.indexOf('mkdir "$owner_dir"')).toBeLessThan(prepareMode.indexOf("trap cleanup EXIT"));
+    expect(prepareMode).toContain("A competing process that failed mkdir above must never clean the active owner.");
     const spec = parseFlow(flowPath);
     expect(spec.defaultAgent).toBe("prepare-agent-v2.md");
     expect(spec.defaultTools).toEqual([

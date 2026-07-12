@@ -12,6 +12,11 @@ export PATH=/usr/local/bin:/usr/bin:/bin
 
 mkdir -p "$PREPARE_CONTROL_DIR" "$PREPARE_OUTPUT_DIR"
 chmod 700 "$PREPARE_CONTROL_DIR" "$PREPARE_OUTPUT_DIR"
+owner_dir="$PREPARE_CONTROL_DIR/.prepare-owner"
+if ! mkdir "$owner_dir" 2>/dev/null; then
+  echo "[prepare] active owner already holds control/output; refusing to start" >&2
+  exit 3
+fi
 child=""
 cleanup() {
   rc=$?
@@ -26,6 +31,8 @@ cleanup() {
 terminate() {
   [ -z "$child" ] || kill -TERM "$child" 2>/dev/null || true
 }
+# Install destructive cleanup only after this process atomically owns the run.
+# A competing process that failed mkdir above must never clean the active owner.
 trap cleanup EXIT
 trap terminate INT TERM HUP
 

@@ -702,7 +702,9 @@ export class PrepareToolState {
   private invalidAttempt(details: Array<{ instancePath: string; keyword: string; message: string }>): never {
     rmSync(join(this.config.outputDir, "assessment-plan.json.tmp"), { force: true });
     if (this.budgets.submitCalls >= 3) this.failTerminal("ERR_PREPARE_SCHEMA_INVALID");
-    throw new PrepareToolError("ERR_PREPARE_SCHEMA_INVALID", "Plan validation failed; repair allowed", false, safeDecisionErrors(details));
+    const safeDetails = safeDecisionErrors(details);
+    const safeFeedback = JSON.stringify({ error: "prepare_validation_failed", details: safeDetails });
+    throw new PrepareToolError("ERR_PREPARE_SCHEMA_INVALID", safeFeedback, false, safeDetails);
   }
 
   postflight(): { plan_sha256: string; counters: PrepareBudgets } {
