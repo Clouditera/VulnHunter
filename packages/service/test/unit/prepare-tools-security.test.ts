@@ -215,6 +215,35 @@ describe("prepare submit/postflight", () => {
     recommendation.state.close();
   });
 
+  it("S02 validates the complete submit envelope within the repair budget", async () => {
+    const oneMissing = fixture();
+    await expect(oneMissing.state.submitEnvelope({})).rejects.toMatchObject({ code: "ERR_PREPARE_SCHEMA_INVALID", terminal: false });
+    await expect(oneMissing.state.submitEnvelope({ plan: validPlan() })).resolves.toMatchObject({ status: "committed" });
+    oneMissing.state.close();
+
+    const twoMissing = fixture();
+    await expect(twoMissing.state.submitEnvelope({})).rejects.toMatchObject({ terminal: false });
+    await expect(twoMissing.state.submitEnvelope({})).rejects.toMatchObject({ terminal: false });
+    await expect(twoMissing.state.submitEnvelope({ plan: validPlan() })).resolves.toMatchObject({ status: "committed" });
+    twoMissing.state.close();
+
+    const exhausted = fixture();
+    for (let attempt = 0; attempt < 2; attempt++) await expect(exhausted.state.submitEnvelope({})).rejects.toMatchObject({ terminal: false });
+    await expect(exhausted.state.submitEnvelope({})).rejects.toMatchObject({ terminal: true });
+    expect(readdirSync(exhausted.output)).toEqual([]);
+    exhausted.state.close();
+
+    const extra = fixture();
+    await expect(extra.state.submitEnvelope({ plan: validPlan(), extra: "not allowed" })).rejects.toMatchObject({ terminal: false });
+    await expect(extra.state.submitEnvelope({ plan: validPlan() })).resolves.toMatchObject({ status: "committed" });
+    extra.state.close();
+
+    const sensitiveExtra = fixture();
+    await expect(sensitiveExtra.state.submitEnvelope({ plan: validPlan(), extra: "api_key=must-not-pass" })).rejects.toMatchObject({ code: "ERR_PREPARE_OUTPUT_SENSITIVE", terminal: true });
+    expect(readdirSync(sensitiveExtra.output)).toEqual([]);
+    sensitiveExtra.state.close();
+  });
+
   it("S05 sensitive plan and copied long source excerpt are terminal", async () => {
     const sensitive = fixture();
     const plan: any = validPlan(); plan.source_assessment.summary = "api_key=do-not-persist-value";

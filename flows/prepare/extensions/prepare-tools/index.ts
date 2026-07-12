@@ -508,6 +508,23 @@ export class PrepareToolState {
     return errors.slice(0, 12);
   }
 
+  async submitEnvelope(params: unknown, alreadyCounted = false): Promise<any> {
+    if (!alreadyCounted) this.count("submit");
+    let raw: string | undefined;
+    try { raw = canonicalJson(params); } catch { /* invalid envelope below */ }
+    if (raw === undefined || Buffer.byteLength(raw) > MAX_PLAN_BYTES) {
+      return this.invalidAttempt([{ instancePath: "", keyword: "maxBytes", message: "submit envelope is invalid or exceeds 128 KiB" }]);
+    }
+    if (containsSensitive(params)) this.failTerminal("ERR_PREPARE_OUTPUT_SENSITIVE");
+    const plainObject = params !== null && typeof params === "object" && !Array.isArray(params)
+      && (Object.getPrototypeOf(params) === Object.prototype || Object.getPrototypeOf(params) === null);
+    const keys = plainObject ? Object.keys(params as Record<string, unknown>) : [];
+    if (!plainObject || keys.length !== 1 || keys[0] !== "plan") {
+      return this.invalidAttempt([{ instancePath: "", keyword: "envelope", message: "submit envelope must contain only plan" }]);
+    }
+    return this.submitPlan((params as { plan: unknown }).plan, true);
+  }
+
   async submitPlan(plan: unknown, alreadyCounted = false): Promise<any> {
     if (!alreadyCounted) this.count("submit");
     if (this.submitInFlight || this.committed) this.failTerminal("ERR_PREPARE_PLANNER_FAILED");
@@ -515,8 +532,9 @@ export class PrepareToolState {
     await Promise.resolve();
     if (this.terminalFailure) throw new PrepareToolError("ERR_PREPARE_PLANNER_FAILED", "Concurrent submit invalidated run", true);
     try {
-      const raw = canonicalJson(plan);
-      if (Buffer.byteLength(raw) > MAX_PLAN_BYTES) return this.invalidAttempt([{ instancePath: "", keyword: "maxBytes", message: "plan exceeds 128 KiB" }]);
+      let raw: string | undefined;
+      try { raw = canonicalJson(plan); } catch { /* invalid plan below */ }
+      if (raw === undefined || Buffer.byteLength(raw) > MAX_PLAN_BYTES) return this.invalidAttempt([{ instancePath: "", keyword: "maxBytes", message: "plan is invalid or exceeds 128 KiB" }]);
       if (containsSensitive(plan)) this.failTerminal("ERR_PREPARE_OUTPUT_SENSITIVE");
       if (!this.validatePlan(plan)) return this.invalidAttempt(safeAjvErrors(this.validatePlan.errors));
       let errors = this.semanticErrors(plan);
@@ -704,6 +722,6 @@ export default function registerPrepareTools(pi: ExtensionAPI) {
       additionalProperties: true,
       properties: { plan: { anyOf: [planSchema, {}] } },
     } as any,
-    async execute(_id, params: any) { return textResult(await state.submitPlan(params?.plan, true)); },
+    async execute(_id, params: any) { return textResult(await state.submitEnvelope(params, true)); },
   }));
 }
