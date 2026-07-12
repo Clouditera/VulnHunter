@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN npm install -g @earendil-works/pi-coding-agent@0.79.6 \
     && pi install npm:pi-mcp-adapter
 
-# youngflow — self-contained release binary (v0.3.8)
+# youngflow — self-contained release binary (v0.7.0)
 COPY submodules/youngflow/release/youngflow-linux-x64 /usr/local/bin/youngflow
 RUN chmod +x /usr/local/bin/youngflow \
     && youngflow --version
@@ -53,7 +53,9 @@ RUN test -f /opt/vulnagent/flows/vulnforge/extensions/code-coverage-tracker/inde
     && test -f /opt/vulnagent/flows/vulnforge/extensions/code-coverage-viewer/index.ts \
     && test -f /opt/vulnagent/flows/vulnforge/extensions/output-contract/contracts.json \
     && test -f /opt/vulnagent/flows/vulnforge/extensions/workspace-diff/index.ts \
+    && printf '{"providers":{}}\n' > /opt/vulnagent/flows/vulnforge/models.json \
     && youngflow /opt/vulnagent/flows/vulnforge/flow.audit.yaml --list-stages >/tmp/vulnforge-stages.txt \
+    && rm -f /opt/vulnagent/flows/vulnforge/models.json \
     && grep -qE '^  complete[[:space:]]' /tmp/vulnforge-stages.txt \
     && youngflow /opt/vulnagent/flows/vulnforge/flow.audit.yaml --help >/tmp/vulnforge-help.txt \
     && grep -q -- '--user-instr <value>' /tmp/vulnforge-help.txt \
