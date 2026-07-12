@@ -57,13 +57,17 @@ function hasPositiveForbiddenRecommendation(text, kind) {
     download_base: /(?:prepare|platform|system|平台|系统).{0,30}(?:download|fetch|下载|获取|拉取).{0,40}(?:base|source|基础源码|基础源代码|源码|源代码)/gi,
     continue_build: /(?:continue|继续|随后|然后).{0,20}(?:build|构建|编译)/gi,
     continue_poc: /(?:continue|继续|随后|然后).{0,20}(?:poc|概念验证)/gi,
-    continue_exp: /(?:continue|继续|随后|然后).{0,20}(?:exp|exploit|利用)/gi
+    continue_exp: /(?:continue|继续|随后|然后).{0,20}(?:exp|exploit|漏洞利用|利用验证|攻击利用)/gi
   };
   const pattern = patterns[kind];
   if (!pattern) return new RegExp(kind.replaceAll("_", ".*"), "i").test(text);
   for (const match of text.matchAll(pattern)) {
-    const prefix = text.slice(Math.max(0, (match.index ?? 0) - 24), match.index ?? 0);
-    if (!isNegatedRecommendation(`${prefix}${match[0]}`)) return true;
+    const index = match.index ?? 0;
+    const prior = text.slice(0, index);
+    let boundary = -1;
+    for (const separator of prior.matchAll(/[。！？!?；;，,\n]|(?<!\d)\.(?!\d)/g)) boundary = separator.index ?? boundary;
+    const currentClause = text.slice(boundary + 1, index + match[0].length);
+    if (!isNegatedRecommendation(currentClause)) return true;
   }
   return false;
 }
@@ -129,7 +133,7 @@ function assertPrepareSemanticOracle(plan, expected, options = {}) {
   for (const concept of expected.missing_names_must_convey ?? []) if (!conceptPresent(missingText, concept)) throw new Error(`missing component text does not convey: ${concept}`);
   const summaryText = `${assessment.summary ?? ""} ${(assessment.user_recommendations ?? []).map((item) => item?.message ?? "").join(" ")}`;
   for (const concept of expected.summary_must_convey ?? []) if (!conceptPresent(summaryText, concept)) throw new Error(`summary/recommendations do not convey: ${concept}`);
-  const recommendationText = `${recommendationCodes.join(" ")} ${(assessment.user_recommendations ?? []).map((item) => item?.message ?? "").join(" ")}`.toLowerCase();
+  const recommendationText = `${recommendationCodes.join("\n")}\n${(assessment.user_recommendations ?? []).map((item) => item?.message ?? "").join("\n")}`.toLowerCase();
   const stonesoup = (expected.missing_names_must_convey ?? []).some((item) => String(item).includes("Asterisk 10.2.0"));
   if (stonesoup) {
     if (JSON.stringify(rootCandidates) !== JSON.stringify(STONESOUP_ROOTS)) throw new Error("Stonesoup must identify the exact 20 case roots");

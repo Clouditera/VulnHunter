@@ -127,6 +127,7 @@ describe("M3-04 normalized semantic oracle", () => {
       "提交完整 Asterisk 10.2.0 tree 并合并 overlays，然后继续构建。",
       "提交完整 Asterisk 10.2.0 tree 并合并 overlays，然后继续 POC。",
       "提交完整 Asterisk 10.2.0 tree 并合并 overlays，然后继续 EXP 利用。",
+      "提交完整 Asterisk 10.2.0 tree 并合并 overlays；平台不得下载基础源码，然后继续构建、POC 和 EXP。",
     ]) {
       const unsafe = structuredClone(plan);
       unsafe.source_assessment.user_recommendations.forEach((item: any) => { item.message = message; });
@@ -134,9 +135,14 @@ describe("M3-04 normalized semantic oracle", () => {
     }
     const safelyNegated = structuredClone(plan);
     safelyNegated.source_assessment.user_recommendations.forEach((item: any) => {
-      item.message = "请提交完整 Asterisk 10.2.0 tree 并合并 overlays；平台不得下载基础源码，也不要继续构建、POC 或 EXP。";
+      item.message = "请提交完整 Asterisk 10.2.0 tree 并合并 overlays；平台不得下载基础源码，不得继续构建，不得继续 POC，不得继续 EXP。";
     });
     expect(() => assertPrepareSemanticOracle(safelyNegated, expected)).not.toThrow();
+    const ordinaryUse = structuredClone(plan);
+    ordinaryUse.source_assessment.user_recommendations.forEach((item: any) => {
+      item.message = "请提交完整 Asterisk 10.2.0 tree 并合并 overlays；仅可继续利用现有证据整理静态说明。";
+    });
+    expect(() => assertPrepareSemanticOracle(ordinaryUse, expected)).not.toThrow();
     plan.source_assessment.root_candidates.pop();
     expect(() => assertPrepareSemanticOracle(plan, expected)).toThrow(/exact 20 case roots/);
   });
