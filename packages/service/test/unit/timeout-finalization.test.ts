@@ -62,6 +62,15 @@ describe("trusted deadline supervisor", () => {
     expect(timed.stderr).toContain('"event":"deadline_reached"');
   });
 
+  it("waits for all process-group descendants before returning a deadline", () => {
+    const root = mkdtempSync(join(tmpdir(), "deadline-group-")); roots.push(root);
+    const marker = join(root, "stopped");
+    const shell = `trap 'exit 0' TERM; (trap 'sleep 0.2; echo stopped > "${marker}"; exit 0' TERM; while :; do sleep 1; done) & wait`;
+    const result = spawnSync("python3", [deadline, "--timeout", "0.1", "--grace", "1", "--", "sh", "-c", shell], { encoding: "utf8" });
+    expect(result.status, result.stderr).toBe(124);
+    expect(readFileSync(marker, "utf8").trim()).toBe("stopped");
+  });
+
   it("forwards external cancellation without reporting a deadline", async () => {
     const child = spawn("python3", [deadline, "--timeout", "10", "--grace", "0.2", "--", "sh", "-c", "trap 'exit 0' TERM; sleep 30"], { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = ""; child.stderr.on("data", (chunk) => { stderr += chunk; });

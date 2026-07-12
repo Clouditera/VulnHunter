@@ -76,24 +76,45 @@ def main() -> int:
             signal.signal(sig, handler)
 
 
-def terminate_group(child: subprocess.Popen[bytes], first_signal: int, grace: float, result: int) -> int:
+def group_alive(pgid: int) -> bool:
     try:
-        os.killpg(child.pid, first_signal)
+        os.killpg(pgid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def terminate_group(child: subprocess.Popen[bytes], first_signal: int, grace: float, result: int) -> int:
+    pgid = child.pid
+    try:
+        os.killpg(pgid, first_signal)
     except ProcessLookupError:
         child.wait()
         return result
     end = time.monotonic() + grace
-    while child.poll() is None and time.monotonic() < end:
+    # The group leader can exit before pi/extension descendants. Do not return
+    # until the entire process group is gone; finalization snapshots must start
+    # only after all analysis writers have stopped.
+    while group_alive(pgid) and time.monotonic() < end:
+        child.poll()  # reap the leader as soon as possible
         time.sleep(0.05)
-    if child.poll() is None:
+    if group_alive(pgid):
         event("kill_grace_exhausted", grace_seconds=grace)
         try:
-            os.killpg(child.pid, signal.SIGKILL)
+            os.killpg(pgid, signal.SIGKILL)
         except ProcessLookupError:
             pass
     try:
         child.wait(timeout=max(1.0, grace))
     except subprocess.TimeoutExpired:
+        return 125
+    kill_end = time.monotonic() + 5.0
+    while group_alive(pgid) and time.monotonic() < kill_end:
+        time.sleep(0.05)
+    if group_alive(pgid):
+        event("process_group_not_reaped")
         return 125
     return result
 
