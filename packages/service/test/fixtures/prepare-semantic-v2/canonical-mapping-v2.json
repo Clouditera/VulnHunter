@@ -87,7 +87,8 @@
         {
           "code": "submodule_content_absent",
           "qualifiers": [],
-          "claims": ["submodule_declared_without_content", "local_path_declared_absent"]
+          "claims": ["submodule_declared_without_content", "local_path_declared_absent"],
+          "subject": "deps/core"
         }
       ]
     },
@@ -113,7 +114,8 @@
         {
           "code": "local_first_party_dependency_absent",
           "qualifiers": [],
-          "claims": ["local_first_party_dependency_declared", "local_path_declared_absent"]
+          "claims": ["local_first_party_dependency_declared", "local_path_declared_absent"],
+          "subject": "vendor/acme-parser"
         }
       ]
     },
@@ -139,7 +141,10 @@
       "status": "uncertain",
       "submission_shape": "multi_project",
       "issues": [
-        { "code": "project_scope_ambiguous", "claims": ["complete_root_without_scope_relation"] }
+        {
+          "code": "project_scope_ambiguous",
+          "claims": ["complete_root_without_scope_relation"]
+        }
       ]
     },
     {

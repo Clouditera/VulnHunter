@@ -38,6 +38,12 @@ const catalog: any = parseYaml(
     "utf8",
   ),
 );
+const catalogJson: any = JSON.parse(
+  readFileSync(
+    join(root, "flows/prepare/schemas/prepare-minimal-semantic-catalog-v2.json"),
+    "utf8",
+  ),
+);
 const canonicalMapping: any = JSON.parse(
   readFileSync(
     join(root, "packages/service/test/fixtures/prepare-semantic-v2/canonical-mapping-v2.json"),
@@ -245,7 +251,7 @@ const mapping: Record<string, (f: any) => any> = {
       issues: [
         {
           code: "submodule_content_absent",
-          subject: "vendor/crypto submodule",
+          subject: "deps/core",
           evidence: [
             { path: ".gitmodules", claim: "submodule_declared_without_content" },
             { path: "CMakeLists.txt", claim: "local_path_declared_absent" },
@@ -288,7 +294,7 @@ const mapping: Record<string, (f: any) => any> = {
       issues: [
         {
           code: "local_first_party_dependency_absent",
-          subject: "vendor/localcrypto",
+          subject: "vendor/acme-parser",
           evidence: [
             { path: "README.md", claim: "local_first_party_dependency_declared" },
             { path: "CMakeLists.txt", claim: "local_path_declared_absent" },
@@ -416,6 +422,7 @@ function stonesoup() {
 describe("Prepare minimal semantic decision v2 pure projection", () => {
   it("keeps frozen schema mirrors/catalog counts exact", () => {
     expect(jsonSchema).toEqual(yamlSchema);
+    expect(catalogJson).toEqual(catalog);
     expect(Object.keys(catalog.incomplete_issue_catalog)).toHaveLength(10);
     expect(Object.keys(catalog.uncertainty_issue_catalog)).toHaveLength(6);
     expect(Object.keys(catalog.qualifier_catalog)).toHaveLength(3);
@@ -481,6 +488,19 @@ describe("Prepare minimal semantic decision v2 pure projection", () => {
         c.id,
       ).not.toThrow();
       expect(plan.sandbox_plan === null).toBe(c.expected.status !== "complete");
+      if (c.id === "incomplete_stonesoup_asterisk_test_corpus")
+        expect(plan.source_assessment.external_dependencies[0].availability).toBe(
+          "declared_download",
+        );
+      if (mapped.issues?.[0]?.subject) {
+        const subject = mapped.issues[0].subject;
+        expect(d.issues[0].subject).toBe(subject);
+        expect(plan.source_assessment.missing_components[0].name).toBe(subject);
+        expect(plan.source_assessment.missing_components[0].expected_by).toContain(subject);
+        expect(
+          plan.source_assessment.evidence.some((x: any) => x.observation.includes(subject)),
+        ).toBe(true);
+      }
     }
   });
   it("covers every frozen issue/claim/qualifier cross-product fail-closed", () => {
@@ -489,9 +509,17 @@ describe("Prepare minimal semantic decision v2 pure projection", () => {
       string,
       any,
     ][]) {
-      const [claim, claimSpec] = claimEntries.find(([, x]) => x.allowed_issues.includes(code))!;
+      const needsGenerated = spec.recommendations.some(
+        (x: any) => x.code === "include_generated_sources_or_generator",
+      );
+      const [claim, claimSpec] = claimEntries.find(
+        ([, x]) =>
+          x.allowed_issues.includes(code) &&
+          (!needsGenerated || x.signal === "generated_source_reference"),
+      )!;
       const evidence: any = { path: "file.txt", claim };
       if (claimSpec.required_typed_fields?.includes("count")) evidence.count = 2;
+      const issueEvidence = [evidence];
       const d: any = {
         schema_version: "2.0",
         decision: {
@@ -501,7 +529,7 @@ describe("Prepare minimal semantic decision v2 pure projection", () => {
           root_candidates: ["."],
           confidence: 0.9,
           source_visibility: spec.static_impact ? "partial" : "full",
-          issues: [{ code, subject: "required object", evidence: [evidence] }],
+          issues: [{ code, subject: "required object", evidence: issueEvidence }],
         },
       };
       const c = ctx(["file.txt"]);
@@ -525,6 +553,22 @@ describe("Prepare minimal semantic decision v2 pure projection", () => {
           message: x.message_template.replace("{subject}", "required object"),
         })),
       );
+      if (spec.external_dependency) {
+        const override = Object.entries(spec.external_dependency.availability_if_claim ?? {}).find(
+          ([overrideClaim]) => issueEvidence.some((x) => x.claim === overrideClaim),
+        );
+        expect(plan.source_assessment.external_dependencies).toEqual([
+          {
+            name: "required object",
+            role: spec.external_dependency.role,
+            availability: override?.[1] ?? spec.external_dependency.availability_default,
+            integrity: spec.external_dependency.integrity,
+            required_for: plan.source_assessment.missing_components[0].impact,
+            declared_by: ["file.txt"],
+            locator_hint: spec.external_dependency.locator_hint,
+          },
+        ]);
+      } else expect(plan.source_assessment.external_dependencies).toEqual([]);
       const incompatible = claimEntries.find(([, x]) => !x.allowed_issues.includes(code));
       if (incompatible) {
         const bad = structuredClone(d);
@@ -571,7 +615,20 @@ describe("Prepare minimal semantic decision v2 pure projection", () => {
         e: any = { path: trunc ? "." : "file.txt", claim };
       if (spec.required_typed_fields?.includes("count")) e.count = 2;
       const issue: any = { code, evidence: [e] };
-      if (incomplete) issue.subject = "object";
+      if (incomplete) {
+        issue.subject = "object";
+        if (
+          catalog.incomplete_issue_catalog[code].recommendations.some(
+            (x: any) => x.code === "include_generated_sources_or_generator",
+          ) &&
+          spec.signal !== "generated_source_reference"
+        ) {
+          const provenanceClaim = claimEntries.find(
+            ([, x]) => x.allowed_issues.includes(code) && x.signal === "generated_source_reference",
+          )![0];
+          issue.evidence.push({ path: "file.txt", claim: provenanceClaim });
+        }
+      }
       const d: any = {
         schema_version: "2.0",
         decision: {
@@ -590,9 +647,16 @@ describe("Prepare minimal semantic decision v2 pure projection", () => {
           issues: [issue],
         },
       };
-      expect(validateMinimalSemanticDecision(d, ctx(["file.txt"], ["."], trunc)), claim).toEqual(
-        [],
-      );
+      const c = ctx(["file.txt"], ["."], trunc);
+      expect(validateMinimalSemanticDecision(d, c), claim).toEqual([]);
+      const plan = assembleMinimalSemanticDecision(d, c);
+      expect(plan.source_assessment.evidence).toContainEqual({
+        path: trunc ? "." : "file.txt",
+        signal: spec.signal,
+        observation: spec.observation_template
+          .replace("{subject}", incomplete ? "object" : "")
+          .replace("{count}", "2"),
+      });
     }
     const qualifierCases = [
       ["base_source_absent", "base_identity_unresolved", "base_identity_not_declared"],
@@ -615,7 +679,143 @@ describe("Prepare minimal semantic decision v2 pure projection", () => {
         },
       };
       expect(validateMinimalSemanticDecision(d, ctx(["file.txt"])), q).toEqual([]);
+      const plan = assembleMinimalSemanticDecision(d, ctx(["file.txt"]));
+      const spec = catalog.incomplete_issue_catalog[code];
+      const qualifier = catalog.qualifier_catalog[q];
+      expect(plan.source_assessment.missing_components[0].expected_by).toBe(
+        spec.expected_by_template.replace("{subject}", "object") + qualifier.expected_by_suffix,
+      );
+      expect(plan.source_assessment.user_recommendations).toEqual(
+        spec.recommendations.map((x: any) => ({
+          code: x.code,
+          message:
+            x.message_template.replace("{subject}", "object") + qualifier.recommendation_suffix,
+        })),
+      );
     }
+  });
+  it("derives every missing issue stage/readiness matrix for static-only, POC and EXP", () => {
+    const order = catalog.canonical_orders.stages;
+    for (const [requestName, requestedStages] of Object.entries(
+      catalog.trusted_stage_policy.requests,
+    ) as [string, string[]][]) {
+      for (const [code, spec] of Object.entries(catalog.incomplete_issue_catalog) as [
+        string,
+        any,
+      ][]) {
+        const needsGenerated = spec.recommendations.some(
+          (x: any) => x.code === "include_generated_sources_or_generator",
+        );
+        const claim = (Object.entries(catalog.claim_catalog) as [string, any][]).find(
+          ([, x]) =>
+            x.allowed_issues.includes(code) &&
+            (!needsGenerated || x.signal === "generated_source_reference"),
+        )![0];
+        const d: any = {
+          schema_version: "2.0",
+          decision: {
+            status: "incomplete",
+            submission_shape: "project",
+            intended_project: `${requestName} ${code}`,
+            root_candidates: ["."],
+            confidence: 0.9,
+            source_visibility: spec.static_impact ? "partial" : "full",
+            issues: [{ code, subject: "object", evidence: [{ path: "file.txt", claim }] }],
+          },
+        };
+        const c = { ...ctx(["file.txt"]), requestedStages } as AssembleContext;
+        const first = order.indexOf(spec.first_hard_block_stage);
+        const impact = order.filter(
+          (stage: string) =>
+            requestedStages.includes(stage) &&
+            ((stage === "static_audit" && spec.static_impact) ||
+              (stage !== "static_audit" && order.indexOf(stage) >= first)),
+        );
+        if (!impact.length) {
+          expect(
+            validateMinimalSemanticDecision(d, c).some((x) =>
+              x.message.includes("not relevant to requested stages"),
+            ),
+            `${requestName}/${code}`,
+          ).toBe(true);
+          continue;
+        }
+        expect(validateMinimalSemanticDecision(d, c), `${requestName}/${code}`).toEqual([]);
+        const plan = assembleMinimalSemanticDecision(d, c);
+        expect(plan.source_assessment.missing_components[0].impact).toEqual(impact);
+        for (const stage of order) {
+          const readiness = plan.source_assessment.stage_readiness[stage];
+          if (!requestedStages.includes(stage)) {
+            expect(readiness, `${requestName}/${code}/${stage}`).toEqual({
+              status: "not_requested",
+              reasons: [],
+            });
+          } else if (stage === "static_audit") {
+            expect(readiness.status, `${requestName}/${code}/${stage}`).toBe(
+              spec.static_impact ? "limited" : "ready",
+            );
+            expect(readiness.reasons.length > 0).toBe(spec.static_impact);
+          } else {
+            const blocked = order.indexOf(stage) >= first;
+            expect(readiness.status, `${requestName}/${code}/${stage}`).toBe(
+              blocked ? "blocked" : "ready",
+            );
+            expect(readiness.reasons.length > 0).toBe(blocked);
+          }
+        }
+        if (spec.static_impact && requestedStages.includes("static_audit")) {
+          const none = structuredClone(d);
+          none.decision.source_visibility = "none";
+          expect(
+            assembleMinimalSemanticDecision(none, c).source_assessment.stage_readiness.static_audit
+              .status,
+          ).toBe("blocked");
+        }
+      }
+    }
+  });
+  it("keeps the two v2/v1 compatibility boundaries explicit", () => {
+    const generated: any = {
+      schema_version: "2.0",
+      decision: {
+        status: "incomplete",
+        submission_shape: "project",
+        intended_project: "generated",
+        root_candidates: ["."],
+        confidence: 0.9,
+        source_visibility: "partial",
+        issues: [
+          {
+            code: "authoritative_first_party_input_absent",
+            subject: "schema/api.idl",
+            evidence: [{ path: "file.txt", claim: "project_build_entrypoint_present" }],
+          },
+        ],
+      },
+    };
+    expect(validateMinimalSemanticDecision(generated, ctx(["file.txt"])).length).toBeGreaterThan(0);
+    generated.decision.issues[0].evidence.push({
+      path: "file.txt",
+      claim: "generated_authoritative_input_declared_absent",
+    });
+    const generatedPlan = assembleMinimalSemanticDecision(generated, ctx(["file.txt"]));
+    expect(generatedPlan.source_assessment.user_recommendations.map((x: any) => x.code)).toContain(
+      "include_generated_sources_or_generator",
+    );
+
+    const local = canonical(
+      oracle.fixtures.find((x: any) => x.id === "incomplete_missing_local_vendor_dependency"),
+    );
+    const localPlan = assembleMinimalSemanticDecision(
+      local,
+      ctx(
+        files(
+          oracle.fixtures.find((x: any) => x.id === "incomplete_missing_local_vendor_dependency"),
+        ),
+      ),
+    );
+    expect(localPlan.source_assessment.missing_components[0].category).toBe("dependency");
+    expect(localPlan.source_assessment.external_dependencies[0].role).toBe("first_party_component");
   });
   it("is byte stable and preserves complete branch semantics", () => {
     const f = oracle.fixtures[0],
@@ -682,6 +882,22 @@ describe("Prepare minimal semantic decision v2 pure projection", () => {
       ),
       td = canonical(trunc);
     expect(validateMinimalSemanticDecision(td, ctx(files(trunc)))).not.toEqual([]);
+    expect(validateMinimalSemanticDecision(td, ctx(files(trunc), ["."], true))).toEqual([]);
+    const truncAtFile = structuredClone(td);
+    truncAtFile.decision.issues[0].evidence[0].path = "README.md";
+    expect(
+      validateMinimalSemanticDecision(truncAtFile, ctx(files(trunc), ["."], true)).length,
+    ).toBeGreaterThan(0);
+    const unrelatedRoot = structuredClone(td);
+    unrelatedRoot.decision.issues = [
+      {
+        code: "decisive_file_unreadable",
+        evidence: [{ path: ".", claim: "decisive_file_unreadable" }],
+      },
+    ];
+    expect(
+      validateMinimalSemanticDecision(unrelatedRoot, ctx(files(trunc), ["."], true)).length,
+    ).toBeGreaterThan(0);
     const st = stonesoup();
     const noCount = structuredClone(st.decision);
     delete noCount.decision.issues[0].evidence[0].count;
