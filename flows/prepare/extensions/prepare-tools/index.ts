@@ -20,7 +20,7 @@ import { dirname, join, relative, sep } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import YAML from "yaml";
 import { defineTool, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { assembleAssessmentPlan, canonicalSemanticDecisionJson, SemanticDecisionValidationError, type AssembleContext } from "./semantic-decision.js";
+import { assembleAssessmentPlan, canonicalSemanticDecisionJson, deriveTrustedWarnings, SemanticDecisionValidationError, type AssembleContext } from "./semantic-decision.js";
 
 export const PREPARE_TOOL_NAMES = ["read_project_manifest", "read_project_file", "submit_plan"] as const;
 const MAX_PLAN_BYTES = 128 * 1024;
@@ -480,6 +480,10 @@ export class PrepareToolState {
     }
     for (const warning of plan?.warnings ?? []) for (const path of warning.evidence_paths ?? []) knownPath(path, "/warnings/evidence_paths");
 
+    const manifestTruncated = this.manifest?.truncation?.truncated === true;
+    const expectedWarnings = deriveTrustedWarnings(assessment?.external_dependencies ?? [], manifestTruncated);
+    if (canonicalSemanticDecisionJson(plan?.warnings ?? []) !== canonicalSemanticDecisionJson(expectedWarnings)) add("/warnings", "warnings must exactly match trusted derivation");
+    if (manifestTruncated && assessment?.status === "complete") add("/source_assessment/status", "complete conflicts with trusted manifest truncation");
     if (assessment?.status === "complete" && sandbox == null) add("/sandbox_plan", "complete requires sandbox plan");
     if (assessment?.status !== "complete" && sandbox != null) add("/sandbox_plan", "non-complete requires null sandbox plan");
     const readiness = assessment?.stage_readiness;

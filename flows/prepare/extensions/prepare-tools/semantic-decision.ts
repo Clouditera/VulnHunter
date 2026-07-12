@@ -214,10 +214,10 @@ function assembleRecommendations(assessment: any) {
   return result;
 }
 
-function assembleWarnings(decision: any, context: AssembleContext) {
-  const dependencies = decision.assessment.external_dependencies;
+export function deriveTrustedWarnings(externalDependencies: readonly any[], manifestTruncated: boolean): any[] {
+  const dependencies = externalDependencies;
   const result: any[] = [];
-  if (context.manifestTruncated) result.push(warning("manifest_truncated", "项目机械清单达到读取上限，完整性判断仅依据已确认事实。", ["."]));
+  if (manifestTruncated) result.push(warning("manifest_truncated", "项目机械清单达到读取上限，完整性判断仅依据已确认事实。", ["."]));
   const base = dependencies.filter((item: any) => item.role === "base_project_source" && item.availability === "declared_download" && item.integrity === "unpinned");
   if (base.length) result.push(warning("unpinned_base_source_download", "基础项目源码需要外部下载且未声明固定完整性标识。", base.flatMap((item: any) => item.declared_by)));
   const ordinary = dependencies.filter((item: any) => !FIRST_PARTY_ROLES.has(item.role) && item.availability === "declared_download" && item.integrity === "unpinned");
@@ -278,7 +278,7 @@ export function assembleAssessmentPlan(decision: unknown, context: AssembleConte
     confidence: d.sandbox_requirements.confidence,
     reason: "基于已确认完整的提交边界生成受管沙箱能力需求。",
   };
-  return canonicalObject({ schema_version: "1.0", source_assessment: source, sandbox_plan: sandbox, warnings: assembleWarnings(d, context) });
+  return canonicalObject({ schema_version: "1.0", source_assessment: source, sandbox_plan: sandbox, warnings: deriveTrustedWarnings(assessment.external_dependencies, context.manifestTruncated) });
 }
 
 export function canonicalSemanticDecisionJson(decision: Json): string { return canonicalJson(decision); }
