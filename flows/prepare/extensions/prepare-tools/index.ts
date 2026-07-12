@@ -267,8 +267,9 @@ export class PrepareToolState {
 
   private failTerminal(code: string): never {
     this.terminalFailure = true;
-    rmSync(this.finalPath, { force: true });
-    for (const name of ["assessment-plan.json.tmp"]) rmSync(join(this.config.outputDir, name), { force: true });
+    try {
+      for (const name of readdirSync(this.config.outputDir)) rmSync(join(this.config.outputDir, name), { recursive: true, force: true });
+    } catch { /* dedicated output may already be gone */ }
     throw new PrepareToolError(code, code, true);
   }
 
@@ -604,6 +605,7 @@ export class PrepareToolState {
     } finally { closeSync(finalFd); }
     const raw = new TextDecoder("utf-8", { fatal: true }).decode(finalBytes);
     const plan = JSON.parse(raw);
+    if (containsSensitive(plan)) this.failTerminal("ERR_PREPARE_OUTPUT_SENSITIVE");
     if (!this.validatePlan(plan) || this.semanticErrors(plan).length) this.failTerminal("ERR_PREPARE_SCHEMA_INVALID");
     const receipt = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(join(this.config.controlDir, "receipt.json"), 64 * 1024)));
     const counters = receipt.counters as PrepareBudgets;

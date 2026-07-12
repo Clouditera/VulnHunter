@@ -43,6 +43,7 @@ RUN cd /opt/vulnagent/flows/vulnforge/extensions/workspace-diff \
       @earendil-works/pi-coding-agent@0.79.6 \
       @earendil-works/pi-ai@0.79.6
 COPY flows/prepare /opt/vulnagent/flows/prepare
+COPY packages/service/src/features/prepare/schemas/source-manifest-v1.schema.json /opt/vulnagent/flows/prepare/schemas/source-manifest-v1.schema.json
 RUN cd /opt/vulnagent/flows/prepare/extensions/prepare-tools \
     && npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 RUN test -f /opt/vulnagent/flows/prepare/extensions/prepare-tools/index.ts \
@@ -69,7 +70,8 @@ COPY worker-assets/entrypoint.sh /opt/entrypoint.sh
 COPY worker-assets/scan-mode.sh /opt/scan-mode.sh
 COPY worker-assets/chat-mode.sh /opt/chat-mode.sh
 COPY worker-assets/report-mode.sh /opt/report-mode.sh
-RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh /opt/report-mode.sh
+COPY worker-assets/prepare-mode.sh /opt/prepare-mode.sh
+RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh /opt/report-mode.sh /opt/prepare-mode.sh
 
 WORKDIR /workspace
 ENTRYPOINT ["/opt/entrypoint.sh"]

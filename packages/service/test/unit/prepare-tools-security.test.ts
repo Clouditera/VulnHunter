@@ -255,7 +255,7 @@ describe("prepare submit/postflight", () => {
     await extra.state.submitPlan(validPlan());
     writeFileSync(join(extra.output, "extra.txt"), "not allowed");
     expect(() => extra.state.postflight()).toThrowError(expect.objectContaining({ code: "ERR_PREPARE_PLANNER_FAILED" }));
-    expect(readdirSync(extra.output)).toEqual(["extra.txt"]);
+    expect(readdirSync(extra.output)).toEqual([]);
     extra.state.close();
   });
 });

@@ -26,6 +26,9 @@ importers:
       ajv:
         specifier: 8.17.1
         version: 8.17.1
+      jiti:
+        specifier: 2.7.0
+        version: 2.7.0
       yaml:
         specifier: 2.7.0
         version: 2.7.0
