@@ -83,8 +83,8 @@ Complete retains the established complete facts. Its minimum v2 envelope is:
     "confidence":0.8,
     "static_visibility":"full",
     "evidence":[
-      {"path":"project manifest","signal":"project_metadata","observation":"Short positive boundary fact."},
-      {"path":"source file","signal":"source_tree_shape","observation":"Short positive source-closure fact."}
+      {"path":"CMakeLists.txt","signal":"project_metadata","observation":"Short positive boundary fact."},
+      {"path":"src/main.c","signal":"source_tree_shape","observation":"Short positive source-closure fact."}
     ],
     "external_dependencies":[],
     "sandbox_requirements":{
@@ -108,9 +108,9 @@ External dependency objects are:
 {"name":"dependency","role":"base_project_source|first_party_component|submodule|generated_source_tool|system_package|language_package|build_tool|runtime_service|dataset|other|unknown","availability":"present|declared_download|missing|unknown","integrity":"pinned|unpinned|unknown|not_applicable","required_for":["build"],"declared_by":["manifest-known evidence path"],"locator_hint":"short non-secret coordinate or empty"}
 ```
 
-A complete decision cannot have missing/declared-download `base_project_source`, `first_party_component`, or `submodule`; egress never repairs first-party source. Ordinary declared downloads require `dependency_egress.required=true` and at least one factual reason.
+A complete decision cannot have `availability=missing|declared_download|unknown` for `base_project_source`, `first_party_component`, or `submodule`; egress never repairs first-party source. Ordinary declared downloads require `dependency_egress.required=true` and at least one factual reason.
 
-Sandbox target fields are non-empty identifier arrays for project types, languages, build systems, architectures, OS families, and target classes. Requirements must include catalog capabilities `ssh` and `shell`; compiled code also requires an evidenced compiler capability. Required and optional capabilities cannot overlap.
+Sandbox target fields use identifier arrays. `project_types`, `languages`, `architectures`, `os_families`, and `target_classes` are non-empty; `build_systems` may be empty when no build system applies. Requirements must include catalog capabilities `ssh` and `shell`; compiled code also requires an evidenced compiler capability. Required and optional capabilities cannot overlap.
 
 Execution consistency is fixed: `nested_docker=true` requires capability `docker`; `qemu_guest=true` requires `full_system=true`, capability `qemu_system`, and at least one required asset. Do not infer nested Docker from a Dockerfile alone.
 
@@ -120,4 +120,4 @@ Required asset objects are:
 {"asset_type":"guest_image|firmware|kernel|rootfs|container_image|toolchain|dataset|other","asset_id":"lowercase_identifier","version_constraint":"short constraint","architecture":"identifier","os_family":"identifier","reason":"short evidence-backed need"}
 ```
 
-`optional_capabilities` and `required_assets` may be omitted only where the schema defaults them to empty arrays. Do not submit Profile recommendation fields or IDs.
+`optional_capabilities` and `required_assets` are optional input fields; when omitted, the platform assembler supplies empty arrays. Do not submit Profile recommendation fields or IDs.

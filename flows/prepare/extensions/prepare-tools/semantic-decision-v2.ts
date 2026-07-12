@@ -209,7 +209,7 @@ function semantic(decision: any, context: AssembleContext): DecisionError[] {
         spec.recommendations.some(([code]) => code === "include_generated_sources_or_generator") &&
         ![...claims].some((claim) => C[claim].signal === "generated_source_reference")
       )
-        err(errors, ip, "generated provenance claim is required");
+        err(errors, ip, "generated provenance claim is required", "issue_claim_incompatible");
       for (const [j, qc] of (issue.qualifiers ?? []).entries()) {
         const q = Q[qc];
         if (!q?.issues.includes(issue.code))

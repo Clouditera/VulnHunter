@@ -213,6 +213,15 @@ describe("prepare submit/postflight", () => {
     await expect(capability.state.submitPlan(unknownCapability)).rejects.toMatchObject({ code: "ERR_PREPARE_SCHEMA_INVALID" });
     capability.state.close();
 
+    const firstPartyUnknown = fixture();
+    const unknownFirstParty: any = validCompletePlan();
+    unknownFirstParty.decision.external_dependencies = [{
+      name: "local component", role: "first_party_component", availability: "unknown",
+      integrity: "unknown", required_for: ["static_audit"], declared_by: ["README.md"], locator_hint: "",
+    }];
+    await expect(firstPartyUnknown.state.submitPlan(unknownFirstParty)).rejects.toMatchObject({ code: "ERR_PREPARE_SCHEMA_INVALID" });
+    firstPartyUnknown.state.close();
+
     const recommendation = fixture();
     const recommended: any = validCompletePlan();
     recommended.decision.sandbox_requirements.profile_recommendation = { recommended_profile_id: "linux-default" };
@@ -241,7 +250,7 @@ describe("prepare submit/postflight", () => {
       { canary: "unknown-field-value", code: "schema_additional_property", pointer: "/decision", mutate: (p) => { p.decision.unknown_field = "unknown-field-value"; } },
       { canary: "invalid-status-value", code: "schema_enum", pointer: "/decision/status", mutate: (p) => { p.decision.status = "invalid-status-value"; } },
       { canary: "invalid-type-value", code: "schema_invalid", pointer: "/decision/confidence", mutate: (p) => { p.decision.confidence = "invalid-type-value"; } },
-      { canary: "semantic-fallback-value", code: "semantic_invalid", pointer: "/decision/issues/0", mutate: (p) => { p.decision.issues = [{ code: "authoritative_first_party_input_absent", subject: "semantic-fallback-value", evidence: [{ path: "README.md", claim: "source_body_present" }] }]; } },
+      { canary: "generated-provenance-value", code: "issue_claim_incompatible", pointer: "/decision/issues/0", mutate: (p) => { p.decision.issues = [{ code: "authoritative_first_party_input_absent", subject: "generated-provenance-value", evidence: [{ path: "README.md", claim: "source_body_present" }] }]; } },
       { canary: "X".repeat(129 * 1024), code: "output_capacity", pointer: "", mutate: (p) => { p.decision.issues[0].subject = "X".repeat(129 * 1024); } },
     ];
     for (const item of cases) {
@@ -462,7 +471,7 @@ describe("prepare static security boundary", () => {
       "flows/prepare/tasks/prepare-v2.md":
         "3d0e5f47a24d76c604e8650506120b22710b0c08861fd0a71d80fcf646955998",
       "flows/prepare/skills/prepare-compact-submit-v2/SKILL.md":
-        "0a0ceb23be00c7d955b2318eaa06fc1dc7dcd806b94ddc2c955c073ef03f835e",
+        "f7d6841e06dcf3cb53481ad2898ee9aa850070a234003c4acd09010376a78945",
       "flows/prepare/agents/prepare-agent-v1.1.md":
         "914e0346340707cb3e03075b19cecb05070b52b0ed097a41c0a3e598a800ed97",
       "flows/prepare/tasks/prepare-v1.1.md":
@@ -485,7 +494,16 @@ describe("prepare static security boundary", () => {
     expect(v2Skill).toContain(`non-empty \`issues\` (maximum ${v2Schema.$defs.incompleteDecision.properties.issues.maxItems})`);
     expect(v2Catalog.incomplete_issue_catalog.build_manifest_absent.static_impact).toBe(false);
     expect(v2Skill).toContain("when every issue is `build_manifest_absent` or a build/runtime asset/configuration issue it must be `full`");
+    expect(v2Schema.$defs.target.properties.build_systems.minItems).toBeUndefined();
+    for (const field of ["project_types", "languages", "architectures", "os_families", "target_classes"]) expect(v2Schema.$defs.target.properties[field].minItems).toBe(1);
+    expect(v2Schema.$defs.sandboxRequirements.required).not.toContain("optional_capabilities");
+    expect(v2Schema.$defs.sandboxRequirements.required).not.toContain("required_assets");
     for (const rule of [
+      "\"path\":\"CMakeLists.txt\"",
+      "\"path\":\"src/main.c\"",
+      "`availability=missing|declared_download|unknown`",
+      "`build_systems` may be empty when no build system applies",
+      "the platform assembler supplies empty arrays",
       "`nested_docker=true` requires capability `docker`",
       "`qemu_guest=true` requires `full_system=true`, capability `qemu_system`, and at least one required asset",
       "egress never repairs first-party source",
