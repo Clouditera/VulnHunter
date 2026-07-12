@@ -11,6 +11,7 @@ import {
 import { assertPrepareSemanticOracle } from "../support/prepare-semantic-oracle.mjs";
 import { generateSourceManifest } from "../../src/features/prepare/source-manifest.js";
 import { PrepareToolState } from "../../../../flows/prepare/extensions/prepare-tools/index.js";
+import { assembleMinimalSemanticDecision } from "../../../../flows/prepare/extensions/prepare-tools/semantic-decision-v2.js";
 
 const root = join(import.meta.dirname, "../../../..");
 const oracle: any = parseYaml(readFileSync(join(root, "packages/service/test/fixtures/prepare-semantic/oracles-v1.yaml"), "utf8"));
@@ -117,9 +118,9 @@ describe("Prepare compact semantic decision deterministic assembly", () => {
     const manifest = generateSourceManifest(source);
     const planner = { schema_version: "prepare-planner-input/v1", source_manifest: manifest, task_flags: { enable_poc: false, enable_exp: false, requested_stages: [] }, capability_catalog: { version: "v1", capabilities: ["ssh", "shell"] }, profile_recommendation_mode: "requirements_only" };
     const plannerInputPath = join(control, "planner.json"); writeFileSync(plannerInputPath, JSON.stringify(planner), { mode: 0o600 });
-    const decision = { schema_version: "1.0", assessment: { status: "complete", submission_shape: "project", intended_project: "example", root_candidates: ["."], confidence: 0.95, static_visibility: "full", evidence: [{ path: "CMakeLists.txt", signal: "project_metadata", observation: "CMake declares the project." }, { path: "README.md", signal: "source_tree_shape", observation: "Submitted source boundary is present." }], missing: [], uncertainties: [], external_dependencies: [] }, sandbox_requirements: { target: { project_types: ["native"], languages: ["c"], build_systems: ["cmake"], architectures: ["x86_64"], os_families: ["linux"], target_classes: ["userspace"] }, required_capabilities: ["ssh", "shell"], execution: { full_system: false, nested_docker: false, qemu_guest: false }, dependency_egress: { required: false, reasons: [] }, confidence: 0.9 } };
+    const decision = { schema_version: "2.0", decision: { status: "complete", submission_shape: "project", intended_project: "example", root_candidates: ["."], confidence: 0.95, static_visibility: "full", evidence: [{ path: "CMakeLists.txt", signal: "project_metadata", observation: "CMake declares the project." }, { path: "README.md", signal: "source_tree_shape", observation: "Submitted source boundary is present." }], external_dependencies: [], sandbox_requirements: { target: { project_types: ["native"], languages: ["c"], build_systems: ["cmake"], architectures: ["x86_64"], os_families: ["linux"], target_classes: ["userspace"] }, required_capabilities: ["ssh", "shell"], execution: { full_system: false, nested_docker: false, qemu_guest: false }, dependency_egress: { required: false, reasons: [] }, confidence: 0.9 } } };
     const ctx = context(["README.md", "CMakeLists.txt"]); ctx.requestedStages = ["static_audit"];
-    const plan = assembleAssessmentPlan(decision, ctx);
+    const plan = assembleMinimalSemanticDecision(decision, ctx);
     const state = new PrepareToolState({ sourceRoot: source, controlDir: control, outputDir: output, plannerInputPath, manifestSchemaPath: join(root, "packages/service/src/features/prepare/schemas/source-manifest-v1.schema.json"), planSchemaPath: join(root, "flows/prepare/schemas/prepare-assessment-plan-v1.schema.yaml") });
     try {
       const submitted = await state.submitPlan(decision);

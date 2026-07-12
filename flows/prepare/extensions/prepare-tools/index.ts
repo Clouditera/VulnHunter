@@ -19,8 +19,10 @@ import {
 import { dirname, join, relative, sep } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import YAML from "yaml";
+import semanticCatalog from "../../schemas/prepare-minimal-semantic-catalog-v2.json" with { type: "json" };
 import { defineTool, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { assembleAssessmentPlan, canonicalSemanticDecisionJson, deriveAssessmentSummary, deriveTrustedWarnings, SemanticDecisionValidationError, type AssembleContext } from "./semantic-decision.js";
+import { canonicalSemanticDecisionJson, deriveAssessmentSummary, deriveTrustedWarnings, SemanticDecisionValidationError, type AssembleContext } from "./semantic-decision.js";
+import { assembleMinimalSemanticDecision, canonicalMinimalSemanticDecisionJson, validateMinimalSemanticDecision } from "./semantic-decision-v2.js";
 
 export const PREPARE_TOOL_NAMES = ["read_project_manifest", "read_project_file", "submit_plan"] as const;
 const MAX_PLAN_BYTES = 128 * 1024;
@@ -29,6 +31,7 @@ const MAX_TOOL_RESULT_BYTES = 64 * 1024;
 const MAX_FILE_RESULT_BYTES = 32 * 1024;
 const SENSITIVE_PATH = /^(?:\.env(?:\..*)?|id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?|.*\.(?:pem|key|p12|pfx|jks|keystore)|credentials(?:\..*)?|secrets?(?:\..*)?)$/i;
 const VCS_PARTS = new Set([".git", ".hg", ".svn"]);
+const ROOT_TRUNCATION_OBSERVATION = semanticCatalog.claim_catalog.manifest_materially_truncated.observation_template;
 const SECRET_PATTERNS = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/i,
   /\b(?:api[_-]?key|access[_-]?token|secret|password)\s*[:=]\s*\S+/i,
@@ -143,12 +146,29 @@ function isWithin(root: string, target: string): boolean {
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !rel.startsWith(sep));
 }
 
-function safeAjvErrors(errors: any[] | null | undefined): Array<{ instancePath: string; keyword: string; message: string }> {
-  return (errors ?? []).slice(0, 12).map((error) => ({
-    instancePath: String(error.instancePath ?? ""),
-    keyword: String(error.keyword ?? "invalid"),
-    message: String(error.message ?? "invalid").slice(0, 160),
-  }));
+type SafeDecisionError = { instancePath: string; keyword: string; message: string };
+
+function safeDecisionErrors(errors: Array<{ instancePath?: unknown; keyword?: unknown; message?: unknown }> | null | undefined): SafeDecisionError[] {
+  return (errors ?? []).slice(0, 12).map((error) => {
+    const pointer = String(error.instancePath ?? "");
+    const safePointer = pointer.length <= 256 && /^(?:|\/(?:[A-Za-z0-9_~-]|~[01])*)+$/.test(pointer) ? pointer : "";
+    const keyword = String(error.keyword ?? "invalid");
+    const message = String(error.message ?? "");
+    let code: string;
+    if (keyword === message && /^(?:schema_[a-z_]+|manifest_path_unknown|issue_claim_incompatible|qualifier_incompatible|trusted_context_conflict|normalized_duplicate|output_capacity|semantic_invalid)$/.test(keyword)) code = keyword;
+    else if (message.includes("path must be") || message.includes("root evidence")) code = "manifest_path_unknown";
+    else if (message.includes("claim is incompatible")) code = "issue_claim_incompatible";
+    else if (message.includes("qualifier")) code = "qualifier_incompatible";
+    else if (message.includes("trusted context") || message.includes("source visibility") || message.includes("not relevant to requested stages")) code = "trusted_context_conflict";
+    else if (message.includes("duplicate") || keyword === "uniqueItems") code = "normalized_duplicate";
+    else if (keyword.includes("capacity") || keyword === "maxBytes") code = "output_capacity";
+    else if (keyword === "required") code = "schema_required";
+    else if (keyword === "enum" || keyword === "const") code = "schema_enum";
+    else if (keyword === "additionalProperties") code = "schema_unknown_field";
+    else if (["type", "oneOf", "anyOf"].includes(keyword)) code = "schema_invalid";
+    else code = "semantic_invalid";
+    return { instancePath: safePointer, keyword: code, message: code };
+  });
 }
 
 function recursiveStrings(value: unknown, out: string[] = []): string[] {
@@ -232,8 +252,8 @@ export class PrepareToolState {
         this.manifestPrefixes.add(root.path);
       }
       const planSchema = YAML.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(config.planSchemaPath, 2 * 1024 * 1024)));
-      const decisionSchemaPath = join(dirname(config.planSchemaPath), "prepare-semantic-decision-v1.schema.yaml");
-      const decisionSchema = YAML.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(decisionSchemaPath, 2 * 1024 * 1024)));
+      const decisionSchemaPath = join(dirname(config.planSchemaPath), "prepare-semantic-decision-v2.schema.json");
+      const decisionSchema = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(decisionSchemaPath, 2 * 1024 * 1024)));
       this.validatePlan = new Ajv2020({ allErrors: true, strict: false }).compile(planSchema);
       this.validateDecision = new Ajv2020({ allErrors: true, strict: true }).compile(decisionSchema);
       if (allowExistingFinal) this.committed = true;
@@ -468,7 +488,7 @@ export class PrepareToolState {
     };
     for (const evidence of assessment?.evidence ?? []) {
       if (!isCanonicalRelativePath(evidence?.path, true) || !this.manifestPaths.has(evidence.path)) add("/source_assessment/evidence", "evidence path must be manifest-known");
-      if (evidence?.path === "." && (!this.manifest?.truncation?.truncated || evidence?.signal !== "other")) add("/source_assessment/evidence", "root evidence requires trusted truncation and signal other");
+      if (evidence?.path === "." && (!this.manifest?.truncation?.truncated || evidence?.signal !== "other" || evidence?.observation !== ROOT_TRUNCATION_OBSERVATION)) add("/source_assessment/evidence", "root evidence requires exact trusted truncation fact");
       if (evidence?.line_start != null && evidence?.line_end != null && evidence.line_end < evidence.line_start) add("/source_assessment/evidence", "line_end must be >= line_start");
     }
     for (const path of assessment?.root_candidates ?? []) knownPath(path, "/source_assessment/root_candidates");
@@ -562,12 +582,14 @@ export class PrepareToolState {
       try { raw = canonicalJson(plan); } catch { /* invalid plan below */ }
       if (raw === undefined || Buffer.byteLength(raw) > MAX_PLAN_BYTES) return this.invalidAttempt([{ instancePath: "", keyword: "maxBytes", message: "plan is invalid or exceeds 128 KiB" }]);
       if (containsSensitive(plan)) this.failTerminal("ERR_PREPARE_OUTPUT_SENSITIVE");
-      if (!this.validateDecision(plan)) return this.invalidAttempt(safeAjvErrors(this.validateDecision.errors));
+      if (!this.validateDecision(plan)) return this.invalidAttempt(safeDecisionErrors(this.validateDecision.errors));
+      const decisionErrors = validateMinimalSemanticDecision(plan, this.assemblyContext());
+      if (decisionErrors.length) return this.invalidAttempt(safeDecisionErrors([...decisionErrors]));
       let assembled: any;
       try {
-        assembled = assembleAssessmentPlan(plan, this.assemblyContext());
+        assembled = assembleMinimalSemanticDecision(plan, this.assemblyContext());
       } catch (error) {
-        if (error instanceof SemanticDecisionValidationError) return this.invalidAttempt(error.errors.slice(0, 12).map((item) => ({ ...item })));
+        if (error instanceof SemanticDecisionValidationError) return this.invalidAttempt(safeDecisionErrors([...error.errors]));
         this.failTerminal("ERR_PREPARE_INTERNAL");
       }
       if (!this.validatePlan(assembled)) this.failTerminal("ERR_PREPARE_INTERNAL");
@@ -607,7 +629,7 @@ export class PrepareToolState {
       }
 
       const planDigest = sha256(serialized);
-      const decisionDigest = sha256(canonicalSemanticDecisionJson(plan as any));
+      const decisionDigest = sha256(canonicalMinimalSemanticDecisionJson(plan as any));
       const receipt = canonicalJson({
         status: "committed",
         schema_version: "prepare-receipt/v2",
@@ -638,7 +660,7 @@ export class PrepareToolState {
   private invalidAttempt(details: Array<{ instancePath: string; keyword: string; message: string }>): never {
     rmSync(join(this.config.outputDir, "assessment-plan.json.tmp"), { force: true });
     if (this.budgets.submitCalls >= 3) this.failTerminal("ERR_PREPARE_SCHEMA_INVALID");
-    throw new PrepareToolError("ERR_PREPARE_SCHEMA_INVALID", "Plan validation failed; repair allowed", false, details.slice(0, 12));
+    throw new PrepareToolError("ERR_PREPARE_SCHEMA_INVALID", "Plan validation failed; repair allowed", false, safeDecisionErrors(details));
   }
 
   postflight(): { plan_sha256: string; counters: PrepareBudgets } {
@@ -763,8 +785,8 @@ export default function registerPrepareTools(pi: ExtensionAPI) {
     } as any,
     async execute(_id, params: any, _signal, _onUpdate, ctx) { return textResult(await runRestrictedTool(ctx, () => state.readFile(params, true))); },
   }));
-  const decisionSchemaPath = join(dirname(required("PREPARE_PLAN_SCHEMA")), "prepare-semantic-decision-v1.schema.yaml");
-  const decisionSchema = YAML.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(decisionSchemaPath, 2 * 1024 * 1024)));
+  const decisionSchemaPath = join(dirname(required("PREPARE_PLAN_SCHEMA")), "prepare-semantic-decision-v2.schema.json");
+  const decisionSchema = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(decisionSchemaPath, 2 * 1024 * 1024)));
   pi.registerTool(defineTool({
     name: "submit_plan",
     label: "Submit plan",

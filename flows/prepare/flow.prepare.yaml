@@ -12,7 +12,7 @@ artifacts:
 defaults:
   model: ${env.V_PREPARE_MODEL}
   max_parallel: 1
-  agent: prepare-agent-v1.1.md
+  agent: prepare-agent-v2.md
   tools:
     - read_project_manifest
     - read_project_file
@@ -21,9 +21,9 @@ stages:
   - id: prepare
     name: Prepare source assessment
     type: single
-    skills: [prepare-compact-submit-v1-1]
+    skills: [prepare-compact-submit-v2]
     extensions: [prepare-tools]
-    task: prepare-v1.1.md
+    task: prepare-v2.md
     timeout: 600
     error_strategy: stop
     execution_policy: prepare-restricted
