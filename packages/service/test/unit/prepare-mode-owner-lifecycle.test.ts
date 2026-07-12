@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
@@ -36,6 +36,15 @@ case "\${FAKE_MODE:-success}" in
   mismatch)
     printf '00000000-0000-0000-0000-000000000000\\n' > "$PREPARE_CONTROL_DIR/.prepare-owner/identity"
     chmod 600 "$PREPARE_CONTROL_DIR/.prepare-owner/identity"
+    exit 1 ;;
+  mismatch-after-output)
+    mkdir "$PREPARE_OUTPUT_DIR/000-trigger" "$PREPARE_OUTPUT_DIR/zzz-slow"
+    i=0; while [ "$i" -lt 5000 ]; do : > "$PREPARE_OUTPUT_DIR/zzz-slow/item-$i"; i=$((i + 1)); done
+    (
+      while [ -e "$PREPARE_OUTPUT_DIR/000-trigger" ]; do :; done
+      printf '00000000-0000-0000-0000-000000000000\\n' > "$PREPARE_CONTROL_DIR/.prepare-owner/identity"
+      chmod 600 "$PREPARE_CONTROL_DIR/.prepare-owner/identity"
+    ) &
     exit 1 ;;
   *) exit 2 ;;
 esac
@@ -88,8 +97,25 @@ describe("prepare-mode owner-bound lifecycle", () => {
     const preexisting = fixture(); mkdirSync(join(preexisting.control, ".youngflow")); writeFileSync(join(preexisting.control, ".youngflow/state"), "stale"); const before = snapshot(preexisting.control); expect(run(preexisting, "success").status).toBe(3); expect(snapshot(preexisting.control)).toEqual(before);
     const stale = fixture(); mkdirSync(join(stale.control, ".prepare-owner")); writeFileSync(join(stale.control, ".prepare-owner/identity"), "00000000-0000-0000-0000-000000000000\n", { mode: 0o600 }); const staleBefore = snapshot(stale.control); expect(run(stale, "success").status).toBe(3); expect(snapshot(stale.control)).toEqual(staleBefore);
   });
+  it("rejects an existing control symlink without changing its target", () => {
+    const f = fixture(), target = join(f.root, "control-target");
+    rmSync(f.control, { recursive: true }); mkdirSync(target); writeFileSync(join(target, "planner.json"), "{}", { mode: 0o600 }); writeFileSync(join(target, "sentinel"), "unchanged", { mode: 0o640 }); symlinkSync(target, f.control);
+    const targetStat = statSync(target), before = snapshot(target); expect(run(f, "success").status).toBe(3); expect(snapshot(target)).toEqual(before); expect(statSync(target).mode).toBe(targetStat.mode); expect(statSync(target).mtimeMs).toBe(targetStat.mtimeMs); expect(lstatSync(f.control).isSymbolicLink()).toBe(true);
+  });
+  it("rejects dangling output symlink and removes only its matching marker", () => {
+    const f = fixture(), missingTarget = join(f.root, "missing-output-target"); symlinkSync(missingTarget, f.output); const before = snapshot(f.control);
+    expect(run(f, "success").status).toBe(3); expect(snapshot(f.control)).toEqual(before); expect(lstatSync(f.output).isSymbolicLink()).toBe(true);
+  });
+  it("owner-bound init failure cleans marker instead of leaking ownership", () => {
+    const f = fixture(), blocker = join(f.root, "output-parent"); writeFileSync(blocker, "blocker", { mode: 0o640 }); f.env.PREPARE_OUTPUT_DIR = join(blocker, "child");
+    expect(run(f, "success").status).not.toBe(0); expectEmpty(f.control); expect(readFileSync(blocker, "utf8")).toBe("blocker");
+  });
   it("identity mismatch before cleanup preserves all evidence", () => {
     const f = fixture(), result = run(f, "mismatch"); expect(result.status).not.toBe(0); expect(readdirSync(f.control)).toContain(".prepare-owner"); expect(readdirSync(f.output)).toContain("assessment-plan.json");
+  });
+  it("identity mismatch after output cleanup preserves control checkpoint", () => {
+    const f = fixture(), result = run(f, "mismatch-after-output"); expect(result.status).not.toBe(0); expectEmpty(f.output);
+    expect(readFileSync(join(f.control, ".youngflow/checkpoints/flow_state.yaml"), "utf8")).toBe("checkpoint\n"); expect(readdirSync(f.control)).toContain(".prepare-owner");
   });
   it("release-last stress lets the next owner finish without prior cleanup deleting it", async () => {
     for (let i = 0; i < 12; i++) {
