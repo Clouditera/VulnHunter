@@ -695,9 +695,15 @@ export default function registerPrepareTools(pi: ExtensionAPI) {
     name: "submit_plan",
     label: "Submit plan",
     description: "Validate and atomically submit the complete Prepare assessment. Raw plan arguments are never logged.",
+    // Keep the transport schema permissive so pi cannot reject a repair
+    // attempt before the trusted validator counts it. The full schema remains
+    // visible as the first anyOf branch for model guidance; acceptance is
+    // exclusively decided by PrepareToolState.submitPlan().
     parameters: {
-      type: "object", additionalProperties: false, required: ["plan"], properties: { plan: planSchema },
+      type: "object",
+      additionalProperties: true,
+      properties: { plan: { anyOf: [planSchema, {}] } },
     } as any,
-    async execute(_id, params: any) { return textResult(await state.submitPlan(params.plan, true)); },
+    async execute(_id, params: any) { return textResult(await state.submitPlan(params?.plan, true)); },
   }));
 }
