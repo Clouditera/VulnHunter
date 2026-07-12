@@ -251,6 +251,22 @@ describe("prepare submit/postflight", () => {
     expect(readdirSync(receiptFailure.output)).toEqual([]);
     receiptFailure.state.close();
 
+    const publicReceipt = fixture();
+    await publicReceipt.state.submitPlan(validPlan());
+    chmodSync(join(publicReceipt.control, "receipt.json"), 0o644);
+    expect(() => publicReceipt.state.postflight()).toThrowError(expect.objectContaining({ code: "ERR_PREPARE_PLANNER_FAILED" }));
+    expect(readdirSync(publicReceipt.output)).toEqual([]);
+    publicReceipt.state.close();
+
+    const wrongReceiptSchema = fixture();
+    await wrongReceiptSchema.state.submitPlan(validPlan());
+    const receipt = JSON.parse(readFileSync(join(wrongReceiptSchema.control, "receipt.json"), "utf8"));
+    receipt.schema_version = "prepare-receipt/v0";
+    writeFileSync(join(wrongReceiptSchema.control, "receipt.json"), JSON.stringify(receipt), { mode: 0o600 });
+    expect(() => wrongReceiptSchema.state.postflight()).toThrowError(expect.objectContaining({ code: "ERR_PREPARE_PLANNER_FAILED" }));
+    expect(readdirSync(wrongReceiptSchema.output)).toEqual([]);
+    wrongReceiptSchema.state.close();
+
     const extra = fixture();
     await extra.state.submitPlan(validPlan());
     writeFileSync(join(extra.output, "extra.txt"), "not allowed");

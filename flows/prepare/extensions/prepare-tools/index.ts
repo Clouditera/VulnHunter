@@ -88,11 +88,12 @@ function ensurePrivateDirectory(path: string): void {
   try { fchmodSync(fd, 0o700); } finally { closeSync(fd); }
 }
 
-function readRegularNoFollow(path: string, maxBytes: number): Buffer {
+function readRegularNoFollow(path: string, maxBytes: number, expectedMode?: number): Buffer {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = fstatSync(fd);
-    if (!stat.isFile() || stat.nlink !== 1 || stat.size < 1 || stat.size > maxBytes) throw new Error("unsafe trusted file");
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size < 1 || stat.size > maxBytes
+      || (expectedMode !== undefined && (stat.mode & 0o777) !== expectedMode)) throw new Error("unsafe trusted file");
     const bytes = Buffer.alloc(stat.size);
     let offset = 0;
     while (offset < stat.size) {
@@ -607,10 +608,15 @@ export class PrepareToolState {
     const plan = JSON.parse(raw);
     if (containsSensitive(plan)) this.failTerminal("ERR_PREPARE_OUTPUT_SENSITIVE");
     if (!this.validatePlan(plan) || this.semanticErrors(plan).length) this.failTerminal("ERR_PREPARE_SCHEMA_INVALID");
-    const receipt = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(join(this.config.controlDir, "receipt.json"), 64 * 1024)));
+    let receipt: any;
+    try {
+      receipt = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(join(this.config.controlDir, "receipt.json"), 64 * 1024, 0o600)));
+    } catch {
+      this.failTerminal("ERR_PREPARE_PLANNER_FAILED");
+    }
     const counters = receipt.counters as PrepareBudgets;
     const counterValues = counters && typeof counters === "object" ? Object.values(counters) : [];
-    if (receipt.status !== "committed" || receipt.manifest_sha256 !== this.manifestDigest
+    if (receipt.schema_version !== "prepare-receipt/v1" || receipt.status !== "committed" || receipt.manifest_sha256 !== this.manifestDigest
       || receipt.plan_sha256 !== sha256(raw)
       || !counters || counterValues.length !== 8 || counterValues.some((value) => !Number.isSafeInteger(value) || Number(value) < 0)
       || counters.totalCalls > 48 || counters.manifestCalls > 12
