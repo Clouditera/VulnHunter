@@ -63,12 +63,16 @@ fi
 # A free marker never grants ownership over artifacts from a previous run.
 # The planner input must be the sole pre-existing control entry.
 preexisting=""
-if [ "$(dirname -- "$PREPARE_PLANNER_INPUT")" != "$PREPARE_CONTROL_DIR" ] \
-  || [ ! -f "$PREPARE_PLANNER_INPUT" ] || [ -L "$PREPARE_PLANNER_INPUT" ]; then
+if [ ! -f "$PREPARE_PLANNER_INPUT" ] || [ -L "$PREPARE_PLANNER_INPUT" ]; then
   preexisting="planner_input"
-else
+elif [ "$(dirname -- "$PREPARE_PLANNER_INPUT")" = "$PREPARE_CONTROL_DIR" ]; then
   preexisting="$(find "$PREPARE_CONTROL_DIR" -mindepth 1 -maxdepth 1 \
     ! -path "$owner_dir" ! -path "$PREPARE_PLANNER_INPUT" -print -quit 2>/dev/null || true)"
+else
+  # The production worker mounts trusted planner input outside control.
+  # In that layout, pristine control contains only this process's marker.
+  preexisting="$(find "$PREPARE_CONTROL_DIR" -mindepth 1 -maxdepth 1 \
+    ! -path "$owner_dir" -print -quit 2>/dev/null || true)"
 fi
 if [ -z "$preexisting" ] && { [ -e "$PREPARE_OUTPUT_DIR" ] || [ -L "$PREPARE_OUTPUT_DIR" ]; }; then
   if [ ! -d "$PREPARE_OUTPUT_DIR" ] || [ -L "$PREPARE_OUTPUT_DIR" ]; then

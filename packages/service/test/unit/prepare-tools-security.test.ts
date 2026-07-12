@@ -527,7 +527,7 @@ describe("prepare static security boundary", () => {
       ),
     ).toEqual(["read_project_manifest", "read_project_file", "submit_plan"]);
     expect(hash("worker-assets/prepare-mode.sh")).toBe(
-      "9bf5ef2e155856dcc3ddc3420479c39ec4dde33e034087f99008d71d8a584b1b",
+      "269f2c987d2554e914a469ab5f13aa85d6f7a77b16173062bdecb832ec24e485",
     );
     const prepareMode = readFileSync(join(repoRoot, "worker-assets/prepare-mode.sh"), "utf8");
     expect(prepareMode.indexOf('mkdir "$owner_dir"')).toBeLessThan(prepareMode.indexOf("trap cleanup EXIT"));

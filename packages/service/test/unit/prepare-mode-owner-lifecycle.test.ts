@@ -11,10 +11,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "prepare-owner-")); roots.push(root);
-  const source = join(root, "source"), control = join(root, "control"), output = join(root, "output"), bin = join(root, "bin");
-  mkdirSync(source); mkdirSync(control); mkdirSync(bin);
+  const source = join(root, "source"), control = join(root, "control"), output = join(root, "output"), input = join(root, "input"), bin = join(root, "bin");
+  mkdirSync(source); mkdirSync(control); mkdirSync(input); mkdirSync(bin);
   writeFileSync(join(source, "README.md"), "readonly\n"); chmodSync(source, 0o555);
-  const planner = join(control, "planner.json"); writeFileSync(planner, "{}", { mode: 0o600 });
+  const planner = join(input, "planner.json"); writeFileSync(planner, "{}", { mode: 0o600 });
   const original = readFileSync(join(repoRoot, "worker-assets/prepare-mode.sh"), "utf8");
   const script = join(root, "prepare-mode.sh");
   writeFileSync(script, original.replace("export PATH=/usr/local/bin:/usr/bin:/bin", `export PATH=${bin}:/usr/bin:/bin`), { mode: 0o755 });
@@ -78,6 +78,13 @@ describe("prepare-mode owner-bound lifecycle", () => {
     const f = fixture(), result = run(f, "success"); expect(result.status, result.stderr).toBe(0);
     expectEmpty(f.control); const plan = join(f.output, "assessment-plan.json"); expect(digest(plan)).toBeTruthy(); expect(statSync(plan).mode & 0o777).toBe(0o600);
   });
+  it("accepts production layout with trusted planner input outside pristine control", () => {
+    const f = fixture(), result = run(f, "success"); expect(result.status, result.stderr).toBe(0); expectEmpty(f.control); expect(statSync(join(f.output, "assessment-plan.json")).mode & 0o777).toBe(0o600);
+  });
+  it("keeps compatibility with exact trusted planner input inside control", () => {
+    const f = fixture(), internal = join(f.control, "planner.json"); writeFileSync(internal, "{}", { mode: 0o600 }); f.env.PREPARE_PLANNER_INPUT = internal;
+    const result = run(f, "success"); expect(result.status, result.stderr).toBe(0); expectEmpty(f.control); expect(statSync(join(f.output, "assessment-plan.json")).mode & 0o777).toBe(0o600);
+  });
   it("cleans only owned state on owner failure", () => {
     const f = fixture(), result = run(f, "failure"); expect(result.status).not.toBe(0); expectEmpty(f.control); expectEmpty(f.output);
   });
@@ -96,6 +103,11 @@ describe("prepare-mode owner-bound lifecycle", () => {
   it("preexisting and stale owner state are never taken over or deleted", () => {
     const preexisting = fixture(); mkdirSync(join(preexisting.control, ".youngflow")); writeFileSync(join(preexisting.control, ".youngflow/state"), "stale"); const before = snapshot(preexisting.control); expect(run(preexisting, "success").status).toBe(3); expect(snapshot(preexisting.control)).toEqual(before);
     const stale = fixture(); mkdirSync(join(stale.control, ".prepare-owner")); writeFileSync(join(stale.control, ".prepare-owner/identity"), "00000000-0000-0000-0000-000000000000\n", { mode: 0o600 }); const staleBefore = snapshot(stale.control); expect(run(stale, "success").status).toBe(3); expect(snapshot(stale.control)).toEqual(staleBefore);
+  });
+  it("rejects missing, symlink, and non-file external planner without leaking marker", () => {
+    const missing = fixture(); rmSync(missing.planner); expect(run(missing, "success").status).toBe(3); expectEmpty(missing.control);
+    const linked = fixture(), target = join(linked.root, "planner-target.json"); writeFileSync(target, "trusted", { mode: 0o600 }); rmSync(linked.planner); symlinkSync(target, linked.planner); const targetBefore = snapshot(join(linked.root, "input")); expect(run(linked, "success").status).toBe(3); expect(snapshot(join(linked.root, "input"))).toEqual(targetBefore); expectEmpty(linked.control);
+    const directory = fixture(); rmSync(directory.planner); mkdirSync(directory.planner); expect(run(directory, "success").status).toBe(3); expectEmpty(directory.control);
   });
   it("rejects an existing control symlink without changing its target", () => {
     const f = fixture(), target = join(f.root, "control-target");
