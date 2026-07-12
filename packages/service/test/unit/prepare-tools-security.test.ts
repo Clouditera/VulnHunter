@@ -271,6 +271,25 @@ describe("prepare submit/postflight", () => {
     const settled = await Promise.allSettled([concurrent.state.submitPlan(validPlan()), concurrent.state.submitPlan(validPlan())]);
     expect(settled.every((item) => item.status === "rejected")).toBe(true);
     expect(readdirSync(concurrent.output)).toEqual([]); concurrent.state.close();
+
+    for (const invalidEnvelope of [{}, { plan: validPlan(), extra: "not allowed" }]) {
+      const mixed = fixture();
+      const mixedSettled = await Promise.allSettled([
+        mixed.state.submitEnvelope({ plan: validPlan() }),
+        mixed.state.submitEnvelope(invalidEnvelope),
+      ]);
+      expect(mixedSettled.every((item) => item.status === "rejected")).toBe(true);
+      expect(readdirSync(mixed.output)).toEqual([]);
+      mixed.state.close();
+    }
+
+    for (const invalidAfterCommit of [{}, { plan: validPlan(), extra: "not allowed" }]) {
+      const committed = fixture();
+      await committed.state.submitEnvelope({ plan: validPlan() });
+      await expect(committed.state.submitEnvelope(invalidAfterCommit)).rejects.toMatchObject({ terminal: true });
+      expect(readdirSync(committed.output)).toEqual([]);
+      committed.state.close();
+    }
   });
 
   it("S07 receipt/write or postflight durable-layout failure leaves no final plan", async () => {

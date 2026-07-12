@@ -510,6 +510,7 @@ export class PrepareToolState {
 
   async submitEnvelope(params: unknown, alreadyCounted = false): Promise<any> {
     if (!alreadyCounted) this.count("submit");
+    if (this.submitInFlight || this.committed) this.failTerminal("ERR_PREPARE_PLANNER_FAILED");
     let raw: string | undefined;
     try { raw = canonicalJson(params); } catch { /* invalid envelope below */ }
     if (raw === undefined || Buffer.byteLength(raw) > MAX_PLAN_BYTES) {
