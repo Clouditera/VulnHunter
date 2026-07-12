@@ -53,6 +53,8 @@ const SECRET_PATTERNS = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/i,
   /\b(?:api[_-]?key|access[_-]?token|secret|password)\s*[:=]\s*\S+/i,
   /\bBearer\s+[A-Za-z0-9._~+\/-]{12,}/i,
+  /\b(?:sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{12,}/i,
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/,
   /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@:]+:[^\s/@]+@/i,
   /https?:\/\/(?:localhost|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/i,
 ];
@@ -80,7 +82,8 @@ function warning(code: string, message: string, evidence_paths: string[]) { retu
 function validateContext(context: AssembleContext): void {
   const requested = [...context.requestedStages];
   if (!new Set(["static_audit", "static_audit,build,poc", "static_audit,build,poc,exp"]).has(requested.join(","))
-    || new Set(requested).size !== requested.length || requested.some((stage) => !PREPARE_STAGES.includes(stage))) {
+    || new Set(requested).size !== requested.length || requested.some((stage) => !PREPARE_STAGES.includes(stage))
+    || !context.manifestPaths.has(".") || context.manifestFilePaths.has(".")) {
     throw new Error("Invalid trusted Prepare assembly context");
   }
 }
@@ -100,6 +103,7 @@ export function validateSemanticDecision(decision: unknown, context: AssembleCon
   const globalEvidence = new Map<string, any[]>();
   for (const [index, evidence] of assessment.evidence.entries()) {
     if (!context.manifestPaths.has(evidence.path)) push(errors, `/assessment/evidence/${index}/path`, "path must be manifest-known");
+    if (evidence.path === "." && (!context.manifestTruncated || evidence.signal !== "other")) push(errors, `/assessment/evidence/${index}`, "root evidence is allowed only for trusted truncation with signal other");
     if ((evidence.line_start == null) !== (evidence.line_end == null)) push(errors, `/assessment/evidence/${index}`, "line range must include both endpoints");
     if (evidence.line_start != null && (!context.manifestFilePaths.has(evidence.path) || evidence.line_end < evidence.line_start)) push(errors, `/assessment/evidence/${index}`, "line range must reference a file and be ordered");
     globalEvidence.set(evidence.path, [...(globalEvidence.get(evidence.path) ?? []), evidence]);

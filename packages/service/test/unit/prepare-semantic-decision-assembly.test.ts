@@ -39,7 +39,7 @@ function decisionFor(fixture: any) {
   const roots = e.root_candidates_contains ?? ["."];
   const evidencePaths = [...new Set([...(e.evidence_paths_contains ?? []), files[0]])];
   const signals = e.evidence_signals_contains ?? [];
-  const evidence = evidencePaths.map((path, index) => ({ path, signal: signals[index] ?? (index === 0 ? "project_metadata" : "source_tree_shape"), observation: `Bounded structural fact ${index + 1}.` }));
+  const evidence = evidencePaths.map((path, index) => ({ path, signal: path === "." ? "other" : signals[index] ?? (index === 0 ? "project_metadata" : "source_tree_shape"), observation: `Bounded structural fact ${index + 1}.` }));
   if (e.status === "complete") {
     if (!evidence.some((item) => ["project_metadata", "build_entrypoint"].includes(item.signal))) evidence.push({ path: evidencePaths[0], signal: "project_metadata", observation: "Project metadata declares the boundary." });
     if (!evidence.some((item) => item.signal === "source_tree_shape")) evidence.push({ path: evidencePaths.at(-1)!, signal: "source_tree_shape", observation: "Source tree closes the declared boundary." });
@@ -153,9 +153,11 @@ describe("Prepare compact semantic decision deterministic assembly", () => {
     expectInvalid(base.decision, { ...base.context, manifestTruncated: true }, "status");
   });
 
-  it("rejects unknown fields, sensitive text, and internal infrastructure paths", () => {
+  it("rejects unknown fields, sensitive text, provider tokens, JWTs, and internal paths", () => {
     const base = decisionFor(oracle.fixtures[1]);
-    const secret = clone(base.decision); secret.assessment.missing[0].fix = "api_key=not-allowed"; expectInvalid(secret, base.context);
+    for (const value of ["api_key=not-allowed", "ghp_abcdefghijklmnop", "xoxb-abcdefghijklmnop", "eyJabcdefgh.abcdefghijk.abcdefghijk"]) {
+      const secret = clone(base.decision); secret.assessment.missing[0].fix = value; expectInvalid(secret, base.context);
+    }
     const internal = clone(base.decision); internal.assessment.intended_project = "/workspace/private"; expectInvalid(internal, base.context);
   });
 
@@ -168,6 +170,18 @@ describe("Prepare compact semantic decision deterministic assembly", () => {
     const duplicate = clone(base.decision); duplicate.assessment.evidence.push({ ...clone(duplicate.assessment.evidence[0]), observation: ` ${duplicate.assessment.evidence[0].observation} ` }); expectInvalid(duplicate, base.context, "evidence");
   });
 
+  it("allows root candidates but rejects dot evidence outside its trusted truncation namespace", () => {
+    const complete = decisionFor(oracle.fixtures[0]);
+    expect(complete.decision.assessment.root_candidates).toContain(".");
+    expect(validateSemanticDecision(complete.decision, complete.context)).toEqual([]);
+    const ordinary = clone(complete.decision); ordinary.assessment.evidence.push({ path: ".", signal: "other", observation: "Untrusted aggregate claim." });
+    expectInvalid(ordinary, complete.context, "evidence");
+    const fake = clone(complete.decision); fake.assessment.evidence = [{ path: ".", signal: "project_metadata", observation: "Claims complete metadata." }, { path: ".", signal: "source_tree_shape", observation: "Claims complete source." }];
+    expectInvalid(fake, complete.context, "evidence");
+    expect(() => validateSemanticDecision(complete.decision, { ...complete.context, manifestPaths: new Set(["CMakeLists.txt"]) })).toThrow("Invalid trusted Prepare assembly context");
+    expect(() => validateSemanticDecision(complete.decision, { ...complete.context, manifestFilePaths: new Set([".", "CMakeLists.txt"]) })).toThrow("Invalid trusted Prepare assembly context");
+  });
+
   it("allows insufficient-evidence retry only for trusted manifest truncation", () => {
     const fixture = oracle.fixtures.find((item: any) => item.id === "uncertain_material_manifest_truncation");
     const base = decisionFor(fixture);
@@ -175,7 +189,7 @@ describe("Prepare compact semantic decision deterministic assembly", () => {
     expectInvalid(base.decision, { ...base.context, manifestTruncated: false }, "recommendation_codes");
     const plan = assembleAssessmentPlan(base.decision, base.context);
     expect(plan.warnings[0].code).toBe("manifest_truncated");
-    expect(plan.source_assessment.evidence.some((item: any) => item.path === "." && item.line_start == null)).toBe(true);
+    expect(plan.source_assessment.evidence.some((item: any) => item.path === "." && item.signal === "other" && item.line_start == null)).toBe(true);
   });
 
   it("rejects stage, dependency, egress, and recommendation conflicts", () => {
