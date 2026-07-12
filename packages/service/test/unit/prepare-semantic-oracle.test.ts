@@ -118,6 +118,25 @@ describe("M3-04 normalized semantic oracle", () => {
     };
     plan.source_assessment.evidence.forEach((item: any) => { item.observation = facts[item.path] ?? item.observation; });
     expect(() => assertPrepareSemanticOracle(plan, expected, { capabilityCatalog: oracle.planner_input_defaults.capability_catalog.capabilities })).not.toThrow();
+    for (const message of [
+      "Submit the complete Asterisk 10.2.0 tree with overlays, then ask the platform to download the base source.",
+      "Submit the complete Asterisk 10.2.0 tree with overlays, then continue build.",
+      "Submit the complete Asterisk 10.2.0 tree with overlays, then continue POC.",
+      "Submit the complete Asterisk 10.2.0 tree with overlays, then continue EXP exploitation.",
+      "提交完整 Asterisk 10.2.0 tree 并合并 overlays，然后由平台下载基础源码。",
+      "提交完整 Asterisk 10.2.0 tree 并合并 overlays，然后继续构建。",
+      "提交完整 Asterisk 10.2.0 tree 并合并 overlays，然后继续 POC。",
+      "提交完整 Asterisk 10.2.0 tree 并合并 overlays，然后继续 EXP 利用。",
+    ]) {
+      const unsafe = structuredClone(plan);
+      unsafe.source_assessment.user_recommendations.forEach((item: any) => { item.message = message; });
+      expect(() => assertPrepareSemanticOracle(unsafe, expected)).toThrow(/forbidden recommendation/);
+    }
+    const safelyNegated = structuredClone(plan);
+    safelyNegated.source_assessment.user_recommendations.forEach((item: any) => {
+      item.message = "请提交完整 Asterisk 10.2.0 tree 并合并 overlays；平台不得下载基础源码，也不要继续构建、POC 或 EXP。";
+    });
+    expect(() => assertPrepareSemanticOracle(safelyNegated, expected)).not.toThrow();
     plan.source_assessment.root_candidates.pop();
     expect(() => assertPrepareSemanticOracle(plan, expected)).toThrow(/exact 20 case roots/);
   });
@@ -133,8 +152,27 @@ describe("M3-04 normalized semantic oracle", () => {
     check((plan) => { plan.sandbox_plan.requirements.required_capabilities.push("invented_root_vm"); });
     check((plan) => { plan.sandbox_plan.profile_recommendation.recommended_profile_id = "profile-secret"; });
     check(() => {}, { toolCalls: ["bash"] });
-    check((plan) => { plan.source_assessment.summary = "/home/customer/source"; });
+    for (const path of [
+      "/source/project", "/control/private", "/output/plan", "/input/planner.json", "/workspace/src",
+      "/work/tree", "/opt/app", "/tmp/file", "/home/user", "/root/key", "/etc/passwd", "/var/lib/data", "/run/secrets/key",
+      "C:\\source\\project", "D:/input/planner.json",
+    ]) check((plan) => { plan.source_assessment.summary = `internal path ${path}`; });
+    const urlPlan = structuredClone(base);
+    urlPlan.source_assessment.summary = "Public declarations: https://example.invalid/source/project and https://example.invalid/var/data";
+    expect(() => assertPrepareSemanticOracle(urlPlan, fixture.expected, { capabilityCatalog: oracle.planner_input_defaults.capability_catalog.capabilities })).not.toThrow();
     const excerpt = "A".repeat(80);
     check((plan) => { plan.source_assessment.summary = excerpt; }, { sourceTexts: [excerpt] });
+  });
+
+  it("accepts equivalent Chinese completeness concepts", () => {
+    const patch = oracle.fixtures.find((item: any) => item.id === "incomplete_patch_only_unlocated_base");
+    const patchPlan = canonicalPlan(patch.expected);
+    patchPlan.source_assessment.summary = "提交物缺少基础源码，并且基础源码版本无法可靠定位。";
+    expect(() => assertPrepareSemanticOracle(patchPlan, patch.expected)).not.toThrow();
+
+    const lfs = oracle.fixtures.find((item: any) => item.id === "incomplete_required_lfs_asset");
+    const lfsPlan = canonicalPlan(lfs.expected);
+    lfsPlan.source_assessment.summary = "LFS 指针不是实际资产内容。";
+    expect(() => assertPrepareSemanticOracle(lfsPlan, lfs.expected)).not.toThrow();
   });
 });

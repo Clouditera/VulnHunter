@@ -44,10 +44,32 @@ function assertSetExcludes(actual, forbidden, label) {
 }
 function conceptPresent(text, concept) {
   const lower = text.toLowerCase();
-  if (concept === "base source absent") return /base.{0,40}(source|tree).{0,40}(absent|missing|not (?:included|present|submitted))/.test(lower) || /(absent|missing|not (?:included|present|submitted)).{0,40}base.{0,40}(source|tree)/.test(lower);
-  if (concept === "base version not reliably locatable") return /(version.{0,60}(unknown|unreliable|cannot|unable|not).{0,30}(locat|identif))/.test(lower) || /(cannot|unable).{0,40}(locat|identify).{0,40}version/.test(lower);
-  if (concept === "LFS pointer is not asset content") return /lfs.{0,60}pointer.{0,80}(not|missing|instead).{0,50}(asset|content|object)/.test(lower);
+  if (concept === "base source absent") return /base.{0,40}(source|tree).{0,40}(absent|missing|not (?:included|present|submitted))/.test(lower) || /(absent|missing|not (?:included|present|submitted)).{0,40}base.{0,40}(source|tree)/.test(lower) || /(?:缺少|未包含|未提交|不存在).{0,20}(?:基础|基线).{0,8}(?:源码|源代码)/.test(text) || /(?:基础|基线).{0,8}(?:源码|源代码).{0,20}(?:缺少|未包含|未提交|不存在)/.test(text);
+  if (concept === "base version not reliably locatable") return /(version.{0,60}(unknown|unreliable|cannot|unable|not).{0,30}(locat|identif))/.test(lower) || /(cannot|unable).{0,40}(locat|identify).{0,40}version/.test(lower) || /版本.{0,30}(?:无法|不能|不可).{0,15}(?:可靠)?(?:定位|识别|确定)/.test(text) || /(?:无法|不能|不可).{0,15}(?:可靠)?(?:定位|识别|确定).{0,20}版本/.test(text);
+  if (concept === "LFS pointer is not asset content") return /lfs.{0,60}pointer.{0,80}(not|missing|instead).{0,50}(asset|content|object)/.test(lower) || /lfs.{0,40}指针.{0,40}(?:不是|并非|不等于|无法替代).{0,30}(?:资产|内容|对象|实际文件)/i.test(text);
   return lower.includes(concept.toLowerCase());
+}
+function isNegatedRecommendation(fragment) {
+  return /(?:do\s+not|don't|must\s+not|should\s+not|never|cannot|can't|不会|不得|不要|不可|不能|不应|禁止)/i.test(fragment);
+}
+function hasPositiveForbiddenRecommendation(text, kind) {
+  const patterns = {
+    download_base: /(?:prepare|platform|system|平台|系统).{0,30}(?:download|fetch|下载|获取|拉取).{0,40}(?:base|source|基础源码|基础源代码|源码|源代码)/gi,
+    continue_build: /(?:continue|继续|随后|然后).{0,20}(?:build|构建|编译)/gi,
+    continue_poc: /(?:continue|继续|随后|然后).{0,20}(?:poc|概念验证)/gi,
+    continue_exp: /(?:continue|继续|随后|然后).{0,20}(?:exp|exploit|利用)/gi
+  };
+  const pattern = patterns[kind];
+  if (!pattern) return new RegExp(kind.replaceAll("_", ".*"), "i").test(text);
+  for (const match of text.matchAll(pattern)) {
+    const prefix = text.slice(Math.max(0, (match.index ?? 0) - 24), match.index ?? 0);
+    if (!isNegatedRecommendation(`${prefix}${match[0]}`)) return true;
+  }
+  return false;
+}
+function containsInternalAbsolutePath(text) {
+  const withoutUrls = text.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s]+/gi, "");
+  return /(?:^|[^A-Za-z0-9])\/(?:source|control|output|input|workspace|work|opt|tmp|home|root|etc|var|run)(?:\/|$)/.test(withoutUrls) || /(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/][^\s]*/.test(withoutUrls);
 }
 function normalizePreparePlan(plan) {
   return {
@@ -128,16 +150,10 @@ function assertPrepareSemanticOracle(plan, expected, options = {}) {
     for (const [path, fact] of requiredFacts) if (!fact.test(observations.get(path) ?? "")) throw new Error(`Stonesoup evidence missing decisive fact: ${path}`);
   }
   for (const forbidden of expected.forbidden_recommendations ?? []) {
-    const patterns = {
-      download_base: /(?:prepare|platform|we|system).{0,30}(?:download|fetch).{0,30}(?:base|source)/,
-      continue_build: /continue.{0,20}build/,
-      continue_poc: /continue.{0,20}poc/,
-      continue_exp: /continue.{0,20}exp/
-    };
-    if ((patterns[forbidden] ?? new RegExp(forbidden.replaceAll("_", ".*"))).test(recommendationText)) throw new Error(`forbidden recommendation: ${forbidden}`);
+    if (hasPositiveForbiddenRecommendation(recommendationText, forbidden)) throw new Error(`forbidden recommendation: ${forbidden}`);
   }
   const allText = values(plan).join("\n");
-  if (/(?:^|[^A-Za-z0-9])\/(?:home|root|workspace|work|opt|tmp)\//.test(allText)) throw new Error("absolute host/container path in plan");
+  if (containsInternalAbsolutePath(allText)) throw new Error("absolute host/container path in plan");
   if (/-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:api[_-]?key|access[_-]?token|password)\s*[:=]/i.test(allText)) throw new Error("credential/private key content in plan");
   for (const source of options.sourceTexts ?? []) {
     for (let index = 0; index + 64 <= source.length; index++) {
