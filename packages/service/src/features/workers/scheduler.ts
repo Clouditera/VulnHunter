@@ -61,12 +61,21 @@ export function summarizeExecutionEvents(lines: string[]): {
   let flowStagesTotal = 0;
   let flowStagesCompleted = 0;
   let flowStagesFailed = 0;
+  let observedStageEvents = 0;
+  let fallbackFlowStagesTotal = 0;
+  let fallbackFlowStagesCompleted = 0;
+  let fallbackFlowStagesFailed = 0;
 
   for (const line of lines) {
     try {
       const ev = JSON.parse(line);
       if (ev.event === "stage_done" || ev.type === "stage_end") {
         stageCount++;
+        observedStageEvents++;
+        flowStagesTotal++;
+        const failed = (Number(ev.exit_code ?? 0) || 0) !== 0 || ev.status === "failed";
+        if (failed) flowStagesFailed++;
+        else flowStagesCompleted++;
         const input = Number(ev.input_tokens ?? ev.tokens_in ?? 0) || 0;
         const output = Number(ev.output_tokens ?? ev.tokens_out ?? 0) || 0;
         const cacheRead = Number(ev.cache_read_tokens ?? ev.tokens_cache_read ?? 0) || 0;
@@ -82,11 +91,20 @@ export function summarizeExecutionEvents(lines: string[]): {
         toolCallCount += Number(ev.tools ?? 0) || 0;
       }
       if (ev.event === "flow_end") {
-        flowStagesTotal = Number(ev.stages_total ?? 0);
-        flowStagesCompleted = Number(ev.stages_completed ?? 0);
-        flowStagesFailed = Number(ev.stages_failed ?? 0);
+        // A timeout-finalized scan contains two flow_end events. Preserve the
+        // event only as a legacy fallback; observed stage_done events are the
+        // authoritative cumulative count across both runs.
+        fallbackFlowStagesTotal = Number(ev.stages_total ?? 0) || 0;
+        fallbackFlowStagesCompleted = Number(ev.stages_completed ?? 0) || 0;
+        fallbackFlowStagesFailed = Number(ev.stages_failed ?? 0) || 0;
       }
     } catch { /* skip bad lines */ }
+  }
+
+  if (observedStageEvents === 0) {
+    flowStagesTotal = fallbackFlowStagesTotal;
+    flowStagesCompleted = fallbackFlowStagesCompleted;
+    flowStagesFailed = fallbackFlowStagesFailed;
   }
 
   return {

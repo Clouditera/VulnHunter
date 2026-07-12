@@ -30,6 +30,25 @@ describe("summarizeExecutionEvents", () => {
     });
   });
 
+  it("accumulates two-phase stage totals instead of accepting the finalizer flow_end=1 overwrite", () => {
+    const summary = summarizeExecutionEvents([
+      JSON.stringify({ event: "stage_done", stage: "decide", exit_code: 0, tokens_total: 10, tools: 2 }),
+      JSON.stringify({ event: "stage_done", stage: "verify/A", exit_code: 1, tokens_total: 20, tools: 3 }),
+      JSON.stringify({ event: "flow_end", stages_total: 2, stages_completed: 1, stages_failed: 1 }),
+      JSON.stringify({ event: "stage_done", stage: "report", exit_code: 0, tokens_total: 30, tools: 4 }),
+      JSON.stringify({ event: "flow_end", stages_total: 1, stages_completed: 1, stages_failed: 0 }),
+    ]);
+
+    expect(summary).toMatchObject({
+      stageCount: 3,
+      flowStagesTotal: 3,
+      flowStagesCompleted: 2,
+      flowStagesFailed: 1,
+      totalTokens: 60,
+      toolCallCount: 9,
+    });
+  });
+
   it("falls back to input plus output for old stage_done events", () => {
     const summary = summarizeExecutionEvents([
       JSON.stringify({ event: "stage_done", tokens_in: 10, tokens_out: 3, tools: 2 }),

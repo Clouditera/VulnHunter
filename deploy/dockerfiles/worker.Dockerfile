@@ -26,6 +26,7 @@ ARG VULNFORGE_COMMIT=058da50be533b4605ff2e1614cef77b5c2d936bd
 LABEL org.opencontainers.image.vulnforge.version=$VULNFORGE_VERSION \
       org.opencontainers.image.vulnforge.revision=$VULNFORGE_COMMIT
 COPY flows/vulnforge /opt/vulnagent/flows/vulnforge
+COPY flows/vulnforge-timeout /opt/vulnagent/flows/vulnforge-timeout
 RUN printf '{\n  "version": "%s",\n  "commit": "%s"\n}\n' \
       "$VULNFORGE_VERSION" "$VULNFORGE_COMMIT" \
       > /opt/vulnagent/VULNFORGE_VERSION.json
@@ -53,10 +54,17 @@ RUN test -f /opt/vulnagent/flows/vulnforge/extensions/code-coverage-tracker/inde
     && test -f /opt/vulnagent/flows/vulnforge/extensions/code-coverage-viewer/index.ts \
     && test -f /opt/vulnagent/flows/vulnforge/extensions/output-contract/contracts.json \
     && test -f /opt/vulnagent/flows/vulnforge/extensions/workspace-diff/index.ts \
+    && test -L /opt/vulnagent/flows/vulnforge-timeout/schemas \
+    && test "$(readlink /opt/vulnagent/flows/vulnforge-timeout/schemas)" = ../vulnforge/schemas \
+    && test "$(realpath /opt/vulnagent/flows/vulnforge-timeout/schemas)" = /opt/vulnagent/flows/vulnforge/schemas \
+    && test "$(sha256sum /opt/vulnagent/flows/vulnforge-timeout/schemas/audit-completion.schema.yaml | awk '{print $1}')" = "$(sha256sum /opt/vulnagent/flows/vulnforge/schemas/audit-completion.schema.yaml | awk '{print $1}')" \
+    && test "$(sha256sum /opt/vulnagent/flows/vulnforge-timeout/schemas/audit-report.schema.yaml | awk '{print $1}')" = "$(sha256sum /opt/vulnagent/flows/vulnforge/schemas/audit-report.schema.yaml | awk '{print $1}')" \
     && printf '{"providers":{}}\n' > /opt/vulnagent/flows/vulnforge/models.json \
     && youngflow /opt/vulnagent/flows/vulnforge/flow.audit.yaml --list-stages >/tmp/vulnforge-stages.txt \
+    && youngflow /opt/vulnagent/flows/vulnforge-timeout/flow.timeout-finalize.yaml --list-stages >/tmp/vulnforge-timeout-stages.txt \
     && rm -f /opt/vulnagent/flows/vulnforge/models.json \
     && grep -qE '^  complete[[:space:]]' /tmp/vulnforge-stages.txt \
+    && grep -qE '^  report[[:space:]]' /tmp/vulnforge-timeout-stages.txt \
     && youngflow /opt/vulnagent/flows/vulnforge/flow.audit.yaml --help >/tmp/vulnforge-help.txt \
     && grep -q -- '--user-instr <value>' /tmp/vulnforge-help.txt \
     && grep -q -- '--sandbox-cfg <value>' /tmp/vulnforge-help.txt
@@ -73,7 +81,10 @@ COPY worker-assets/scan-mode.sh /opt/scan-mode.sh
 COPY worker-assets/chat-mode.sh /opt/chat-mode.sh
 COPY worker-assets/report-mode.sh /opt/report-mode.sh
 COPY worker-assets/prepare-mode.sh /opt/prepare-mode.sh
-RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh /opt/report-mode.sh /opt/prepare-mode.sh
+COPY worker-assets/run-with-deadline.py /opt/run-with-deadline.py
+COPY worker-assets/timeout-finalize-artifacts.py /opt/timeout-finalize-artifacts.py
+RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh /opt/report-mode.sh /opt/prepare-mode.sh \
+    /opt/run-with-deadline.py /opt/timeout-finalize-artifacts.py
 
 WORKDIR /workspace
 ENTRYPOINT ["/opt/entrypoint.sh"]

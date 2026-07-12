@@ -3,6 +3,11 @@ set -e
 
 FLOW_DIR="/opt/vulnagent/flows/vulnforge"
 FLOW_FILE="$FLOW_DIR/flow.audit.yaml"
+TIMEOUT_FLOW_FILE="/opt/vulnagent/flows/vulnforge-timeout/flow.timeout-finalize.yaml"
+DEADLINE_RUNNER="/opt/run-with-deadline.py"
+FINALIZE_ARTIFACTS="/opt/timeout-finalize-artifacts.py"
+FINALIZE_CONTROL="/workspace/.timeout-finalize"
+SUPERVISOR_PID=""
 STATIC_ONLY_SCHED_INSTR="平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；完成静态审计后进入报告阶段。"
 
 build_youngflow_args() {
@@ -48,6 +53,98 @@ log_input_summary() {
   echo "[scan] VulnForge inputs: audit_scope_present=$([ -n "${VULNFORGE_AUDIT_SCOPE:-}" ] && echo true || echo false) audit_scope_chars=${#VULNFORGE_AUDIT_SCOPE} vuln_focus_present=$([ -n "${VULNFORGE_VULN_FOCUS:-}" ] && echo true || echo false) vuln_focus_chars=${#VULNFORGE_VULN_FOCUS} user_instr_present=$([ -n "${VULNFORGE_USER_INSTR:-}" ] && echo true || echo false) user_instr_chars=${#VULNFORGE_USER_INSTR} sched_instr_present=true sched_instr_chars=${#effective_sched_instr} enable_poc=false enable_exp=false sandbox_cfg_present=false" >&2
 }
 
+calculate_finalize_budget() {
+  local analysis="$1" budget
+  case "$analysis" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ "$analysis" -gt 0 ] || return 1
+  budget=$(( (analysis + 4) / 5 ))
+  [ "$budget" -ge 120 ] || budget=120
+  [ "$budget" -le 600 ] || budget=600
+  printf '%s\n' "$budget"
+}
+
+run_supervised() {
+  local timeout_seconds="$1" log_mode="$2"
+  shift 2
+  set +e
+  if [ "$log_mode" = "append" ]; then
+    python3 "$DEADLINE_RUNNER" --timeout "$timeout_seconds" --grace 30 -- "$@" 2>>"$SERVICE_LOG" &
+  else
+    python3 "$DEADLINE_RUNNER" --timeout "$timeout_seconds" --grace 30 -- "$@" 2>"$SERVICE_LOG" &
+  fi
+  SUPERVISOR_PID=$!
+  wait "$SUPERVISOR_PID"
+  local result=$?
+  SUPERVISOR_PID=""
+  set -e
+  return "$result"
+}
+
+cleanup_finalize_control() {
+  [ ! -e "$FINALIZE_CONTROL" ] || python3 "$FINALIZE_ARTIFACTS" cleanup --control-dir "$FINALIZE_CONTROL"
+}
+
+terminate_scan() {
+  local signal_name="$1" exit_code="$2"
+  trap - EXIT TERM INT HUP
+  if [ -n "$SUPERVISOR_PID" ]; then
+    kill -s "$signal_name" "$SUPERVISOR_PID" 2>/dev/null || true
+    wait "$SUPERVISOR_PID" 2>/dev/null || true
+    SUPERVISOR_PID=""
+  fi
+  cleanup_finalize_control 2>/dev/null || true
+  finish_log 2>/dev/null || true
+  exit "$exit_code"
+}
+
+handle_analysis_exit() {
+  local analysis_exit="$1" analysis_seconds="$2"
+  if [ "$analysis_exit" -eq 124 ]; then
+    run_timeout_finalizer "$analysis_seconds"
+    return $?
+  fi
+  return "$analysis_exit"
+}
+
+run_timeout_finalizer() {
+  local analysis_seconds="$1" finalize_budget
+  finalize_budget="$(calculate_finalize_budget "$analysis_seconds")" || return 2
+  cleanup_finalize_control || return 3
+  local prepare_result
+  prepare_result="$(python3 "$FINALIZE_ARTIFACTS" prepare \
+    --out-dir /workspace/out \
+    --control-dir "$FINALIZE_CONTROL" \
+    --analysis-limit-seconds "$analysis_seconds")" || return 3
+  echo "[scan] Timeout artifact prepare: $prepare_result" >&2
+
+  # Finalization is a single bounded attempt. The shared ephemeral env keeps
+  # the selected provider but disables YoungFlow's outer stage retry loop.
+  sed -i 's/^YOUNGFLOW_ERROR_RETRIES=.*/YOUNGFLOW_ERROR_RETRIES=0/' "$FLOW_DIR/.env"
+
+  echo "[scan] Deadline reached; starting bounded report finalizer (budget=${finalize_budget}s)" >&2
+  local final_exit=0
+  run_supervised "$finalize_budget" append \
+    youngflow "$TIMEOUT_FLOW_FILE" \
+      --work-dir /workspace/src \
+      --output-dir /workspace/out \
+      --artifact-inventory "$FINALIZE_CONTROL/inventory.json" \
+      --analysis-limit-seconds "$analysis_seconds" \
+      --continue \
+      --json-log \
+      --max-parallel 1 || final_exit=$?
+  echo "[scan] Finalize phase exit=$final_exit" >&2
+  [ "$final_exit" -eq 0 ] || return "$final_exit"
+  local verify_result
+  verify_result="$(python3 "$FINALIZE_ARTIFACTS" verify \
+    --out-dir /workspace/out \
+    --control-dir "$FINALIZE_CONTROL")" || return 3
+  echo "[scan] Timeout artifact verify: $verify_result" >&2
+  cleanup_finalize_control || return 3
+  return 0
+}
+
 main() {
 TASK_ID="${TASK_ID:?TASK_ID is required}"
 SERVICE_LOG="/workspace/.service-logs/youngflow.service.jsonl"
@@ -59,7 +156,9 @@ finish_log() {
   fi
 }
 
-trap finish_log EXIT
+trap 'terminate_scan TERM 143' TERM HUP
+trap 'terminate_scan INT 130' INT
+trap 'cleanup_finalize_control 2>/dev/null || true; finish_log' EXIT
 
 echo "[scan] Starting scan for task: $TASK_ID" >&2
 
@@ -68,11 +167,13 @@ if ! command -v python3 &>/dev/null; then
   echo "[scan] FATAL: python3 not found — required for models.json generation" >&2
   exit 1
 fi
-if [ ! -f "$FLOW_FILE" ]; then
-  echo "[scan] FATAL: VulnForge audit flow not found: $FLOW_FILE" >&2
-  exit 1
-fi
-echo "[scan] Preflight OK: python3 + VulnForge audit flow available" >&2
+for required in "$FLOW_FILE" "$TIMEOUT_FLOW_FILE" "$DEADLINE_RUNNER" "$FINALIZE_ARTIFACTS"; do
+  if [ ! -f "$required" ]; then
+    echo "[scan] FATAL: required scan asset not found: $required" >&2
+    exit 1
+  fi
+done
+echo "[scan] Preflight OK: python3 + main/finalizer flows + deadline gates available" >&2
 
 # Code already extracted to /workspace/src/ by service (bind mount)
 
@@ -215,26 +316,27 @@ YOUNGFLOW_MAX_PARALLEL=${YOUNGFLOW_MAX_PARALLEL:-3}
 build_youngflow_args
 log_input_summary
 
-# Scan-duration termination: wrap youngflow in coreutils `timeout`.
+# The supervisor reserves 124 exclusively for its own deadline. Child 137/OOM,
+# crash, provider failure, and external cancellation remain non-deadline exits.
 EFFECTIVE_TIMEOUT="${SCAN_TIMEOUT:-216000}"
+calculate_finalize_budget "$EFFECTIVE_TIMEOUT" >/dev/null || {
+  echo "[scan] FATAL: SCAN_TIMEOUT must be a positive integer" >&2
+  return 2
+}
 
 echo "[scan] Running youngflow (version=$(youngflow --version), model=$V_DEFAULT_MODEL, max_parallel=$YOUNGFLOW_MAX_PARALLEL, timeout=${EFFECTIVE_TIMEOUT}s, flow=$FLOW_FILE)..." >&2
-set +e
-timeout --signal=TERM --kill-after=30 "${EFFECTIVE_TIMEOUT}s" \
-  youngflow "${YOUNGFLOW_ARGS[@]}" 2>"$SERVICE_LOG"
-EXIT=$?
-set -e
+EXIT=0
+run_supervised "$EFFECTIVE_TIMEOUT" truncate youngflow "${YOUNGFLOW_ARGS[@]}" || EXIT=$?
+if [ "$EXIT" -eq 124 ]; then FINALIZER_TRIGGERED=true; else FINALIZER_TRIGGERED=false; fi
+echo "[scan] Analysis phase exit=$EXIT finalizer_triggered=$FINALIZER_TRIGGERED analysis_budget=${EFFECTIVE_TIMEOUT}s" >&2
 
-# timeout returns 124 (TERM) or 137 (KILL after --kill-after) when the scan
-# duration cap is hit. That is an expected, successful termination: normalize
-# to 0 so the scheduler runs sync + index on the produced findings.
-if [ "$EXIT" = "124" ] || [ "$EXIT" = "137" ]; then
-  echo "[scan] Scan stopped after ${EFFECTIVE_TIMEOUT}s scan-duration cap (normal termination)" >&2
-  EXIT=0
-fi
+PHASE_EXIT=0
+handle_analysis_exit "$EXIT" "$EFFECTIVE_TIMEOUT" || PHASE_EXIT=$?
+EXIT=$PHASE_EXIT
 
 finish_log
-trap - EXIT
+trap - EXIT TERM INT HUP
+cleanup_finalize_control 2>/dev/null || true
 
 echo "[scan] Done (exit=$EXIT)" >&2
 return "$EXIT"

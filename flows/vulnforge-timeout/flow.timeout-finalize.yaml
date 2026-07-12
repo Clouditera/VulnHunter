@@ -1,0 +1,57 @@
+version: "1.0"
+
+timeout: 660
+recursion_limit: 8
+
+artifacts:
+  agents: ../vulnforge/agents/
+  skills: ../vulnforge/skills/
+  tasks: tasks/
+  templates: ../vulnforge/templates/
+  schemas: schemas/
+  extensions: ../vulnforge/extensions/
+  env_file: ../vulnforge/.env
+  models_json: ../vulnforge/models.json
+
+defaults:
+  model: ${env.V_DEFAULT_MODEL}
+  max_parallel: 1
+  agent: agent.md
+
+inputs:
+  work_dir:
+    description: "目标项目路径"
+    type: path
+  output_dir:
+    description: "已有审计产物目录"
+    type: path
+  artifact_inventory:
+    description: "可信的已有业务产物清单"
+    type: path
+    required: true
+  analysis_limit_seconds:
+    description: "用户设置的主分析时长（秒）"
+    type: str
+    required: true
+
+stages:
+  - id: report
+    name: 时长到达后的有界结果收口
+    type: single
+    skills:
+      - report-generator
+    extensions:
+      - output-contract
+    tools:
+      - read
+      - write
+    task: report-timeout.md
+    prompt: |
+      - 目标项目: ${work_dir}
+      - 已有审计产物目录: ${output_dir}
+      - 可信产物清单: ${flow_inputs.artifact_inventory}
+      - 用户主分析时长: ${flow_inputs.analysis_limit_seconds} 秒
+      - schema: ${schemas}/audit-completion.schema.yaml, ${schemas}/audit-report.schema.yaml
+      - 输出语言: zh-CN
+    timeout: 600
+    error_strategy: stop

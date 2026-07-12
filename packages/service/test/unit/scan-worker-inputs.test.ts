@@ -177,6 +177,13 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
     expect(stderr).toContain(`sched_instr_chars=${[..."secret-sched-body"].length}`);
   });
 
+  it("uses trusted deadline provenance and never normalizes arbitrary 137/OOM", () => {
+    const source = readFileSync(script, "utf8");
+    expect(source).toContain("run-with-deadline.py");
+    expect(source).toContain('if [ "$analysis_exit" -eq 124 ]');
+    expect(source).not.toMatch(/timeout --signal|\"137\".*normal termination|analysis_exit.*137/);
+  });
+
   it("formal entry cannot be bypassed by legacy test-mode or FLOW_DIR env", () => {
     const result = spawnSync("bash", [script], {
       env: {
