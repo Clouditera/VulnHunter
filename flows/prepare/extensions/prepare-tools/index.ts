@@ -704,6 +704,7 @@ export class PrepareToolState {
     if (this.budgets.submitCalls >= 3) this.failTerminal("ERR_PREPARE_SCHEMA_INVALID");
     const safeDetails = safeDecisionErrors(details);
     const safeFeedback = JSON.stringify({ error: "prepare_validation_failed", details: safeDetails });
+    if (Buffer.byteLength(safeFeedback) > 8 * 1024) this.failTerminal("ERR_PREPARE_INTERNAL");
     throw new PrepareToolError("ERR_PREPARE_SCHEMA_INVALID", safeFeedback, false, safeDetails);
   }
 

@@ -260,6 +260,7 @@ describe("prepare submit/postflight", () => {
         expect(error).toBeInstanceOf(PrepareToolError);
         const prepareError = error as PrepareToolError;
         const details = prepareError.details ?? [];
+        expect(Buffer.byteLength(prepareError.message)).toBeLessThanOrEqual(8 * 1024);
         expect(JSON.parse(prepareError.message)).toEqual({ error: "prepare_validation_failed", details });
         expect(details).toContainEqual({ instancePath: item.pointer, keyword: item.code, message: item.code });
         if (["missing-subject-value", "missing-count-value", "missing-complete-field-value", "invalid-status-value"].includes(item.canary)) expect(details).toHaveLength(1);
@@ -526,11 +527,12 @@ describe("prepare static security boundary", () => {
       ),
     ).toEqual(["read_project_manifest", "read_project_file", "submit_plan"]);
     expect(hash("worker-assets/prepare-mode.sh")).toBe(
-      "e4c523141985bd114a346e5947efbb5b986552cb74a204302b3577b0894c8e22",
+      "1d5302cda22fb87bf3b78c7b278bad50b87e1cdb2fb8ccc8f51b3575e8ddeb6b",
     );
     const prepareMode = readFileSync(join(repoRoot, "worker-assets/prepare-mode.sh"), "utf8");
     expect(prepareMode.indexOf('mkdir "$owner_dir"')).toBeLessThan(prepareMode.indexOf("trap cleanup EXIT"));
-    expect(prepareMode).toContain("A competing process that failed mkdir above must never clean the active owner.");
+    expect(prepareMode).toContain('! -path "$owner_dir"');
+    expect(prepareMode.lastIndexOf('rm -f "$identity"')).toBeGreaterThan(prepareMode.indexOf('! -path "$owner_dir"'));
     const spec = parseFlow(flowPath);
     expect(spec.defaultAgent).toBe("prepare-agent-v2.md");
     expect(spec.defaultTools).toEqual([
