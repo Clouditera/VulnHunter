@@ -49,6 +49,18 @@ const RECOMMENDATIONS: Record<string, ReadonlySet<string>> = {
   "uncertainty/insufficient_evidence": new Set(["clarify_scope", "include_build_files", "submit_complete_project", "retry"]),
   "uncertainty/unknown": new Set(["clarify_scope", "other"]),
 };
+const MISSING_SUMMARY_LABELS: Record<string, string> = {
+  base_source: "缺少基础源码", first_party_component: "缺少第一方组件", submodule: "缺少子模块内容",
+  generated_source: "缺少生成源码或生成链", build_manifest: "缺少构建定义", dependency: "缺少必需依赖",
+  asset: "缺少必需资产", configuration: "缺少必需配置", unknown: "缺少必要组成",
+};
+const MISSING_SUMMARY_RANK = Object.keys(MISSING_SUMMARY_LABELS);
+const UNCERTAINTY_SUMMARY_LABELS: Record<string, string> = {
+  conflicting_evidence: "证据相互冲突", ambiguous_scope: "审计范围不明确", unreadable_required_file: "关键文件无法读取",
+  unsupported_manifest: "项目清单暂不支持", insufficient_evidence: "关键证据不足", unknown: "存在未解释的不确定性",
+};
+const UNCERTAINTY_SUMMARY_RANK = Object.keys(UNCERTAINTY_SUMMARY_LABELS);
+const STAGE_SUMMARY_LABELS: Record<PrepareStage, string> = { static_audit: "静态审计", build: "构建", poc: "POC", exp: "EXP" };
 const SECRET_PATTERNS = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/i,
   /\b(?:api[_-]?key|access[_-]?token|secret|password)\s*[:=]\s*\S+/i,
@@ -67,6 +79,7 @@ function canonicalObject(value: any): any {
 }
 function canonicalJson(value: any): string { return JSON.stringify(canonicalObject(value)); }
 function posix(values: readonly string[]): string[] { return [...values].sort(); }
+function lexical(left: string, right: string): number { return left < right ? -1 : left > right ? 1 : 0; }
 function stages(values: readonly PrepareStage[]): PrepareStage[] { return PREPARE_STAGES.filter((stage) => values.includes(stage)); }
 function push(errors: DecisionError[], path: string, message: string, keyword = "semantic") {
   errors.push({ instancePath: path, keyword, message });
@@ -188,6 +201,8 @@ export function validateSemanticDecision(decision: unknown, context: AssembleCon
     if (!pairs.has(pair)) { pairs.add(pair); recommendations++; }
   }
   if (recommendations > 32) push(errors, "/assessment", "assembled recommendations exceed 32", "capacity");
+  const derivedSummary = deriveAssessmentSummary(assessment);
+  if ([...derivedSummary].length > 512) push(errors, "/assessment", "derived summary exceeds 512 code points", "summaryCapacity");
   return errors.slice(0, 64);
 }
 
@@ -202,6 +217,42 @@ function readiness(assessment: any, requestedStages: readonly PrepareStage[]) {
     const status = stage === "static_audit" && assessment.static_visibility === "partial" ? "limited" : "blocked";
     return [stage, { status, reasons: [`受 ${count} 项已确认缺失影响；详见 missing_components。`] }];
   }));
+}
+
+export function deriveAssessmentSummary(assessment: any): string {
+  if (assessment.status === "complete") return `已确认提交物中“${assessment.intended_project}”的审计边界及请求阶段前提闭合。`;
+  const missing = assessment.missing_components ?? assessment.missing ?? [];
+  const uncertainties = assessment.uncertainties ?? [];
+  const impacted = new Set<PrepareStage>();
+  for (const item of [...missing, ...uncertainties]) for (const stage of item.impact ?? []) impacted.add(stage);
+  const stageText = PREPARE_STAGES.filter((stage) => impacted.has(stage)).map((stage) => STAGE_SUMMARY_LABELS[stage]).join("、");
+  if (assessment.status === "incomplete") {
+    const ordered = missing.map((item: any, index: number) => ({ item, index })).sort((left: any, right: any) => {
+      const category = MISSING_SUMMARY_RANK.indexOf(left.item.category) - MISSING_SUMMARY_RANK.indexOf(right.item.category);
+      if (category) return category;
+      const impact = (right.item.impact?.length ?? 0) - (left.item.impact?.length ?? 0);
+      if (impact) return impact;
+      const name = lexical(String(left.item.name), String(right.item.name));
+      if (name) return name;
+      const leftRequired = String(left.item.expected_by ?? left.item.required_by);
+      const rightRequired = String(right.item.expected_by ?? right.item.required_by);
+      return lexical(leftRequired, rightRequired) || left.index - right.index;
+    });
+    const shown = ordered.slice(0, 2).map(({ item }: any) => `${MISSING_SUMMARY_LABELS[item.category]}：${item.name}（${item.expected_by ?? item.required_by}）`);
+    const extraMissing = missing.length > 2 ? `；另有 ${missing.length - 2} 项缺失详见结构化详情` : "";
+    const extraUncertain = uncertainties.length ? `；另有 ${uncertainties.length} 项不确定性详见结构化详情` : "";
+    return `已确认“${assessment.intended_project}”不完整：${shown.join("；")}${extraMissing}${extraUncertain}。受影响阶段：${stageText}；本次 Prepare 不会放行主审计流程。详见缺失项与补齐建议。`;
+  }
+  const ordered = uncertainties.map((item: any, index: number) => ({ item, index })).sort((left: any, right: any) => {
+    const code = UNCERTAINTY_SUMMARY_RANK.indexOf(left.item.code) - UNCERTAINTY_SUMMARY_RANK.indexOf(right.item.code);
+    if (code) return code;
+    const impact = (right.item.impact?.length ?? 0) - (left.item.impact?.length ?? 0);
+    if (impact) return impact;
+    return lexical(String(left.item.description), String(right.item.description)) || left.index - right.index;
+  });
+  const shown = ordered.slice(0, 2).map(({ item }: any) => `${UNCERTAINTY_SUMMARY_LABELS[item.code]}：${item.description}`);
+  const extra = uncertainties.length > 2 ? `；另有 ${uncertainties.length - 2} 项不确定性详见结构化详情` : "";
+  return `当前无法确定“${assessment.intended_project}”是否完整：${shown.join("；")}${extra}。受影响阶段：${stageText}；本次 Prepare 不会放行主审计流程。详见不确定项与补充建议。`;
 }
 
 function assembleRecommendations(assessment: any) {
@@ -230,11 +281,6 @@ export function assembleAssessmentPlan(decision: unknown, context: AssembleConte
   if (errors.length) throw new SemanticDecisionValidationError(errors);
   const d: any = decision;
   const assessment = d.assessment;
-  const summaries: Record<string, string> = {
-    complete: `已确认提交物中“${assessment.intended_project}”的审计边界及请求阶段前提闭合。`,
-    incomplete: `已确认“${assessment.intended_project}”缺少本次请求所需的项目组成；详见缺失项与补齐建议。`,
-    uncertain: `当前证据不足以确认“${assessment.intended_project}”的审计边界或请求阶段前提；详见不确定项与补充建议。`,
-  };
   const source = {
     status: assessment.status,
     submission_shape: assessment.submission_shape,
@@ -253,7 +299,7 @@ export function assembleAssessmentPlan(decision: unknown, context: AssembleConte
     })),
     stage_readiness: readiness(assessment, context.requestedStages),
     confidence: assessment.confidence,
-    summary: summaries[assessment.status],
+    summary: deriveAssessmentSummary(assessment),
     evidence: assessment.evidence.map((item: any) => ({
       path: item.path, ...(item.line_start == null ? {} : { line_start: item.line_start, line_end: item.line_end }),
       signal: item.signal, observation: item.observation,

@@ -5,7 +5,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { load as parseYaml } from "js-yaml";
 import { describe, expect, it } from "vitest";
 import {
-  assembleAssessmentPlan, canonicalAssessmentPlanJson, SemanticDecisionValidationError, validateSemanticDecision,
+  assembleAssessmentPlan, canonicalAssessmentPlanJson, deriveAssessmentSummary, SemanticDecisionValidationError, validateSemanticDecision,
   type AssembleContext,
 } from "../../../../flows/prepare/extensions/prepare-tools/semantic-decision.js";
 import { assertPrepareSemanticOracle } from "../support/prepare-semantic-oracle.mjs";
@@ -47,7 +47,8 @@ function decisionFor(fixture: any) {
   const impacted = requested.filter((stage) => ["limited", "blocked"].includes(e.stage_status[stage]));
   const missing = (e.missing_categories ?? []).map((category: string, index: number) => {
     const codes = index === 0 ? (e.recommendation_codes_contains ?? ["submit_complete_project"]) : ["submit_complete_project"];
-    const name = (e.missing_names_must_convey ?? []).join("; ") || `${category} required by declared project boundary`;
+    const nameFacts = [...(e.missing_names_must_convey ?? []), ...(e.summary_must_convey ?? [])];
+    const name = nameFacts.join("; ") || `${category} required by declared project boundary`;
     if (category === "first_party_component" && codes.includes("include_generated_sources_or_generator")) evidence[0].signal = "generated_source_reference";
     const semanticFix = [...(e.summary_must_convey ?? []), "提交完整项目边界及声明的第一方内容。"].join("；");
     return { category, name, required_by: "Submitted declarations require this component.", evidence_paths: [evidencePaths[0]], impact: impacted, recoverable_from_submission: false, recommendation_codes: codes, fix: semanticFix };
@@ -138,6 +139,54 @@ describe("Prepare compact semantic decision deterministic assembly", () => {
     expect(plan.source_assessment.status).toBe(decision.assessment.status);
     expect(plan.source_assessment.evidence).toEqual(decision.assessment.evidence);
     expect(plan.sandbox_plan.requirements.required_capabilities.sort()).toEqual([...decision.sandbox_requirements.required_capabilities].sort());
+  });
+
+  it("derives user-facing patch, LFS, Stonesoup, and uncertain summary semantics only from validated fields", () => {
+    const patch = decisionFor(oracle.fixtures.find((item: any) => item.id === "incomplete_patch_only_unlocated_base"));
+    const patchSummary = assembleAssessmentPlan(patch.decision, patch.context).source_assessment.summary;
+    expect(patchSummary).toMatch(/base source absent/i); expect(patchSummary).toMatch(/base version not reliably locatable/i);
+    expect(patch.decision.assessment.intended_project).not.toMatch(/base source|version/i);
+    const lfs = decisionFor(oracle.fixtures.find((item: any) => item.id === "incomplete_required_lfs_asset"));
+    expect(assembleAssessmentPlan(lfs.decision, lfs.context).source_assessment.summary).toMatch(/LFS pointer is not asset content/i);
+    const stone = stonesoup();
+    const stoneSummary = assembleAssessmentPlan(stone.decision, stone.context).source_assessment.summary;
+    expect(stoneSummary).toMatch(/Asterisk 10\.2\.0/); expect(stoneSummary).toMatch(/20-root test corpus/); expect(stoneSummary).toMatch(/base source tree is absent/);
+    const uncertain = decisionFor(oracle.fixtures.find((item: any) => item.id === "uncertain_insufficient_project_evidence"));
+    expect(assembleAssessmentPlan(uncertain.decision, uncertain.context).source_assessment.summary).toContain("关键证据不足：Project boundary cannot be resolved from submitted evidence.");
+  });
+
+  it("selects two facts by frozen priority, reports remainder, and ignores input array order", () => {
+    const base = decisionFor(oracle.fixtures[1]);
+    const evidencePath = base.decision.assessment.evidence[0].path;
+    const make = (category: string, name: string, impact: string[], code: string) => ({ category, name, required_by: `${name} required`, evidence_paths: [evidencePath], impact, recoverable_from_submission: false, recommendation_codes: [code], fix: `${name} fix` });
+    const items = [make("asset", "asset-z", ["poc"], "provide_asset"), make("submodule", "submodule-a", ["build"], "include_submodules"), make("base_source", "base-b", ["static_audit", "build"], "include_base_source")];
+    const uncertainty = { code: "ambiguous_scope", description: "secondary ambiguity", evidence_paths: [evidencePath], impact: ["exp"], recommendation_codes: ["clarify_scope"], fix: "clarify" };
+    const first = clone(base.decision); first.assessment.missing = items; first.assessment.uncertainties = [uncertainty];
+    const second = clone(first); second.assessment.missing.reverse();
+    const one = assembleAssessmentPlan(first, base.context).source_assessment.summary;
+    const two = assembleAssessmentPlan(second, base.context).source_assessment.summary;
+    expect(one).toBe(two);
+    expect(one.indexOf("缺少基础源码")).toBeLessThan(one.indexOf("缺少子模块内容"));
+    expect(one).toContain("另有 1 项缺失详见结构化详情"); expect(one).toContain("另有 1 项不确定性详见结构化详情");
+    expect(one).toContain("受影响阶段：静态审计、构建、POC、EXP");
+  });
+
+  it("enforces exact 512-code-point summary capacity without dropping or truncating facts", () => {
+    const base = decisionFor(oracle.fixtures[1]);
+    const decision = clone(base.decision);
+    decision.assessment.missing[0].name = "x";
+    decision.assessment.missing[0].required_by = "甲";
+    const initial = deriveAssessmentSummary(decision.assessment);
+    const fill = 512 - [...initial].length + 1;
+    expect(fill).toBeGreaterThan(0); expect(fill).toBeLessThanOrEqual(512);
+    decision.assessment.missing[0].required_by = "甲".repeat(fill);
+    expect([...deriveAssessmentSummary(decision.assessment)]).toHaveLength(512);
+    expect(validateSemanticDecision(decision, base.context)).toEqual([]);
+    const atLimit = assembleAssessmentPlan(decision, base.context); expect([...atLimit.source_assessment.summary]).toHaveLength(512); expect(validateFull(atLimit)).toBe(true);
+    const over = clone(decision); over.assessment.missing[0].required_by += "甲";
+    expect([...deriveAssessmentSummary(over.assessment)]).toHaveLength(513);
+    expect(validateSemanticDecision(over, base.context)).toContainEqual({ instancePath: "/assessment", keyword: "summaryCapacity", message: "derived summary exceeds 512 code points" });
+    expect(() => assembleAssessmentPlan(over, base.context)).toThrow(SemanticDecisionValidationError);
   });
 
   it("derives only readiness/templates/profile defaults and preserves gap/dependency semantics", () => {

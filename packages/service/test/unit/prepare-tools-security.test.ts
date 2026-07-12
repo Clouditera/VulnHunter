@@ -339,6 +339,17 @@ describe("prepare submit/postflight", () => {
     expect(readdirSync(forged.output)).toEqual([]);
     forged.state.close();
 
+    const forgedSummary = fixture();
+    await forgedSummary.state.submitPlan(validPlan());
+    const summaryPath = join(forgedSummary.output, "assessment-plan.json");
+    const summaryPlan = JSON.parse(readFileSync(summaryPath, "utf8")); summaryPlan.source_assessment.summary = "Facts removed from deterministic summary.";
+    const summaryRaw = JSON.stringify(summaryPlan, null, 2) + "\n"; writeFileSync(summaryPath, summaryRaw, { mode: 0o600 });
+    const summaryReceiptPath = join(forgedSummary.control, "receipt.json");
+    const summaryReceipt = JSON.parse(readFileSync(summaryReceiptPath, "utf8")); summaryReceipt.plan_sha256 = createHash("sha256").update(summaryRaw).digest("hex");
+    writeFileSync(summaryReceiptPath, JSON.stringify(summaryReceipt), { mode: 0o600 });
+    expect(() => forgedSummary.state.postflight()).toThrowError(expect.objectContaining({ code: "ERR_PREPARE_SCHEMA_INVALID" }));
+    expect(readdirSync(forgedSummary.output)).toEqual([]); forgedSummary.state.close();
+
     const extraReceipt = fixture();
     await extraReceipt.state.submitPlan(validPlan());
     const extraReceiptPath = join(extraReceipt.control, "receipt.json");
