@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
+import { createAuditCompletionEngineRun, evaluateAuditCompletion, fingerprintAuditCompletion } from "../../src/features/workers/audit-completion.js";
 
 const repoRoot = join(import.meta.dirname, "../../../..");
 const deadline = join(repoRoot, "worker-assets/run-with-deadline.py");
@@ -53,6 +54,9 @@ describe("trusted deadline supervisor", () => {
   it("preserves natural child exits and reserves 124 for its own deadline", () => {
     expect(spawnSync("python3", [deadline, "--timeout", "2", "--", "sh", "-c", "exit 7"]).status).toBe(7);
     expect(spawnSync("python3", [deadline, "--timeout", "2", "--", "sh", "-c", "exit 137"]).status).toBe(137);
+    const reserved = spawnSync("python3", [deadline, "--timeout", "2", "--", "sh", "-c", "exit 124"], { encoding: "utf8" });
+    expect(reserved.status).toBe(125);
+    expect(reserved.stderr).toContain('"event":"child_reserved_exit"');
     const timed = spawnSync("python3", [deadline, "--timeout", "0.1", "--grace", "0.1", "--", "sh", "-c", "sleep 30"], { encoding: "utf8" });
     expect(timed.status).toBe(124);
     expect(timed.stderr).toContain('"event":"deadline_reached"');
@@ -82,7 +86,7 @@ describe("scan timeout state machine", () => {
       source "$1"
       calls=0
       run_timeout_finalizer(){ calls=$((calls+1)); return "\${FINAL_RC:-0}"; }
-      for code in 0 1 137; do
+      for code in 0 1 125 137; do
         set +e; handle_analysis_exit "$code" 100; rc=$?; set -e
         printf '%s:%s:%s\\n' "$code" "$rc" "$calls"
       done
@@ -94,7 +98,7 @@ describe("scan timeout state machine", () => {
     `;
     const result = spawnSync("bash", ["-c", script, "test", scanMode], { encoding: "utf8" });
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout.trim().split("\n")).toEqual(["0:0:0", "1:1:0", "137:137:0", "124:0:1", "124-failed:9:2"]);
+    expect(result.stdout.trim().split("\n")).toEqual(["0:0:0", "1:1:0", "125:125:0", "137:137:0", "124:0:1", "124-failed:9:2"]);
   });
 });
 
@@ -113,6 +117,27 @@ describe("timeout finalization artifact gate", () => {
     const cleaned = spawnSync("python3", [artifacts, "cleanup", "--control-dir", f.control], { encoding: "utf8" });
     expect(cleaned.status, cleaned.stderr).toBe(0);
     expect(existsSync(f.control)).toBe(false);
+  });
+
+  it("deletes an old completion and requires a new non-stale fingerprint", () => {
+    const f = fixture();
+    writeFileSync(join(f.out, "report", "completion.yaml"), "status: complete\nreason: prior completed run\n");
+    const oldFingerprint = fingerprintAuditCompletion(f.out);
+    expect(oldFingerprint).not.toBeNull();
+    const run = createAuditCompletionEngineRun("timeout-run", "2026-07-12T00:00:00Z", oldFingerprint);
+
+    expect(gate("prepare", f, ["--analysis-limit-seconds", "1800"]).status).toBe(0);
+    expect(evaluateAuditCompletion({ outDir: f.out, engineRun: run }).status).toBe("missing");
+    validReports(f.out);
+    expect(gate("verify", f).status).toBe(0);
+
+    const fresh = fingerprintAuditCompletion(f.out);
+    expect(fresh?.sha256).not.toBe(oldFingerprint?.sha256);
+    expect(evaluateAuditCompletion({ outDir: f.out, engineRun: run })).toMatchObject({
+      status: "incomplete",
+      engine_status: "incomplete",
+      error_code: null,
+    });
   });
 
   it("rejects modified, added, or removed protected artifacts", () => {

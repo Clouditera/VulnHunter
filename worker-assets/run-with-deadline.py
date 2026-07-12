@@ -49,7 +49,11 @@ def main() -> int:
         while True:
             code = child.poll()
             if code is not None:
-                return child_code(code)
+                natural = child_code(code)
+                if natural == 124:
+                    event("child_reserved_exit", child_exit=124, mapped_exit=125)
+                    return 125
+                return natural
             if external_signal is not None:
                 event("external_signal", signal=external_signal)
                 return terminate_group(child, external_signal, args.grace, 128 + external_signal)
