@@ -19,7 +19,7 @@ import {
 import { dirname, join, relative, sep } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import YAML from "yaml";
-import { defineTool, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { defineTool, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { assembleAssessmentPlan, canonicalSemanticDecisionJson, SemanticDecisionValidationError, type AssembleContext } from "./semantic-decision.js";
 
 export const PREPARE_TOOL_NAMES = ["read_project_manifest", "read_project_file", "submit_plan"] as const;
@@ -682,6 +682,19 @@ function textResult(value: any) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value) }] };
 }
 
+function stopTerminal(ctx: ExtensionContext): void {
+  try { ctx.abort(); } catch { /* best-effort child stop; parent remains authority */ }
+  try { ctx.shutdown(); } catch { /* best-effort child stop; parent remains authority */ }
+}
+
+async function runRestrictedTool<T>(ctx: ExtensionContext, action: () => T | Promise<T>): Promise<T> {
+  try { return await action(); }
+  catch (error) {
+    if (error instanceof PrepareToolError && error.terminal) stopTerminal(ctx);
+    throw error;
+  }
+}
+
 export default function registerPrepareTools(pi: ExtensionAPI) {
   const required = (name: string): string => {
     const value = process.env[name];
@@ -700,16 +713,20 @@ export default function registerPrepareTools(pi: ExtensionAPI) {
 
   // Count at the pre-execution hook so malformed JSON/tool parameters consume
   // budget even when pi rejects them before execute().
-  pi.on("tool_call", async (event: any) => {
+  pi.on("tool_call", async (event: any, ctx: ExtensionContext) => {
     const kind = event.toolName === "read_project_manifest" ? "manifest"
       : event.toolName === "read_project_file" ? "file"
       : event.toolName === "submit_plan" ? "submit" : null;
     if (!kind) {
-      try { state.rejectUnauthorizedTool(); } catch { /* terminal state recorded */ }
+      try { state.rejectUnauthorizedTool(); }
+      catch (error) { if (error instanceof PrepareToolError && error.terminal) stopTerminal(ctx); }
       return { block: true, reason: "Unauthorized Prepare tool" };
     }
     try { state.beginToolCall(kind); }
-    catch { return { block: true, reason: "Prepare tool budget exhausted" }; }
+    catch (error) {
+      if (error instanceof PrepareToolError && error.terminal) stopTerminal(ctx);
+      return { block: true, reason: "Prepare tool budget exhausted" };
+    }
   });
 
   pi.registerTool(defineTool({
@@ -725,7 +742,7 @@ export default function registerPrepareTools(pi: ExtensionAPI) {
         path_prefix: { type: "string", maxLength: 512 },
       },
     } as any,
-    async execute(_id, params: any) { return textResult(state.readManifest(params, true)); },
+    async execute(_id, params: any, _signal, _onUpdate, ctx) { return textResult(await runRestrictedTool(ctx, () => state.readManifest(params, true))); },
   }));
   pi.registerTool(defineTool({
     name: "read_project_file",
@@ -739,7 +756,7 @@ export default function registerPrepareTools(pi: ExtensionAPI) {
         limit: { type: "integer", minimum: 1, maximum: 200, default: 100 },
       },
     } as any,
-    async execute(_id, params: any) { return textResult(state.readFile(params, true)); },
+    async execute(_id, params: any, _signal, _onUpdate, ctx) { return textResult(await runRestrictedTool(ctx, () => state.readFile(params, true))); },
   }));
   const decisionSchemaPath = join(dirname(required("PREPARE_PLAN_SCHEMA")), "prepare-semantic-decision-v1.schema.yaml");
   const decisionSchema = YAML.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(decisionSchemaPath, 2 * 1024 * 1024)));
@@ -756,6 +773,6 @@ export default function registerPrepareTools(pi: ExtensionAPI) {
       additionalProperties: true,
       properties: { plan: { anyOf: [decisionSchema, {}] } },
     } as any,
-    async execute(_id, params: any) { return textResult(await state.submitEnvelope(params, true)); },
+    async execute(_id, params: any, _signal, _onUpdate, ctx) { return textResult(await runRestrictedTool(ctx, () => state.submitEnvelope(params, true))); },
   }));
 }
