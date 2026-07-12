@@ -281,4 +281,5 @@ export function assembleAssessmentPlan(decision: unknown, context: AssembleConte
   return canonicalObject({ schema_version: "1.0", source_assessment: source, sandbox_plan: sandbox, warnings: assembleWarnings(d, context) });
 }
 
+export function canonicalSemanticDecisionJson(decision: Json): string { return canonicalJson(decision); }
 export function canonicalAssessmentPlanJson(plan: Json): string { return `${canonicalJson(plan)}\n`; }

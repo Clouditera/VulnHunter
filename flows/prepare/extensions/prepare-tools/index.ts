@@ -20,6 +20,7 @@ import { dirname, join, relative, sep } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import YAML from "yaml";
 import { defineTool, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { assembleAssessmentPlan, canonicalSemanticDecisionJson, SemanticDecisionValidationError, type AssembleContext } from "./semantic-decision.js";
 
 export const PREPARE_TOOL_NAMES = ["read_project_manifest", "read_project_file", "submit_plan"] as const;
 const MAX_PLAN_BYTES = 128 * 1024;
@@ -174,6 +175,7 @@ export class PrepareToolState {
   private readonly readFiles = new Set<string>();
   private readonly returnedSource: string[] = [];
   private readonly validatePlan: ReturnType<Ajv2020["compile"]>;
+  private readonly validateDecision: ReturnType<Ajv2020["compile"]>;
   private terminalFailure = false;
   private submitInFlight = false;
   private committed = false;
@@ -225,9 +227,15 @@ export class PrepareToolState {
         if (entry.type === "directory") this.manifestPrefixes.add(entry.path);
         if (entry.type === "file") this.manifestFiles.set(entry.path, { size: entry.size, sha256: entry.sha256 });
       }
-      for (const root of this.manifest.root_candidates ?? []) if (typeof root?.path === "string") this.manifestPrefixes.add(root.path);
+      for (const root of this.manifest.root_candidates ?? []) if (typeof root?.path === "string") {
+        this.manifestPaths.add(root.path);
+        this.manifestPrefixes.add(root.path);
+      }
       const planSchema = YAML.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(config.planSchemaPath, 2 * 1024 * 1024)));
+      const decisionSchemaPath = join(dirname(config.planSchemaPath), "prepare-semantic-decision-v1.schema.yaml");
+      const decisionSchema = YAML.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(decisionSchemaPath, 2 * 1024 * 1024)));
       this.validatePlan = new Ajv2020({ allErrors: true, strict: false }).compile(planSchema);
+      this.validateDecision = new Ajv2020({ allErrors: true, strict: true }).compile(decisionSchema);
       if (allowExistingFinal) this.committed = true;
     } catch (error) {
       closeSync(this.sourceFd);
@@ -439,6 +447,17 @@ export class PrepareToolState {
     }
   }
 
+  private assemblyContext(): AssembleContext {
+    return {
+      requestedStages: [...this.input.task_flags.requested_stages] as AssembleContext["requestedStages"],
+      capabilityCatalog: new Set(this.input.capability_catalog.capabilities),
+      manifestPaths: new Set(this.manifestPaths),
+      manifestFilePaths: new Set(this.manifestFiles.keys()),
+      manifestRootCandidates: (this.manifest.root_candidates ?? []).map((root: any) => root?.path).filter((path: unknown): path is string => typeof path === "string"),
+      manifestTruncated: this.manifest?.truncation?.truncated === true,
+    };
+  }
+
   private semanticErrors(plan: any): Array<{ instancePath: string; keyword: string; message: string }> {
     const errors: Array<{ instancePath: string; keyword: string; message: string }> = [];
     const add = (instancePath: string, message: string) => errors.push({ instancePath, keyword: "semantic", message });
@@ -449,6 +468,7 @@ export class PrepareToolState {
     };
     for (const evidence of assessment?.evidence ?? []) {
       if (!isCanonicalRelativePath(evidence?.path, true) || !this.manifestPaths.has(evidence.path)) add("/source_assessment/evidence", "evidence path must be manifest-known");
+      if (evidence?.path === "." && (!this.manifest?.truncation?.truncated || evidence?.signal !== "other")) add("/source_assessment/evidence", "root evidence requires trusted truncation and signal other");
       if (evidence?.line_start != null && evidence?.line_end != null && evidence.line_end < evidence.line_start) add("/source_assessment/evidence", "line_end must be >= line_start");
     }
     for (const path of assessment?.root_candidates ?? []) knownPath(path, "/source_assessment/root_candidates");
@@ -537,13 +557,21 @@ export class PrepareToolState {
       try { raw = canonicalJson(plan); } catch { /* invalid plan below */ }
       if (raw === undefined || Buffer.byteLength(raw) > MAX_PLAN_BYTES) return this.invalidAttempt([{ instancePath: "", keyword: "maxBytes", message: "plan is invalid or exceeds 128 KiB" }]);
       if (containsSensitive(plan)) this.failTerminal("ERR_PREPARE_OUTPUT_SENSITIVE");
-      if (!this.validatePlan(plan)) return this.invalidAttempt(safeAjvErrors(this.validatePlan.errors));
-      let errors = this.semanticErrors(plan);
-      if (errors.length) return this.invalidAttempt(errors);
-      const normalized = canonicalize(plan);
-      if (!this.validatePlan(normalized)) return this.invalidAttempt(safeAjvErrors(this.validatePlan.errors));
+      if (!this.validateDecision(plan)) return this.invalidAttempt(safeAjvErrors(this.validateDecision.errors));
+      let assembled: any;
+      try {
+        assembled = assembleAssessmentPlan(plan, this.assemblyContext());
+      } catch (error) {
+        if (error instanceof SemanticDecisionValidationError) return this.invalidAttempt(error.errors.slice(0, 12).map((item) => ({ ...item })));
+        this.failTerminal("ERR_PREPARE_INTERNAL");
+      }
+      if (!this.validatePlan(assembled)) this.failTerminal("ERR_PREPARE_INTERNAL");
+      let errors = this.semanticErrors(assembled);
+      if (errors.length) this.failTerminal("ERR_PREPARE_INTERNAL");
+      const normalized = assembled;
+      if (!this.validatePlan(normalized)) this.failTerminal("ERR_PREPARE_INTERNAL");
       errors = this.semanticErrors(normalized);
-      if (errors.length) return this.invalidAttempt(errors);
+      if (errors.length) this.failTerminal("ERR_PREPARE_INTERNAL");
       for (const value of recursiveStrings(normalized)) {
         if (value.length < 64) continue;
         for (const source of this.returnedSource) {
@@ -574,9 +602,11 @@ export class PrepareToolState {
       }
 
       const planDigest = sha256(serialized);
+      const decisionDigest = sha256(canonicalSemanticDecisionJson(plan as any));
       const receipt = canonicalJson({
         status: "committed",
-        schema_version: "prepare-receipt/v1",
+        schema_version: "prepare-receipt/v2",
+        decision_sha256: decisionDigest,
         plan_sha256: planDigest,
         manifest_sha256: this.manifestDigest,
         counters: this.budgets,
@@ -635,8 +665,10 @@ export class PrepareToolState {
     }
     const counters = receipt.counters as PrepareBudgets;
     const counterValues = counters && typeof counters === "object" ? Object.values(counters) : [];
-    if (receipt.schema_version !== "prepare-receipt/v1" || receipt.status !== "committed" || receipt.manifest_sha256 !== this.manifestDigest
-      || receipt.plan_sha256 !== sha256(raw)
+    const receiptKeys = receipt && typeof receipt === "object" ? Object.keys(receipt).sort().join(",") : "";
+    if (receiptKeys !== "counters,decision_sha256,manifest_sha256,plan_sha256,schema_version,status"
+      || receipt.schema_version !== "prepare-receipt/v2" || receipt.status !== "committed" || receipt.manifest_sha256 !== this.manifestDigest
+      || !/^[a-f0-9]{64}$/.test(receipt.decision_sha256) || receipt.plan_sha256 !== sha256(raw)
       || !counters || counterValues.length !== 8 || counterValues.some((value) => !Number.isSafeInteger(value) || Number(value) < 0)
       || counters.totalCalls > 48 || counters.manifestCalls > 12
       || counters.fileCalls > 32 || counters.distinctFiles > 24 || counters.submitCalls > 3
@@ -709,19 +741,20 @@ export default function registerPrepareTools(pi: ExtensionAPI) {
     } as any,
     async execute(_id, params: any) { return textResult(state.readFile(params, true)); },
   }));
-  const planSchema = YAML.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(required("PREPARE_PLAN_SCHEMA"), 2 * 1024 * 1024)));
+  const decisionSchemaPath = join(dirname(required("PREPARE_PLAN_SCHEMA")), "prepare-semantic-decision-v1.schema.yaml");
+  const decisionSchema = YAML.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(decisionSchemaPath, 2 * 1024 * 1024)));
   pi.registerTool(defineTool({
     name: "submit_plan",
     label: "Submit plan",
-    description: "Validate and atomically submit the complete Prepare assessment. Raw plan arguments are never logged.",
+    description: "Validate a compact Prepare semantic decision and atomically submit the platform-assembled full assessment. Raw plan arguments are never logged.",
     // Keep the transport schema permissive so pi cannot reject a repair
-    // attempt before the trusted validator counts it. The full schema remains
+    // attempt before the trusted validator counts it. The compact schema remains
     // visible as the first anyOf branch for model guidance; acceptance is
     // exclusively decided by PrepareToolState.submitPlan().
     parameters: {
       type: "object",
       additionalProperties: true,
-      properties: { plan: { anyOf: [planSchema, {}] } },
+      properties: { plan: { anyOf: [decisionSchema, {}] } },
     } as any,
     async execute(_id, params: any) { return textResult(await state.submitEnvelope(params, true)); },
   }));

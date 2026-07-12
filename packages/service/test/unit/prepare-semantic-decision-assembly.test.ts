@@ -120,7 +120,11 @@ describe("Prepare compact semantic decision deterministic assembly", () => {
     const ctx = context(["README.md", "CMakeLists.txt"]); ctx.requestedStages = ["static_audit"];
     const plan = assembleAssessmentPlan(decision, ctx);
     const state = new PrepareToolState({ sourceRoot: source, controlDir: control, outputDir: output, plannerInputPath, manifestSchemaPath: join(root, "packages/service/src/features/prepare/schemas/source-manifest-v1.schema.json"), planSchemaPath: join(root, "flows/prepare/schemas/prepare-assessment-plan-v1.schema.yaml") });
-    try { const submitted = await state.submitPlan(plan); expect(state.postflight().plan_sha256).toBe(submitted.plan_sha256); }
+    try {
+      const submitted = await state.submitPlan(decision);
+      expect(state.postflight().plan_sha256).toBe(submitted.plan_sha256);
+      expect(JSON.parse(readFileSync(join(output, "assessment-plan.json"), "utf8"))).toEqual(plan);
+    }
     finally { state.close(); rmSync(temp, { recursive: true, force: true }); }
   });
 

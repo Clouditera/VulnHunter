@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync,
   statSync, symlinkSync, writeFileSync,
@@ -6,11 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { generateSourceManifest } from "../../src/features/prepare/source-manifest.js";
+import { parseFlow } from "../../../../submodules/youngflow/src/spec.js";
 import {
   PrepareToolError,
   PrepareToolState,
   isCanonicalRelativePath,
 } from "../../../../flows/prepare/extensions/prepare-tools/index.js";
+import { assembleAssessmentPlan, canonicalSemanticDecisionJson } from "../../../../flows/prepare/extensions/prepare-tools/semantic-decision.js";
 
 const roots: string[] = [];
 const repoRoot = join(import.meta.dirname, "../../../..");
@@ -43,47 +46,46 @@ function fixture() {
 function validPlan() {
   return {
     schema_version: "1.0",
-    source_assessment: {
-      status: "incomplete", submission_shape: "project", intended_project: "Example project",
-      root_candidates: ["."],
-      missing_components: [{
-        category: "build_manifest", name: "Build definition", expected_by: "No build definition is present.",
+    assessment: {
+      status: "incomplete", submission_shape: "project", intended_project: "Example project", root_candidates: ["."],
+      confidence: 0.9, static_visibility: "partial",
+      evidence: [{ path: "README.md", signal: "source_tree_shape", observation: "Documentation is present without a build entrypoint." }],
+      missing: [{
+        category: "build_manifest", name: "Build definition", required_by: "The submitted source needs a project build entrypoint.",
         evidence_paths: ["README.md"], impact: ["static_audit"], recoverable_from_submission: false,
+        recommendation_codes: ["include_build_files"], fix: "  Include the project build definition.  ",
       }],
-      external_dependencies: [], uncertainties: [],
-      stage_readiness: {
-        static_audit: { status: "limited", reasons: ["Only a minimal source sample is available."] },
-        build: { status: "not_requested", reasons: [] }, poc: { status: "not_requested", reasons: [] },
-        exp: { status: "not_requested", reasons: [] },
-      },
-      confidence: 0.9, summary: "The submitted project lacks a build definition.",
-      evidence: [{ path: "README.md", signal: "source_tree_shape", observation: "Project documentation is present without a build entrypoint." }],
-      user_recommendations: [{ code: "include_build_files", message: "Include the project build definition." }],
+      uncertainties: [], external_dependencies: [],
     },
-    sandbox_plan: null,
-    warnings: [],
+    sandbox_requirements: null,
   };
 }
 
 function validCompletePlan() {
   const plan: any = validPlan();
-  plan.source_assessment.status = "complete";
-  plan.source_assessment.missing_components = [];
-  plan.source_assessment.stage_readiness.static_audit = { status: "ready", reasons: ["Static analysis inputs are present."] };
-  plan.sandbox_plan = {
-    target: {
-      project_types: ["native"], languages: ["c"], build_systems: [], architectures: ["x86_64"],
-      os_families: ["linux"], target_classes: ["source"],
-    },
-    requirements: {
-      required_capabilities: ["ssh"], optional_capabilities: ["compiler"], requires_full_system: false,
-      requires_nested_docker: false, requires_qemu_guest: false, required_assets: [],
-      dependency_egress: { required: false, reasons: [] },
-    },
-    profile_recommendation: { recommended_profile_id: null, alternative_profile_ids: [], confidence: 0.8, reason: "Requirements only." },
-    confidence: 0.8, reason: "A basic source analysis environment is sufficient.",
+  plan.assessment.status = "complete";
+  plan.assessment.static_visibility = "full";
+  plan.assessment.missing = [];
+  plan.assessment.evidence = [
+    { path: "README.md", signal: "project_metadata", observation: "Documentation identifies the project boundary." },
+    { path: "src/main.c", signal: "source_tree_shape", observation: "The source body is present." },
+  ];
+  plan.sandbox_requirements = {
+    target: { project_types: ["native"], languages: ["c"], build_systems: [], architectures: ["x86_64"], os_families: ["linux"], target_classes: ["source"] },
+    required_capabilities: ["ssh", "shell"], optional_capabilities: ["compiler"],
+    execution: { full_system: false, nested_docker: false, qemu_guest: false }, required_assets: [],
+    dependency_egress: { required: false, reasons: [] }, confidence: 0.8,
   };
   return plan;
+}
+
+function assembled(decision: any, manifest: any) {
+  const paths = new Set<string>([".", ...(manifest.tree ?? []).map((item: any) => item.path), ...(manifest.root_candidates ?? []).map((item: any) => item.path)]);
+  return assembleAssessmentPlan(decision, {
+    requestedStages: ["static_audit"], capabilityCatalog: new Set(["ssh", "shell", "compiler", "docker", "qemu_system"]),
+    manifestPaths: paths, manifestFilePaths: new Set((manifest.tree ?? []).filter((item: any) => item.type === "file").map((item: any) => item.path)),
+    manifestRootCandidates: (manifest.root_candidates ?? []).map((item: any) => item.path), manifestTruncated: manifest.truncation?.truncated === true,
+  });
 }
 
 afterEach(() => { while (roots.length) rmSync(roots.pop()!, { recursive: true, force: true }); });
@@ -171,10 +173,11 @@ describe("prepare submit/postflight", () => {
       expect(result.status).toBe("committed");
       expect(readdirSync(f.output)).toEqual(["assessment-plan.json"]);
       expect(statSync(join(f.output, "assessment-plan.json")).mode & 0o777).toBe(0o600);
-      expect(JSON.parse(readFileSync(join(f.output, "assessment-plan.json"), "utf8"))).toEqual(validPlan());
+      expect(JSON.parse(readFileSync(join(f.output, "assessment-plan.json"), "utf8"))).toEqual(assembled(validPlan(), f.manifest));
       expect(f.state.postflight().plan_sha256).toBe(result.plan_sha256);
       expect(PrepareToolState.postflightExisting(f.config).plan_sha256).toBe(result.plan_sha256);
-      expect(JSON.parse(readFileSync(join(f.control, "receipt.json"), "utf8"))).not.toHaveProperty("plan");
+      expect(JSON.parse(readFileSync(join(f.control, "receipt.json"), "utf8"))).toMatchObject({ schema_version: "prepare-receipt/v2", decision_sha256: createHash("sha256").update(canonicalSemanticDecisionJson(validPlan() as any)).digest("hex") });
+      expect(readFileSync(join(f.control, "receipt.json"), "utf8")).not.toContain("Example project");
     } finally { f.state.close(); }
   });
 
@@ -192,9 +195,15 @@ describe("prepare submit/postflight", () => {
     await expect(repaired.state.submitPlan(validPlan())).resolves.toMatchObject({ status: "committed" });
     repaired.state.close();
 
+    const legacyFull = fixture();
+    const legacyPlan = assembled(validPlan(), legacyFull.manifest);
+    await expect(legacyFull.state.submitPlan(legacyPlan)).rejects.toMatchObject({ code: "ERR_PREPARE_SCHEMA_INVALID", terminal: false });
+    expect(readdirSync(legacyFull.output)).toEqual([]);
+    legacyFull.state.close();
+
     const semantic = fixture();
     const plan: any = validPlan();
-    plan.source_assessment.evidence[0].path = "not-in-manifest";
+    plan.assessment.evidence[0].path = "not-in-manifest";
     await expect(semantic.state.submitPlan(plan)).rejects.toMatchObject({ code: "ERR_PREPARE_SCHEMA_INVALID" });
     semantic.state.close();
 
@@ -204,13 +213,13 @@ describe("prepare submit/postflight", () => {
 
     const capability = fixture();
     const unknownCapability: any = validCompletePlan();
-    unknownCapability.sandbox_plan.requirements.required_capabilities = ["not_in_catalog"];
+    unknownCapability.sandbox_requirements.required_capabilities = ["ssh", "shell", "not_in_catalog"];
     await expect(capability.state.submitPlan(unknownCapability)).rejects.toMatchObject({ code: "ERR_PREPARE_SCHEMA_INVALID" });
     capability.state.close();
 
     const recommendation = fixture();
     const recommended: any = validCompletePlan();
-    recommended.sandbox_plan.profile_recommendation.recommended_profile_id = "linux-default";
+    recommended.sandbox_requirements.profile_recommendation = { recommended_profile_id: "linux-default" };
     await expect(recommendation.state.submitPlan(recommended)).rejects.toMatchObject({ code: "ERR_PREPARE_SCHEMA_INVALID" });
     recommendation.state.close();
   });
@@ -246,7 +255,7 @@ describe("prepare submit/postflight", () => {
 
   it("S05 sensitive plan and copied long source excerpt are terminal", async () => {
     const sensitive = fixture();
-    const plan: any = validPlan(); plan.source_assessment.summary = "api_key=do-not-persist-value";
+    const plan: any = validPlan(); plan.assessment.missing[0].fix = "api_key=do-not-persist-value";
     await expect(sensitive.state.submitPlan(plan)).rejects.toMatchObject({ code: "ERR_PREPARE_OUTPUT_SENSITIVE", terminal: true });
     expect(readdirSync(sensitive.output)).toEqual([]); sensitive.state.close();
 
@@ -256,7 +265,7 @@ describe("prepare submit/postflight", () => {
     const input = JSON.parse(readFileSync(excerpt.config.plannerInputPath, "utf8")); input.source_manifest = generateSourceManifest(excerpt.source);
     excerpt.state.close(); writeFileSync(excerpt.config.plannerInputPath, JSON.stringify(input));
     const state = new PrepareToolState(excerpt.config); state.readFile({ path: "README.md" });
-    const copied: any = validPlan(); copied.source_assessment.summary = `Prefix ${long} suffix`;
+    const copied: any = validPlan(); copied.assessment.missing[0].fix = `Prefix ${long} suffix`;
     await expect(state.submitPlan(copied)).rejects.toMatchObject({ code: "ERR_PREPARE_OUTPUT_SENSITIVE", terminal: true });
     state.close();
   });
@@ -315,6 +324,29 @@ describe("prepare submit/postflight", () => {
     expect(readdirSync(wrongReceiptSchema.output)).toEqual([]);
     wrongReceiptSchema.state.close();
 
+    const forged = fixture();
+    await forged.state.submitPlan(validPlan());
+    const forgedPath = join(forged.output, "assessment-plan.json");
+    const forgedPlan = JSON.parse(readFileSync(forgedPath, "utf8"));
+    forgedPlan.sandbox_plan = validCompletePlan().sandbox_requirements;
+    const forgedRaw = JSON.stringify(forgedPlan, null, 2) + "\n";
+    writeFileSync(forgedPath, forgedRaw, { mode: 0o600 });
+    const forgedReceiptPath = join(forged.control, "receipt.json");
+    const forgedReceipt = JSON.parse(readFileSync(forgedReceiptPath, "utf8"));
+    forgedReceipt.plan_sha256 = createHash("sha256").update(forgedRaw).digest("hex");
+    writeFileSync(forgedReceiptPath, JSON.stringify(forgedReceipt), { mode: 0o600 });
+    expect(() => forged.state.postflight()).toThrowError(expect.objectContaining({ code: "ERR_PREPARE_SCHEMA_INVALID" }));
+    expect(readdirSync(forged.output)).toEqual([]);
+    forged.state.close();
+
+    const extraReceipt = fixture();
+    await extraReceipt.state.submitPlan(validPlan());
+    const extraReceiptPath = join(extraReceipt.control, "receipt.json");
+    const extraReceiptValue = JSON.parse(readFileSync(extraReceiptPath, "utf8")); extraReceiptValue.plan = { forbidden: true };
+    writeFileSync(extraReceiptPath, JSON.stringify(extraReceiptValue), { mode: 0o600 });
+    expect(() => extraReceipt.state.postflight()).toThrowError(expect.objectContaining({ code: "ERR_PREPARE_PLANNER_FAILED" }));
+    extraReceipt.state.close();
+
     const extra = fixture();
     await extra.state.submitPlan(validPlan());
     writeFileSync(join(extra.output, "extra.txt"), "not allowed");
@@ -325,6 +357,25 @@ describe("prepare submit/postflight", () => {
 });
 
 describe("prepare static security boundary", () => {
+  it("R2 selects only the frozen v1.1 prompt bundle and preserves v1.0 rollback bytes", () => {
+    const hash = (path: string) => createHash("sha256").update(readFileSync(join(repoRoot, path))).digest("hex");
+    expect(hash("flows/prepare/agents/prepare-agent-v1.1.md")).toBe("914e0346340707cb3e03075b19cecb05070b52b0ed097a41c0a3e598a800ed97");
+    expect(hash("flows/prepare/tasks/prepare-v1.1.md")).toBe("4c442cab8e5163fbd85c8210bd9b57c101471fc8b7b247288fe8589abfdebbd6");
+    expect(hash("flows/prepare/skills/prepare-compact-submit-v1-1/SKILL.md")).toBe("35769e547216f67584a3a7d5d26cd203f9563612dac80a3d42dda98d54cc28d8");
+    expect(hash("flows/prepare/agents/prepare-agent.md")).toBe("049ca71f365b63f5902a57efddc3146e4db6b4e9e69dd7bcf54423809fdeba9a");
+    expect(hash("flows/prepare/tasks/prepare.md")).toBe("ef0132ed1fdd406dfbf50bd402801df471cadd3236cd98990b706e584ad71c56");
+    expect(hash("flows/prepare/skills/prepare-tool-protocol/SKILL.md")).toBe("f919515109f9eb0d2d27538356633d6d4c31ec1bf1c2e7eaee968ea846fc72b1");
+    const flowPath = join(repoRoot, "flows/prepare/flow.prepare.yaml");
+    const flow = readFileSync(flowPath, "utf8");
+    expect(flow).toContain("timeout: 660"); expect(flow).toContain("recursion_limit: 8"); expect(flow).toContain("timeout: 600");
+    expect(flow).toContain("agent: prepare-agent-v1.1.md"); expect(flow).toContain("skills: [prepare-compact-submit-v1-1]"); expect(flow).toContain("task: prepare-v1.1.md");
+    expect([...flow.matchAll(/^    - (read_project_manifest|read_project_file|submit_plan)$/gm)].map((match) => match[1])).toEqual(["read_project_manifest", "read_project_file", "submit_plan"]);
+    expect(hash("worker-assets/prepare-mode.sh")).toBe("d73ddd74e92691ce4b46deed7ad60218514f0101b6d850b74adf15deda20ab4a");
+    const spec = parseFlow(flowPath);
+    expect(spec.defaultAgent).toBe("prepare-agent-v1.1.md");
+    expect(spec.defaultTools).toEqual(["read_project_manifest", "read_project_file", "submit_plan"]);
+    expect(spec.stages[0]).toMatchObject({ id: "prepare", skills: ["prepare-compact-submit-v1-1"], task: "prepare-v1.1.md", timeout: 600, errorStrategy: "stop", executionPolicy: "prepare-restricted" });
+  });
   it("A01-A05/R03 extension has exactly three registrations and no exec/network/MCP imports", () => {
     const source = readFileSync(join(repoRoot, "flows/prepare/extensions/prepare-tools/index.ts"), "utf8");
     expect([...source.matchAll(/name: "(read_project_manifest|read_project_file|submit_plan)"/g)].map((match) => match[1])).toEqual([
