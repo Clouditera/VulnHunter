@@ -220,101 +220,46 @@ describe("prepare submit/postflight", () => {
     recommendation.state.close();
   });
 
-  it("S04 returns only safe v2 repair codes/pointers for typed adversarial inputs", async () => {
-    const mutations: Array<[string, (plan: any) => void]> = [
-      [
-        "unknown-issue-value",
-        (plan) => {
-          plan.decision.issues[0].code = "unknown-issue-value";
-        },
-      ],
-      [
-        "unknown-claim-value",
-        (plan) => {
-          plan.decision.issues[0].evidence[0].claim = "unknown-claim-value";
-        },
-      ],
-      [
-        "qualifier-conflict-value",
-        (plan) => {
-          plan.decision.issues[0].qualifiers = ["lfs_pointer_only"];
-        },
-      ],
-      [
-        "missing/path/value",
-        (plan) => {
-          plan.decision.issues[0].evidence[0].path = "missing/path/value";
-        },
-      ],
-      [
-        "unknown-field-value",
-        (plan) => {
-          plan.decision.unknown_field = "unknown-field-value";
-        },
-      ],
-      [
-        "duplicate-value",
-        (plan) => {
-          plan.decision.issues.push(structuredClone(plan.decision.issues[0]));
-        },
-      ],
+  it("S04 returns exact safe v2 repair codes and field pointers without branch noise", async () => {
+    type RepairCase = { canary: string; code: string; pointer: string; mutate: (plan: any) => void; base?: () => any };
+    const uncertain = () => ({ schema_version: "2.0", decision: { status: "uncertain", submission_shape: "unknown", intended_project: "Unknown project", root_candidates: ["."], confidence: 0.5, issues: [{ code: "manifest_truncation_blocks_closure", evidence: [{ path: ".", claim: "manifest_materially_truncated" }] }] } });
+    const cases: RepairCase[] = [
+      { canary: "unknown-issue-value", code: "schema_enum", pointer: "/decision/issues/0/code", mutate: (p) => { p.decision.issues[0].code = "unknown-issue-value"; } },
+      { canary: "unknown-claim-value", code: "schema_enum", pointer: "/decision/issues/0/evidence/0/claim", mutate: (p) => { p.decision.issues[0].evidence[0].claim = "unknown-claim-value"; } },
+      { canary: "incompatible-claim-value", code: "issue_claim_incompatible", pointer: "/decision/issues/0/evidence/0/claim", mutate: (p) => { p.decision.issues[0].evidence[0].claim = "asset_pointer_without_content"; } },
+      { canary: "qualifier-conflict-value", code: "qualifier_incompatible", pointer: "/decision/issues/0/qualifiers/0", mutate: (p) => { p.decision.issues[0].qualifiers = ["lfs_pointer_only"]; } },
+      { canary: "qualifier-evidence-value", code: "qualifier_evidence_missing", pointer: "/decision/issues/0/qualifiers/0", mutate: (p) => { p.decision.issues[0].qualifiers = ["base_identity_unresolved"]; } },
+      { canary: "missing/path/value", code: "manifest_path_unknown", pointer: "/decision/issues/0/evidence/0/path", mutate: (p) => { p.decision.issues[0].evidence[0].path = "missing/path/value"; } },
+      { canary: "directory-path-value", code: "evidence_path_not_file", pointer: "/decision/issues/0/evidence/0/path", mutate: (p) => { p.decision.issues[0].evidence[0].path = "src"; } },
+      { canary: "visibility-conflict-value", code: "source_visibility_conflict", pointer: "/decision/source_visibility", mutate: (p) => { p.decision.source_visibility = "full"; } },
+      { canary: "not-requested-value", code: "issue_not_requested", pointer: "/decision/issues/0", mutate: (p) => { p.decision.source_visibility = "full"; p.decision.issues = [{ code: "required_runtime_asset_absent", subject: "runtime asset", evidence: [{ path: "README.md", claim: "asset_required_by_project" }] }]; } },
+      { canary: "trusted-root-value", code: "trusted_context_conflict", pointer: "/decision/issues/0/evidence/0", mutate: () => {}, base: uncertain },
+      { canary: "duplicate-value", code: "normalized_duplicate", pointer: "/decision/issues", mutate: (p) => { p.decision.issues.push(structuredClone(p.decision.issues[0])); } },
+      { canary: "missing-subject-value", code: "schema_required", pointer: "/decision/issues/0/subject", mutate: (p) => { delete p.decision.issues[0].subject; } },
+      { canary: "missing-count-value", code: "schema_required", pointer: "/decision/issues/0/evidence/0/count", mutate: (p) => { p.decision.issues[0].evidence[0].claim = "aggregate_test_corpus_detected"; } },
+      { canary: "missing-complete-field-value", code: "schema_required", pointer: "/decision/sandbox_requirements", mutate: (p) => { delete p.decision.sandbox_requirements; }, base: validCompletePlan },
+      { canary: "unknown-field-value", code: "schema_additional_property", pointer: "/decision", mutate: (p) => { p.decision.unknown_field = "unknown-field-value"; } },
+      { canary: "invalid-status-value", code: "schema_enum", pointer: "/decision/status", mutate: (p) => { p.decision.status = "invalid-status-value"; } },
+      { canary: "invalid-type-value", code: "schema_invalid", pointer: "/decision/confidence", mutate: (p) => { p.decision.confidence = "invalid-type-value"; } },
+      { canary: "semantic-fallback-value", code: "semantic_invalid", pointer: "/decision/issues/0", mutate: (p) => { p.decision.issues = [{ code: "authoritative_first_party_input_absent", subject: "semantic-fallback-value", evidence: [{ path: "README.md", claim: "source_body_present" }] }]; } },
+      { canary: "X".repeat(129 * 1024), code: "output_capacity", pointer: "", mutate: (p) => { p.decision.issues[0].subject = "X".repeat(129 * 1024); } },
     ];
-    for (const [canary, mutate] of mutations) {
-      const f = fixture();
-      const plan: any = validPlan();
-      mutate(plan);
-      try {
-        await f.state.submitPlan(plan);
-        throw new Error("expected rejection");
-      } catch (error) {
+    for (const item of cases) {
+      const f = fixture(); const plan: any = (item.base ?? validPlan)(); item.mutate(plan);
+      try { await f.state.submitPlan(plan); throw new Error("expected rejection"); }
+      catch (error) {
         expect(error).toBeInstanceOf(PrepareToolError);
         const details = (error as PrepareToolError).details ?? [];
-        expect(details.length).toBeGreaterThan(0);
+        expect(details).toContainEqual({ instancePath: item.pointer, keyword: item.code, message: item.code });
+        if (["missing-subject-value", "missing-count-value", "missing-complete-field-value", "invalid-status-value"].includes(item.canary)) expect(details).toHaveLength(1);
+        expect(JSON.stringify(details)).not.toContain(item.canary);
         for (const detail of details) {
           expect(Object.keys(detail).sort()).toEqual(["instancePath", "keyword", "message"]);
           expect(detail.message).toBe(detail.keyword);
-          expect(detail.keyword).toMatch(
-            /^(?:schema_[a-z_]+|manifest_path_unknown|issue_claim_incompatible|qualifier_incompatible|trusted_context_conflict|normalized_duplicate|output_capacity|semantic_invalid)$/,
-          );
           expect(detail.instancePath).toMatch(/^(?:|\/(?:[A-Za-z0-9_~-]|~[01])*)+$/);
         }
-        expect(JSON.stringify(details)).not.toContain(canary);
-      } finally {
-        expect(readdirSync(f.output)).toEqual([]);
-        expect(readdirSync(f.control)).toEqual(["planner-input.json"]);
-        f.state.close();
-      }
+      } finally { expect(readdirSync(f.output)).toEqual([]); expect(readdirSync(f.control)).toEqual(["planner-input.json"]); f.state.close(); }
     }
-
-    const root = fixture();
-    const uncertain = {
-      schema_version: "2.0",
-      decision: {
-        status: "uncertain",
-        submission_shape: "unknown",
-        intended_project: "Unknown project",
-        root_candidates: ["."],
-        confidence: 0.5,
-        issues: [
-          {
-            code: "manifest_truncation_blocks_closure",
-            evidence: [{ path: ".", claim: "manifest_materially_truncated" }],
-          },
-        ],
-      },
-    };
-    await expect(root.state.submitPlan(uncertain)).rejects.toMatchObject({
-      code: "ERR_PREPARE_SCHEMA_INVALID",
-      terminal: false,
-      details: expect.arrayContaining([
-        expect.objectContaining({
-          keyword: "trusted_context_conflict",
-          message: "trusted_context_conflict",
-        }),
-      ]),
-    });
-    expect(readdirSync(root.output)).toEqual([]);
-    root.state.close();
   });
 
   it("S02 validates the complete submit envelope within the repair budget", async () => {
@@ -517,7 +462,7 @@ describe("prepare static security boundary", () => {
       "flows/prepare/tasks/prepare-v2.md":
         "3d0e5f47a24d76c604e8650506120b22710b0c08861fd0a71d80fcf646955998",
       "flows/prepare/skills/prepare-compact-submit-v2/SKILL.md":
-        "fefe15196da674b967cb7803a114cc545de29501d5f488e597aaec8d32774b16",
+        "0a0ceb23be00c7d955b2318eaa06fc1dc7dcd806b94ddc2c955c073ef03f835e",
       "flows/prepare/agents/prepare-agent-v1.1.md":
         "914e0346340707cb3e03075b19cecb05070b52b0ed097a41c0a3e598a800ed97",
       "flows/prepare/tasks/prepare-v1.1.md":
@@ -532,6 +477,21 @@ describe("prepare static security boundary", () => {
         "f919515109f9eb0d2d27538356633d6d4c31ec1bf1c2e7eaee968ea846fc72b1",
     };
     for (const [path, digest] of Object.entries(frozen)) expect(hash(path), path).toBe(digest);
+    const v2Schema = JSON.parse(readFileSync(join(repoRoot, "flows/prepare/schemas/prepare-semantic-decision-v2.schema.json"), "utf8"));
+    const v2Catalog = JSON.parse(readFileSync(join(repoRoot, "flows/prepare/schemas/prepare-minimal-semantic-catalog-v2.json"), "utf8"));
+    const v2Skill = readFileSync(join(repoRoot, "flows/prepare/skills/prepare-compact-submit-v2/SKILL.md"), "utf8");
+    const count = v2Schema.$defs.typedEvidence.properties.count;
+    expect(v2Skill).toContain(`integer \`count\` from ${count.minimum} through ${count.maximum}`);
+    expect(v2Skill).toContain(`non-empty \`issues\` (maximum ${v2Schema.$defs.incompleteDecision.properties.issues.maxItems})`);
+    expect(v2Catalog.incomplete_issue_catalog.build_manifest_absent.static_impact).toBe(false);
+    expect(v2Skill).toContain("when every issue is `build_manifest_absent` or a build/runtime asset/configuration issue it must be `full`");
+    for (const rule of [
+      "`nested_docker=true` requires capability `docker`",
+      "`qemu_guest=true` requires `full_system=true`, capability `qemu_system`, and at least one required asset",
+      "egress never repairs first-party source",
+      "Required and optional capabilities cannot overlap",
+      "Do not submit Profile recommendation fields or IDs",
+    ]) expect(v2Skill).toContain(rule);
     const flowPath = join(repoRoot, "flows/prepare/flow.prepare.yaml");
     const flow = readFileSync(flowPath, "utf8");
     expect(flow).toContain("timeout: 660");

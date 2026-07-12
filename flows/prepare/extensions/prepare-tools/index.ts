@@ -148,14 +148,18 @@ function isWithin(root: string, target: string): boolean {
 
 type SafeDecisionError = { instancePath: string; keyword: string; message: string };
 
-function safeDecisionErrors(errors: Array<{ instancePath?: unknown; keyword?: unknown; message?: unknown }> | null | undefined): SafeDecisionError[] {
+function safeDecisionErrors(errors: Array<{ instancePath?: unknown; keyword?: unknown; message?: unknown; params?: unknown }> | null | undefined): SafeDecisionError[] {
   return (errors ?? []).slice(0, 12).map((error) => {
     const pointer = String(error.instancePath ?? "");
-    const safePointer = pointer.length <= 256 && /^(?:|\/(?:[A-Za-z0-9_~-]|~[01])*)+$/.test(pointer) ? pointer : "";
+    let safePointer = pointer.length <= 256 && /^(?:|\/(?:[A-Za-z0-9_~-]|~[01])*)+$/.test(pointer) ? pointer : "";
     const keyword = String(error.keyword ?? "invalid");
+    if (keyword === "required" && error.params && typeof error.params === "object") {
+      const missing = (error.params as { missingProperty?: unknown }).missingProperty;
+      if (typeof missing === "string" && /^[A-Za-z_][A-Za-z0-9_]*$/.test(missing)) safePointer += `/${missing}`;
+    }
     const message = String(error.message ?? "");
     let code: string;
-    if (keyword === message && /^(?:schema_[a-z_]+|manifest_path_unknown|issue_claim_incompatible|qualifier_incompatible|trusted_context_conflict|normalized_duplicate|output_capacity|semantic_invalid)$/.test(keyword)) code = keyword;
+    if (/^(?:schema_(?:required|enum|additional_property|invalid)|manifest_path_unknown|evidence_path_not_file|issue_claim_incompatible|qualifier_(?:incompatible|evidence_missing)|trusted_context_conflict|source_visibility_conflict|issue_not_requested|normalized_duplicate|output_capacity|semantic_invalid)$/.test(keyword)) code = keyword;
     else if (message.includes("path must be") || message.includes("root evidence")) code = "manifest_path_unknown";
     else if (message.includes("claim is incompatible")) code = "issue_claim_incompatible";
     else if (message.includes("qualifier")) code = "qualifier_incompatible";
@@ -164,7 +168,7 @@ function safeDecisionErrors(errors: Array<{ instancePath?: unknown; keyword?: un
     else if (keyword.includes("capacity") || keyword === "maxBytes") code = "output_capacity";
     else if (keyword === "required") code = "schema_required";
     else if (keyword === "enum" || keyword === "const") code = "schema_enum";
-    else if (keyword === "additionalProperties") code = "schema_unknown_field";
+    else if (keyword === "additionalProperties") code = "schema_additional_property";
     else if (["type", "oneOf", "anyOf"].includes(keyword)) code = "schema_invalid";
     else code = "semantic_invalid";
     return { instancePath: safePointer, keyword: code, message: code };
@@ -196,6 +200,7 @@ export class PrepareToolState {
   private readonly returnedSource: string[] = [];
   private readonly validatePlan: ReturnType<Ajv2020["compile"]>;
   private readonly validateDecision: ReturnType<Ajv2020["compile"]>;
+  private readonly validateDecisionBranches: Record<"complete" | "incomplete" | "uncertain", ReturnType<Ajv2020["compile"]>>;
   private terminalFailure = false;
   private submitInFlight = false;
   private committed = false;
@@ -255,7 +260,23 @@ export class PrepareToolState {
       const decisionSchemaPath = join(dirname(config.planSchemaPath), "prepare-semantic-decision-v2.schema.json");
       const decisionSchema = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegularNoFollow(decisionSchemaPath, 2 * 1024 * 1024)));
       this.validatePlan = new Ajv2020({ allErrors: true, strict: false }).compile(planSchema);
-      this.validateDecision = new Ajv2020({ allErrors: true, strict: true }).compile(decisionSchema);
+      const decisionAjv = new Ajv2020({ allErrors: true, strict: true });
+      this.validateDecision = decisionAjv.compile(decisionSchema);
+      const branch = (name: "complete" | "incomplete" | "uncertain") => {
+        const { $id: _id, ...schemaWithoutId } = decisionSchema;
+        return decisionAjv.compile({
+          ...schemaWithoutId,
+          properties: {
+            ...decisionSchema.properties,
+            decision: { $ref: `#/$defs/${name}Decision` },
+          },
+        });
+      };
+      this.validateDecisionBranches = {
+        complete: branch("complete"),
+        incomplete: branch("incomplete"),
+        uncertain: branch("uncertain"),
+      };
       if (allowExistingFinal) this.committed = true;
     } catch (error) {
       closeSync(this.sourceFd);
@@ -553,6 +574,27 @@ export class PrepareToolState {
     return errors.slice(0, 12);
   }
 
+  private decisionRepairErrors(plan: unknown): Array<{ instancePath?: unknown; keyword?: unknown; message?: unknown; params?: unknown }> {
+    if (plan && typeof plan === "object" && !Array.isArray(plan)) {
+      const decision = (plan as { decision?: unknown }).decision;
+      if (decision && typeof decision === "object" && !Array.isArray(decision)) {
+        const status = (decision as { status?: unknown }).status;
+        if (status === "complete" || status === "incomplete" || status === "uncertain") {
+          const validate = this.validateDecisionBranches[status];
+          validate(plan);
+          const errors = [...(validate.errors ?? [])];
+          const specific = errors.filter((error) => !["if", "oneOf", "anyOf"].includes(String(error.keyword)));
+          return specific.length ? specific : errors;
+        }
+        if (status === undefined) {
+          return [{ instancePath: "/decision", keyword: "required", message: "required", params: { missingProperty: "status" } }];
+        }
+        return [{ instancePath: "/decision/status", keyword: "enum", message: "enum", params: {} }];
+      }
+    }
+    return [...(this.validateDecision.errors ?? [])];
+  }
+
   async submitEnvelope(params: unknown, alreadyCounted = false): Promise<any> {
     if (!alreadyCounted) this.count("submit");
     if (this.submitInFlight || this.committed) this.failTerminal("ERR_PREPARE_PLANNER_FAILED");
@@ -582,7 +624,7 @@ export class PrepareToolState {
       try { raw = canonicalJson(plan); } catch { /* invalid plan below */ }
       if (raw === undefined || Buffer.byteLength(raw) > MAX_PLAN_BYTES) return this.invalidAttempt([{ instancePath: "", keyword: "maxBytes", message: "plan is invalid or exceeds 128 KiB" }]);
       if (containsSensitive(plan)) this.failTerminal("ERR_PREPARE_OUTPUT_SENSITIVE");
-      if (!this.validateDecision(plan)) return this.invalidAttempt(safeDecisionErrors(this.validateDecision.errors));
+      if (!this.validateDecision(plan)) return this.invalidAttempt(safeDecisionErrors(this.decisionRepairErrors(plan)));
       const decisionErrors = validateMinimalSemanticDecision(plan, this.assemblyContext());
       if (decisionErrors.length) return this.invalidAttempt(safeDecisionErrors([...decisionErrors]));
       let assembled: any;

@@ -168,17 +168,17 @@ function semantic(decision: any, context: AssembleContext): DecisionError[] {
   const errors: DecisionError[] = [];
   const d = decision.decision;
   if (new TextEncoder().encode(cj(decision)).byteLength > 64 * 1024)
-    err(errors, "", "canonical decision exceeds 64 KiB", "capacity");
+    err(errors, "", "canonical decision exceeds 64 KiB", "output_capacity");
   if (d.status === "complete") return [...errors, ...validateV1(toV1Complete(d), context)];
   d.root_candidates.forEach((p: string, i: number) => {
     if (!context.manifestPaths.has(p))
-      err(errors, `/decision/root_candidates/${i}`, "path must be manifest-known");
+      err(errors, `/decision/root_candidates/${i}`, "path must be manifest-known", "manifest_path_unknown");
   });
   const seenIssues = new Set<string>();
   d.issues.forEach((issue: any, i: number) => {
     const ip = `/decision/issues/${i}`;
     const key = cj({ ...issue, evidence: [...issue.evidence].map(canonical) });
-    if (seenIssues.has(key)) err(errors, "/decision/issues", "normalized duplicate");
+    if (seenIssues.has(key)) err(errors, "/decision/issues", "normalized duplicate", "normalized_duplicate");
     seenIssues.add(key);
     const claims = new Set<string>();
     const seenEvidence = new Set<string>();
@@ -186,20 +186,20 @@ function semantic(decision: any, context: AssembleContext): DecisionError[] {
       const ep = `${ip}/evidence/${j}`,
         spec = C[e.claim];
       if (!context.manifestPaths.has(e.path))
-        err(errors, `${ep}/path`, "path must be manifest-known");
+        err(errors, `${ep}/path`, "path must be manifest-known", "manifest_path_unknown");
       if (e.path === "." && e.claim !== "manifest_materially_truncated")
-        err(errors, `${ep}/path`, "root evidence is reserved for trusted manifest truncation");
+        err(errors, `${ep}/path`, "root evidence is reserved for trusted manifest truncation", "trusted_context_conflict");
       if (e.path !== "." && !context.manifestFilePaths.has(e.path))
-        err(errors, `${ep}/path`, "evidence path must be a manifest file");
+        err(errors, `${ep}/path`, "evidence path must be a manifest file", "evidence_path_not_file");
       if (!spec?.issues.includes(issue.code))
-        err(errors, `${ep}/claim`, "claim is incompatible with issue");
+        err(errors, `${ep}/claim`, "claim is incompatible with issue", "issue_claim_incompatible");
       if (
         spec?.trustedTruncation &&
         (!context.manifestTruncated || (spec.exactPath !== undefined && e.path !== spec.exactPath))
       )
-        err(errors, ep, "claim conflicts with trusted context");
+        err(errors, ep, "claim conflicts with trusted context", "trusted_context_conflict");
       const ek = cj(e);
-      if (seenEvidence.has(ek)) err(errors, `${ip}/evidence`, "normalized duplicate");
+      if (seenEvidence.has(ek)) err(errors, `${ip}/evidence`, "normalized duplicate", "normalized_duplicate");
       seenEvidence.add(ek);
       claims.add(e.claim);
     });
@@ -213,9 +213,9 @@ function semantic(decision: any, context: AssembleContext): DecisionError[] {
       for (const [j, qc] of (issue.qualifiers ?? []).entries()) {
         const q = Q[qc];
         if (!q?.issues.includes(issue.code))
-          err(errors, `${ip}/qualifiers/${j}`, "qualifier is incompatible with issue");
+          err(errors, `${ip}/qualifiers/${j}`, "qualifier is incompatible with issue", "qualifier_incompatible");
         if (q?.all?.some((x) => !claims.has(x)) || (q?.any && !q.any.some((x) => claims.has(x))))
-          err(errors, `${ip}/qualifiers/${j}`, "qualifier evidence is missing");
+          err(errors, `${ip}/qualifiers/${j}`, "qualifier evidence is missing", "qualifier_evidence_missing");
       }
       const impact = [
         ...(spec.staticImpact && context.requestedStages.includes("static_audit")
@@ -223,11 +223,11 @@ function semantic(decision: any, context: AssembleContext): DecisionError[] {
           : []),
         ...stageList(spec.first, context.requestedStages).filter((x) => x !== "static_audit"),
       ];
-      if (!impact.length) err(errors, ip, "issue is not relevant to requested stages");
+      if (!impact.length) err(errors, ip, "issue is not relevant to requested stages", "issue_not_requested");
     } else {
       const spec = U[issue.code];
       if (spec?.trustedTruncation && !context.manifestTruncated)
-        err(errors, ip, "issue conflicts with trusted context");
+        err(errors, ip, "issue conflicts with trusted context", "trusted_context_conflict");
     }
   });
   if (d.status === "incomplete") {
@@ -236,7 +236,7 @@ function semantic(decision: any, context: AssembleContext): DecisionError[] {
       (any && !["partial", "none"].includes(d.source_visibility)) ||
       (!any && d.source_visibility !== "full")
     )
-      err(errors, "/decision/source_visibility", "source visibility conflicts with issues");
+      err(errors, "/decision/source_visibility", "source visibility conflicts with issues", "source_visibility_conflict");
   }
   return errors;
 }
