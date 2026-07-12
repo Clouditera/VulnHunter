@@ -134,6 +134,9 @@ for (const id of selected) {
     try {
       progress(id, run, "container_exit", executed.status === 0 ? "running" : "failed", classified);
       if (executed.status !== 0) throw new SafeHarnessFailure(`SAFE_FAILURE fixture=${id} run=${run} phase=container_exit category=${classified.runtime_category ?? "unknown"}`);
+      if (classified.safe_counters.api_errors > 0 || classified.safe_counters.retries > 0) {
+        safeFailure(id, run, "container_exit", "provider_failure", null, { safe_counters: lastCounters, model_activity: lastModelActivity });
+      }
       activePhase = "artifact_gate";
       const outputNames = readdirSync(output).sort();
       const planPath = join(output, "assessment-plan.json");
