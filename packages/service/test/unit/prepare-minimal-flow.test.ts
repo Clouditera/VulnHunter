@@ -31,6 +31,7 @@ describe("minimal Prepare flow", () => {
     const spec = parseFlow(flowPath);
     expect(spec.stages.map((x) => [x.id, x.type])).toEqual([["prepare", "single"]]);
     expect(spec.defaultTools).toEqual(["read", "write", "edit", "bash"]);
+    expect(spec.inputs.map((input) => input.name)).toEqual(["work_dir", "output_dir", "dynamic_enabled", "result_path"]);
     const raw = readFileSync(flowPath, "utf8");
     for (const legacy of ["prepare-restricted", "prepare-tools", "submit_plan", "compact-submit"]) expect(raw).not.toContain(legacy);
   });

@@ -7,6 +7,10 @@ artifacts:
   schemas: schemas/
   models_json: models.json
 inputs:
+  work_dir:
+    type: path
+  output_dir:
+    type: path
   dynamic_enabled:
     type: str
     required: true
