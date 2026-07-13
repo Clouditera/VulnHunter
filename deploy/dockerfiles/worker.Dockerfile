@@ -81,9 +81,10 @@ COPY worker-assets/scan-mode.sh /opt/scan-mode.sh
 COPY worker-assets/chat-mode.sh /opt/chat-mode.sh
 COPY worker-assets/report-mode.sh /opt/report-mode.sh
 COPY worker-assets/prepare-mode.sh /opt/prepare-mode.sh
+COPY worker-assets/prepare-result-postflight.py /opt/prepare-result-postflight.py
 COPY worker-assets/run-with-deadline.py /opt/run-with-deadline.py
 COPY worker-assets/timeout-finalize-artifacts.py /opt/timeout-finalize-artifacts.py
-RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh /opt/report-mode.sh /opt/prepare-mode.sh \
+RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh /opt/report-mode.sh /opt/prepare-mode.sh /opt/prepare-result-postflight.py \
     /opt/run-with-deadline.py /opt/timeout-finalize-artifacts.py
 
 WORKDIR /workspace

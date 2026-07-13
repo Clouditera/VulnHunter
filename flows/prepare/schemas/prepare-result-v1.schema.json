@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prepare-result-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project_complete", "sandbox_type", "reason"],
+  "properties": {
+    "project_complete": {"type": "boolean"},
+    "sandbox_type": {"type": ["string", "null"], "minLength": 1, "maxLength": 128},
+    "reason": {"type": "string", "enum": ["complete", "partial_source", "no_compatible_sandbox"]}
+  }
+}

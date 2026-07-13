@@ -1,29 +1,27 @@
 version: "1.0"
-timeout: 660
+timeout: 600
 recursion_limit: 8
 artifacts:
   agents: agents/
-  skills: skills/
   tasks: tasks/
   schemas: schemas/
-  extensions: extensions/
-  env_file: .env
   models_json: models.json
+inputs:
+  dynamic_enabled:
+    type: str
+    required: true
 defaults:
   model: ${env.V_PREPARE_MODEL}
   max_parallel: 1
-  agent: prepare-agent-v2.md
-  tools:
-    - read_project_manifest
-    - read_project_file
-    - submit_plan
+  agent: prepare-agent.md
+  tools: [read, write, edit, bash]
 stages:
   - id: prepare
-    name: Prepare source assessment
+    name: Prepare
     type: single
-    skills: [prepare-compact-submit-v2]
-    extensions: [prepare-tools]
-    task: prepare-v2.md
+    task: prepare.md
+    prompt: |
+      Dynamic validation enabled: ${flow_inputs.dynamic_enabled}
+      Write the final result to ${output_dir}/prepare-result.json.
     timeout: 600
     error_strategy: stop
-    execution_policy: prepare-restricted
