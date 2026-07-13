@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -15,7 +15,6 @@ function validate(value: unknown, dynamic: boolean, profiles?: unknown, extra = 
     const result = join(dir, "prepare-result.json");
     writeFileSync(result, typeof value === "string" ? value : `${JSON.stringify(value)}\n`, { mode: 0o600 });
     chmodSync(result, 0o600);
-    mkdirSync(join(dir, ".youngflow"));
     if (extra) writeFileSync(join(dir, "extra"), "x", { mode: 0o600 });
     const args = [postflight, dir, String(dynamic)];
     if (profiles !== undefined) {
@@ -58,7 +57,21 @@ describe("minimal Prepare flow", () => {
       [{ project_complete: true, sandbox_type: "missing", reason: "complete" }, true, [{ profile_id: "base-linux" }]],
       ['{"project_complete":true,"project_complete":false,"sandbox_type":null,"reason":"partial_source"}', false],
     ];
-    for (const [value, dynamic, profiles] of invalid) expect(validate(value, dynamic, profiles).status).toBe(4);
+    for (const [value, dynamic, profiles] of invalid) {
+      const run = validate(value, dynamic, profiles);
+      expect(run.status).toBe(4); expect(run.stderr).not.toContain("Traceback");
+    }
+    const wrongTypes = {
+      project_complete: [null, 1, [], {}, "true"],
+      sandbox_type: [true, 1, [], {}],
+      reason: [null, true, 1, [], {}],
+    } as const;
+    for (const field of Object.keys(wrongTypes) as Array<keyof typeof wrongTypes>) {
+      for (const bad of wrongTypes[field]) {
+        const value = { project_complete: true, sandbox_type: null, reason: "complete", [field]: bad };
+        const run = validate(value, false); expect(run.status).toBe(4); expect(run.stderr).not.toContain("Traceback");
+      }
+    }
     expect(validate({ project_complete: true, sandbox_type: null, reason: "complete" }, false, undefined, true).status).toBe(4);
   });
 
@@ -66,7 +79,8 @@ describe("minimal Prepare flow", () => {
     const mode = readFileSync(join(root, "worker-assets/prepare-mode.sh"), "utf8");
     expect(mode).toContain(".prepare-readonly-probe");
     expect(mode).toContain('--work-dir "$PREPARE_SOURCE_ROOT"');
-    expect(mode).toContain('--output-dir "$PREPARE_OUTPUT_DIR"');
+    expect(mode).toContain('--output-dir "$runtime"');
+    expect(mode).toContain('--result-path "$result_path"');
     expect(mode).toContain("prepare-result-postflight.py");
     for (const legacy of ["PREPARE_CONTROL_DIR", "PREPARE_PLANNER_INPUT", "PREPARE_PLAN_SCHEMA"]) expect(mode).not.toContain(legacy);
   });

@@ -10,6 +10,9 @@ inputs:
   dynamic_enabled:
     type: str
     required: true
+  result_path:
+    type: path
+    required: true
 defaults:
   model: ${env.V_PREPARE_MODEL}
   max_parallel: 1
@@ -22,6 +25,6 @@ stages:
     task: prepare.md
     prompt: |
       Dynamic validation enabled: ${flow_inputs.dynamic_enabled}
-      Write the final result to ${output_dir}/prepare-result.json.
+      Write the final result to ${flow_inputs.result_path}.
     timeout: 600
     error_strategy: stop

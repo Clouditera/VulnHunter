@@ -13,38 +13,51 @@ if [ -L "$PREPARE_OUTPUT_DIR" ]; then exit 3; fi
 if [ -e "$PREPARE_OUTPUT_DIR" ]; then
   [ -d "$PREPARE_OUTPUT_DIR" ] || exit 3
   [ -z "$(find "$PREPARE_OUTPUT_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ] || exit 3
-else
-  mkdir "$PREPARE_OUTPUT_DIR"
 fi
-chmod 700 "$PREPARE_OUTPUT_DIR"
 
-probe="$PREPARE_SOURCE_ROOT/.prepare-readonly-probe-$$"
-if (: > "$probe") 2>/dev/null; then
-  rm -f "$probe"
+# mktemp uses O_EXCL semantics: it cannot collide with or modify an existing source entry.
+probe=""
+if probe="$(mktemp "$PREPARE_SOURCE_ROOT/.prepare-readonly-probe.XXXXXX" 2>/dev/null)"; then
+  rm -f -- "$probe"
   echo "[prepare] source mount is writable" >&2
   exit 3
 fi
 
 child=""
+runtime=""
+output_created=0
 cleanup() {
   rc=$?
   trap - EXIT INT TERM HUP
-  if [ "$rc" -ne 0 ]; then
+  [ -z "$runtime" ] || rm -rf -- "$runtime"
+  if [ "$rc" -ne 0 ] && [ -d "$PREPARE_OUTPUT_DIR" ] && [ ! -L "$PREPARE_OUTPUT_DIR" ]; then
     find "$PREPARE_OUTPUT_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null || true
+    [ "$output_created" -eq 0 ] || rmdir "$PREPARE_OUTPUT_DIR" 2>/dev/null || true
   fi
   exit "$rc"
 }
 terminate() {
-  [ -z "$child" ] || { kill -TERM "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; child=""; }
+  if [ -n "$child" ]; then
+    kill -TERM "$child" 2>/dev/null || true
+    wait "$child" 2>/dev/null || true
+    child=""
+  fi
   exit 143
 }
 trap cleanup EXIT
 trap terminate INT TERM HUP
 
-set -- youngflow /opt/vulnagent/flows/prepare/flow.prepare.yaml \
-  --work-dir "$PREPARE_SOURCE_ROOT" --output-dir "$PREPARE_OUTPUT_DIR" \
-  --dynamic-enabled "$PREPARE_DYNAMIC_ENABLED"
-"$@" &
+runtime_root=${PREPARE_RUNTIME_ROOT:-/tmp}
+[ -d "$runtime_root" ] && [ ! -L "$runtime_root" ] || exit 3
+runtime=$(mktemp -d "$runtime_root/prepare-runtime.XXXXXX")
+chmod 700 "$runtime"
+if [ ! -e "$PREPARE_OUTPUT_DIR" ]; then mkdir "$PREPARE_OUTPUT_DIR"; output_created=1; fi
+chmod 700 "$PREPARE_OUTPUT_DIR"
+result_path="$PREPARE_OUTPUT_DIR/prepare-result.json"
+
+youngflow /opt/vulnagent/flows/prepare/flow.prepare.yaml \
+  --work-dir "$PREPARE_SOURCE_ROOT" --output-dir "$runtime" \
+  --dynamic-enabled "$PREPARE_DYNAMIC_ENABLED" --result-path "$result_path" &
 child=$!
 wait "$child"
 child=""
@@ -54,3 +67,5 @@ if [ -n "${PREPARE_SANDBOX_TYPES_FILE:-}" ]; then
 else
   /opt/prepare-result-postflight.py "$PREPARE_OUTPUT_DIR" "$PREPARE_DYNAMIC_ENABLED"
 fi
+rm -rf -- "$runtime"
+runtime=""

@@ -48,12 +48,6 @@ def main() -> None:
         fail("arguments")
     output_dir, dynamic = sys.argv[1], sys.argv[2] == "true"
     entries = set(os.listdir(output_dir))
-    engine_dir = os.path.join(output_dir, ".youngflow")
-    if ".youngflow" in entries:
-        engine = os.lstat(engine_dir)
-        if not stat.S_ISDIR(engine.st_mode) or stat.S_ISLNK(engine.st_mode):
-            fail("engine output metadata")
-        entries.remove(".youngflow")
     if entries != {"prepare-result.json"}:
         fail("output set")
     path = os.path.join(output_dir, "prepare-result.json")
@@ -66,7 +60,7 @@ def main() -> None:
     if not isinstance(value, dict) or set(value) != ALLOWED_KEYS:
         fail("fields")
     complete, sandbox, reason = value["project_complete"], value["sandbox_type"], value["reason"]
-    if type(complete) is not bool or reason not in ALLOWED_REASONS:
+    if type(complete) is not bool or not isinstance(reason, str) or reason not in ALLOWED_REASONS:
         fail("types")
     if sandbox is not None and (not isinstance(sandbox, str) or not sandbox or len(sandbox) > 128):
         fail("sandbox_type")
@@ -82,4 +76,9 @@ def main() -> None:
         fail("combination")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception:
+        fail("validation")
