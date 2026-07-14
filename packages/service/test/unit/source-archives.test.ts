@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { beforeEach, describe, expect, it } from "vitest";
 import { detectSourceArchive, stripSourceArchiveExtension } from "../../src/features/source-archives/detect.js";
-import { extractSourceArchive, inspectSourceArchive } from "../../src/features/source-archives/extract.js";
-import { buildSourceArchivePolicy } from "../../src/features/source-archives/policy.js";
+import { assertSourceArchiveEntryCount, extractSourceArchive, inspectSourceArchive, prepareSourceArchiveDestination } from "../../src/features/source-archives/extract.js";
+import { buildSourceArchivePolicy, SOURCE_ARCHIVE_MAX_FILES } from "../../src/features/source-archives/policy.js";
 import { SourceArchiveError } from "../../src/features/source-archives/errors.js";
 
 const policy = buildSourceArchivePolicy({ source_archive_upload_max_mb: 500 });
@@ -52,6 +52,29 @@ describe("source archive detection", () => {
 });
 
 describe("source archive extraction", () => {
+  it("enforces the entry ceiling for directories as well as files", () => {
+    expect(() => assertSourceArchiveEntryCount(SOURCE_ARCHIVE_MAX_FILES)).not.toThrow();
+    expect(() => assertSourceArchiveEntryCount(SOURCE_ARCHIVE_MAX_FILES + 1)).toThrow(expect.objectContaining({ code: "ERR_SOURCE_ARCHIVE_TOO_MANY_FILES" }));
+  });
+
+  it("prepares an absent atomic-publish destination", () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-destination-"));
+    try {
+      const destination = join(root, "workspace", "src"); mkdirSync(destination, { recursive: true }); writeFileSync(join(destination, "stale"), "old");
+      prepareSourceArchiveDestination(destination);
+      expect(existsSync(join(root, "workspace"))).toBe(true); expect(existsSync(destination)).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("keeps scan, eval, and report callers on the absent-destination contract", () => {
+    const callers = [
+      ["src/features/workers/scheduler.ts", "prepareSourceArchiveDestination(srcDir);"],
+      ["src/features/poc/eval-worker.ts", "prepareSourceArchiveDestination(subjectDir);"],
+      ["src/features/reports/report-worker.ts", "prepareSourceArchiveDestination(sourceDir);"],
+    ];
+    for (const [file, call] of callers) expect(readFileSync(join(process.cwd(), file), "utf8")).toContain(call);
+  });
+
   it("extracts tar.gz regular files", async () => {
     const root = mkdtempSync(join(tmpdir(), "source-archive-"));
     try {

@@ -21,7 +21,7 @@ import { notify } from "../notifications/index.js";
 import { logger } from "../../infra/logger.js";
 import type { ServiceConfig } from "../../infra/config.js";
 import { resolveArchiveIdentity } from "../source-archives/detect.js";
-import { extractSourceArchive } from "../source-archives/extract.js";
+import { extractSourceArchive, prepareSourceArchiveDestination } from "../source-archives/extract.js";
 import { getSourceArchivePolicy } from "../source-archives/policy.js";
 
 export function getEvalHostWorkDir(dataDir: string, jobId: string): string {
@@ -56,7 +56,6 @@ export async function spawnEvalWorker(
   const hostWorkDir = getEvalHostWorkDir(config.dataDir, job.id);
   ensureWorkDir(hostWorkDir);
   const subjectDir = join(hostWorkDir, "subject");
-  mkdirSync(subjectDir, { recursive: true });
   const outDir = join(hostWorkDir, "out");
   mkdirSync(outDir, { recursive: true });
   const inputFindingsDir = join(outDir, "input", "findings");
@@ -69,6 +68,7 @@ export async function spawnEvalWorker(
   const minio = getMinio();
   const archivePath = join(hostWorkDir, "source-archive");
   await minio.fGetObject(config.minio.bucket, archive.minioKey, archivePath);
+  prepareSourceArchiveDestination(subjectDir);
   await extractSourceArchive(archivePath, archive.filename, subjectDir, await getSourceArchivePolicy());
 
   // Stage selected findings as YAML files into input/findings/

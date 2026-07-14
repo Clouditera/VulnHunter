@@ -28,7 +28,7 @@ import { onEvalContainerDie, onPocRunContainerDie, tickPocScheduler } from "../p
 import { notify } from "../notifications/index.js";
 import type { ServiceConfig } from "../../infra/config.js";
 import { resolveArchiveIdentity } from "../source-archives/detect.js";
-import { extractSourceArchive } from "../source-archives/extract.js";
+import { extractSourceArchive, prepareSourceArchiveDestination } from "../source-archives/extract.js";
 import { getSourceArchivePolicy } from "../source-archives/policy.js";
 import {
   evaluateAuditCompletion,
@@ -482,7 +482,7 @@ export class TaskScheduler {
   private async prepareWorkspace(task: DbTask): Promise<void> {
     const hostWorkDir = getHostWorkDir(this.config.dataDir, task.id);
     const srcDir = join(hostWorkDir, "src");
-    ensureWorkDir(srcDir);
+    ensureWorkDir(hostWorkDir);
 
     // Download code package from MinIO and extract.
     const archive = resolveArchiveIdentity({ taskId: task.id, sourceMeta: task.source_meta });
@@ -510,6 +510,7 @@ export class TaskScheduler {
     // complete server-side (git-clone verifies size on upload); a single
     // zero-retry call turned the blip into a permanent task failure.
     await downloadObjectWithRetry(minio, this.config.minio.bucket, minioKey, archivePath);
+    prepareSourceArchiveDestination(srcDir);
     await extractSourceArchive(archivePath, archive.filename, srcDir, await getSourceArchivePolicy());
     logger.info({ taskId: task.id, minioKey, filename: archive.filename }, "Code package extracted to workspace");
   }

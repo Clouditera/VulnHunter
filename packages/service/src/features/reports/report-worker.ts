@@ -27,7 +27,7 @@ import { listPocResults } from "../poc/storage.js";
 import { getDb } from "../../infra/db/client.js";
 import type { ServiceConfig } from "../../infra/config.js";
 import { resolveArchiveIdentity } from "../source-archives/detect.js";
-import { extractSourceArchive } from "../source-archives/extract.js";
+import { extractSourceArchive, prepareSourceArchiveDestination } from "../source-archives/extract.js";
 import { buildSourceArchivePolicy, getSourceArchivePolicy, type SourceArchivePolicy } from "../source-archives/policy.js";
 
 interface MaterializedReportContext {
@@ -64,6 +64,7 @@ async function listMinioKeys(bucket: string, prefix: string): Promise<string[]> 
 }
 
 export async function extractArchiveToSource(archivePath: string, filename: string, sourceDir: string, policy: SourceArchivePolicy = buildSourceArchivePolicy({})): Promise<void> {
+  prepareSourceArchiveDestination(sourceDir);
   await extractSourceArchive(archivePath, filename, sourceDir, policy);
 }
 async function materializeSourceArchive(params: {
@@ -79,8 +80,6 @@ async function materializeSourceArchive(params: {
   const archivePath = join(hostWorkDir, "source-archive");
 
   try {
-    rmSync(sourceDir, { recursive: true, force: true });
-    mkdirSync(sourceDir, { recursive: true });
     await getMinio().fGetObject(config.minio.bucket, minioKey, archivePath);
     await extractArchiveToSource(archivePath, filename, sourceDir, await getSourceArchivePolicy());
     return { available: true, filename, minioKey, path: "/workspace/source" };

@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, rmSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, rmSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rename, symlink } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 import { TextDecoder } from "node:util";
@@ -8,7 +8,7 @@ import { detectSourceArchive, type SourceArchiveFormat } from "./detect.js";
 import { SourceArchiveError } from "./errors.js";
 import { SOURCE_ARCHIVE_MAX_FILES, maxExtractedBytes, type SourceArchivePolicy } from "./policy.js";
 
-interface InspectState { files: number; regularFiles: number; bytes: number }
+interface InspectState { entries: number; regularFiles: number; bytes: number }
 type EntryKind = "file" | "directory" | "symlink";
 interface ManifestEntry { path: string; kind: EntryKind; size: number; linkTarget?: string; resolvedTarget?: string }
 interface ArchiveManifest { entries: ManifestEntry[]; byPath: Map<string, ManifestEntry> }
@@ -31,9 +31,13 @@ function normalizeEntryPath(entryPath: string): string {
   return normalized;
 }
 
+export function assertSourceArchiveEntryCount(count: number): void {
+  if (count > SOURCE_ARCHIVE_MAX_FILES) throw new SourceArchiveError("ERR_SOURCE_ARCHIVE_TOO_MANY_FILES", `Archive contains too many entries (max ${SOURCE_ARCHIVE_MAX_FILES})`);
+}
+
 function bumpState(state: InspectState, bytes: number, regular: boolean, policy: SourceArchivePolicy): void {
-  state.files += 1; state.bytes += Math.max(0, bytes); if (regular) state.regularFiles += 1;
-  if (state.files > SOURCE_ARCHIVE_MAX_FILES) throw new SourceArchiveError("ERR_SOURCE_ARCHIVE_TOO_MANY_FILES", `Archive contains too many files (max ${SOURCE_ARCHIVE_MAX_FILES})`);
+  state.entries += 1; state.bytes += Math.max(0, bytes); if (regular) state.regularFiles += 1;
+  assertSourceArchiveEntryCount(state.entries);
   if (state.bytes > maxExtractedBytes(policy)) throw new SourceArchiveError("ERR_SOURCE_ARCHIVE_EXTRACTED_TOO_LARGE", "Archive extracted content exceeds the safety limit");
 }
 
@@ -95,7 +99,7 @@ function readZipEntry(zipfile: yauzl.ZipFile, entry: yauzl.Entry): Promise<Buffe
 }
 
 async function buildZipManifest(archivePath: string, policy: SourceArchivePolicy): Promise<ArchiveManifest> {
-  const state: InspectState = { files: 0, regularFiles: 0, bytes: 0 }; const entries: ManifestEntry[] = [];
+  const state: InspectState = { entries: 0, regularFiles: 0, bytes: 0 }; const entries: ManifestEntry[] = [];
   await new Promise<void>((resolve, reject) => yauzl.open(archivePath, { lazyEntries: true }, (err, zipfile) => {
     if (err || !zipfile) return reject(archiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Cannot open ZIP archive"));
     let stopped = false; const stop = (error: unknown) => { if (!stopped) { stopped = true; zipfile.close(); reject(error); } };
@@ -107,7 +111,7 @@ async function buildZipManifest(archivePath: string, policy: SourceArchivePolicy
         else if (!namedDir && (mode === 0 || mode === 0o100000)) kind = "file";
         else if (!namedDir && mode === 0o120000) kind = "symlink";
         else throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive contains unsupported entry: ${entry.fileName}`);
-        if (kind === "directory") entries.push({ path, kind, size: 0 });
+        if (kind === "directory") { bumpState(state, 0, false, policy); entries.push({ path, kind, size: 0 }); }
         else if (kind === "file") { bumpState(state, entry.uncompressedSize ?? 0, true, policy); entries.push({ path, kind, size: entry.uncompressedSize ?? 0 }); }
         else {
           bumpState(state, entry.uncompressedSize ?? 0, false, policy); const raw = await readZipEntry(zipfile, entry); let target: string;
@@ -126,7 +130,7 @@ async function buildZipManifest(archivePath: string, policy: SourceArchivePolicy
 }
 
 async function buildTarManifest(archivePath: string, policy: SourceArchivePolicy): Promise<ArchiveManifest> {
-  const state: InspectState = { files: 0, regularFiles: 0, bytes: 0 }; const entries: ManifestEntry[] = []; let firstError: SourceArchiveError | null = null;
+  const state: InspectState = { entries: 0, regularFiles: 0, bytes: 0 }; const entries: ManifestEntry[] = []; let firstError: SourceArchiveError | null = null;
   try {
     await tar.t({ file: archivePath, onentry(entry: any) {
       if (!firstError) try {
@@ -136,7 +140,7 @@ async function buildTarManifest(archivePath: string, policy: SourceArchivePolicy
         else if (["File", "OldFile", "ContiguousFile"].includes(type)) kind = "file";
         else if (type === "SymbolicLink") kind = "symlink";
         else throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive contains unsupported entry type ${type}: ${raw}`);
-        if (kind === "directory") entries.push({ path, kind, size: 0 });
+        if (kind === "directory") { bumpState(state, 0, false, policy); entries.push({ path, kind, size: 0 }); }
         else if (kind === "file") { bumpState(state, Number(entry.size ?? 0), true, policy); entries.push({ path, kind, size: Number(entry.size ?? 0) }); }
         else { const target = String(entry.linkpath ?? ""); bumpState(state, Buffer.byteLength(target), false, policy); entries.push({ path, kind, size: Buffer.byteLength(target), linkTarget: target }); }
       } catch (error) { firstError = error instanceof SourceArchiveError ? error : archiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Cannot read TAR archive"); }
@@ -192,6 +196,11 @@ async function createLinks(destDir: string, manifest: ArchiveManifest): Promise<
   for (const item of manifest.entries.filter((entry) => entry.kind === "symlink")) {
     const target = join(destDir, item.path); await mkdir(dirname(target), { recursive: true, mode: 0o755 }); await symlink(item.linkTarget!, target);
   }
+}
+
+export function prepareSourceArchiveDestination(destDir: string): void {
+  mkdirSync(dirname(destDir), { recursive: true });
+  rmSync(destDir, { recursive: true, force: true });
 }
 
 export async function extractSourceArchive(archivePath: string, filename: string, destDir: string, policy: SourceArchivePolicy): Promise<void> {
