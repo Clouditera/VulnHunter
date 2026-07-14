@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -79,17 +79,109 @@ describe("source archive extraction", () => {
     }
   });
 
-  it("rejects tar symlinks", async () => {
-    const root = mkdtempSync(join(tmpdir(), "source-archive-"));
+  it.each([
+    ["source.zip", "zip -qry -y"],
+    ["source.tar", "tar -cf"],
+    ["source.tar.gz", "tar -czf"],
+    ["source.tgz", "tar -czf"],
+  ])("extracts safe relative symlinks from %s", async (filename, command) => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-link-"));
     try {
-      const input = join(root, "input");
-      mkdirSync(input);
-      symlinkSync("/etc/passwd", join(input, "link"));
+      const input = join(root, "input"); const out = join(root, "out"); mkdirSync(join(input, "server"), { recursive: true });
+      writeFileSync(join(input, "server", "LICENSE"), "license\n"); symlinkSync("server/LICENSE", join(input, "LICENSE.enterprise"));
+      const archive = join(root, filename);
+      if (filename.endsWith(".zip")) execSync(`${command} ${JSON.stringify(archive)} .`, { cwd: input });
+      else execSync(`${command} ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
+      await inspectSourceArchive(archive, filename, policy); await extractSourceArchive(archive, filename, out, policy);
+      expect(lstatSync(join(out, "LICENSE.enterprise")).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(join(out, "LICENSE.enterprise"))).toBe("server/LICENSE");
+      expect(readFileSync(join(out, "LICENSE.enterprise"), "utf8")).toBe("license\n");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it.each([
+    ["absolute", "/etc/passwd"],
+    ["escape", "../../outside"],
+    ["dangling", "missing"],
+  ])("rejects %s symlink targets atomically", async (_kind, target) => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-bad-link-"));
+    try {
+      const input = join(root, "input"); const out = join(root, "out"); mkdirSync(input); writeFileSync(join(input, "file"), "ok"); symlinkSync(target, join(input, "link"));
+      const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
+      await expect(extractSourceArchive(archive, "source.tar", out, policy)).rejects.toBeInstanceOf(SourceArchiveError);
+      expect(existsSync(out)).toBe(false);
+      expect(readdirSync(root).filter((name) => name.startsWith(".source-extract-"))).toEqual([]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it.each([
+    ["absolute", "/etc/passwd"],
+    ["escape", "../../outside"],
+    ["dangling", "missing"],
+  ])("rejects %s ZIP symlink targets", async (_kind, target) => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-bad-zip-link-"));
+    try {
+      const input = join(root, "input"); mkdirSync(input); writeFileSync(join(input, "file"), "ok"); symlinkSync(target, join(input, "link"));
+      const archive = join(root, "source.zip"); execSync(`zip -qry -y ${JSON.stringify(archive)} .`, { cwd: input });
+      await expect(inspectSourceArchive(archive, "source.zip", policy)).rejects.toBeInstanceOf(SourceArchiveError);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("rejects symlink cycles", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-cycle-"));
+    try {
+      const input = join(root, "input"); mkdirSync(input); writeFileSync(join(input, "regular"), "ok"); symlinkSync("b", join(input, "a")); symlinkSync("a", join(input, "b"));
+      const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
+      await expect(inspectSourceArchive(archive, "source.tar", policy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("rejects over-deep symlink chains", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-deep-links-"));
+    try {
+      const input = join(root, "input"); mkdirSync(input); writeFileSync(join(input, "target"), "ok");
+      for (let index = 0; index < 42; index += 1) symlinkSync(index === 41 ? "target" : `link-${index + 1}`, join(input, `link-${index}`));
+      const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
+      await expect(inspectSourceArchive(archive, "source.tar", policy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("rejects an entry below a symlink parent without touching outside", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-parent-link-"));
+    try {
+      const input = join(root, "input"); const outside = join(root, "outside"); const out = join(root, "out"); mkdirSync(input); mkdirSync(outside);
+      mkdirSync(join(input, "target")); writeFileSync(join(input, "target", "base"), "ok"); writeFileSync(join(input, "payload"), "attack"); writeFileSync(join(outside, "sentinel"), "keep"); symlinkSync("target", join(input, "dir"));
       const archive = join(root, "source.tar");
-      execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
-      await expect(inspectSourceArchive(archive, "source.tar", policy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" } satisfies Partial<SourceArchiveError>);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
+      execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} dir target && tar -rf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} --transform='s#^payload$#dir/pwn#' payload`);
+      await expect(extractSourceArchive(archive, "source.tar", out, policy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" });
+      expect(readFileSync(join(outside, "sentinel"), "utf8")).toBe("keep"); expect(existsSync(join(outside, "pwn"))).toBe(false); expect(existsSync(out)).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("rejects duplicate canonical paths", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-duplicate-"));
+    try {
+      const input = join(root, "input"); mkdirSync(input); writeFileSync(join(input, "file"), "ok");
+      const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} file && tar -rf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} file`);
+      await expect(inspectSourceArchive(archive, "source.tar", policy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("rejects backslashes in entry paths", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-backslash-"));
+    try {
+      const input = join(root, "input"); mkdirSync(input); writeFileSync(join(input, "bad\\name"), "ok");
+      const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
+      await expect(inspectSourceArchive(archive, "source.tar", policy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSAFE_PATH" });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("continues to reject tar hardlinks and FIFOs", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-special-"));
+    try {
+      const input = join(root, "input"); mkdirSync(input); writeFileSync(join(input, "file"), "ok"); execSync(`ln ${JSON.stringify(join(input, "file"))} ${JSON.stringify(join(input, "hard"))}`); execSync(`mkfifo ${JSON.stringify(join(input, "pipe"))}`);
+      const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
+      await expect(inspectSourceArchive(archive, "source.tar", policy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" });
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });
