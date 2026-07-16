@@ -32,9 +32,13 @@ def visible_profiles(path: str | None) -> set[str]:
         fail("profile snapshot")
     if not isinstance(raw, list):
         fail("profile snapshot")
+    # The snapshot is written by the sandbox-plane extension in the projected
+    # boundary shape {profile_id, available, docker, kvm, qemu}; that projection
+    # is the contract the Agent actually saw, so membership is validated against
+    # exactly those keys (no capabilities array crosses the boundary).
     result = set()
     for item in raw:
-        if not isinstance(item, dict) or set(item) - {"profile_id", "capabilities", "available"}:
+        if not isinstance(item, dict) or set(item) - {"profile_id", "available", "docker", "kvm", "qemu"}:
             fail("profile snapshot")
         profile = item.get("profile_id")
         if not isinstance(profile, str) or not profile or len(profile) > 128:

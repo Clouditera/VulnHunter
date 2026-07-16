@@ -77,6 +77,22 @@ describe("minimal Prepare flow", () => {
     expect(validate({ project_complete: true, sandbox_type: null, reason: "complete" }, false, undefined, true).status).toBe(4);
   });
 
+  it("validates sandbox_type membership against the projected snapshot shape {profile_id,available,docker,kvm,qemu}", () => {
+    const projected = (available: boolean) => [
+      { profile_id: "base-linux", available, docker: false, kvm: false, qemu: false },
+      { profile_id: "linux-docker", available: true, docker: true, kvm: false, qemu: false },
+    ];
+    // Chosen profile present and available in the projected snapshot -> accepted.
+    expect(validate({ project_complete: true, sandbox_type: "linux-docker", reason: "complete" }, true, projected(true)).status).toBe(0);
+    // Chosen profile present but available:false -> rejected (not in visible set).
+    expect(validate({ project_complete: true, sandbox_type: "base-linux", reason: "complete" }, true, projected(false)).status).toBe(4);
+    // Chosen profile not in the snapshot at all -> rejected.
+    expect(validate({ project_complete: true, sandbox_type: "linux-qemu-system", reason: "complete" }, true, projected(true)).status).toBe(4);
+    // A snapshot item carrying an unexpected key (e.g. leftover capabilities) -> snapshot rejected.
+    const withCapabilities = [{ profile_id: "base-linux", available: true, docker: false, kvm: false, qemu: false, capabilities: [] }];
+    expect(validate({ project_complete: true, sandbox_type: "base-linux", reason: "complete" }, true, withCapabilities).status).toBe(4);
+  });
+
   it("uses readonly source probing, standard YoungFlow work/output dirs, and postflight", () => {
     const mode = readFileSync(join(root, "worker-assets/prepare-mode.sh"), "utf8");
     expect(mode).toContain(".prepare-readonly-probe");
