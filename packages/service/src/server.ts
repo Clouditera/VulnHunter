@@ -17,6 +17,7 @@ import { notificationRouter } from "./features/notifications/index.js";
 import { pocRouter } from "./features/poc/routes.js";
 import { pocSettingsRouter } from "./features/poc/settings-routes.js";
 import { downloadsRouter } from "./features/downloads/routes.js";
+import { sandboxPlaneInternalRouter } from "./features/sandbox-plane/routes.js";
 import { setupWsRouter } from "./ws-router.js";
 import { mcpRouter } from "./mcp/index.js";
 import { injectUser } from "./middleware/index.js";
@@ -59,6 +60,10 @@ export function createApp(): Hono {
   // POC settings
   app.route("/api/settings", pocSettingsRouter);
   app.route("/api/downloads", downloadsRouter);
+
+  // Internal read-only SandboxPlane proxy for the Prepare worker's
+  // sandbox-plane extension (own task-id-bearer auth, no license/user auth).
+  app.route("/internal/sandbox-plane", sandboxPlaneInternalRouter);
 
   // MCP server for Chat agent tools (no license/auth middleware — has own auth)
   app.route("/mcp", mcpRouter);

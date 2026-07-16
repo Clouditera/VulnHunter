@@ -27,13 +27,14 @@ function validate(value: unknown, dynamic: boolean, profiles?: unknown, extra = 
 }
 
 describe("minimal Prepare flow", () => {
-  it("is one standard single stage with only pi default tools", () => {
+  it("is one standard single stage with pi default tools plus the two frozen sandbox-plane tools", () => {
     const spec = parseFlow(flowPath);
     expect(spec.stages.map((x) => [x.id, x.type])).toEqual([["prepare", "single"]]);
-    expect(spec.defaultTools).toEqual(["read", "write", "edit", "bash"]);
+    expect(spec.defaultTools).toEqual(["read", "write", "edit", "bash", "list_sandbox_types", "get_sandbox_type"]);
     expect(spec.inputs.map((input) => input.name)).toEqual(["work_dir", "output_dir", "dynamic_enabled", "result_path"]);
     const raw = readFileSync(flowPath, "utf8");
     for (const legacy of ["prepare-restricted", "prepare-tools", "submit_plan", "compact-submit"]) expect(raw).not.toContain(legacy);
+    expect(raw).toContain("extensions: [sandbox-plane]");
   });
 
   it("keeps the inspection prompt short and forbids execution/install/test", () => {

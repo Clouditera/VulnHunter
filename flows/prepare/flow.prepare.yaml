@@ -5,6 +5,7 @@ artifacts:
   agents: agents/
   tasks: tasks/
   schemas: schemas/
+  extensions: extensions/
   models_json: models.json
 inputs:
   work_dir:
@@ -21,11 +22,12 @@ defaults:
   model: ${env.V_PREPARE_MODEL}
   max_parallel: 1
   agent: prepare-agent.md
-  tools: [read, write, edit, bash]
+  tools: [read, write, edit, bash, list_sandbox_types, get_sandbox_type]
 stages:
   - id: prepare
     name: Prepare
     type: single
+    extensions: [sandbox-plane]
     task: prepare.md
     prompt: |
       Dynamic validation enabled: ${flow_inputs.dynamic_enabled}

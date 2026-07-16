@@ -32,6 +32,11 @@ export interface ServiceConfig {
     network: string;
     workerServiceUrl: string;
   };
+  sandboxPlane: {
+    baseUrl: string | null;
+    token: string | null;
+    timeoutMs: number;
+  };
   log: {
     level: string;
   };
@@ -64,6 +69,13 @@ export function loadConfig(): ServiceConfig {
       evalWorkerImage: optionalEnv("EVAL_WORKER_IMAGE", "vulnagent-eval-worker:latest"),
       network: optionalEnv("DOCKER_NETWORK", "vulnagent-internal"),
       workerServiceUrl: optionalEnv("WORKER_SERVICE_URL", "http://service:28080"),
+    },
+    sandboxPlane: {
+      // Unset -> SandboxPlane is not configured; the internal proxy fails closed
+      // (empty type list) instead of guessing or falling back to any default.
+      baseUrl: process.env.SANDBOXPLANE_BASE_URL || null,
+      token: process.env.SANDBOXPLANE_TOKEN || null,
+      timeoutMs: Number(optionalEnv("SANDBOXPLANE_TIMEOUT_MS", "5000")),
     },
     log: {
       level: optionalEnv("LOG_LEVEL", "info"),
