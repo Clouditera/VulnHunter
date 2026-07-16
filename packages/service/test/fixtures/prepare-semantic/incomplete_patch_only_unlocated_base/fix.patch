@@ -1,7 +1,0 @@
-diff --git a/src/parser.c b/src/parser.c
-index 1111111..2222222 100644
---- a/src/parser.c
-+++ b/src/parser.c
-@@ -1 +1 @@
--return unsafe(input);
-+return safe(input);
