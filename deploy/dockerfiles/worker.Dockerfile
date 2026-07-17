@@ -45,10 +45,7 @@ RUN cd /opt/vulnagent/flows/vulnforge/extensions/workspace-diff \
       @earendil-works/pi-ai@0.79.6
 COPY flows/prepare /opt/vulnagent/flows/prepare
 COPY packages/service/src/features/prepare/schemas/source-manifest-v1.schema.json /opt/vulnagent/flows/prepare/schemas/source-manifest-v1.schema.json
-RUN cd /opt/vulnagent/flows/prepare/extensions/prepare-tools \
-    && npm ci --omit=dev --ignore-scripts --no-audit --no-fund
-RUN test -f /opt/vulnagent/flows/prepare/extensions/prepare-tools/index.ts \
-    && youngflow /opt/vulnagent/flows/prepare/flow.prepare.yaml --list-stages >/tmp/prepare-stages.txt \
+RUN youngflow /opt/vulnagent/flows/prepare/flow.prepare.yaml --list-stages >/tmp/prepare-stages.txt \
     && grep -qE '^  prepare[[:space:]]' /tmp/prepare-stages.txt
 RUN test -f /opt/vulnagent/flows/vulnforge/extensions/code-coverage-tracker/index.ts \
     && test -f /opt/vulnagent/flows/vulnforge/extensions/code-coverage-viewer/index.ts \
