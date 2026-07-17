@@ -23,7 +23,7 @@ export const LABEL_SCHEDULER_CLAIM = "vulnagent.scheduler_claim";
 
 export interface WorkerContainerSpec {
   taskId: string;
-  taskType: "scan" | "chat" | "report" | "eval" | "poc-run" | "diagnostic";
+  taskType: "scan" | "chat" | "report" | "eval" | "poc-run" | "diagnostic" | "prepare";
   image: string;
   env: Record<string, string>;
   cpuQuota?: number;  // default 200000 = 2 CPU

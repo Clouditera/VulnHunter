@@ -23,6 +23,7 @@ import { SCAN_FALLBACK_MARGIN_S } from "../tasks/scan-duration.js";
 import { getDb } from "../../infra/db/client.js";
 import { loadConfig } from "../../infra/config.js";
 import { getHostWorkDir, stopScanWorkerByClaim } from "./scan-worker.js";
+import { stopPrepareWorkerByClaim } from "./prepare-worker.js";
 import { cleanupSchedulerWorkspace } from "./scheduler-workspace.js";
 import { startTailing } from "../events/event-tail.js";
 import { join } from "node:path";
@@ -63,6 +64,9 @@ export async function reconcileSchedulerClaims(config = loadConfig()): Promise<v
     if (!expired) continue;
     if (await releaseExpiredSchedulerClaim(task.id, claim.token)) {
       await stopScanWorkerByClaim(task.id, claim.token);
+      await stopPrepareWorkerByClaim(task.id, claim.token).catch((err) =>
+        logger.warn({ err, taskId: task.id, token: claim.token }, "Failed to stop expired-claim prepare worker"),
+      );
       await cleanupSchedulerWorkspace(getHostWorkDir(config.dataDir, task.id), claim.token).catch((err) =>
         logger.warn({ err, taskId: task.id, token: claim.token }, "Failed to clean expired claim workspace"),
       );

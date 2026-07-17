@@ -31,6 +31,7 @@ import { SCAN_FALLBACK_MARGIN_S } from "../tasks/scan-duration.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir, hasRunningScanWorkerByClaim, stopScanWorker, stopScanWorkerByClaim } from "./scan-worker.js";
 import { cleanupSchedulerWorkspace, getSchedulerPrepareDir, publishSchedulerWorkspace } from "./scheduler-workspace.js";
+import { isDynamicEnabled, runPrepareWorker, stopPrepareWorkerByClaim } from "./prepare-worker.js";
 import { reconcileSchedulerClaims } from "./reconciler.js";
 import { downloadObjectWithRetry } from "./minio-download.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
@@ -476,6 +477,14 @@ export class TaskScheduler {
         published = await this.prepareWorkspace(task, token);
       }
 
+      // H5: run the Prepare phase (source completeness + dynamic sandbox
+      // selection) for any mode that (re)prepared source. Resume reuses the
+      // paused container's existing source and does not re-prepare.
+      if (claim.mode === "fresh" || claim.mode === "continue") {
+        await this.runPreparePhase(task, token, hostWorkDir);
+        await this.assertSchedulerOwnership(task.id, token);
+      }
+
       await this.assertSchedulerOwnership(task.id, token);
       await spawnScanWorker(task, this.config, llmEnv, token, claim.mode === "resume", claim.mode === "continue");
       workerStarted = true;
@@ -505,6 +514,9 @@ export class TaskScheduler {
       const failed = await failSchedulerClaim(task.id, token, String(err)).catch(() => false);
       if (failed) {
         await stopScanWorkerByClaim(task.id, token);
+        await stopPrepareWorkerByClaim(task.id, token).catch((cleanupErr) =>
+          logger.warn({ cleanupErr, taskId: task.id, token }, "Failed to stop claim-owned prepare worker on failure"),
+        );
         if (published) await rm(join(hostWorkDir, "src"), { recursive: true, force: true }).catch((cleanupErr) =>
           logger.warn({ cleanupErr, taskId: task.id, token }, "Failed to remove owner-published source"),
         );
@@ -521,6 +533,77 @@ export class TaskScheduler {
       await cleanupSchedulerWorkspace(hostWorkDir, token).catch((err) =>
         logger.warn({ err, taskId: task.id, token }, "Failed to clean token-private scheduler workspace"),
       );
+    }
+  }
+
+  /**
+   * Run the Prepare phase for a claimed task (H5 §1/§4/§8). Spawns the
+   * one-shot prepare worker against the published source, consumes the
+   * three-field result, records it in task metadata, emits the prepare events,
+   * and applies the branch matrix:
+   *   - partial_source        → flag source_incomplete, continue (with warning);
+   *   - complete + dynamic on + no compatible sandbox → O1: fail in preparing;
+   *   - otherwise             → proceed to the scan worker.
+   * All side effects run under the owner's scheduler claim (②). Throws on any
+   * prepare failure so processClaimedTask's catch fails the claim.
+   */
+  private async runPreparePhase(task: ClaimedScanTask, token: string, hostWorkDir: string): Promise<void> {
+    const dynamicEnabled = isDynamicEnabled(task);
+    appendAndBroadcastCompletionEvent(task.id, {
+      type: "prepare_started",
+      source: "scan",
+      seq: 0,
+      ts: new Date().toISOString(),
+      dynamic_enabled: dynamicEnabled,
+    });
+
+    const result = await runPrepareWorker({ task, config: this.config, hostWorkDir, claimToken: token });
+
+    // Record the three-field result verbatim for the task detail / branch
+    // provenance. The dynamic-allocation fields (sandbox_cfg etc.) are filled
+    // by the H2 batch; for now we persist the selection only.
+    await mergeTaskMetadata(task.id, {
+      prepare: {
+        project_complete: result.project_complete,
+        sandbox_type: result.sandbox_type,
+        reason: result.reason,
+        dynamic_enabled: dynamicEnabled,
+        at: new Date().toISOString(),
+      },
+    }).catch((err) => logger.warn({ err, taskId: task.id }, "Failed to persist prepare result metadata"));
+
+    appendAndBroadcastCompletionEvent(task.id, {
+      type: "prepare_completed",
+      source: "scan",
+      seq: 0,
+      ts: new Date().toISOString(),
+      project_complete: result.project_complete,
+      sandbox_type: result.sandbox_type,
+      reason: result.reason,
+    });
+
+    if (!result.project_complete) {
+      // partial_source: continue scanning with a visible warning flag.
+      await mergeTaskMetadata(task.id, { source_incomplete: true }).catch((err) =>
+        logger.warn({ err, taskId: task.id }, "Failed to set source_incomplete flag"),
+      );
+      logger.warn({ taskId: task.id, token }, "Source is incomplete (partial_source); continuing scan with warning flag");
+      return;
+    }
+
+    if (dynamicEnabled && result.sandbox_type === null) {
+      // O1 (fish-approved): complete project, dynamic on, but no compatible
+      // sandbox type → fail in preparing with reason + remediation.
+      const remediation = "关闭动态验证后重试，或联系管理员启用对应的沙箱类型";
+      appendAndBroadcastCompletionEvent(task.id, {
+        type: "prepare_failed",
+        source: "scan",
+        seq: 0,
+        ts: new Date().toISOString(),
+        reason: "no_compatible_sandbox",
+        remediation,
+      });
+      throw new Error(`未找到兼容的沙箱类型（项目的主要运行方式没有可用的沙箱）。处理办法：${remediation}。`);
     }
   }
 

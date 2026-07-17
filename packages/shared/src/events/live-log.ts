@@ -109,6 +109,27 @@ export interface PocExitEvent {
   job_id?: string;
 }
 
+/**
+ * Prepare-phase lifecycle events (H5 §8) — emitted by the Scheduler owner as it
+ * runs the Prepare worker and consumes its three-field result, so the task
+ * detail event card can surface Prepare progress alongside scan progress.
+ * `source` is "scan" so it renders in the existing scan stream.
+ */
+export interface PrepareEvent {
+  type: "prepare_started" | "prepare_completed" | "prepare_failed";
+  source: string;
+  seq: number;
+  ts: string;
+  /** present on prepare_started */
+  dynamic_enabled?: boolean;
+  /** present on prepare_completed */
+  project_complete?: boolean;
+  sandbox_type?: string | null;
+  reason?: string;
+  /** present on prepare_failed (O1 remediation hint) */
+  remediation?: string;
+}
+
 export type LiveLogEvent =
   | ToolCallEvent
   | StageStartEvent
@@ -117,7 +138,8 @@ export type LiveLogEvent =
   | SourceLifecycleEvent
   | ErrorEvent
   | PocOutputEvent
-  | PocExitEvent;
+  | PocExitEvent
+  | PrepareEvent;
 
 /** WS subscribe message (client → server) */
 export interface LiveLogSubscribe {

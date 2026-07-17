@@ -11,6 +11,7 @@ const m = vi.hoisted(() => {
     claim: vi.fn(), renew: vi.fn(async () => true), mark: vi.fn(async () => true), fail: vi.fn(async () => false),
     extract: vi.fn(async () => { await new Promise((r) => setTimeout(r, 80)); }),
     publish: vi.fn(async () => undefined), spawn: vi.fn(async () => "worker-1"),
+    prepare: vi.fn(async () => ({ project_complete: true, sandbox_type: null, reason: "complete" })),
     reconcile: vi.fn(async () => undefined), notify: vi.fn(),
   };
 });
@@ -26,15 +27,23 @@ vi.mock("../../src/features/tasks/storage.js", async () => {
     failSchedulerClaim: m.fail,
     getRunningTaskIds: vi.fn(async () => []),
     getTaskById: vi.fn(async () => ({ ...m.task, state: "running" })),
+    listStuckDeadlineRunningTasks: vi.fn(async () => []),
+    mergeTaskMetadata: vi.fn(async () => undefined),
   };
 });
 vi.mock("../../src/features/workers/reconciler.js", () => ({ reconcileSchedulerClaims: m.reconcile }));
 vi.mock("../../src/features/workers/docker-client.js", () => ({ subscribeToDockerEvents: vi.fn(), ensureWorkDir: vi.fn() }));
 vi.mock("../../src/features/workers/scan-worker.js", () => ({
-  spawnScanWorker: m.spawn, getHostWorkDir: () => "/tmp/scheduler-single-owner", hasRunningScanWorkerByClaim: vi.fn(async () => true), stopScanWorkerByClaim: vi.fn(),
+  spawnScanWorker: m.spawn, getHostWorkDir: () => "/tmp/scheduler-single-owner", hasRunningScanWorkerByClaim: vi.fn(async () => true),
+  stopScanWorker: vi.fn(async () => undefined), stopScanWorkerByClaim: vi.fn(),
 }));
 vi.mock("../../src/features/workers/scheduler-workspace.js", () => ({
   getSchedulerPrepareDir: () => "/tmp/scheduler-single-owner/stage", cleanupSchedulerWorkspace: vi.fn(), publishSchedulerWorkspace: m.publish,
+}));
+vi.mock("../../src/features/workers/prepare-worker.js", () => ({
+  isDynamicEnabled: () => false,
+  runPrepareWorker: m.prepare,
+  stopPrepareWorkerByClaim: vi.fn(async () => undefined),
 }));
 vi.mock("../../src/features/workers/minio-download.js", () => ({ downloadObjectWithRetry: vi.fn() }));
 vi.mock("../../src/features/settings/storage.js", () => ({ getDefaultCredential: vi.fn(async () => ({ proto_type: "x", model_id: "m" })), getCredentialById: vi.fn() }));
@@ -62,6 +71,7 @@ describe("scheduler overlapping ticks", () => {
     expect(m.claim).toHaveBeenCalledTimes(3);
     expect(m.extract).toHaveBeenCalledTimes(1);
     expect(m.publish).toHaveBeenCalledTimes(1);
+    expect(m.prepare).toHaveBeenCalledTimes(1);
     expect(m.spawn).toHaveBeenCalledTimes(1);
     expect(m.mark).toHaveBeenCalledTimes(1);
   });
