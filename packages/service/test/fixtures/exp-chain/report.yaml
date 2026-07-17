@@ -1,0 +1,26 @@
+metadata:
+  id: EXP-0001
+  title: IDOR 泄露凭证 → 横向 RCE
+  members: [BUG-IDOR-1, BUG-CRED-2, BUG-RCE-3]
+  cwe: CWE-639
+  cvss_vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
+  cvss_score: 9.8
+  ev_vector: EV:N/MP/SC
+  ev_score: 0.91
+  ev_priority: P1
+description:
+  background: IDOR 越权读取到云凭证，进而以该凭证调用内部部署接口。
+  combined_impact: 单点越权升级为全主机远程命令执行，影响远超任一单成员。
+chain:
+  - step: 1
+    finding: BUG-IDOR-1
+    role: 越权读取
+    evidence: 经 POC 复现可越权拉取他用户配置
+  - step: 2
+    finding: BUG-CRED-2
+    role: 凭证泄露
+    evidence: 配置内含明文云 AccessKey
+  - step: 3
+    finding: BUG-RCE-3
+    role: 远程命令执行
+    evidence: 利用泄露凭证调用部署 API 执行命令

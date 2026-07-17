@@ -176,6 +176,31 @@ export interface ArtifactFilePreview {
   data_base64?: string;
 }
 
+/** H4 EXP page (GET /tasks/:id/exploits). */
+export type ExploitPageState = "not_enabled" | "pending" | "running" | "done";
+export interface ChainReportProjection {
+  title: string | null;
+  members: string[];
+  cwe: string | null;
+  cvss_vector: string | null;
+  cvss_score: number | null;
+  ev_vector: string | null;
+  ev_score: number | null;
+  ev_priority: string | null;
+  background: string | null;
+  combined_impact: string | null;
+  chain: Array<{ step: number | string | null; finding: string | null; role: string | null; evidence: string | null }>;
+}
+export interface ExploitChainEntry {
+  id: string;
+  report?: ChainReportProjection;
+  parse_error?: boolean;
+}
+export interface ExploitPageData {
+  state: ExploitPageState;
+  chains: ExploitChainEntry[];
+}
+
 export interface FindingMeta extends FindingDynamicMeta {
   id: string;
   task_id: string;
@@ -321,6 +346,9 @@ export const api = {
     /** H4: read-only single-artifact-file preview (whitelisted findings/exploits roots). */
     artifactFile: (id: string, path: string) =>
       request<ArtifactFilePreview>(`/api/tasks/${id}/artifacts/file?path=${encodeURIComponent(path)}`),
+    /** H4: EXP independent page data (server-derived four-state + chain projections). */
+    exploits: (id: string) =>
+      request<ExploitPageData>(`/api/tasks/${id}/exploits`),
     pause: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/pause`, { method: "POST" }),
     resume: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/resume`, { method: "POST" }),
     restart: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/restart`, { method: "POST" }),

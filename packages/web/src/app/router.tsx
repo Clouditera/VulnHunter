@@ -14,6 +14,7 @@ import { FindingsTab } from "../features/tasks/pages/tabs/FindingsTab.js";
 import { ReportsTab } from "../features/tasks/pages/tabs/ReportsTab.js";
 import { WorkspaceTab } from "../features/tasks/pages/tabs/WorkspaceTab.js";
 import { PocTab } from "../features/tasks/pages/tabs/PocTab.js";
+import { ExploitsTab } from "../features/tasks/pages/tabs/ExploitsTab.js";
 import { WikiTab } from "../features/tasks/pages/tabs/WikiTab.js";
 import { ChatPage } from "../features/chat/pages/ChatPage.js";
 import { SettingsPage } from "../features/settings/pages/SettingsPage.js";
@@ -144,6 +145,7 @@ export const router = createBrowserRouter([
               { path: "wiki", element: <WikiTab /> },
               { path: "reports", element: <ReportsTab /> },
               { path: "poc", element: <PocTab /> },
+              { path: "exploits", element: <ExploitsTab /> },
               { path: "workspace", element: <WorkspaceTab /> },
             ],
           },
