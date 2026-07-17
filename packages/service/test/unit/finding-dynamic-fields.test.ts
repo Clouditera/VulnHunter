@@ -15,10 +15,15 @@ const migration = readFileSync(
   "utf8",
 );
 
+const migration027 = readFileSync(
+  new URL("../../src/infra/db/migrations/027_poc_status_not_needed.sql", import.meta.url),
+  "utf8",
+);
+
 describe("Finding dynamic shared contract", () => {
   it("expresses every frozen enum and the unknown sentinel", () => {
     expect(FINDING_CLASSES).toEqual(["vulnerability", "risk", "unknown"]);
-    expect(POC_STATUSES).toEqual(["pending", "reproduced", "fail-reproduced", "blocked", "unknown"]);
+    expect(POC_STATUSES).toEqual(["pending", "reproduced", "fail-reproduced", "blocked", "not-needed", "unknown"]);
     expect(EXP_STATUSES).toEqual(["pending", "confirmed", "downgraded", "failed", "blocked", "not-needed", "unknown"]);
   });
 
@@ -69,5 +74,24 @@ describe("migration 026 contract", () => {
     expect(migration).toContain("'fail-reproduced'");
     expect(migration).toContain("'not-needed'");
     expect(migration.match(/'unknown'/g)?.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("migration 027 contract (poc_status not-needed)", () => {
+  it("re-adds the named poc_status CHECK with not-needed and keeps it nullable", () => {
+    expect(migration027).toContain("DROP CONSTRAINT IF EXISTS findings_meta_poc_status_check");
+    expect(migration027).toContain("ADD CONSTRAINT findings_meta_poc_status_check");
+    expect(migration027).toContain("poc_status IS NULL OR poc_status IN");
+    for (const value of ["'pending'", "'reproduced'", "'fail-reproduced'", "'blocked'", "'not-needed'", "'unknown'"]) {
+      expect(migration027).toContain(value);
+    }
+    // Engine has no `upgraded` value (confirmed with fish); never add it.
+    expect(migration027).not.toContain("'upgraded'");
+  });
+
+  it("stays idempotent and touches no other constraint/column", () => {
+    expect(migration027).toContain("EXCEPTION WHEN duplicate_object THEN NULL");
+    expect(migration027).not.toMatch(/finding_class_check|exp_status_check/);
+    expect(migration027).not.toMatch(/ADD COLUMN|DROP COLUMN|\bUPDATE\s+findings_meta\b/i);
   });
 });

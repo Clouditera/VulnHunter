@@ -21,8 +21,8 @@ RUN chmod +x /usr/local/bin/youngflow \
 
 # VulnForge 2.0 scan flow assets (separate from youngflow submodule).
 # Keep these values in the image so support/QA can prove the exact flow baseline.
-ARG VULNFORGE_VERSION=2.0
-ARG VULNFORGE_COMMIT=058da50be533b4605ff2e1614cef77b5c2d936bd
+ARG VULNFORGE_VERSION=2.0-5-g1782ef6
+ARG VULNFORGE_COMMIT=1782ef6d99db58fda74c8e1524b9237ca39cad2c
 LABEL org.opencontainers.image.vulnforge.version=$VULNFORGE_VERSION \
       org.opencontainers.image.vulnforge.revision=$VULNFORGE_COMMIT
 COPY flows/vulnforge /opt/vulnagent/flows/vulnforge
