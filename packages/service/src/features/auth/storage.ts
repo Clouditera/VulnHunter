@@ -13,6 +13,9 @@ export interface DbUser {
   admin_remark: string | null;
   must_change_password: boolean;
   task_limit: number;
+  sandbox_max_running: number;
+  sandbox_max_cpu_cores: number;
+  sandbox_max_memory_gb: number;
   last_login_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -44,10 +47,13 @@ export async function createUser(params: {
   adminRemark?: string | null;
   mustChangePassword?: boolean;
   taskLimit?: number;
+  sandboxMaxRunning?: number;
+  sandboxMaxCpuCores?: number;
+  sandboxMaxMemoryGb?: number;
 }): Promise<DbUser> {
   const db = getDb();
   const rows = await db<DbUser[]>`
-    INSERT INTO users (tenant_id, email, password_hash, role, display_name, admin_remark, must_change_password, task_limit)
+    INSERT INTO users (tenant_id, email, password_hash, role, display_name, admin_remark, must_change_password, task_limit, sandbox_max_running, sandbox_max_cpu_cores, sandbox_max_memory_gb)
     VALUES (
       ${DEFAULT_TENANT_ID},
       ${params.email},
@@ -56,7 +62,10 @@ export async function createUser(params: {
       ${params.displayName ?? params.email.split("@")[0]},
       ${params.adminRemark ?? null},
       ${params.mustChangePassword ?? false},
-      ${params.taskLimit ?? 0}
+      ${params.taskLimit ?? 0},
+      ${params.sandboxMaxRunning ?? 0},
+      ${params.sandboxMaxCpuCores ?? 0},
+      ${params.sandboxMaxMemoryGb ?? 0}
     )
     RETURNING *
   `;
@@ -146,6 +155,9 @@ export async function updateUser(
     passwordHash?: string;
     mustChangePassword?: boolean;
     taskLimit?: number;
+    sandboxMaxRunning?: number;
+    sandboxMaxCpuCores?: number;
+    sandboxMaxMemoryGb?: number;
     adminRemark?: string | null;
   },
 ): Promise<void> {
@@ -159,6 +171,9 @@ export async function updateUser(
       password_hash = COALESCE(${fields.passwordHash ?? null}, password_hash),
       must_change_password = COALESCE(${fields.mustChangePassword ?? null}, must_change_password),
       task_limit = COALESCE(${fields.taskLimit ?? null}, task_limit),
+      sandbox_max_running = COALESCE(${fields.sandboxMaxRunning ?? null}, sandbox_max_running),
+      sandbox_max_cpu_cores = COALESCE(${fields.sandboxMaxCpuCores ?? null}, sandbox_max_cpu_cores),
+      sandbox_max_memory_gb = COALESCE(${fields.sandboxMaxMemoryGb ?? null}, sandbox_max_memory_gb),
       admin_remark = CASE WHEN ${updateAdminRemark} THEN ${fields.adminRemark ?? null} ELSE admin_remark END,
       updated_at = now()
     WHERE id = ${id}

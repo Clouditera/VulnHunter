@@ -26,6 +26,7 @@ import { getHostWorkDir, stopScanWorkerByClaim } from "./scan-worker.js";
 import { stopPrepareWorkerByClaim } from "./prepare-worker.js";
 import { cleanupSchedulerWorkspace } from "./scheduler-workspace.js";
 import { startTailing } from "../events/event-tail.js";
+import { reconcileSandboxes } from "../sandboxes/lifecycle.js";
 import { join } from "node:path";
 
 export async function reconcileSchedulerClaims(config = loadConfig()): Promise<void> {
@@ -115,6 +116,12 @@ export async function reconcileSchedulerClaims(config = loadConfig()): Promise<v
 export async function reconcileWorkers(): Promise<void> {
   logger.info("Starting worker reconciliation...");
   await reconcileSchedulerClaims();
+
+  // H2 §5: full sandbox reconcile at boot (release orphans of deleted tasks,
+  // catch-up stop for terminal tasks, adopt/fail instance state drift).
+  await reconcileSandboxes().catch((err) =>
+    logger.error({ err }, "Startup sandbox reconcile failed (will retry on tick)"),
+  );
 
   const containers = await listManagedContainers();
 

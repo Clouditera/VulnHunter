@@ -16,6 +16,8 @@ const state = {
   cleaned: [] as string[],
   notified: [] as any[],
   busy: false,
+  sandboxStopped: [] as string[],
+  sandboxResumed: [] as string[],
 };
 
 vi.mock("../../src/features/tasks/storage.js", () => ({
@@ -39,6 +41,13 @@ vi.mock("../../src/features/workers/scan-worker.js", () => ({
 
 vi.mock("../../src/features/workers/scheduler-workspace.js", () => ({
   cleanupSchedulerWorkspace: vi.fn(async (path: string, token: string) => state.cleanedClaims.push(`${path}:${token}`)),
+}));
+
+// H2: sandbox lifecycle is a no-op without a mapping; stop/resume calls are
+// recorded separately so existing container assertions stay untouched.
+vi.mock("../../src/features/sandboxes/lifecycle.js", () => ({
+  stopSandboxForTask: vi.fn(async (taskId: string) => state.sandboxStopped.push(taskId)),
+  resumeSandboxForTask: vi.fn(async (taskId: string) => state.sandboxResumed.push(taskId)),
 }));
 
 vi.mock("../../src/infra/config.js", () => ({ loadConfig: () => ({ dataDir: "/data" }) }));
@@ -97,6 +106,8 @@ describe("task control service", () => {
     state.cleaned = [];
     state.notified = [];
     state.busy = false;
+    state.sandboxStopped = [];
+    state.sandboxResumed = [];
   });
 
   it("cancels a running task and stops the worker", async () => {
@@ -105,6 +116,8 @@ describe("task control service", () => {
     expect(result.state).toBe("cancelled");
     expect(state.updates[0][1]).toBe("cancelled");
     expect(state.stopped).toEqual(["task-1"]);
+    // H2 §4: cancel also stops (keeps) the sandbox instance.
+    expect(state.sandboxStopped).toEqual(["task-1"]);
     expect(state.notified[0]).toMatchObject({ type: "task_state", taskId: "task-1", state: "cancelled" });
   });
 
@@ -115,6 +128,7 @@ describe("task control service", () => {
     expect(state.updates[0][1]).toBe("paused");
     expect(state.paused).toEqual(["task-1"]);
     expect(state.stopped).toEqual([]);
+    expect(state.sandboxStopped).toEqual(["task-1"]);
   });
 
   it("falls back to stop when no container could be paused", async () => {
@@ -124,12 +138,15 @@ describe("task control service", () => {
     expect(result.state).toBe("paused");
     expect(state.paused).toEqual(["task-1"]);
     expect(state.stopped).toEqual(["task-1"]);
+    expect(state.sandboxStopped).toEqual(["task-1"]);
   });
 
   it("resumes a paused task by unpausing the frozen container", async () => {
     state.task = makeTask({ state: "paused" });
     const result = await resumeTask("task-1");
     expect(result.state).toBe("queued");
+    // H2 §4: sandbox resumes before the worker container is unpaused.
+    expect(state.sandboxResumed).toEqual(["task-1"]);
     expect(state.unpaused).toEqual(["task-1"]);
     // No checkpoint re-queue when the container was unpaused in place.
     expect(state.updates.some((u) => u[0] === "queueTaskForResume")).toBe(false);

@@ -7,6 +7,7 @@ import { loadTaskEvents } from "../events/event-archive.js";
 import { getEventTotal } from "../events/event-store.js";
 import { listCredentials } from "../settings/storage.js";
 import { cancelTask, continueTask, pauseTask, restartTask, resumeTask, TaskControlError } from "./control-service.js";
+import { releaseSandboxForTask } from "../sandboxes/lifecycle.js";
 import { loadConfig } from "../../infra/config.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
@@ -240,6 +241,15 @@ tasksRouter.delete("/:id", async (c) => {
 
   const config = loadConfig();
   const minio = getMinio();
+
+  // H2 §4 strict order: release the sandbox instance BEFORE deleting the task
+  // record. A failed release leaves the mapping `releasing`; the reconciler
+  // finishes it, so deletion is never blocked by a SandboxPlane outage.
+  try {
+    await releaseSandboxForTask(task.id);
+  } catch (err) {
+    logger.warn({ err, taskId: task.id }, "Sandbox release failed during delete; reconciler will finish it");
+  }
 
   // Delete from DB (cascades to findings_meta)
   await taskStorage.deleteTask(task.id);

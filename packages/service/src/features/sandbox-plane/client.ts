@@ -14,12 +14,35 @@ export interface SandboxPlaneRawProfile {
   status: "available" | "disabled" | "unavailable";
   backend_type: "docker" | "docker+sysbox" | "qemu";
   capabilities: string[];
+  default_resources?: { cpu?: number; memory_mb?: number; disk_gb?: number };
+}
+
+/** Serialized sandbox record (SandboxPlane serializeSandbox, v0.3.1). */
+export interface SandboxPlaneSandbox {
+  sandbox_id: string;
+  request_id: string;
+  consumer: string;
+  profile_id: string;
+  status: "requested" | "provisioning" | "running" | "stopped" | "releasing" | "released" | "failed" | "expired";
+  ssh: { host: string; port: number; user: string } | null;
+  resources?: { cpu?: number; memory_mb?: number; disk_gb?: number };
+  external_ref: string | null;
+  failure_reason: string | null;
+  error_code: string | null;
 }
 
 export class SandboxPlaneUnavailableError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SandboxPlaneUnavailableError";
+  }
+}
+
+/** HTTP 429 RESOURCE_EXHAUSTED — health admission rejected the create (H2 §3 capacity path). */
+export class SandboxPlaneCapacityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SandboxPlaneCapacityError";
   }
 }
 
@@ -55,6 +78,41 @@ async function request(path: string, allow404 = false): Promise<unknown | null> 
   }
 }
 
+async function writeRequest(method: "POST", path: string, body?: unknown, allow404 = false): Promise<unknown | null> {
+  const c = client();
+  if (!c) throw new SandboxPlaneUnavailableError("SandboxPlane is not configured");
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), c.timeoutMs);
+  try {
+    const res = await fetch(`${c.baseUrl}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${c.token}`,
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    if (res.status === 404 && allow404) return null;
+    if (!res.ok) {
+      const parsed = await res.json().catch(() => null) as { error?: { code?: string; message?: string } } | null;
+      const code = parsed?.error?.code;
+      if (res.status === 429 && code === "RESOURCE_EXHAUSTED") {
+        throw new SandboxPlaneCapacityError("SandboxPlane admission rejected create: capacity exhausted");
+      }
+      throw new SandboxPlaneUnavailableError(`SandboxPlane ${method} ${path} returned HTTP ${res.status}${code ? ` (${code})` : ""}`);
+    }
+    return await res.json();
+  } catch (err) {
+    if (err instanceof SandboxPlaneUnavailableError || err instanceof SandboxPlaneCapacityError) throw err;
+    logger.warn({ err, path }, "SandboxPlane write request failed");
+    throw new SandboxPlaneUnavailableError("SandboxPlane write request failed");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function isRawProfile(value: unknown): value is SandboxPlaneRawProfile {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
@@ -85,4 +143,65 @@ export async function getSandboxPlaneProfile(profileId: string): Promise<Sandbox
     throw new SandboxPlaneUnavailableError("SandboxPlane returned a malformed profile");
   }
   return profile;
+}
+
+function isSandbox(value: unknown): value is SandboxPlaneSandbox {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.sandbox_id === "string" && v.sandbox_id.length > 0 &&
+    typeof v.request_id === "string" &&
+    typeof v.status === "string"
+  );
+}
+
+function unwrapSandbox(body: unknown, what: string): SandboxPlaneSandbox {
+  const sandbox = (body as { sandbox?: unknown })?.sandbox;
+  if (!isSandbox(sandbox)) throw new SandboxPlaneUnavailableError(`SandboxPlane returned a malformed sandbox on ${what}`);
+  return sandbox;
+}
+
+export interface CreateSandboxInput {
+  request_id: string;
+  profile_id: string;
+  ssh_public_key: string;
+  resources?: { cpu?: number; memory_mb?: number; disk_gb?: number };
+  external_ref?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/** POST /sandboxes — idempotent on (consumer, request_id): a replay returns the existing record. */
+export async function createSandboxPlaneSandbox(input: CreateSandboxInput): Promise<SandboxPlaneSandbox> {
+  const body = await writeRequest("POST", "/sandboxes", {
+    consumer: "vulnagent",
+    request_id: input.request_id,
+    profile_id: input.profile_id,
+    ssh_public_key: input.ssh_public_key,
+    ...(input.resources ? { resources: input.resources } : {}),
+    ...(input.external_ref ? { external_ref: input.external_ref } : {}),
+    ...(input.metadata ? { metadata: input.metadata } : {}),
+  });
+  return unwrapSandbox(body, "create");
+}
+
+/** GET /sandboxes/:id — null when the instance is gone (404). */
+export async function getSandboxPlaneSandbox(id: string): Promise<SandboxPlaneSandbox | null> {
+  const body = await request(`/sandboxes/${encodeURIComponent(id)}`, true);
+  if (body === null) return null;
+  return unwrapSandbox(body, "get");
+}
+
+export async function stopSandboxPlaneSandbox(id: string): Promise<SandboxPlaneSandbox> {
+  const body = await writeRequest("POST", `/sandboxes/${encodeURIComponent(id)}/stop`);
+  return unwrapSandbox(body, "stop");
+}
+
+export async function resumeSandboxPlaneSandbox(id: string): Promise<SandboxPlaneSandbox> {
+  const body = await writeRequest("POST", `/sandboxes/${encodeURIComponent(id)}/resume`);
+  return unwrapSandbox(body, "resume");
+}
+
+export async function releaseSandboxPlaneSandbox(id: string): Promise<SandboxPlaneSandbox> {
+  const body = await writeRequest("POST", `/sandboxes/${encodeURIComponent(id)}/release`);
+  return unwrapSandbox(body, "release");
 }

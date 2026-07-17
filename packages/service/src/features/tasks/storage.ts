@@ -517,6 +517,10 @@ export async function claimQueuedScanTasks(maxParallel: number, ownerInstanceId:
     const candidates = await tx<DbTask[]>`
       SELECT * FROM tasks
       WHERE state = 'queued'
+        AND (
+          (metadata #>> '{sandbox_alloc,next_attempt_at}') IS NULL
+          OR (metadata #>> '{sandbox_alloc,next_attempt_at}')::timestamptz <= now()
+        )
       ORDER BY created_at ASC
       FOR UPDATE SKIP LOCKED
       LIMIT ${capacity}
@@ -583,6 +587,24 @@ export async function cancelSchedulerClaim(taskId: string, token: string): Promi
   const rows = await db<{ id: string }[]>`
     UPDATE tasks
     SET state = 'cancelled', completed_at = now(),
+        metadata = COALESCE(metadata, '{}'::jsonb) - ${SCHEDULER_CLAIM_KEY}
+    WHERE id = ${taskId} AND state = 'preparing'
+      AND metadata #>> '{_scan_scheduler_claim,token}' = ${token}
+    RETURNING id
+  `;
+  return rows.length === 1;
+}
+
+/**
+ * H2 §3 capacity/quota path: put the task back to queued (claim removed) so a
+ * later tick retries. Distinct from releaseExpiredSchedulerClaim — no lease
+ * conditions; the caller has just determined the blocker is transient.
+ */
+export async function requeueSchedulerClaim(taskId: string, token: string): Promise<boolean> {
+  const db = getDb();
+  const rows = await db<{ id: string }[]>`
+    UPDATE tasks
+    SET state = 'queued',
         metadata = COALESCE(metadata, '{}'::jsonb) - ${SCHEDULER_CLAIM_KEY}
     WHERE id = ${taskId} AND state = 'preparing'
       AND metadata #>> '{_scan_scheduler_claim,token}' = ${token}
