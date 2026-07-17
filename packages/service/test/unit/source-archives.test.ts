@@ -68,7 +68,10 @@ describe("source archive extraction", () => {
 
   it("keeps scan, eval, and report callers on the absent-destination contract", () => {
     const callers = [
-      ["src/features/workers/scheduler.ts", "prepareSourceArchiveDestination(srcDir);"],
+      // The scheduler extracts into a fresh token-private staging dir
+      // (.scheduler-prepare-<token>/src) that never pre-exists, then publishes
+      // atomically by rename — the absent-destination contract is structural.
+      ["src/features/workers/scheduler.ts", "extractSourceArchive(archivePath, archive.filename, stagedSourceDir"],
       ["src/features/poc/eval-worker.ts", "prepareSourceArchiveDestination(subjectDir);"],
       ["src/features/reports/report-worker.ts", "prepareSourceArchiveDestination(sourceDir);"],
     ];

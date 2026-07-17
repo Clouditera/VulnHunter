@@ -4,6 +4,9 @@ const state = {
   task: null as any,
   updates: [] as any[],
   stopped: [] as string[],
+  stoppedClaims: [] as string[],
+  cancelledClaims: [] as string[],
+  cleanedClaims: [] as string[],
   paused: [] as string[],
   unpaused: [] as string[],
   pauseCount: 1,
@@ -21,14 +24,24 @@ vi.mock("../../src/features/tasks/storage.js", () => ({
   queueTaskForResume: vi.fn(async (...args: any[]) => state.updates.push(["queueTaskForResume", ...args])),
   queueTaskForContinue: vi.fn(async (...args: any[]) => state.continued.push(args)),
   resetTaskForRestart: vi.fn(async (taskId: string) => state.reset.push(taskId)),
+  getSchedulerClaim: vi.fn((task: any) => task.metadata?._scan_scheduler_claim ?? null),
+  cancelSchedulerClaim: vi.fn(async (taskId: string, token: string) => { state.cancelledClaims.push(`${taskId}:${token}`); return true; }),
 }));
 
 vi.mock("../../src/features/workers/scan-worker.js", () => ({
   stopScanWorker: vi.fn(async (taskId: string) => state.stopped.push(taskId)),
+  stopScanWorkerByClaim: vi.fn(async (taskId: string, token: string) => state.stoppedClaims.push(`${taskId}:${token}`)),
+  getHostWorkDir: vi.fn((dataDir: string, taskId: string) => `${dataDir}/workspaces/${taskId}`),
   pauseScanWorker: vi.fn(async (taskId: string) => { state.paused.push(taskId); return state.pauseCount; }),
   unpauseScanWorker: vi.fn(async (taskId: string) => { state.unpaused.push(taskId); return state.unpauseCount; }),
   cleanupScanWorkDir: vi.fn((dataDir: string, taskId: string, cleanupImage?: string) => state.cleaned.push(`${dataDir}:${taskId}:${cleanupImage ?? ""}`)),
 }));
+
+vi.mock("../../src/features/workers/scheduler-workspace.js", () => ({
+  cleanupSchedulerWorkspace: vi.fn(async (path: string, token: string) => state.cleanedClaims.push(`${path}:${token}`)),
+}));
+
+vi.mock("../../src/infra/config.js", () => ({ loadConfig: () => ({ dataDir: "/data" }) }));
 
 vi.mock("../../src/features/notifications/index.js", () => ({
   notify: vi.fn((event: any) => state.notified.push(event)),
@@ -72,6 +85,9 @@ describe("task control service", () => {
     state.task = null;
     state.updates = [];
     state.stopped = [];
+    state.stoppedClaims = [];
+    state.cancelledClaims = [];
+    state.cleanedClaims = [];
     state.paused = [];
     state.unpaused = [];
     state.pauseCount = 1;
@@ -173,6 +189,17 @@ describe("task control service", () => {
     expect(result.state).toBe("cancelled");
     expect(state.updates[0][1]).toBe("cancelled");
     expect(state.stopped).toEqual([]);
+  });
+
+  it("cancels a preparing task only through its exact claim token", async () => {
+    const token = "11111111-1111-4111-8111-111111111111";
+    state.task = makeTask({ state: "preparing", metadata: { _scan_scheduler_claim: { token } } });
+    const result = await cancelTask("task-1");
+    expect(result.state).toBe("cancelled");
+    expect(state.cancelledClaims).toEqual([`task-1:${token}`]);
+    expect(state.stoppedClaims).toEqual([`task-1:${token}`]);
+    expect(state.cleanedClaims).toEqual([`/data/workspaces/task-1:${token}`]);
+    expect(state.updates).toEqual([]);
   });
 
   it("blocks cancel, pause, and restart when operation lock is busy", async () => {

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getDb } from "../../infra/db/client.js";
 import type { TaskMetadata, TaskState } from "@vulnagent/shared";
 import type { QueryContext } from "../../infra/query-context.js";
@@ -424,3 +425,193 @@ export async function countTasksForUser(ctx: QueryContext): Promise<number> {
   `;
   return Number(rows[0]?.count ?? 0);
 }
+
+export const SCHEDULER_CLAIM_KEY = "_scan_scheduler_claim";
+export const SCHEDULER_CLAIM_LEASE_MS = 90_000;
+export const SCHEDULER_CLAIM_HEARTBEAT_MS = 30_000;
+export const SCHEDULER_CLAIM_DEADLINE_MS = 15 * 60_000;
+const SCHEDULER_ADVISORY_LOCK_KEY = 1_930_122_025;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export type SchedulerClaimMode = "fresh" | "resume" | "continue";
+export interface SchedulerClaim {
+  version: 1;
+  token: string;
+  owner_instance: string;
+  claimed_at: string;
+  lease_expires_at: string;
+  deadline_at: string;
+  mode: SchedulerClaimMode;
+}
+export interface ClaimedScanTask extends DbTask { scheduler_claim: SchedulerClaim }
+
+function parsedObject(value: unknown): Record<string, unknown> | null {
+  if (typeof value === "string") {
+    try { value = JSON.parse(value); } catch { return null; }
+  }
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+export function getSchedulerClaim(task: Pick<DbTask, "metadata">): SchedulerClaim | null {
+  const metadata = parsedObject(task.metadata);
+  const claim = parsedObject(metadata?.[SCHEDULER_CLAIM_KEY]);
+  if (!claim || claim.version !== 1 || !UUID_RE.test(String(claim.token ?? "")) || !UUID_RE.test(String(claim.owner_instance ?? ""))) return null;
+  if (!["fresh", "resume", "continue"].includes(String(claim.mode ?? ""))) return null;
+  for (const key of ["claimed_at", "lease_expires_at", "deadline_at"] as const) {
+    if (typeof claim[key] !== "string" || !Number.isFinite(Date.parse(claim[key] as string))) return null;
+  }
+  return claim as unknown as SchedulerClaim;
+}
+
+export function schedulerClaimMode(task: DbTask): SchedulerClaimMode {
+  if (isContinueMode(task)) return "continue";
+  return task.started_at ? "resume" : "fresh";
+}
+
+function newSchedulerClaim(task: DbTask, ownerInstanceId: string, now = new Date()): SchedulerClaim {
+  return {
+    version: 1,
+    token: randomUUID(),
+    owner_instance: ownerInstanceId,
+    claimed_at: now.toISOString(),
+    lease_expires_at: new Date(now.getTime() + SCHEDULER_CLAIM_LEASE_MS).toISOString(),
+    deadline_at: new Date(now.getTime() + SCHEDULER_CLAIM_DEADLINE_MS).toISOString(),
+    mode: schedulerClaimMode(task),
+  };
+}
+
+export async function claimQueuedScanTasks(maxParallel: number, ownerInstanceId: string): Promise<ClaimedScanTask[]> {
+  if (!UUID_RE.test(ownerInstanceId) || maxParallel <= 0) return [];
+  const db = getDb();
+  return db.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(${SCHEDULER_ADVISORY_LOCK_KEY})`;
+    const [active] = await tx<{ count: string }[]>`
+      SELECT COUNT(*) AS count FROM tasks
+      WHERE state = 'running'
+         OR (state = 'preparing'
+             AND metadata ? ${SCHEDULER_CLAIM_KEY}
+             AND (metadata #>> '{_scan_scheduler_claim,lease_expires_at}')::timestamptz > now())
+    `;
+    const capacity = Math.max(0, Math.floor(maxParallel) - Number(active?.count ?? 0));
+    if (capacity === 0) return [];
+    const candidates = await tx<DbTask[]>`
+      SELECT * FROM tasks
+      WHERE state = 'queued'
+      ORDER BY created_at ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT ${capacity}
+    `;
+    const claimed: ClaimedScanTask[] = [];
+    for (const task of candidates) {
+      const claim = newSchedulerClaim(task, ownerInstanceId);
+      const [updated] = await tx<DbTask[]>`
+        UPDATE tasks
+        SET state = 'preparing',
+            metadata = (COALESCE(metadata, '{}'::jsonb) - ${SCHEDULER_CLAIM_KEY})
+              || jsonb_build_object(${SCHEDULER_CLAIM_KEY}::text, ${tx.json(claim as unknown as Record<string, string | number>)}::jsonb)
+        WHERE id = ${task.id} AND state = 'queued'
+        RETURNING *
+      `;
+      if (updated) claimed.push({ ...updated, scheduler_claim: claim });
+    }
+    return claimed;
+  });
+}
+
+export async function renewSchedulerClaim(taskId: string, token: string): Promise<boolean> {
+  const db = getDb();
+  const rows = await db<{ id: string }[]>`
+    UPDATE tasks
+    SET metadata = jsonb_set(metadata, '{_scan_scheduler_claim,lease_expires_at}', to_jsonb(now() + interval '90 seconds'))
+    WHERE id = ${taskId} AND state = 'preparing'
+      AND metadata #>> '{_scan_scheduler_claim,token}' = ${token}
+      AND (metadata #>> '{_scan_scheduler_claim,deadline_at}')::timestamptz > now()
+    RETURNING id
+  `;
+  return rows.length === 1;
+}
+
+export async function markSchedulerClaimRunning(taskId: string, token: string, startedAt: Date): Promise<boolean> {
+  const db = getDb();
+  const rows = await db<{ id: string }[]>`
+    UPDATE tasks
+    SET state = 'running', started_at = COALESCE(started_at, ${startedAt}),
+        completed_at = NULL, failure_reason = NULL,
+        metadata = COALESCE(metadata, '{}'::jsonb) - ${SCHEDULER_CLAIM_KEY}
+    WHERE id = ${taskId} AND state = 'preparing'
+      AND metadata #>> '{_scan_scheduler_claim,token}' = ${token}
+    RETURNING id
+  `;
+  return rows.length === 1;
+}
+
+export async function failSchedulerClaim(taskId: string, token: string, reason: string): Promise<boolean> {
+  const db = getDb();
+  const rows = await db<{ id: string }[]>`
+    UPDATE tasks
+    SET state = 'failed', completed_at = now(), failure_reason = ${reason},
+        metadata = COALESCE(metadata, '{}'::jsonb) - ${SCHEDULER_CLAIM_KEY}
+    WHERE id = ${taskId} AND state = 'preparing'
+      AND metadata #>> '{_scan_scheduler_claim,token}' = ${token}
+    RETURNING id
+  `;
+  return rows.length === 1;
+}
+
+export async function cancelSchedulerClaim(taskId: string, token: string): Promise<boolean> {
+  const db = getDb();
+  const rows = await db<{ id: string }[]>`
+    UPDATE tasks
+    SET state = 'cancelled', completed_at = now(),
+        metadata = COALESCE(metadata, '{}'::jsonb) - ${SCHEDULER_CLAIM_KEY}
+    WHERE id = ${taskId} AND state = 'preparing'
+      AND metadata #>> '{_scan_scheduler_claim,token}' = ${token}
+    RETURNING id
+  `;
+  return rows.length === 1;
+}
+
+export async function listPreparingSchedulerClaims(limit = 100): Promise<ClaimedScanTask[]> {
+  const db = getDb();
+  const rows = await db<DbTask[]>`
+    SELECT * FROM tasks
+    WHERE state = 'preparing' AND metadata ? ${SCHEDULER_CLAIM_KEY}
+    ORDER BY created_at ASC LIMIT ${Math.max(1, limit)}
+  `;
+  return rows.flatMap((task) => {
+    const claim = getSchedulerClaim(task);
+    return claim ? [{ ...task, scheduler_claim: claim }] : [];
+  });
+}
+
+export async function listExpiredSchedulerClaims(limit = 100): Promise<ClaimedScanTask[]> {
+  const now = Date.now();
+  return (await listPreparingSchedulerClaims(limit)).filter(({ scheduler_claim }) =>
+    Date.parse(scheduler_claim.lease_expires_at) <= now || Date.parse(scheduler_claim.deadline_at) <= now,
+  );
+}
+
+export async function releaseExpiredSchedulerClaim(taskId: string, token: string): Promise<boolean> {
+  const db = getDb();
+  const rows = await db<{ id: string }[]>`
+    UPDATE tasks
+    SET state = 'queued', metadata = COALESCE(metadata, '{}'::jsonb) - ${SCHEDULER_CLAIM_KEY}
+    WHERE id = ${taskId} AND state = 'preparing'
+      AND metadata #>> '{_scan_scheduler_claim,token}' = ${token}
+      AND ((metadata #>> '{_scan_scheduler_claim,lease_expires_at}')::timestamptz <= now()
+        OR (metadata #>> '{_scan_scheduler_claim,deadline_at}')::timestamptz <= now())
+    RETURNING id
+  `;
+  return rows.length === 1;
+}
+
+export async function clearSchedulerClaim(taskId: string, token: string): Promise<boolean> {
+  const db = getDb();
+  const rows = await db<{ id: string }[]>`
+    UPDATE tasks SET metadata = COALESCE(metadata, '{}'::jsonb) - ${SCHEDULER_CLAIM_KEY}
+    WHERE id = ${taskId} AND metadata #>> '{_scan_scheduler_claim,token}' = ${token}
+    RETURNING id
+  `;
+  return rows.length === 1;
+}
+

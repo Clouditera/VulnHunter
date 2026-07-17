@@ -19,6 +19,7 @@ export function initDocker(socketPath = "/var/run/docker.sock"): Dockerode {
 export const LABEL_MANAGED = "vulnagent.managed";
 export const LABEL_TASK_ID = "vulnagent.task_id";
 export const LABEL_TASK_TYPE = "vulnagent.task_type";
+export const LABEL_SCHEDULER_CLAIM = "vulnagent.scheduler_claim";
 
 export interface WorkerContainerSpec {
   taskId: string;
@@ -32,6 +33,7 @@ export interface WorkerContainerSpec {
   network?: string;
   autoRemove?: boolean; // auto-remove container on exit (chat/report)
   extraMounts?: Array<{ Type: "bind"; Source: string; Target: string; ReadOnly?: boolean }>;
+  labels?: Record<string, string>;
 }
 
 export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<Dockerode.Container> {
@@ -71,6 +73,7 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
       [LABEL_TASK_ID]: spec.taskId,
       [LABEL_TASK_TYPE]: spec.taskType,
       "vulnagent.created_at": new Date().toISOString(),
+      ...(spec.labels ?? {}),
     },
     HostConfig: {
       CpuQuota: spec.cpuQuota ?? 200000,
@@ -171,7 +174,7 @@ export async function listManagedContainers(): Promise<Dockerode.ContainerInfo[]
 }
 
 export function subscribeToDockerEvents(
-  onEvent: (event: { action: string; taskId: string; taskType: string; exitCode?: number }) => void,
+  onEvent: (event: { action: string; taskId: string; taskType: string; claimToken?: string; exitCode?: number }) => void,
 ): () => void {
   const docker = getDocker();
   let stream: NodeJS.ReadableStream | null = null;
@@ -199,11 +202,12 @@ export function subscribeToDockerEvents(
           const taskType = ev.Actor?.Attributes?.[LABEL_TASK_TYPE];
           if (!taskId) return;
 
+          const claimToken = ev.Actor?.Attributes?.[LABEL_SCHEDULER_CLAIM];
           const exitCode = ev.Actor?.Attributes?.exitCode
             ? Number(ev.Actor.Attributes.exitCode)
             : undefined;
 
-          onEvent({ action: ev.Action, taskId, taskType, exitCode });
+          onEvent({ action: ev.Action, taskId, taskType, claimToken, exitCode });
         } catch {}
       });
 

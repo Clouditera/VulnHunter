@@ -2,8 +2,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { ServiceConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
-import { mergeTaskMetadata, updateTaskState } from "../tasks/storage.js";
-import { notify } from "../notifications/index.js";
+import { mergeTaskMetadata } from "../tasks/storage.js";
 import {
   createWorkerContainer,
   ensureWorkDir,
@@ -11,6 +10,7 @@ import {
   getDocker,
   LABEL_TASK_ID,
   LABEL_TASK_TYPE,
+  LABEL_SCHEDULER_CLAIM,
 } from "./docker-client.js";
 
 import type { DbTask } from "../tasks/storage.js";
@@ -51,6 +51,7 @@ export async function spawnScanWorker(
   task: DbTask,
   config: ServiceConfig,
   llmEnv: Record<string, string>,
+  claimToken: string,
   resume = false,
   continueMode = false,
 ): Promise<string> {
@@ -60,12 +61,17 @@ export async function spawnScanWorker(
     ensureWorkDir(hostWorkDir);
   }
 
-  // Remove stale container with same name if it exists (e.g. from previous failed run)
+  // Deterministic name is the final atomic guard. Never replace an existing
+  // container here: reconciliation alone decides whether an exited container
+  // is eligible for owner-bound cleanup.
   try {
-    const docker = getDocker();
-    const old = docker.getContainer(`va-scan-${task.id}`);
-    await old.remove({ force: true });
-  } catch { /* ok, doesn't exist */ }
+    const old = getDocker().getContainer(`va-scan-${task.id}`);
+    const info = await old.inspect();
+    const existingToken = info.Config?.Labels?.[LABEL_SCHEDULER_CLAIM];
+    throw new Error(`Scan worker name conflict for task ${task.id} (state=${info.State?.Status ?? "unknown"}, claim=${existingToken ?? "legacy"})`);
+  } catch (err: any) {
+    if (err?.statusCode !== 404) throw err;
+  }
 
   if (!resume) {
     const engineRun = createAuditCompletionEngineRun(
@@ -89,6 +95,7 @@ export async function spawnScanWorker(
     hostWorkDir,
     cpuQuota: 200000,
     memoryBytes: 4 * 1024 * 1024 * 1024,
+    labels: { [LABEL_SCHEDULER_CLAIM]: claimToken },
     env: {
       ...llmEnv,
       MODE: "scan",
@@ -108,10 +115,9 @@ export async function spawnScanWorker(
   });
 
   await container.start();
-  await updateTaskState(task.id, "running", { startedAt: new Date() });
-  notify({ type: "task_state", taskId: task.id, state: "running" });
-
-  logger.info({ taskId: task.id, hostWorkDir, resume, continueMode }, "Scan worker started");
+  // NOTE: spawnScanWorker no longer updates task state. The Scheduler performs
+  // the token-CAS transition preparing → running (markSchedulerClaimRunning).
+  logger.info({ taskId: task.id, claimToken, hostWorkDir, resume, continueMode }, "Scan worker started");
   return container.id;
 }
 
@@ -119,6 +125,32 @@ function stringMeta(meta: DbTask["source_meta"] | null | undefined, key: string)
   const value = meta?.[key];
   if (value === undefined || value === null) return "";
   return String(value);
+}
+
+export async function hasRunningScanWorkerByClaim(taskId: string, token: string): Promise<boolean> {
+  const containers = await getDocker().listContainers({
+    all: true,
+    filters: JSON.stringify({ label: [`${LABEL_TASK_ID}=${taskId}`, `${LABEL_TASK_TYPE}=scan`, `${LABEL_SCHEDULER_CLAIM}=${token}`] }),
+  });
+  return containers.some((info) => info.State === "running" || info.State === "paused");
+}
+
+export async function stopScanWorkerByClaim(taskId: string, token: string): Promise<void> {
+  const docker = getDocker();
+  const containers = await docker.listContainers({
+    all: true,
+    filters: JSON.stringify({ label: [`${LABEL_TASK_ID}=${taskId}`, `${LABEL_TASK_TYPE}=scan`, `${LABEL_SCHEDULER_CLAIM}=${token}`] }),
+  });
+  for (const info of containers) {
+    try {
+      const container = docker.getContainer(info.Id);
+      if (info.State === "running" || info.State === "paused") await container.stop({ t: 30 }).catch(() => undefined);
+      await container.remove({ force: true });
+      logger.info({ taskId, token, containerId: info.Id }, "Claim-owned scan worker stopped and removed");
+    } catch (err) {
+      logger.warn({ err, taskId, token, containerId: info.Id }, "Failed to stop claim-owned scan worker");
+    }
+  }
 }
 
 export async function stopScanWorker(taskId: string): Promise<void> {

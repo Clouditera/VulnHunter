@@ -3,15 +3,33 @@
  * Also handles docker events (start/die/oom) to update task state.
  */
 
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { load as yamlLoad } from "js-yaml";
 
 import { logger } from "../../infra/logger.js";
 import { getDb } from "../../infra/db/client.js";
-import { countTasksByState, getQueuedTasks, getRunningTaskIds, getTaskById, updateTaskState, clearContinueMode, isContinueMode, mergeTaskMetadata, type DbTask } from "../tasks/storage.js";
+import {
+  claimQueuedScanTasks,
+  failSchedulerClaim,
+  getRunningTaskIds,
+  getTaskById,
+  markSchedulerClaimRunning,
+  renewSchedulerClaim,
+  clearContinueMode,
+  getSchedulerClaim,
+  mergeTaskMetadata,
+  updateTaskState,
+  SCHEDULER_CLAIM_HEARTBEAT_MS,
+  type ClaimedScanTask,
+  type DbTask,
+} from "../tasks/storage.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
-import { spawnScanWorker, getHostWorkDir } from "./scan-worker.js";
+import { spawnScanWorker, getHostWorkDir, hasRunningScanWorkerByClaim, stopScanWorkerByClaim } from "./scan-worker.js";
+import { cleanupSchedulerWorkspace, getSchedulerPrepareDir, publishSchedulerWorkspace } from "./scheduler-workspace.js";
+import { reconcileSchedulerClaims } from "./reconciler.js";
 import { downloadObjectWithRetry } from "./minio-download.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
@@ -28,7 +46,7 @@ import { onEvalContainerDie, onPocRunContainerDie, tickPocScheduler } from "../p
 import { notify } from "../notifications/index.js";
 import type { ServiceConfig } from "../../infra/config.js";
 import { resolveArchiveIdentity } from "../source-archives/detect.js";
-import { extractSourceArchive, prepareSourceArchiveDestination } from "../source-archives/extract.js";
+import { extractSourceArchive } from "../source-archives/extract.js";
 import { getSourceArchivePolicy } from "../source-archives/policy.js";
 import {
   evaluateAuditCompletion,
@@ -148,6 +166,8 @@ export class TaskScheduler {
   private maxParallelScan = 3;
   private youngflowMaxParallel = 3;
   private config: ServiceConfig;
+  private readonly ownerInstanceId = randomUUID();
+  private readonly claimHeartbeats = new Set<ReturnType<typeof setInterval>>();
   /** Last incremental sync+index time per running task (ms). */
   private lastIncrementalAt = new Map<string, number>();
 
@@ -160,7 +180,7 @@ export class TaskScheduler {
 
     // Subscribe to docker events
     this.unsubscribeEvents = subscribeToDockerEvents(async (event) => {
-      const { action, taskId, exitCode } = event;
+      const { action, taskId, claimToken, exitCode } = event;
 
       // Chat container lifecycle — event-driven state transition
       if (event.taskType === "chat" && action === "die") {
@@ -208,6 +228,20 @@ export class TaskScheduler {
 
         // Check current DB state — if already cancelled/paused, don't overwrite
         const currentTask = await getTaskById(taskId);
+        if (currentTask?.state === "preparing") {
+          const claim = getSchedulerClaim(currentTask);
+          if (claim && claimToken === claim.token) {
+            const failed = await failSchedulerClaim(taskId, claim.token, `Worker exited during preparation with code ${exitCode}`);
+            if (failed) {
+              await stopScanWorkerByClaim(taskId, claim.token);
+              await cleanupSchedulerWorkspace(getHostWorkDir(this.config.dataDir, taskId), claim.token).catch(() => undefined);
+              notify({ type: "task_state", taskId, state: "failed" });
+            }
+          } else {
+            logger.warn({ taskId, claimToken, currentToken: claim?.token }, "Ignoring stale-token scan die event during preparation");
+          }
+          return;
+        }
         if (currentTask && ["cancelled", "paused"].includes(currentTask.state)) {
           logger.info({ taskId, dbState: currentTask.state, exitCode }, "Container died but task already cancelled/paused, skipping state update");
           // Still sync outputs for cancelled tasks (may have partial results)
@@ -313,6 +347,8 @@ export class TaskScheduler {
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
+    for (const heartbeat of this.claimHeartbeats) clearInterval(heartbeat);
+    this.claimHeartbeats.clear();
     if (this.unsubscribeEvents) this.unsubscribeEvents();
     logger.info("TaskScheduler stopped");
   }
@@ -347,104 +383,109 @@ export class TaskScheduler {
       logger.error({ err }, "Incremental index tick error"),
     );
 
-    const running = await countTasksByState("running");
-    const capacity = this.maxParallelScan - running;
+    await reconcileSchedulerClaims(this.config).catch((err) =>
+      logger.error({ err }, "Scheduler claim reconciliation failed"),
+    );
 
-    if (capacity <= 0) return;
+    const claimed = await claimQueuedScanTasks(this.maxParallelScan, this.ownerInstanceId);
+    if (claimed.length === 0) return;
+    logger.info({ claimed: claimed.length, ownerInstanceId: this.ownerInstanceId }, "Scheduling claimed tasks");
+    await Promise.allSettled(claimed.map((task) => this.processClaimedTask(task)));
+  }
 
-    // Fetch beyond immediate capacity so invalid queued items (e.g. old tasks
-    // without credentials) can be failed in this tick instead of starving valid
-    // newer tasks that sit behind them.
-    const queued = await getQueuedTasks(Math.max(capacity, 20));
-    if (queued.length === 0) return;
+  private async assertSchedulerOwnership(taskId: string, token: string): Promise<void> {
+    if (!await renewSchedulerClaim(taskId, token)) {
+      throw Object.assign(new Error("Scheduler claim lost or deadline exceeded"), { code: "ERR_SCHEDULER_CLAIM_LOST" });
+    }
+  }
 
-    logger.info({ queued: queued.length, capacity }, "Scheduling queued tasks");
+  private async processClaimedTask(task: ClaimedScanTask): Promise<void> {
+    const claim = task.scheduler_claim;
+    const token = claim.token;
+    const hostWorkDir = getHostWorkDir(this.config.dataDir, task.id);
+    let published = false;
+    let workerStarted = false;
+    const heartbeat = setInterval(() => {
+      renewSchedulerClaim(task.id, token).then((renewed) => {
+        if (!renewed) logger.warn({ taskId: task.id, token }, "Scheduler claim heartbeat lost");
+      }).catch((err) => logger.warn({ err, taskId: task.id, token }, "Scheduler claim heartbeat failed"));
+    }, SCHEDULER_CLAIM_HEARTBEAT_MS);
+    heartbeat.unref?.();
+    this.claimHeartbeats.add(heartbeat);
 
-    let spawned = 0;
-    for (const task of queued) {
-      if (spawned >= capacity) break;
-      // Detect continue mode (re-run on top of existing outputs) vs resume
-      // (paused container respawn). Continue clears started_at, so it would
-      // otherwise look like a fresh run.
-      const isContinue = isContinueMode(task);
-      // Detect resume: if started_at is set, task was previously running/paused
-      const isResume = task.started_at != null && !isContinue;
-
-      // Get LLM credentials — task-specific or default
-      const credId = (task as DbTask & { credential_id?: string }).credential_id;
+    try {
+      await this.assertSchedulerOwnership(task.id, token);
+      const credId = task.credential_id;
       let cred;
       try {
-        cred = credId
-          ? await getCredentialById(credId)
-          : await getDefaultCredential();
+        cred = credId ? await getCredentialById(credId) : await getDefaultCredential();
       } catch (err) {
         if (err instanceof CredentialKeyUnavailableError) {
-          const reason = "凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。";
-          logger.error({ err, taskId: task.id, credId }, reason);
-          await updateTaskState(task.id, "failed", {
-            completedAt: new Date(),
-            failureReason: reason,
-          });
-          notify({ type: "task_state", taskId: task.id, state: "failed" as import("@vulnagent/shared").TaskState });
-          continue;
+          throw new Error("凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE并重启服务，或挂载正确的 master key 文件。");
         }
         if (err instanceof CredentialDecryptError) {
-          const reason = "LLM credential cannot be decrypted with current master key. Re-save the credential in Settings or restore the original master key.";
-          logger.error({ err, taskId: task.id, credId }, reason);
-          await updateTaskState(task.id, "failed", {
-            completedAt: new Date(),
-            failureReason: reason,
-          });
-          notify({ type: "task_state", taskId: task.id, state: "failed" as import("@vulnagent/shared").TaskState });
-          continue;
+          throw new Error("LLM credential cannot be decrypted with current master key. Re-save the credential in Settings or restore the original master key.");
         }
         throw err;
       }
-      if (!cred) {
-        const reason = missingCredentialFailureReason(credId);
-        logger.warn({ taskId: task.id, credId }, reason);
-        await updateTaskState(task.id, "failed", {
-          completedAt: new Date(),
-          failureReason: reason,
-        });
-        notify({ type: "task_state", taskId: task.id, state: "failed" as import("@vulnagent/shared").TaskState });
-        continue;
-      }
-
+      if (!cred) throw new Error(missingCredentialFailureReason(credId));
+      await this.assertSchedulerOwnership(task.id, token);
       const llmEnv = { ...credentialToWorkerEnv(cred), YOUNGFLOW_MAX_PARALLEL: String(this.youngflowMaxParallel) };
 
-      try {
-        if (isContinue) {
-          // Continue: re-extract source then pull historical outputs back into
-          // the workspace so YoungFlow --continue can build on prior artifacts.
-          await this.prepareWorkspace(task);
-          const downloaded = await downloadOutputsFromMinio(task.id, this.config);
-          logger.info({ taskId: task.id, downloaded }, "Historical outputs restored for continue");
-        } else if (!isResume) {
-          await this.prepareWorkspace(task);
-        }
-        await spawnScanWorker(task, this.config, llmEnv, isResume, isContinue);
-
-        // Start tailing service event files
-        const hostWorkDir = getHostWorkDir(this.config.dataDir, task.id);
-        const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
-        const serviceLogsDir = join(hostWorkDir, ".service-logs");
-        startTailing(task.id, [], [{ path: eventsDir, source: "scan" }, { path: serviceLogsDir, source: "scan" }]);
-
-        spawned++;
-
-        if (isContinue) {
-          logger.info({ taskId: task.id }, "Task continued on top of existing outputs");
-        } else if (isResume) {
-          logger.info({ taskId: task.id }, "Task resumed from paused state");
-        }
-      } catch (err) {
-        logger.error({ err, taskId: task.id }, "Failed to spawn worker");
-        await updateTaskState(task.id, "failed", {
-          completedAt: new Date(),
-          failureReason: String(err),
-        });
+      if (claim.mode === "continue") {
+        published = await this.prepareWorkspace(task, token);
+        await this.assertSchedulerOwnership(task.id, token);
+        const downloaded = await downloadOutputsFromMinio(task.id, this.config);
+        logger.info({ taskId: task.id, downloaded, token }, "Historical outputs restored for continue");
+      } else if (claim.mode === "fresh") {
+        published = await this.prepareWorkspace(task, token);
       }
+
+      await this.assertSchedulerOwnership(task.id, token);
+      await spawnScanWorker(task, this.config, llmEnv, token, claim.mode === "resume", claim.mode === "continue");
+      workerStarted = true;
+      const marked = await markSchedulerClaimRunning(task.id, token, new Date());
+      if (!marked) {
+        const current = await getTaskById(task.id);
+        const adopted = current?.state === "running" && await hasRunningScanWorkerByClaim(task.id, token);
+        if (!adopted) {
+          await stopScanWorkerByClaim(task.id, token);
+          throw Object.assign(new Error("Scheduler claim lost after Worker start"), { code: "ERR_SCHEDULER_CLAIM_LOST" });
+        }
+        logger.info({ taskId: task.id, token }, "Worker was adopted by reconciler before owner commit");
+      } else {
+        notify({ type: "task_state", taskId: task.id, state: "running" });
+      }
+
+      const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
+      const serviceLogsDir = join(hostWorkDir, ".service-logs");
+      try {
+        startTailing(task.id, [], [{ path: eventsDir, source: "scan" }, { path: serviceLogsDir, source: "scan" }]);
+      } catch (err) {
+        logger.warn({ err, taskId: task.id, token }, "Worker is running but event tailing could not start");
+      }
+      logger.info({ taskId: task.id, token, mode: claim.mode }, "Claimed scan task is running");
+    } catch (err) {
+      logger.error({ err, taskId: task.id, token }, "Claimed scan task failed");
+      const failed = await failSchedulerClaim(task.id, token, String(err)).catch(() => false);
+      if (failed) {
+        await stopScanWorkerByClaim(task.id, token);
+        if (published) await rm(join(hostWorkDir, "src"), { recursive: true, force: true }).catch((cleanupErr) =>
+          logger.warn({ cleanupErr, taskId: task.id, token }, "Failed to remove owner-published source"),
+        );
+        notify({ type: "task_state", taskId: task.id, state: "failed" });
+      } else {
+        const current = await getTaskById(task.id).catch(() => null);
+        const adopted = current?.state === "running" && workerStarted && await hasRunningScanWorkerByClaim(task.id, token).catch(() => false);
+        if (!adopted && workerStarted) await stopScanWorkerByClaim(task.id, token);
+        logger.warn({ taskId: task.id, token, currentState: current?.state }, "Claim lost; skipped task-state and canonical-workspace cleanup");
+      }
+    } finally {
+      clearInterval(heartbeat);
+      this.claimHeartbeats.delete(heartbeat);
+      await cleanupSchedulerWorkspace(hostWorkDir, token).catch((err) =>
+        logger.warn({ err, taskId: task.id, token }, "Failed to clean token-private scheduler workspace"),
+      );
     }
   }
 
@@ -479,15 +520,18 @@ export class TaskScheduler {
     }
   }
 
-  private async prepareWorkspace(task: DbTask): Promise<void> {
+  private async prepareWorkspace(task: DbTask, token: string): Promise<boolean> {
     const hostWorkDir = getHostWorkDir(this.config.dataDir, task.id);
-    const srcDir = join(hostWorkDir, "src");
+    const prepareDir = getSchedulerPrepareDir(hostWorkDir, token);
+    const stagedSourceDir = join(prepareDir, "src");
     ensureWorkDir(hostWorkDir);
+    await cleanupSchedulerWorkspace(hostWorkDir, token);
+    ensureWorkDir(prepareDir);
 
-    // Download code package from MinIO and extract.
+    // Download and extract only inside the token-private tree.
     const archive = resolveArchiveIdentity({ taskId: task.id, sourceMeta: task.source_meta });
     const minioKey = archive.minioKey;
-    const archivePath = join(hostWorkDir, "source-archive");
+    const archivePath = join(prepareDir, "source-archive");
     const minio = getMinio();
 
     // Wait for code package (git clone runs async after task creation; large repos
@@ -510,9 +554,12 @@ export class TaskScheduler {
     // complete server-side (git-clone verifies size on upload); a single
     // zero-retry call turned the blip into a permanent task failure.
     await downloadObjectWithRetry(minio, this.config.minio.bucket, minioKey, archivePath);
-    prepareSourceArchiveDestination(srcDir);
-    await extractSourceArchive(archivePath, archive.filename, srcDir, await getSourceArchivePolicy());
-    logger.info({ taskId: task.id, minioKey, filename: archive.filename }, "Code package extracted to workspace");
+    await this.assertSchedulerOwnership(task.id, token);
+    await extractSourceArchive(archivePath, archive.filename, stagedSourceDir, await getSourceArchivePolicy());
+    await this.assertSchedulerOwnership(task.id, token);
+    await publishSchedulerWorkspace(hostWorkDir, token);
+    logger.info({ taskId: task.id, token, minioKey, filename: archive.filename }, "Claim-owned code package published to workspace");
+    return true;
   }
 
   private async persistAuditCompletion(taskId: string, completion: TaskAuditCompletion): Promise<void> {

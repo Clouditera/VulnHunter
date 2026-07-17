@@ -2,9 +2,12 @@ import { getMinio } from "../../infra/minio/client.js";
 import { loadConfig, type ServiceConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
 import { notify } from "../notifications/index.js";
-import { cleanupScanWorkDir, stopScanWorker, pauseScanWorker, unpauseScanWorker } from "../workers/scan-worker.js";
+import { cleanupScanWorkDir, getHostWorkDir, stopScanWorker, stopScanWorkerByClaim, pauseScanWorker, unpauseScanWorker } from "../workers/scan-worker.js";
+import { cleanupSchedulerWorkspace } from "../workers/scheduler-workspace.js";
 import { assertNoActiveOperation } from "./operation-lock.js";
 import {
+  cancelSchedulerClaim,
+  getSchedulerClaim,
   getTaskById,
   queueTaskForResume,
   queueTaskForContinue,
@@ -58,7 +61,19 @@ export async function cancelTask(taskId: string): Promise<TaskControlResult> {
     invalidState(`Task ${task.project_name} is in state '${task.state}' and cannot be cancelled.`);
   }
   await assertScanNotBusy(task.id);
-  await updateTaskState(task.id, "cancelled", { completedAt: new Date() });
+  const claim = task.state === "preparing" ? getSchedulerClaim(task) : null;
+  if (claim) {
+    if (!await cancelSchedulerClaim(task.id, claim.token)) invalidState("Task preparation ownership changed; retry cancellation.");
+    await stopScanWorkerByClaim(task.id, claim.token).catch((err) => {
+      logger.warn({ err, taskId: task.id, token: claim.token }, "Failed to stop claim Worker on cancel");
+    });
+    const config = loadConfig();
+    await cleanupSchedulerWorkspace(getHostWorkDir(config.dataDir, task.id), claim.token).catch((err) => {
+      logger.warn({ err, taskId: task.id, token: claim.token }, "Failed to clean claim workspace on cancel");
+    });
+  } else {
+    await updateTaskState(task.id, "cancelled", { completedAt: new Date() });
+  }
   // Both running and paused (docker-frozen) tasks have a live container to tear down.
   if (task.state === "running" || task.state === "paused") {
     await stopScanWorker(task.id).catch((err) => {
