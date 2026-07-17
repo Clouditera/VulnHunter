@@ -41,16 +41,26 @@ describe("VulnForge 2.0 runtime flow compatibility", () => {
       "read", "bash", "write", "edit", "coverage", "workspace_diff", "workspace_snapshot",
     ]);
     expect(byId.get("report")?.tools).toEqual(["read", "bash", "write", "edit", "coverage"]);
-    for (const id of ["onboard", "cognize", "hunt", "verify", "poc-verify", "exp-build", "cycle_join", "complete", "exit"]) {
+    for (const id of ["onboard", "cognize", "hunt", "verify", "poc-verify", "ev-assess", "exp-build", "cycle_join", "complete", "exit"]) {
       expect(byId.get(id)?.tools, `${id} must inherit only defaults`).toBeUndefined();
     }
   });
 
-  it("preserves the decide spiral stable-session contract", () => {
+  it("locks the 1782ef6 decide contract: no session reuse, continuity via workspace state", () => {
+    // Engine 692cfb3 deliberately removed decide session reuse (stability fix:
+    // continuity is carried by workspace state instead of a stable session).
     const decide = parseFlow(flowPath).stages.find((stage) => stage.id === "decide");
-    expect(decide?.session.reuse).toBe(true);
-    expect(decide?.session.compactAt).toBe(0.75);
-    expect(decide?.session.prompt).toContain("进入新一轮调度决策");
+    expect(decide?.session.reuse).toBe(false);
+    expect(decide?.session.prompt).toBeUndefined();
+  });
+
+  it("exposes the three-tier dynamic gates with safe defaults", () => {
+    const inputs = new Map(parseFlow(flowPath).inputs.map((input) => [input.name, input]));
+    for (const gate of ["enable_poc", "enable_exp", "enable_chain"]) {
+      expect(inputs.has(gate), `${gate} input must exist`).toBe(true);
+      expect(inputs.get(gate)?.default, `${gate} must default off`).toBe("false");
+    }
+    expect(inputs.get("sandbox_cfg")?.default).toBe("");
   });
 
   it("keeps the timeout finalizer single-stage, bounded, and non-dynamic", () => {

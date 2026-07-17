@@ -37,8 +37,8 @@ function marker(previous: TaskEngineRun["previous_completion_fingerprint"] = nul
   return {
     run_id: "run-1",
     engine: "vulnforge",
-    engine_version: "2.0",
-    engine_commit: "058da50be533b4605ff2e1614cef77b5c2d936bd",
+    engine_version: "2.0-5-g1782ef6",
+    engine_commit: "1782ef6d99db58fda74c8e1524b9237ca39cad2c",
     completion_contract: AUDIT_COMPLETION_CONTRACT,
     completion_required: true,
     started_at: "2026-07-11T00:00:00.000Z",
@@ -56,8 +56,8 @@ describe("audit completion C01-C13", () => {
     expect(run).toEqual({
       run_id: "run-2",
       engine: "vulnforge",
-      engine_version: "2.0",
-      engine_commit: "058da50be533b4605ff2e1614cef77b5c2d936bd",
+      engine_version: "2.0-5-g1782ef6",
+      engine_commit: "1782ef6d99db58fda74c8e1524b9237ca39cad2c",
       completion_contract: "audit-completion/v1",
       completion_required: true,
       started_at: "started",
