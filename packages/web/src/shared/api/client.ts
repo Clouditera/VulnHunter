@@ -241,7 +241,10 @@ export const api = {
             credential_id?: string;
             audit_focus?: string;
             scan_timeout?: number;
+            timeout_mode?: "custom" | "auto";
             max_items_per_recon?: number;
+            enable_dynamic_verify?: boolean;
+            enable_dynamic_exploit?: boolean;
           },
     ) =>
       body instanceof FormData

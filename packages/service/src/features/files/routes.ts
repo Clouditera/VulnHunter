@@ -16,6 +16,7 @@ import { inspectSourceArchive } from "../source-archives/extract.js";
 import { SourceArchiveError, sourceArchiveErrorResponse } from "../source-archives/errors.js";
 import { getSourceArchivePolicy } from "../source-archives/policy.js";
 import { resolveScanDuration } from "../tasks/scan-duration.js";
+import { resolveDynamicToggles } from "../tasks/dynamic-toggles.js";
 
 export const filesRouter = new Hono();
 
@@ -30,8 +31,9 @@ export function scanMetaFromValues(
   scanTimeout?: string | number | null,
   maxItemsPerRecon?: string | number | null,
   timeoutMode?: string | null,
-): Record<string, string | number> {
-  const meta: Record<string, string | number> = {};
+  dynamicSwitches?: { enableDynamicVerify?: unknown; enableDynamicExploit?: unknown },
+): Record<string, string | number | boolean> {
+  const meta: Record<string, string | number | boolean> = {};
   const focus = typeof auditFocus === "string" ? auditFocus.trim() : "";
   if (focus) meta.audit_focus = focus;
   // H3 two-tier scan duration. resolveScanDuration enforces the custom range
@@ -48,15 +50,22 @@ export function scanMetaFromValues(
   }
   const items = toPositiveInt(maxItemsPerRecon);
   if (items !== undefined) meta.max_items_per_recon = items;
+
+  // Dynamic capability switches (B3 single mapping, shared by form + chat).
+  Object.assign(meta, resolveDynamicToggles(dynamicSwitches ?? {}));
   return meta;
 }
 
-function scanMetaFromForm(formData: FormData): Record<string, string | number> {
+function scanMetaFromForm(formData: FormData): Record<string, string | number | boolean> {
   return scanMetaFromValues(
     formData.get("audit_focus") as string | null,
     formData.get("scan_timeout") as string | null,
     formData.get("max_items_per_recon") as string | null,
     formData.get("timeout_mode") as string | null,
+    {
+      enableDynamicVerify: formData.get("enable_dynamic_verify"),
+      enableDynamicExploit: formData.get("enable_dynamic_exploit"),
+    },
   );
 }
 
@@ -144,11 +153,11 @@ filesRouter.post("/tasks", async (c) => {
 
     await uploadFile(config.minio.bucket, minioKey, buffer, file.size);
 
-    let scanMeta: Record<string, string | number>;
+    let scanMeta: Record<string, string | number | boolean>;
     try {
       scanMeta = scanMetaFromForm(formData);
     } catch (err) {
-      return c.json({ error: { code: "ERR_INVALID_SCAN_TIMEOUT", detail: err instanceof Error ? err.message : String(err) } }, 400);
+      return c.json({ error: { code: "ERR_INVALID_SCAN_OPTIONS", detail: err instanceof Error ? err.message : String(err) } }, 400);
     }
 
     const task = await createTask({
@@ -176,6 +185,8 @@ filesRouter.post("/tasks", async (c) => {
     scan_timeout?: string | number;
     timeout_mode?: string;
     max_items_per_recon?: string | number;
+    enable_dynamic_verify?: boolean;
+    enable_dynamic_exploit?: boolean;
   }>();
 
   if (!body.git_url) {
@@ -193,11 +204,14 @@ filesRouter.post("/tasks", async (c) => {
   }
   const requestedBranch = body.git_branch?.trim() || undefined;
 
-  let gitScanMeta: Record<string, string | number>;
+  let gitScanMeta: Record<string, string | number | boolean>;
   try {
-    gitScanMeta = scanMetaFromValues(body.audit_focus, body.scan_timeout, body.max_items_per_recon, body.timeout_mode);
+    gitScanMeta = scanMetaFromValues(body.audit_focus, body.scan_timeout, body.max_items_per_recon, body.timeout_mode, {
+      enableDynamicVerify: body.enable_dynamic_verify,
+      enableDynamicExploit: body.enable_dynamic_exploit,
+    });
   } catch (err) {
-    return c.json({ error: { code: "ERR_INVALID_SCAN_TIMEOUT", detail: err instanceof Error ? err.message : String(err) } }, 400);
+    return c.json({ error: { code: "ERR_INVALID_SCAN_OPTIONS", detail: err instanceof Error ? err.message : String(err) } }, 400);
   }
 
   const task = await createTask({

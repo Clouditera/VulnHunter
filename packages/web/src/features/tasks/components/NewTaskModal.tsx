@@ -40,7 +40,10 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [branchFallback, setBranchFallback] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [auditFocus, setAuditFocus] = useState("");
-  const [scanDuration, setScanDuration] = useState<string>("180"); // minutes
+  const [scanDuration, setScanDuration] = useState<string>("600"); // minutes (custom mode default 10h)
+  const [timeoutMode, setTimeoutMode] = useState<"custom" | "auto">("custom");
+  const [enableDynamicVerify, setEnableDynamicVerify] = useState(false);
+  const [enableDynamicExploit, setEnableDynamicExploit] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
@@ -124,6 +127,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
     setError("");
     setLoading(true);
     // scan_duration is shown in minutes; backend expects scan_timeout in seconds.
+    // In auto mode the backend forces the fixed 72h ceiling and ignores the value.
     const durationMin = Number.parseInt(scanDuration, 10);
     const scanTimeout =
       Number.isFinite(durationMin) && durationMin > 0 ? durationMin * 60 : undefined;
@@ -144,7 +148,10 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         if (credentialId) fd.append("credential_id", credentialId);
         if (displayName.trim()) fd.append("display_name", displayName.trim());
         if (focus) fd.append("audit_focus", focus);
-        if (scanTimeout !== undefined) fd.append("scan_timeout", String(scanTimeout));
+        fd.append("timeout_mode", timeoutMode);
+        if (timeoutMode === "custom" && scanTimeout !== undefined) fd.append("scan_timeout", String(scanTimeout));
+        if (enableDynamicVerify) fd.append("enable_dynamic_verify", "true");
+        if (enableDynamicExploit) fd.append("enable_dynamic_exploit", "true");
         setUploadPct(0);
         await api.tasks.createWithProgress(fd, (pct) => setUploadPct(pct));
       } else {
@@ -156,7 +163,10 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
           display_name: displayName.trim() || undefined,
           credential_id: credentialId || undefined,
           audit_focus: focus || undefined,
-          scan_timeout: scanTimeout,
+          timeout_mode: timeoutMode,
+          scan_timeout: timeoutMode === "custom" ? scanTimeout : undefined,
+          enable_dynamic_verify: enableDynamicVerify || undefined,
+          enable_dynamic_exploit: enableDynamicExploit || undefined,
         });
       }
       onCreated();
@@ -570,21 +580,82 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
               <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
                 {i18n.t("newTask.scanDuration")}
               </label>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <input
-                  data-testid="new-task-scan-duration"
-                  type="number"
-                  min={1}
-                  value={scanDuration}
-                  onChange={(e) => setScanDuration(e.target.value)}
-                  style={{ width: "100px", height: "40px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 10px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box" }}
-                />
-                <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
-                  {i18n.t("newTask.minutes")}
-                </span>
-                <span style={{ fontSize: "12px", color: "var(--text-secondary)", opacity: 0.7 }}>
-                  {i18n.t("newTask.scanDurationHint")}
-                </span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "var(--text-primary)", cursor: "pointer" }}>
+                  <input
+                    data-testid="timeout-mode-custom"
+                    type="radio"
+                    name="timeout-mode"
+                    checked={timeoutMode === "custom"}
+                    onChange={() => setTimeoutMode("custom")}
+                  />
+                  <span>{i18n.t("newTask.timeoutCustom")}</span>
+                  {timeoutMode === "custom" && (
+                    <><input
+                      data-testid="new-task-scan-duration"
+                      type="number"
+                      min={30}
+                      max={4320}
+                      value={scanDuration}
+                      onChange={(e) => setScanDuration(e.target.value)}
+                      style={{ width: "90px", height: "36px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 10px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box" }}
+                    />
+                    <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>{i18n.t("newTask.minutes")}</span></>
+                  )}
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "var(--text-primary)", cursor: "pointer" }}>
+                  <input
+                    data-testid="timeout-mode-auto"
+                    type="radio"
+                    name="timeout-mode"
+                    checked={timeoutMode === "auto"}
+                    onChange={() => setTimeoutMode("auto")}
+                  />
+                  <span>{i18n.t("newTask.timeoutAuto")}</span>
+                </label>
+                {enableDynamicVerify && timeoutMode === "custom" && (
+                  <div style={{ fontSize: "12px", color: "var(--text-secondary)", opacity: 0.8 }}>
+                    {i18n.t("newTask.dynamicDurationHint")}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Dynamic capability (Beta) */}
+            <div style={{ marginTop: "16px" }}>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
+                {i18n.t("newTask.dynamicBeta")}
+              </label>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "var(--text-primary)", cursor: "pointer" }}>
+                  <input
+                    data-testid="enable-dynamic-verify"
+                    type="checkbox"
+                    checked={enableDynamicVerify}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setEnableDynamicVerify(on);
+                      if (!on) setEnableDynamicExploit(false);
+                    }}
+                  />
+                  <span>{i18n.t("newTask.dynamicVerify")}</span>
+                </label>
+                <label
+                  title={enableDynamicVerify ? undefined : i18n.t("newTask.dynamicExploitNeedsVerify")}
+                  style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: enableDynamicVerify ? "var(--text-primary)" : "var(--text-secondary)", cursor: enableDynamicVerify ? "pointer" : "not-allowed", opacity: enableDynamicVerify ? 1 : 0.6 }}
+                >
+                  <input
+                    data-testid="enable-dynamic-exploit"
+                    type="checkbox"
+                    checked={enableDynamicExploit}
+                    disabled={!enableDynamicVerify}
+                    onChange={(e) => setEnableDynamicExploit(e.target.checked)}
+                  />
+                  <span>{i18n.t("newTask.dynamicExploit")}</span>
+                </label>
+                <div style={{ fontSize: "12px", color: "var(--brand, #b45309)", background: "var(--bg-warning, rgba(180,83,9,0.08))", border: "1px solid var(--border-warning, rgba(180,83,9,0.3))", borderRadius: "6px", padding: "8px 10px", lineHeight: 1.5 }}>
+                  {i18n.t("newTask.dynamicHint")}
+                </div>
               </div>
             </div>
           </div>
