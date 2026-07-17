@@ -28,7 +28,9 @@ export async function taskBearerAuth(c: Context, next: Next): Promise<Response |
   const taskId = match?.[1]?.trim();
   if (!taskId) return c.json({ error: { code: "ERR_AUTH_REQUIRED" } }, 401);
 
-  const task = await getTaskById(taskId);
+  // A malformed (e.g. non-UUID) or unknown task id must fail closed with 401,
+  // never propagate a DB error as a 500.
+  const task = await getTaskById(taskId).catch(() => null);
   if (!task || task.state !== "preparing") {
     return c.json({ error: { code: "ERR_AUTH_REQUIRED" } }, 401);
   }

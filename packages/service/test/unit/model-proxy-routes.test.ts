@@ -47,6 +47,12 @@ describe("modelProxyInternalRouter auth (shared taskBearerAuth)", () => {
     expect(res.status).toBe(401);
   });
 
+  it("rejects a malformed (non-UUID) task id with 401, not a DB 500", async () => {
+    getTaskByIdMock.mockRejectedValue(new Error("invalid input syntax for type uuid"));
+    const res = await req("/chat/completions", { method: "POST" }, "not-a-uuid");
+    expect(res.status).toBe(401);
+  });
+
   it("rejects a task not in preparing state", async () => {
     getTaskByIdMock.mockResolvedValue({ ...PREPARING_TASK, state: "running" });
     const res = await req("/v1/chat/completions", { method: "POST" }, "task-1");
