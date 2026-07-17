@@ -372,6 +372,26 @@ export async function getRunningTaskIds(): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
+/**
+ * Running tasks whose platform-accounted scan deadline (metadata.deadline_at)
+ * is stuck — past deadline + the H3 fallback margin with no terminal state.
+ * The worker normally self-finalizes at its own deadline; this list is the
+ * scheduler's safety net for a worker whose clock was reset / that became
+ * unresponsive before finishing its bounded finalizer.
+ */
+export async function listStuckDeadlineRunningTasks(marginSeconds: number, limit = 50): Promise<DbTask[]> {
+  const db = getDb();
+  return db<DbTask[]>`
+    SELECT * FROM tasks
+    WHERE state = 'running'
+      AND metadata ? 'deadline_at'
+      AND (metadata #>> '{deadline_at}') ~ '^[0-9]{4}-'
+      AND (metadata #>> '{deadline_at}')::timestamptz < now() - make_interval(secs => ${marginSeconds})
+    ORDER BY created_at ASC
+    LIMIT ${Math.max(1, limit)}
+  `;
+}
+
 export async function deleteTask(id: string): Promise<boolean> {
   const db = getDb();
   const rows = await db`DELETE FROM tasks WHERE id = ${id} RETURNING id`;

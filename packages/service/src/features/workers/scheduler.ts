@@ -20,14 +20,16 @@ import {
   renewSchedulerClaim,
   clearContinueMode,
   getSchedulerClaim,
+  listStuckDeadlineRunningTasks,
   mergeTaskMetadata,
   updateTaskState,
   SCHEDULER_CLAIM_HEARTBEAT_MS,
   type ClaimedScanTask,
   type DbTask,
 } from "../tasks/storage.js";
+import { SCAN_FALLBACK_MARGIN_S } from "../tasks/scan-duration.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
-import { spawnScanWorker, getHostWorkDir, hasRunningScanWorkerByClaim, stopScanWorkerByClaim } from "./scan-worker.js";
+import { spawnScanWorker, getHostWorkDir, hasRunningScanWorkerByClaim, stopScanWorker, stopScanWorkerByClaim } from "./scan-worker.js";
 import { cleanupSchedulerWorkspace, getSchedulerPrepareDir, publishSchedulerWorkspace } from "./scheduler-workspace.js";
 import { reconcileSchedulerClaims } from "./reconciler.js";
 import { downloadObjectWithRetry } from "./minio-download.js";
@@ -383,6 +385,16 @@ export class TaskScheduler {
       logger.error({ err }, "Incremental index tick error"),
     );
 
+    // H3 §3 (form A): platform fallback for a running task whose accounted
+    // scan deadline is stuck (past deadline_at + 720s with no terminal state).
+    // The worker normally self-finalizes at its own deadline; this only fires
+    // when the worker became unresponsive / its clock was reset before its
+    // bounded finalizer finished. Force-stop the container and let the
+    // claim-aware die/terminal-reconcile path finalize the task as failed.
+    await this.tickStuckDeadlineFallback().catch((err) =>
+      logger.error({ err }, "Stuck-deadline fallback tick error"),
+    );
+
     await reconcileSchedulerClaims(this.config).catch((err) =>
       logger.error({ err }, "Scheduler claim reconciliation failed"),
     );
@@ -396,6 +408,29 @@ export class TaskScheduler {
   private async assertSchedulerOwnership(taskId: string, token: string): Promise<void> {
     if (!await renewSchedulerClaim(taskId, token)) {
       throw Object.assign(new Error("Scheduler claim lost or deadline exceeded"), { code: "ERR_SCHEDULER_CLAIM_LOST" });
+    }
+  }
+
+  /**
+   * Force-stop running tasks whose platform-accounted scan deadline is stuck
+   * (H3 §3). Only acts when `now > deadline_at + 720s` — never inside the
+   * worker's own bounded-finalizer window, so it cannot kill a report being
+   * written. The container stop triggers the normal docker die event, whose
+   * claim-aware handler runs the terminal reconcile (task → failed, partial
+   * outputs preserved via output-sync). The platform does not inject a
+   * finalizer itself (the worker is unresponsive; re-running the finalize flow
+   * is out of H3 scope).
+   */
+  private async tickStuckDeadlineFallback(): Promise<void> {
+    const stuck = await listStuckDeadlineRunningTasks(SCAN_FALLBACK_MARGIN_S);
+    for (const task of stuck) {
+      logger.warn(
+        { taskId: task.id, deadlineAt: (task.metadata as Record<string, unknown> | undefined)?.deadline_at },
+        "Scan task exceeded deadline + fallback margin without terminal state; forcing stop (worker judged unresponsive)",
+      );
+      await stopScanWorker(task.id).catch((err) =>
+        logger.warn({ err, taskId: task.id }, "Failed to force-stop stuck-deadline scan worker"),
+      );
     }
   }
 

@@ -51,6 +51,35 @@ describe("scheduler claim reconciler", () => {
     expect(m.cleanup).toHaveBeenCalledWith("/data/workspaces/task-1", token);
   });
 
+  it("does not release a claim on deadline_at alone within the H3 stuck margin", async () => {
+    // deadline_at passed but lease still live and within the +720s margin:
+    // the adopted worker may be running its own bounded finalizer, so the
+    // reconciler must not force-stop it (form B is forbidden).
+    const recentDeadline = {
+      ...claim,
+      lease_expires_at: new Date(Date.now() + 90000).toISOString(),
+      deadline_at: new Date(Date.now() - 1000).toISOString(), // 1s past, well within 720s margin
+    };
+    m.preparing = [{ id: "task-1", scheduler_claim: recentDeadline }];
+    m.tasks.set("task-1", { id: "task-1", state: "preparing", metadata: { _scan_scheduler_claim: recentDeadline } });
+    await reconcileSchedulerClaims({ dataDir: "/data" } as any);
+    expect(m.release).not.toHaveBeenCalled();
+    expect(m.stop).not.toHaveBeenCalled();
+  });
+
+  it("releases a claim whose deadline_at is past the H3 stuck margin", async () => {
+    const stuckDeadline = {
+      ...claim,
+      lease_expires_at: new Date(Date.now() + 90000).toISOString(),
+      deadline_at: new Date(Date.now() - 800 * 1000).toISOString(), // 800s past > 720s margin
+    };
+    m.preparing = [{ id: "task-1", scheduler_claim: stuckDeadline }];
+    m.tasks.set("task-1", { id: "task-1", state: "preparing", metadata: { _scan_scheduler_claim: stuckDeadline } });
+    await reconcileSchedulerClaims({ dataDir: "/data" } as any);
+    expect(m.release).toHaveBeenCalledWith("task-1", token);
+    expect(m.stop).toHaveBeenCalledWith("task-1", token);
+  });
+
   it("removes a terminal task's running Worker by exact token", async () => {
     m.containers = [{ Id: "c1", State: "running", Labels: labels }];
     m.tasks.set("task-1", { id: "task-1", state: "failed", metadata: {} });

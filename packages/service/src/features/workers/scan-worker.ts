@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { ServiceConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
 import { mergeTaskMetadata } from "../tasks/storage.js";
+import { computeScanDeadlineAt } from "../tasks/scan-duration.js";
 import {
   createWorkerContainer,
   ensureWorkDir,
@@ -79,11 +80,18 @@ export async function spawnScanWorker(
       new Date().toISOString(),
       continueMode ? fingerprintAuditCompletion(join(hostWorkDir, "out")) : null,
     );
+    // H3: platform-accounted scan deadline (observability + scheduler fallback
+    // clock). A fresh logical run (fresh or continue) restarts the budget from
+    // now; a resume keeps the prior deadline (pause-shift semantics, v1 has no
+    // mid-run pause so this is naturally unchanged). The worker's own deadline
+    // runner remains the normal executor.
+    const scanTimeoutSeconds = Number(stringMeta(task.source_meta, "scan_timeout")) || 0;
     await mergeTaskMetadata(task.id, {
       engine_run: engineRun,
       // A new logical run must not inherit the previous run's warning. Current
       // stage/completion warnings are merged again during terminal handling.
       execution: { warning: null },
+      ...(scanTimeoutSeconds > 0 ? { deadline_at: computeScanDeadlineAt(scanTimeoutSeconds) } : {}),
     });
   }
 
@@ -104,6 +112,7 @@ export async function spawnScanWorker(
       CONTINUE: continueMode ? "1" : "0",
       ...scanInputEnvFromMeta(task.source_meta),
       SCAN_TIMEOUT: stringMeta(task.source_meta, "scan_timeout"),
+      TIMEOUT_MODE: stringMeta(task.source_meta, "timeout_mode"),
       MAX_ITEMS_PER_RECON: stringMeta(task.source_meta, "max_items_per_recon"),
       RECURSION_LIMIT: stringMeta(task.source_meta, "recursion_limit"),
       MINIO_ENDPOINT: `http://${config.minio.endpoint}:${config.minio.port}`,

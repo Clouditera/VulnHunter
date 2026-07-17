@@ -15,6 +15,7 @@ import { detectSourceArchive, stripSourceArchiveExtension } from "../source-arch
 import { inspectSourceArchive } from "../source-archives/extract.js";
 import { SourceArchiveError, sourceArchiveErrorResponse } from "../source-archives/errors.js";
 import { getSourceArchivePolicy } from "../source-archives/policy.js";
+import { resolveScanDuration } from "../tasks/scan-duration.js";
 
 export const filesRouter = new Hono();
 
@@ -28,12 +29,23 @@ export function scanMetaFromValues(
   auditFocus?: string | null,
   scanTimeout?: string | number | null,
   maxItemsPerRecon?: string | number | null,
+  timeoutMode?: string | null,
 ): Record<string, string | number> {
   const meta: Record<string, string | number> = {};
   const focus = typeof auditFocus === "string" ? auditFocus.trim() : "";
   if (focus) meta.audit_focus = focus;
-  const timeout = toPositiveInt(scanTimeout);
-  if (timeout !== undefined) meta.scan_timeout = timeout;
+  // H3 two-tier scan duration. resolveScanDuration enforces the custom range
+  // and forces the fixed 72h ceiling for auto mode; legacy callers that omit
+  // timeout_mode are treated as custom. Only set when the caller supplied a
+  // timeout or mode, so existing tasks/UI that omit them stay unaffected.
+  if (timeoutMode !== undefined && timeoutMode !== null && timeoutMode !== "") {
+    const resolved = resolveScanDuration(timeoutMode, scanTimeout);
+    meta.scan_timeout = resolved.scan_timeout;
+    meta.timeout_mode = resolved.timeout_mode;
+  } else {
+    const timeout = toPositiveInt(scanTimeout);
+    if (timeout !== undefined) meta.scan_timeout = timeout;
+  }
   const items = toPositiveInt(maxItemsPerRecon);
   if (items !== undefined) meta.max_items_per_recon = items;
   return meta;
@@ -44,6 +56,7 @@ function scanMetaFromForm(formData: FormData): Record<string, string | number> {
     formData.get("audit_focus") as string | null,
     formData.get("scan_timeout") as string | null,
     formData.get("max_items_per_recon") as string | null,
+    formData.get("timeout_mode") as string | null,
   );
 }
 
@@ -131,13 +144,20 @@ filesRouter.post("/tasks", async (c) => {
 
     await uploadFile(config.minio.bucket, minioKey, buffer, file.size);
 
+    let scanMeta: Record<string, string | number>;
+    try {
+      scanMeta = scanMetaFromForm(formData);
+    } catch (err) {
+      return c.json({ error: { code: "ERR_INVALID_SCAN_TIMEOUT", detail: err instanceof Error ? err.message : String(err) } }, 400);
+    }
+
     const task = await createTask({
       tenantId: ctx.tenantId,
       createdBy: user.userId,
       projectName: stripSourceArchiveExtension(file.name),
       displayName,
       sourceType: "upload",
-      sourceMeta: { filename: file.name, minio_key: minioKey, size_bytes: file.size, archive_format: detected.format, ...scanMetaFromForm(formData) },
+      sourceMeta: { filename: file.name, minio_key: minioKey, size_bytes: file.size, archive_format: detected.format, ...scanMeta },
       credentialId,
     });
 
@@ -154,6 +174,7 @@ filesRouter.post("/tasks", async (c) => {
     display_name?: string;
     audit_focus?: string;
     scan_timeout?: string | number;
+    timeout_mode?: string;
     max_items_per_recon?: string | number;
   }>();
 
@@ -172,6 +193,13 @@ filesRouter.post("/tasks", async (c) => {
   }
   const requestedBranch = body.git_branch?.trim() || undefined;
 
+  let gitScanMeta: Record<string, string | number>;
+  try {
+    gitScanMeta = scanMetaFromValues(body.audit_focus, body.scan_timeout, body.max_items_per_recon, body.timeout_mode);
+  } catch (err) {
+    return c.json({ error: { code: "ERR_INVALID_SCAN_TIMEOUT", detail: err instanceof Error ? err.message : String(err) } }, 400);
+  }
+
   const task = await createTask({
     tenantId: ctx.tenantId,
     createdBy: user.userId,
@@ -181,7 +209,7 @@ filesRouter.post("/tasks", async (c) => {
     sourceMeta: {
       git_url: safeGitUrl,
       ...(requestedBranch ? { git_branch: requestedBranch } : {}),
-      ...scanMetaFromValues(body.audit_focus, body.scan_timeout, body.max_items_per_recon),
+      ...gitScanMeta,
     },
     autoSkillIds: body.auto_skill_ids,
     credentialId: body.credential_id,
