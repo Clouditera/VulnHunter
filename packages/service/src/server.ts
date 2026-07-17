@@ -7,6 +7,7 @@ import { systemRouter } from "./features/system/index.js";
 import { tasksRouter } from "./features/tasks/index.js";
 import { filesRouter } from "./features/files/index.js";
 import { findingsRouter } from "./features/findings/index.js";
+import { artifactsRouter } from "./features/artifacts/index.js";
 import { dashboardRouter } from "./features/dashboard/index.js";
 import { workspaceRouter } from "./features/workspace/index.js";
 import { settingsRouter } from "./features/settings/index.js";
@@ -43,6 +44,7 @@ export function createApp(): Hono {
   // Protected routes (license + auth)
   app.route("/api/tasks", tasksRouter);
   app.route("/api/tasks", findingsRouter); // /:taskId/findings
+  app.route("/api/tasks", artifactsRouter); // /:taskId/findings/:findingId/artifacts, /:taskId/exploits, /:taskId/artifacts/file
   app.route("/api/tasks", workspaceRouter); // /:taskId/workspace/*
   app.route("/api/tasks", wikiRouter); // /:taskId/wiki
   app.route("/api/dashboard", dashboardRouter);

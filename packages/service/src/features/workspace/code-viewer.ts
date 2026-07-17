@@ -13,8 +13,9 @@ import { fileTypeFromBuffer } from "file-type";
 import { listArchiveEntries, readArchiveFile, type ArchiveEntry } from "../source-archives/reader.js";
 
 const FILE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const MAX_FILE_SIZE_BYTES = 1024 * 1024; // 1MB — larger files get truncated
-const MAX_IMAGE_PREVIEW_BYTES = 5 * 1024 * 1024; // 5MB — avoid huge base64 JSON responses
+export const MAX_FILE_SIZE_BYTES = 1024 * 1024; // 1MB — larger files get truncated
+export const MAX_IMAGE_PREVIEW_BYTES = 5 * 1024 * 1024; // 5MB — avoid huge base64 JSON responses
+export const TRUNCATED_MARKER = "\n\n[File truncated — download to view full content]";
 const fileCache = new LRUCache<string, { content: string; language: string; totalLines: number; truncated: boolean }>(100, FILE_CACHE_TTL_MS);
 
 export interface CodeFileResult {
@@ -99,7 +100,7 @@ async function safeFileTypeFromBuffer(buf: Buffer) {
   }
 }
 
-export async function classifyCodeFileBuffer(buf: Buffer, filePath: string): Promise<CodeFileResult> {
+export async function classifyCodeFileBuffer(buf: Buffer, filePath: string, opts?: { truncatedMarker?: string }): Promise<CodeFileResult> {
   const detected = await safeFileTypeFromBuffer(buf);
   if (isPreviewableImage(detected?.mime)) {
     if (buf.length > MAX_IMAGE_PREVIEW_BYTES) {
@@ -140,7 +141,7 @@ export async function classifyCodeFileBuffer(buf: Buffer, filePath: string): Pro
   const full = buf.toString("utf-8");
   const truncated = buf.length > MAX_FILE_SIZE_BYTES;
   const content = truncated
-    ? buf.slice(0, MAX_FILE_SIZE_BYTES).toString("utf-8") + "\n\n[File truncated — download to view full content]"
+    ? buf.slice(0, MAX_FILE_SIZE_BYTES).toString("utf-8") + (opts?.truncatedMarker ?? TRUNCATED_MARKER)
     : full;
   return {
     content,

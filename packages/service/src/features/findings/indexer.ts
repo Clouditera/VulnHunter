@@ -306,7 +306,7 @@ export interface FindingCandidate {
 }
 
 const LEGACY_FILE_RE = /^([A-Za-z0-9][A-Za-z0-9._-]{0,199})\.(yaml|yml)$/;
-const CANONICAL_ID_RE = /^BUG-[A-Za-z0-9._-]+$/;
+export const CANONICAL_ID_RE = /^BUG-[A-Za-z0-9._-]+$/;
 
 /** Exact, task-scoped object-key matcher. Nested YAML is deliberately ignored. */
 export function matchFindingObjectKey(taskId: string, objectKey: string): FindingCandidate | null {
