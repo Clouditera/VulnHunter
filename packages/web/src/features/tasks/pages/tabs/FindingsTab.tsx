@@ -16,6 +16,7 @@ import { Icon } from "../../../../shared/components/Icon.js";
 import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
 import { ReviewStatusBadge, ReviewStatusSelect, ReviewHistoryTimeline, ReviewNoteModal, REVIEW_STATUS_META } from "../../components/FindingReviewControls.js";
 import { CodeViewer, EmptyCodePlaceholder } from "../../components/CodeViewer.js";
+import { FindingDynamicCards } from "../../components/FindingDynamicCards.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Severity helpers                                                          */
@@ -175,6 +176,7 @@ function flattenFindingsTree(
 
 export function FindingsTab() {
   const { task } = useOutletContext<{ task: Task }>();
+  const dynamicEnabled = task.source_meta?.dynamic_enabled === true;
   const [, forceUpdate] = useState(0);
   useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
 
@@ -735,6 +737,7 @@ export function FindingsTab() {
                   detail={detailData?.detail}
                   loading={detailLoading}
                   error={detailError as Error | null}
+                  dynamicEnabled={dynamicEnabled}
                   onViewCode={(target) => {
                     if (target) setDetailCodeTarget(target);
                     setRightView("code");
@@ -1216,6 +1219,7 @@ function FindingDetailPanel({
   detail,
   loading,
   error,
+  dynamicEnabled = false,
   onViewCode,
 }: {
   taskId: string;
@@ -1223,6 +1227,7 @@ function FindingDetailPanel({
   detail: FindingDetailData | undefined;
   loading: boolean;
   error: Error | null;
+  dynamicEnabled?: boolean;
   /** Switch to the code tab within the same page (two-column layout). */
   onViewCode?: (target?: CodeTarget) => void;
 }) {
@@ -1459,6 +1464,9 @@ function FindingDetailPanel({
           </ul>
         </Section>
       )}
+
+      {/* Dynamic capability three cards (static / POC / impact assessment) */}
+      <FindingDynamicCards taskId={taskId} finding={finding} dynamicEnabled={dynamicEnabled} />
     </div>
   );
 }

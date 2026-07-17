@@ -154,6 +154,28 @@ export type FindingReviewStatus = 'pending' | 'confirmed' | 'false_positive' | '
 
 export type FindingItemType = "finding" | "risk";
 
+/** H4 artifact read API shapes (mirrors service artifacts.ts). */
+export type ArtifactKind = "text" | "image" | "binary";
+export interface ArtifactFileEntry {
+  path: string;
+  size: number;
+  kind: ArtifactKind;
+  previewable: boolean;
+}
+export interface FindingArtifactGroups {
+  poc: { files: ArtifactFileEntry[] };
+  exp: { files: ArtifactFileEntry[] };
+}
+export interface ArtifactFilePreview {
+  kind: ArtifactKind;
+  size: number;
+  language?: string;
+  content?: string;
+  truncated: boolean;
+  mime?: string;
+  data_base64?: string;
+}
+
 export interface FindingMeta extends FindingDynamicMeta {
   id: string;
   task_id: string;
@@ -296,6 +318,9 @@ export const api = {
     updateDisplayName: (id: string, display_name: string | null) =>
       request<{ task: Task }>(`/api/tasks/${id}/display-name`, { method: "PATCH", body: JSON.stringify({ display_name }) }),
     cancel: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/cancel`, { method: "POST" }),
+    /** H4: read-only single-artifact-file preview (whitelisted findings/exploits roots). */
+    artifactFile: (id: string, path: string) =>
+      request<ArtifactFilePreview>(`/api/tasks/${id}/artifacts/file?path=${encodeURIComponent(path)}`),
     pause: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/pause`, { method: "POST" }),
     resume: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/resume`, { method: "POST" }),
     restart: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/restart`, { method: "POST" }),
@@ -382,6 +407,11 @@ export const api = {
     detail: (taskId: string, key: string) =>
       request<{ meta: FindingMeta; detail: FindingDetail }>(
         `/api/tasks/${taskId}/findings/${encodeURIComponent(key)}`,
+      ),
+    /** H4: per-finding POC/EXP artifact file lists for the three cards. */
+    artifacts: (taskId: string, findingId: string) =>
+      request<FindingArtifactGroups>(
+        `/api/tasks/${taskId}/findings/${encodeURIComponent(findingId)}/artifacts`,
       ),
     updateReview: (taskId: string, findingKey: string, body: { review_status: FindingReviewStatus; note?: string }) =>
       request<{ finding: FindingMeta; event: FindingReviewEvent }>(
