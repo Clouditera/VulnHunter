@@ -58,6 +58,39 @@ describe("modelProxyInternalRouter auth (shared taskBearerAuth)", () => {
     const res = await req("/v1/chat/completions", { method: "POST" }, "task-1");
     expect(res.status).toBe(401);
   });
+
+  it("accepts a task id carried in the x-api-key header (anthropic-messages path)", async () => {
+    getTaskByIdMock.mockResolvedValue(PREPARING_TASK);
+    getCredentialByIdMock.mockResolvedValue(CRED);
+    fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+    const res = await modelProxyInternalRouter.request("/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": "task-1" },
+      body: "{}",
+    });
+    expect(res.status).toBe(200);
+    expect(getTaskByIdMock).toHaveBeenCalledWith("task-1");
+  });
+
+  it("rejects an unknown task id in x-api-key and prefers Authorization over x-api-key", async () => {
+    // unknown x-api-key → 401
+    getTaskByIdMock.mockResolvedValue(null);
+    let res = await modelProxyInternalRouter.request("/chat/completions", {
+      method: "POST", headers: { "content-type": "application/json", "x-api-key": "nope" }, body: "{}",
+    });
+    expect(res.status).toBe(401);
+    // Bearer present + different x-api-key → Bearer wins (x-api-key ignored as task-id)
+    getTaskByIdMock.mockResolvedValue(PREPARING_TASK);
+    getCredentialByIdMock.mockResolvedValue(CRED);
+    fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+    res = await modelProxyInternalRouter.request("/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer task-1", "x-api-key": "nope" },
+      body: "{}",
+    });
+    expect(res.status).toBe(200);
+    expect(getTaskByIdMock).toHaveBeenCalledWith("task-1");
+  });
 });
 
 describe("modelProxyInternalRouter forwarding", () => {

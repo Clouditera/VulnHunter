@@ -23,9 +23,15 @@ export const TASK_BEARER_KEY = "internalTask";
  * needs it to resolve that task's credential).
  */
 export async function taskBearerAuth(c: Context, next: Next): Promise<Response | void> {
+  // Primary: Authorization: Bearer <task-id>. Fallback: x-api-key — pi sends
+  // the apiKey (our $TASK_ID template) in the x-api-key header when the
+  // model's api is anthropic-messages, instead of an Authorization header.
+  // Without this fallback, anthropic-credential tasks would always 401 here.
+  // (The P2 sandbox-plane extension never sends x-api-key, so its behavior is
+  // unchanged.)
   const header = c.req.header("authorization") ?? "";
   const match = /^Bearer\s+(.+)$/i.exec(header.trim());
-  const taskId = match?.[1]?.trim();
+  const taskId = match?.[1]?.trim() ?? (c.req.header("x-api-key")?.trim() || undefined);
   if (!taskId) return c.json({ error: { code: "ERR_AUTH_REQUIRED" } }, 401);
 
   // A malformed (e.g. non-UUID) or unknown task id must fail closed with 401,
