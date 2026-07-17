@@ -130,6 +130,22 @@ export interface PrepareEvent {
   remediation?: string;
 }
 
+/**
+ * Sandbox allocation terminal failure (H2 §3): emitted once when the bounded
+ * quota/capacity retry budget is exhausted and the task fails with the O1
+ * user-visible reason. Transient requeues are log-only.
+ */
+export interface SandboxAllocFailedEvent {
+  type: "sandbox_alloc_failed";
+  source: string;
+  seq: number;
+  ts: string;
+  /** "quota" (per-user limit) | "capacity" (SandboxPlane admission) */
+  reason: string;
+  attempts: number;
+  remediation: string;
+}
+
 export type LiveLogEvent =
   | ToolCallEvent
   | StageStartEvent
@@ -139,7 +155,8 @@ export type LiveLogEvent =
   | ErrorEvent
   | PocOutputEvent
   | PocExitEvent
-  | PrepareEvent;
+  | PrepareEvent
+  | SandboxAllocFailedEvent;
 
 /** WS subscribe message (client → server) */
 export interface LiveLogSubscribe {

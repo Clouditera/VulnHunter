@@ -22,6 +22,7 @@ import {
   getSchedulerClaim,
   listStuckDeadlineRunningTasks,
   mergeTaskMetadata,
+  requeueSchedulerClaim,
   updateTaskState,
   SCHEDULER_CLAIM_HEARTBEAT_MS,
   type ClaimedScanTask,
@@ -31,7 +32,14 @@ import { SCAN_FALLBACK_MARGIN_S } from "../tasks/scan-duration.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir, hasRunningScanWorkerByClaim, stopScanWorker, stopScanWorkerByClaim } from "./scan-worker.js";
 import { cleanupSchedulerWorkspace, getSchedulerPrepareDir, publishSchedulerWorkspace } from "./scheduler-workspace.js";
-import { isDynamicEnabled, runPrepareWorker, stopPrepareWorkerByClaim } from "./prepare-worker.js";
+import { isDynamicEnabled, runPrepareWorker, stopPrepareWorkerByClaim, type PrepareResult } from "./prepare-worker.js";
+import {
+  ensureSandboxForTask,
+  stopSandboxForTask,
+  reconcileSandboxes,
+  SandboxQuotaError,
+} from "../sandboxes/lifecycle.js";
+import { SandboxPlaneCapacityError } from "../sandbox-plane/client.js";
 import { reconcileSchedulerClaims } from "./reconciler.js";
 import { downloadObjectWithRetry } from "./minio-download.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
@@ -152,6 +160,11 @@ export function missingCredentialFailureReason(credId?: string | null): string {
 const INCREMENTAL_INDEX_INTERVAL_MS = 90_000;
 /** Only sync lightweight business artifacts mid-scan (skip GB-scale session logs). */
 const INCREMENTAL_SYNC_DIRS = ["findings", "risks", "knowledge"];
+/** H2 §3: sandbox allocation retry budget (6 × 5min) before the O1-visible error. */
+const SANDBOX_ALLOC_MAX_ATTEMPTS = 6;
+const SANDBOX_ALLOC_RETRY_MS = 5 * 60_000;
+/** H2 §5: incremental sandbox reconcile cadence (startup does the full pass). */
+const SANDBOX_RECONCILE_INTERVAL_MS = 60_000;
 
 export function appendAndBroadcastCompletionEvent(taskId: string, event: LiveLogEvent): void {
   const entry = appendEvent(taskId, event);
@@ -173,6 +186,7 @@ export class TaskScheduler {
   private readonly claimHeartbeats = new Set<ReturnType<typeof setInterval>>();
   /** Last incremental sync+index time per running task (ms). */
   private lastIncrementalAt = new Map<string, number>();
+  private lastSandboxReconcileAt = 0;
 
   constructor(config: ServiceConfig) {
     this.config = config;
@@ -237,6 +251,7 @@ export class TaskScheduler {
             const failed = await failSchedulerClaim(taskId, claim.token, `Worker exited during preparation with code ${exitCode}`);
             if (failed) {
               await stopScanWorkerByClaim(taskId, claim.token);
+              await stopSandboxForTask(taskId, "preparing_failed").catch(() => undefined);
               await cleanupSchedulerWorkspace(getHostWorkDir(this.config.dataDir, taskId), claim.token).catch(() => undefined);
               notify({ type: "task_state", taskId, state: "failed" });
             }
@@ -254,6 +269,7 @@ export class TaskScheduler {
             } catch (err) {
               logger.warn({ err, taskId }, "Failed to sync outputs on cancel");
             }
+            await stopSandboxForTask(taskId, "task_cancelled").catch(() => undefined);
           }
         } else {
           const workerExitCode = exitCode ?? -1;
@@ -313,6 +329,8 @@ export class TaskScheduler {
               failureReason: mapped.failureReason,
             }).catch((err) => logger.error({ err, taskId }, "Failed to update task on die"));
             notify({ type: "task_state", taskId, state: mapped.state });
+            // H2 §4: terminal (completed/failed) — stop the sandbox, keep it.
+            await stopSandboxForTask(taskId, `task_${mapped.state}`).catch(() => undefined);
           }
 
           if (shouldEmitTerminal) {
@@ -400,6 +418,14 @@ export class TaskScheduler {
       logger.error({ err }, "Scheduler claim reconciliation failed"),
     );
 
+    // H2 §5: incremental sandbox reconcile (full pass runs at service boot).
+    if (Date.now() - this.lastSandboxReconcileAt >= SANDBOX_RECONCILE_INTERVAL_MS) {
+      this.lastSandboxReconcileAt = Date.now();
+      await reconcileSandboxes().catch((err) =>
+        logger.error({ err }, "Sandbox reconcile tick error"),
+      );
+    }
+
     const claimed = await claimQueuedScanTasks(this.maxParallelScan, this.ownerInstanceId);
     if (claimed.length === 0) return;
     logger.info({ claimed: claimed.length, ownerInstanceId: this.ownerInstanceId }, "Scheduling claimed tasks");
@@ -480,8 +506,17 @@ export class TaskScheduler {
       // H5: run the Prepare phase (source completeness + dynamic sandbox
       // selection) for any mode that (re)prepared source. Resume reuses the
       // paused container's existing source and does not re-prepare.
+      let prepareResult: PrepareResult | null = null;
       if (claim.mode === "fresh" || claim.mode === "continue") {
-        await this.runPreparePhase(task, token, hostWorkDir);
+        prepareResult = await this.runPreparePhase(task, token, hostWorkDir);
+        await this.assertSchedulerOwnership(task.id, token);
+      }
+
+      // H2 §3: dynamic on + Prepare selected a sandbox type → allocate before
+      // the scan worker starts. Quota/capacity rejections requeue the task
+      // with bounded backoff (see allocateSandboxForTask).
+      if (isDynamicEnabled(task) && prepareResult?.sandbox_type) {
+        await this.allocateSandboxForTask(task, token);
         await this.assertSchedulerOwnership(task.id, token);
       }
 
@@ -510,6 +545,18 @@ export class TaskScheduler {
       }
       logger.info({ taskId: task.id, token, mode: claim.mode }, "Claimed scan task is running");
     } catch (err) {
+      // H2 §3: transient sandbox quota/capacity blocker — requeue with backoff
+      // instead of failing the claim. The task stays queued for a later tick.
+      if ((err as { code?: string } | null)?.code === "ERR_SANDBOX_ALLOC_REQUEUE") {
+        const requeued = await requeueSchedulerClaim(task.id, token).catch(() => false);
+        if (requeued) {
+          await stopPrepareWorkerByClaim(task.id, token).catch(() => undefined);
+          await cleanupSchedulerWorkspace(hostWorkDir, token).catch(() => undefined);
+          logger.info({ taskId: task.id, token }, "Claim requeued for sandbox allocation backoff");
+          return;
+        }
+        logger.warn({ taskId: task.id, token }, "Requeue failed (claim lost?); falling through to normal failure path");
+      }
       logger.error({ err, taskId: task.id, token }, "Claimed scan task failed");
       const failed = await failSchedulerClaim(task.id, token, String(err)).catch(() => false);
       if (failed) {
@@ -517,6 +564,8 @@ export class TaskScheduler {
         await stopPrepareWorkerByClaim(task.id, token).catch((cleanupErr) =>
           logger.warn({ cleanupErr, taskId: task.id, token }, "Failed to stop claim-owned prepare worker on failure"),
         );
+        // H2 §4: a sandbox allocated before the failure must not stay running.
+        await stopSandboxForTask(task.id, "claim_failed").catch(() => undefined);
         if (published) await rm(join(hostWorkDir, "src"), { recursive: true, force: true }).catch((cleanupErr) =>
           logger.warn({ cleanupErr, taskId: task.id, token }, "Failed to remove owner-published source"),
         );
@@ -547,7 +596,7 @@ export class TaskScheduler {
    * All side effects run under the owner's scheduler claim (②). Throws on any
    * prepare failure so processClaimedTask's catch fails the claim.
    */
-  private async runPreparePhase(task: ClaimedScanTask, token: string, hostWorkDir: string): Promise<void> {
+  private async runPreparePhase(task: ClaimedScanTask, token: string, hostWorkDir: string): Promise<PrepareResult> {
     const dynamicEnabled = isDynamicEnabled(task);
     appendAndBroadcastCompletionEvent(task.id, {
       type: "prepare_started",
@@ -588,7 +637,7 @@ export class TaskScheduler {
         logger.warn({ err, taskId: task.id }, "Failed to set source_incomplete flag"),
       );
       logger.warn({ taskId: task.id, token }, "Source is incomplete (partial_source); continuing scan with warning flag");
-      return;
+      return result;
     }
 
     if (dynamicEnabled && result.sandbox_type === null) {
@@ -604,6 +653,54 @@ export class TaskScheduler {
         remediation,
       });
       throw new Error(`未找到兼容的沙箱类型（项目的主要运行方式没有可用的沙箱）。处理办法：${remediation}。`);
+    }
+    return result;
+  }
+
+  /**
+   * H2 §3 allocation gate (dynamic on + Prepare selected a sandbox_type):
+   * quota check → idempotent create → poll running → mapping. Quota/capacity
+   * rejections are transient: the task goes back to queued with a bounded
+   * 6×5min retry (claim-skip gate in claimQueuedScanTasks), then the O1-style
+   * user-visible error. Anything else propagates as a normal claim failure.
+   */
+  private async allocateSandboxForTask(task: ClaimedScanTask, token: string): Promise<void> {
+    const meta = (task.metadata ?? {}) as Record<string, unknown>;
+    const alloc = (meta.sandbox_alloc ?? {}) as { attempts?: number; next_attempt_at?: string };
+    try {
+      const { mapping, reused } = await ensureSandboxForTask(task);
+      await mergeTaskMetadata(task.id, {
+        sandbox_alloc: { attempts: 0, next_attempt_at: null, sandbox_id: mapping.sandbox_id, profile_id: mapping.profile_id },
+      }).catch((err) => logger.warn({ err, taskId: task.id }, "Failed to record sandbox_alloc metadata"));
+      logger.info({ taskId: task.id, token, sandboxId: mapping.sandbox_id, reused }, "Sandbox ready for dynamic execution");
+    } catch (error) {
+      if (error instanceof SandboxQuotaError || error instanceof SandboxPlaneCapacityError) {
+        const attempts = (alloc.attempts ?? 0) + 1;
+        const kind = error instanceof SandboxQuotaError ? "quota" : "capacity";
+        if (attempts >= SANDBOX_ALLOC_MAX_ATTEMPTS) {
+          const remediation = error instanceof SandboxQuotaError
+            ? "等待运行中的任务结束释放额度，或联系管理员提升沙箱额度"
+            : "稍后重试，或联系管理员检查沙箱宿主机的资源水位";
+          appendAndBroadcastCompletionEvent(task.id, {
+            type: "sandbox_alloc_failed",
+            source: "scan",
+            seq: 0,
+            ts: new Date().toISOString(),
+            reason: kind,
+            attempts,
+            remediation,
+          });
+          throw new Error(`${error.message}（已重试 ${attempts - 1} 次）处理办法：${remediation}。`);
+        }
+        const nextAttemptAt = new Date(Date.now() + SANDBOX_ALLOC_RETRY_MS).toISOString();
+        await mergeTaskMetadata(task.id, {
+          sandbox_alloc: { attempts, next_attempt_at: nextAttemptAt, last_error: kind },
+        }).catch((err) => logger.warn({ err, taskId: task.id }, "Failed to record sandbox_alloc retry"));
+        logger.info({ taskId: task.id, token, kind, attempts, nextAttemptAt }, "Sandbox allocation blocked; requeued with backoff");
+        // Signal the caller to requeue (not fail) this claim.
+        throw Object.assign(new Error("sandbox allocation backoff"), { code: "ERR_SANDBOX_ALLOC_REQUEUE" });
+      }
+      throw error;
     }
   }
 

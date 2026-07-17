@@ -3,6 +3,7 @@ import { loadConfig, type ServiceConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
 import { notify } from "../notifications/index.js";
 import { cleanupScanWorkDir, getHostWorkDir, stopScanWorker, stopScanWorkerByClaim, pauseScanWorker, unpauseScanWorker } from "../workers/scan-worker.js";
+import { stopSandboxForTask, resumeSandboxForTask } from "../sandboxes/lifecycle.js";
 import { cleanupSchedulerWorkspace } from "../workers/scheduler-workspace.js";
 import { assertNoActiveOperation } from "./operation-lock.js";
 import {
@@ -80,6 +81,10 @@ export async function cancelTask(taskId: string): Promise<TaskControlResult> {
       logger.warn({ err, taskId: task.id }, "Failed to stop container on cancel");
     });
   }
+  // H2 §4: cancelled — stop the sandbox, keep it (release happens on delete).
+  await stopSandboxForTask(task.id, "task_cancelled").catch((err) =>
+    logger.warn({ err, taskId: task.id }, "Failed to stop sandbox on cancel"),
+  );
   notify({ type: "task_state", taskId: task.id, state: "cancelled" });
   return { ok: true, task, state: "cancelled" };
 }
@@ -103,6 +108,10 @@ export async function pauseTask(taskId: string): Promise<TaskControlResult> {
     });
   }
   await updateTaskState(task.id, "paused");
+  // H2 §4: paused — stop the sandbox, keep it (resumed on task resume).
+  await stopSandboxForTask(task.id, "task_paused").catch((err) =>
+    logger.warn({ err, taskId: task.id }, "Failed to stop sandbox on pause"),
+  );
   notify({ type: "task_state", taskId: task.id, state: "paused" });
   return { ok: true, task, state: "paused" };
 }
@@ -110,6 +119,9 @@ export async function pauseTask(taskId: string): Promise<TaskControlResult> {
 export async function resumeTask(taskId: string): Promise<TaskControlResult> {
   const task = await requireTask(taskId);
   if (task.state !== "paused") invalidState("Task is not paused");
+  // H2 §4: a stopped sandbox must be running again before the worker
+  // continues — fail loud and keep the task paused when it cannot come back.
+  await resumeSandboxForTask(taskId);
   // Prefer unpausing the frozen container in place. If it is still present we
   // simply continue execution and go straight back to running. Only when no
   // paused container exists (e.g. service restarted, container gone) do we fall
