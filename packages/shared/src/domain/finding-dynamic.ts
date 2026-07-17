@@ -10,6 +10,7 @@ export const POC_STATUSES = [
   "reproduced",
   "fail-reproduced",
   "blocked",
+  "not-needed",
   "unknown",
 ] as const;
 export type PocStatus = (typeof POC_STATUSES)[number];

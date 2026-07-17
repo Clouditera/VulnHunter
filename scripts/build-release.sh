@@ -9,8 +9,8 @@ POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:16-alpine}"
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 YOUNGFLOW_VERSION="${YOUNGFLOW_VERSION:-0.3.8}"
-VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0}"
-VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-058da50be533b4605ff2e1614cef77b5c2d936bd}"
+VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0-5-g1782ef6}"
+VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-1782ef6d99db58fda74c8e1524b9237ca39cad2c}"
 
 git submodule update --init --recursive
 ACTUAL_VULNFORGE_COMMIT="$(git -C flows/vulnforge rev-parse HEAD)"

@@ -7,8 +7,8 @@ cd "$ROOT"
 IMAGE_TAG="${1:-vulnagent-worker:local}"
 if [[ $# -gt 0 ]]; then shift; fi
 
-VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0}"
-VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-058da50be533b4605ff2e1614cef77b5c2d936bd}"
+VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0-5-g1782ef6}"
+VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-1782ef6d99db58fda74c8e1524b9237ca39cad2c}"
 
 # A clean checkout does not contain generated YoungFlow/worker-bridge outputs.
 # Build both exclusively from committed sources before Docker reads its context.

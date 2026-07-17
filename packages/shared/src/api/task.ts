@@ -27,7 +27,9 @@ export type AuditCompletionPlatformStatus =
 export interface TaskEngineRun {
   run_id: string;
   engine: "vulnforge";
-  engine_version: "2.0";
+  // Pinned provenance of the engine baseline that produced this run. Extend
+  // the union (never widen to string) when the pinned VulnForge moves.
+  engine_version: "2.0" | "2.0-5-g1782ef6";
   engine_commit: string;
   completion_contract: "audit-completion/v1";
   completion_required: true;

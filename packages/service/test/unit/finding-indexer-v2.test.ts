@@ -234,3 +234,69 @@ describe("VulnForge 2 discovery/upsert isolation", () => {
     expect(state.rows.size).toBe(1);
   });
 });
+
+describe("VulnForge 1782ef6 enum/layout intake", () => {
+  it("stores poc_status=not-needed verbatim (no CHECK collision, no unknown fallback)", async () => {
+    const key = `${base}findings/BUG-R1/report.yaml`;
+    state.listed.set(`${base}findings/`, [key]);
+    state.listed.set(`${base}risks/`, []);
+    state.yaml.set(key, "metadata:\n  title: Risk-class finding\n  finding_class: risk\n  poc_status: not-needed\n  exp_status: not-needed\n  cvss_score: 3.1\n");
+    expect(await indexFindings(taskId, "bucket")).toBe(1);
+    expect(state.rows.get(`${taskId}:BUG-R1`)).toMatchObject({
+      finding_class: "risk", poc_status: "not-needed", exp_status: "not-needed",
+    });
+    expect(state.warnings.filter((w) => w.code?.startsWith("WARN_FINDING_ENUM"))).toHaveLength(0);
+    expect(state.timestampUpdates).toBe(1);
+  });
+
+  it("stores every frozen exp_status/poc_status enum value verbatim", async () => {
+    const expValues = ["pending", "confirmed", "downgraded", "failed", "blocked", "not-needed", "unknown"];
+    const pocValues = ["pending", "reproduced", "fail-reproduced", "blocked", "not-needed", "unknown"];
+    const keys: string[] = [];
+    expValues.forEach((value, i) => {
+      const key = `${base}findings/BUG-E${i}/report.yaml`;
+      keys.push(key);
+      state.yaml.set(key, `metadata:\n  title: exp ${value}\n  finding_class: vulnerability\n  poc_status: ${pocValues[i] ?? "pending"}\n  exp_status: ${value}\n`);
+    });
+    state.listed.set(`${base}findings/`, keys);
+    state.listed.set(`${base}risks/`, []);
+    expect(await indexFindings(taskId, "bucket")).toBe(expValues.length);
+    expValues.forEach((value, i) => {
+      expect(state.rows.get(`${taskId}:BUG-E${i}`)).toMatchObject({ exp_status: value, poc_status: pocValues[i] ?? "pending" });
+    });
+    expect(state.warnings.filter((w) => w.code?.startsWith("WARN_FINDING_ENUM"))).toHaveLength(0);
+  });
+
+  it("terminal read locks ev-assess downgrade: re-index of rewritten report.yaml yields downgraded content", async () => {
+    // No separate \"re-index\" mechanism exists: the indexer reads report.yaml
+    // as-is at index time, so a terminal-state read after ev-assess rewrites
+    // (downgrade CVSS/class/status in place) naturally stores the downgraded
+    // version. This test locks that behavior against regression.
+    const key = `${base}findings/BUG-9/report.yaml`;
+    state.listed.set(`${base}findings/`, [key]);
+    state.listed.set(`${base}risks/`, []);
+    state.yaml.set(key, "metadata:\n  title: Inflated RCE claim\n  finding_class: vulnerability\n  poc_status: reproduced\n  exp_status: pending\n  cvss_score: 9.1\n");
+    expect(await indexFindings(taskId, "bucket")).toBe(1);
+    expect(state.rows.get(`${taskId}:BUG-9`)).toMatchObject({
+      severity: "high", finding_class: "vulnerability", poc_status: "reproduced", exp_status: "pending",
+    });
+
+    // ev-assess rewrites the same report.yaml before flow end (downgrade).
+    state.yaml.set(key, "metadata:\n  title: Downgraded to hardening gap\n  finding_class: risk\n  poc_status: not-needed\n  exp_status: downgraded\n  cvss_score: 3.4\n");
+    expect(await indexFindings(taskId, "bucket")).toBe(1);
+    expect(state.rows.get(`${taskId}:BUG-9`)).toMatchObject({
+      severity: "low", finding_class: "risk", poc_status: "not-needed", exp_status: "downgraded",
+    });
+    expect(state.rows.size).toBe(1);
+  });
+
+  it("keeps unknown-fallback for future engine enum values", async () => {
+    const key = `${base}findings/BUG-F1/report.yaml`;
+    state.listed.set(`${base}findings/`, [key]);
+    state.listed.set(`${base}risks/`, []);
+    state.yaml.set(key, "metadata:\n  title: Future\n  finding_class: vulnerability\n  poc_status: future-poc-state\n  exp_status: future-exp-state\n");
+    expect(await indexFindings(taskId, "bucket")).toBe(1);
+    expect(state.rows.get(`${taskId}:BUG-F1`)).toMatchObject({ poc_status: "unknown", exp_status: "unknown" });
+    expect(state.warnings.map((w) => w.code)).toEqual(expect.arrayContaining(["WARN_FINDING_ENUM_UNKNOWN"]));
+  });
+});

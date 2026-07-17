@@ -21,8 +21,8 @@ RUN chmod +x /usr/local/bin/youngflow \
 
 # VulnForge 2.0 scan flow assets (separate from youngflow submodule).
 # Keep these values in the image so support/QA can prove the exact flow baseline.
-ARG VULNFORGE_VERSION=2.0
-ARG VULNFORGE_COMMIT=058da50be533b4605ff2e1614cef77b5c2d936bd
+ARG VULNFORGE_VERSION=2.0-5-g1782ef6
+ARG VULNFORGE_COMMIT=1782ef6d99db58fda74c8e1524b9237ca39cad2c
 LABEL org.opencontainers.image.vulnforge.version=$VULNFORGE_VERSION \
       org.opencontainers.image.vulnforge.revision=$VULNFORGE_COMMIT
 COPY flows/vulnforge /opt/vulnagent/flows/vulnforge
@@ -45,10 +45,7 @@ RUN cd /opt/vulnagent/flows/vulnforge/extensions/workspace-diff \
       @earendil-works/pi-ai@0.79.6
 COPY flows/prepare /opt/vulnagent/flows/prepare
 COPY packages/service/src/features/prepare/schemas/source-manifest-v1.schema.json /opt/vulnagent/flows/prepare/schemas/source-manifest-v1.schema.json
-RUN cd /opt/vulnagent/flows/prepare/extensions/prepare-tools \
-    && npm ci --omit=dev --ignore-scripts --no-audit --no-fund
-RUN test -f /opt/vulnagent/flows/prepare/extensions/prepare-tools/index.ts \
-    && youngflow /opt/vulnagent/flows/prepare/flow.prepare.yaml --list-stages >/tmp/prepare-stages.txt \
+RUN youngflow /opt/vulnagent/flows/prepare/flow.prepare.yaml --list-stages >/tmp/prepare-stages.txt \
     && grep -qE '^  prepare[[:space:]]' /tmp/prepare-stages.txt
 RUN test -f /opt/vulnagent/flows/vulnforge/extensions/code-coverage-tracker/index.ts \
     && test -f /opt/vulnagent/flows/vulnforge/extensions/code-coverage-viewer/index.ts \
