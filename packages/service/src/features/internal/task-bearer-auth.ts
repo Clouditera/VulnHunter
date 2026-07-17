@@ -1,0 +1,42 @@
+/**
+ * Shared task-id bearer auth for internal worker-facing proxy routes.
+ *
+ * The prepare worker container is launched with a bearer token equal to its
+ * own task id (mirrors CHAT_WORKER_TOKEN=sessionId in chat-session.ts). The
+ * token is validated against the task table and must reference a task
+ * currently in the `preparing` state — single-purpose and time-boxed without
+ * a separate token store. The worker / pi / bash sandbox only ever sees its
+ * own task id, never any upstream secret.
+ *
+ * Used by the sandbox-plane proxy (P2) and the model-proxy (P0); identical
+ * semantics in both.
+ */
+import type { Context, Next } from "hono";
+import { getTaskById, type DbTask } from "../tasks/storage.js";
+
+export const TASK_BEARER_KEY = "internalTask";
+
+/**
+ * Hono middleware: 401 unless a valid task-id bearer referencing a task in
+ * `preparing` state is present. On success the resolved task is stored on the
+ * context under TASK_BEARER_KEY for downstream handlers (e.g. the model-proxy
+ * needs it to resolve that task's credential).
+ */
+export async function taskBearerAuth(c: Context, next: Next): Promise<Response | void> {
+  const header = c.req.header("authorization") ?? "";
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  const taskId = match?.[1]?.trim();
+  if (!taskId) return c.json({ error: { code: "ERR_AUTH_REQUIRED" } }, 401);
+
+  const task = await getTaskById(taskId);
+  if (!task || task.state !== "preparing") {
+    return c.json({ error: { code: "ERR_AUTH_REQUIRED" } }, 401);
+  }
+  c.set(TASK_BEARER_KEY, task);
+  return next();
+}
+
+/** Retrieve the task resolved by taskBearerAuth (undefined if not run). */
+export function getInternalTask(c: Context): DbTask | undefined {
+  return c.get(TASK_BEARER_KEY) as DbTask | undefined;
+}

@@ -17,7 +17,7 @@
  */
 
 import { join } from "node:path";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import type Dockerode from "dockerode";
 
 import type { ServiceConfig } from "../../infra/config.js";
@@ -30,6 +30,7 @@ import {
   LABEL_SCHEDULER_CLAIM,
 } from "./docker-client.js";
 import type { DbTask } from "../tasks/storage.js";
+import { getCredentialById, getDefaultCredential } from "../settings/storage.js";
 
 /** Platform hard cap for the prepare phase (H3 §3 / H5 §2): 30 minutes. */
 export const PREPARE_HARD_CAP_MS = 30 * 60 * 1000;
@@ -40,6 +41,8 @@ const CONTAINER_OUTPUT_DIR = "/prepare-out";
 // Outside CONTAINER_OUTPUT_DIR: prepare-mode.sh requires the output dir to
 // start empty and postflight requires it to contain only prepare-result.json.
 const CONTAINER_SANDBOX_TYPES_FILE = "/prepare-meta/sandbox-types.json";
+/** In-container path of the flow's models.json (COPY flows/prepare → /opt/...). */
+const CONTAINER_FLOW_MODELS_JSON = "/opt/vulnagent/flows/prepare/models.json";
 
 /** The three-field Prepare result contract (P1/P2 frozen). */
 export interface PrepareResult {
@@ -85,6 +88,36 @@ export interface SpawnPrepareWorkerOptions {
 }
 
 /**
+ * Generate the prepare flow's models.json so pi/youngflow resolves its model
+ * against the credential-free internal model proxy (P0 design §4). The file
+ * contains no secret: apiKey is the worker's own (non-secret) task id, which
+ * youngflow expands from the $TASK_ID env template; baseUrl points at the
+ * internal proxy. The real LLM key stays in the service process.
+ *
+ * Per pi's models.json schema, the model `id` is "the identifier passed to the
+ * API" — so it must be the task's real model_id (the proxy forwards the request
+ * body's `model` verbatim to the upstream provider). `api` is mapped from the
+ * task's proto_type.
+ */
+export async function resolvePrepareModel(task: DbTask, serviceUrl: string): Promise<{ modelsJson: string; modelString: string }> {
+  const cred = task.credential_id ? await getCredentialById(task.credential_id) : await getDefaultCredential();
+  if (!cred || !cred.model_id) throw new Error("Prepare 需要可用模型凭证，请在任务或 Settings 中配置模型");
+  const api = cred.proto_type.startsWith("anthropic") ? "anthropic-messages" : "openai-completions";
+  const baseUrl = `${serviceUrl.replace(/\/+$/, "")}/internal/model-proxy`;
+  const models = {
+    providers: {
+      internal: {
+        api,
+        baseUrl,
+        apiKey: "$TASK_ID",
+        models: [{ id: cred.model_id }],
+      },
+    },
+  };
+  return { modelsJson: JSON.stringify(models, null, 2) + "\n", modelString: `internal/${cred.model_id}` };
+}
+
+/**
  * Create (but do not start) the prepare worker container. The source tree is
  * mounted read-only at PREPARE_SOURCE_ROOT; an empty dir is mounted at
  * PREPARE_OUTPUT_DIR. The deterministic name va-prepare-<task> is the final
@@ -99,6 +132,13 @@ export async function createPrepareWorker(opts: SpawnPrepareWorkerOptions): Prom
   await mkdir(outputDir, { recursive: true });
   await rm(sandboxTypesDir, { recursive: true, force: true });
   await mkdir(sandboxTypesDir, { recursive: true });
+
+  // Credential-free model config (P0): generate models.json pointing at the
+  // internal model proxy and mount it over the flow's shipped empty file. The
+  // resolved model_id selects the model string; no secret is written.
+  const { modelsJson, modelString } = await resolvePrepareModel(task, config.docker.workerServiceUrl);
+  const modelsJsonHostPath = join(sandboxTypesDir, "models.json");
+  await writeFile(modelsJsonHostPath, modelsJson, { mode: 0o644 });
 
   try {
     const old = getDocker().getContainer(`va-prepare-${task.id}`);
@@ -122,6 +162,7 @@ export async function createPrepareWorker(opts: SpawnPrepareWorkerOptions): Prom
       { Type: "bind", Source: sourceDir, Target: CONTAINER_SOURCE_ROOT, ReadOnly: true },
       { Type: "bind", Source: outputDir, Target: CONTAINER_OUTPUT_DIR },
       { Type: "bind", Source: sandboxTypesDir, Target: "/prepare-meta" },
+      { Type: "bind", Source: modelsJsonHostPath, Target: CONTAINER_FLOW_MODELS_JSON, ReadOnly: true },
     ],
     env: {
       MODE: "prepare",
@@ -131,6 +172,7 @@ export async function createPrepareWorker(opts: SpawnPrepareWorkerOptions): Prom
       PREPARE_OUTPUT_DIR: CONTAINER_OUTPUT_DIR,
       PREPARE_DYNAMIC_ENABLED: isDynamicEnabled(task) ? "true" : "false",
       PREPARE_SANDBOX_TYPES_FILE: CONTAINER_SANDBOX_TYPES_FILE,
+      V_PREPARE_MODEL: modelString,
     },
   });
 }

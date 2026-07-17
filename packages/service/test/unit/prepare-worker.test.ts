@@ -3,7 +3,17 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { isDynamicEnabled, readPrepareResult, type PrepareResult } from "../../src/features/workers/prepare-worker.js";
+const mocks = vi.hoisted(() => ({
+  getCredentialByIdMock: vi.fn(),
+  getDefaultCredentialMock: vi.fn(),
+}));
+const { getCredentialByIdMock, getDefaultCredentialMock } = mocks;
+vi.mock("../../src/features/settings/storage.js", () => ({
+  getCredentialById: mocks.getCredentialByIdMock,
+  getDefaultCredential: mocks.getDefaultCredentialMock,
+}));
+
+import { isDynamicEnabled, readPrepareResult, resolvePrepareModel, type PrepareResult } from "../../src/features/workers/prepare-worker.js";
 
 describe("prepare-worker helpers", () => {
   it("isDynamicEnabled reads the source_meta.dynamic_enabled switch, default false", () => {
@@ -12,6 +22,33 @@ describe("prepare-worker helpers", () => {
     expect(isDynamicEnabled({ source_meta: { dynamic_enabled: "true" } } as any)).toBe(true);
     expect(isDynamicEnabled({ source_meta: { dynamic_enabled: false } } as any)).toBe(false);
     expect(isDynamicEnabled({ source_meta: null } as any)).toBe(false);
+  });
+
+  it("resolvePrepareModel points at the internal proxy with the task's real model id, no secret", async () => {
+    getCredentialByIdMock.mockResolvedValue({ id: "c1", proto_type: "openai-completions", model_id: "glm-4-plus", api_key: "sk-SECRET" });
+    const { modelsJson, modelString } = await resolvePrepareModel({ credential_id: "c1" } as any, "http://service:28080/");
+    const parsed = JSON.parse(modelsJson);
+    const provider = parsed.providers.internal;
+    expect(provider.baseUrl).toBe("http://service:28080/internal/model-proxy");
+    expect(provider.apiKey).toBe("$TASK_ID"); // non-secret task id template, not the real key
+    expect(provider.models).toEqual([{ id: "glm-4-plus" }]); // id IS the real upstream model name
+    expect(provider.api).toBe("openai-completions");
+    expect(modelString).toBe("internal/glm-4-plus");
+    expect(modelsJson).not.toContain("sk-SECRET"); // no real key anywhere
+  });
+
+  it("resolvePrepareModel maps anthropic proto to anthropic-messages api", async () => {
+    getDefaultCredentialMock.mockResolvedValue({ id: "c2", proto_type: "anthropic", model_id: "claude-4", api_key: "sk-SECRET" });
+    const { modelsJson, modelString } = await resolvePrepareModel({ credential_id: null } as any, "http://service:28080");
+    expect(JSON.parse(modelsJson).providers.internal.api).toBe("anthropic-messages");
+    expect(modelString).toBe("internal/claude-4");
+    expect(getDefaultCredentialMock).toHaveBeenCalled();
+  });
+
+  it("resolvePrepareModel throws when no credential/model is available", async () => {
+    getCredentialByIdMock.mockResolvedValue(null);
+    getDefaultCredentialMock.mockResolvedValue(null);
+    await expect(resolvePrepareModel({ credential_id: null } as any, "http://service:28080")).rejects.toThrow();
   });
 
   it("readPrepareResult parses a valid three-field result", () => {

@@ -12,25 +12,14 @@
  * ../../infra/config.ts and are only used inside client.ts.
  */
 import { Hono } from "hono";
-import { getTaskById } from "../tasks/storage.js";
+import { taskBearerAuth } from "../internal/task-bearer-auth.js";
 import { listSandboxPlaneProfiles, getSandboxPlaneProfile, SandboxPlaneUnavailableError } from "./client.js";
 import { projectSandboxType, projectSandboxTypes } from "./project.js";
 import { logger } from "../../infra/logger.js";
 
 export const sandboxPlaneInternalRouter = new Hono();
 
-sandboxPlaneInternalRouter.use("*", async (c, next) => {
-  const header = c.req.header("authorization") ?? "";
-  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
-  const taskId = match?.[1]?.trim();
-  if (!taskId) return c.json({ error: { code: "ERR_AUTH_REQUIRED" } }, 401);
-
-  const task = await getTaskById(taskId);
-  if (!task || task.state !== "preparing") {
-    return c.json({ error: { code: "ERR_AUTH_REQUIRED" } }, 401);
-  }
-  return next();
-});
+sandboxPlaneInternalRouter.use("*", taskBearerAuth);
 
 // GET /internal/sandbox-plane/types — minimal projected list.
 // Fails closed (empty list) on any SandboxPlane error instead of leaking
