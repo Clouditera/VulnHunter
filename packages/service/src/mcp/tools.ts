@@ -14,6 +14,7 @@ import * as reportStorage from "../features/reports/storage.js";
 import { getMinio, uploadFile } from "../infra/minio/client.js";
 import { loadConfig } from "../infra/config.js";
 import { notify } from "../features/notifications/index.js";
+import { scanMetaFromValues } from "../features/files/routes.js";
 import { logger } from "../infra/logger.js";
 import type { McpContext } from "./context.js";
 import type { QueryContext } from "../infra/query-context.js";
@@ -394,7 +395,19 @@ export const createTaskSchema = {
   scan_duration: z
     .number()
     .optional()
-    .describe("扫描时长（分钟）。用户未指定时询问用户偏好。"),
+    .describe("扫描时长（分钟），仅 timeout_mode=custom 时有效：默认 600（10 小时），范围 30–4320。auto 模式无需提供。"),
+  timeout_mode: z
+    .enum(["custom", "auto"])
+    .optional()
+    .describe("扫描时长模式：custom=自定义主动结束时长（默认 10 小时）；auto=由任务自由判断调度（最多 72 小时）。默认 custom。"),
+  enable_dynamic_verify: z
+    .boolean()
+    .optional()
+    .describe("动态验证/影响力评估——大幅提升漏洞准确率，但显著延长任务时间。用户只说“扫一下”时默认不开。"),
+  enable_dynamic_exploit: z
+    .boolean()
+    .optional()
+    .describe("漏洞利用（组合链）——需先开启动态验证/评估（enable_dynamic_verify）。"),
 };
 
 export async function createMcpTask(args: {
@@ -405,6 +418,9 @@ export async function createMcpTask(args: {
   attachment_id?: string;
   audit_focus?: string;
   scan_duration?: number;
+  timeout_mode?: "custom" | "auto";
+  enable_dynamic_verify?: boolean;
+  enable_dynamic_exploit?: boolean;
 }, ctx: McpContext): Promise<ToolResult> {
   const config = loadConfig();
 
@@ -412,13 +428,26 @@ export async function createMcpTask(args: {
     return { content: [{ type: "text", text: "Error: Either git_url or attachment_id is required." }] };
   }
 
-  // VulnForge scan params. scan_duration is in minutes (user-facing); the
-  // worker reads scan_timeout in seconds. audit_focus is free text.
-  const scanMeta: Record<string, string | number> = {};
-  const focus = typeof args.audit_focus === "string" ? args.audit_focus.trim() : "";
-  if (focus) scanMeta.audit_focus = focus;
-  if (typeof args.scan_duration === "number" && Number.isFinite(args.scan_duration) && args.scan_duration > 0) {
-    scanMeta.scan_timeout = Math.trunc(args.scan_duration) * 60;
+  // VulnForge scan params, built via the exact same scanMetaFromValues the web
+  // form channel uses — guaranteeing byte-equivalent source_meta across the two
+  // channels (the chat↔form equivalence acceptance criterion). scan_duration is
+  // minutes (user-facing); dynamic toggles map through shared dynamic-toggles.ts.
+  let scanMeta: Record<string, string | number | boolean>;
+  try {
+    scanMeta = scanMetaFromValues(
+      args.audit_focus,
+      typeof args.scan_duration === "number" && Number.isFinite(args.scan_duration) && args.scan_duration > 0
+        ? Math.trunc(args.scan_duration) * 60
+        : undefined,
+      undefined,
+      args.timeout_mode ?? undefined,
+      {
+        enableDynamicVerify: args.enable_dynamic_verify,
+        enableDynamicExploit: args.enable_dynamic_exploit,
+      },
+    );
+  } catch (err) {
+    return { content: [{ type: "text", text: `Error: ${err instanceof Error ? err.message : String(err)}` }] };
   }
 
   const cred = await resolveTaskCredential(ctx);

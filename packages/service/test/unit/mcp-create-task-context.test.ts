@@ -179,4 +179,80 @@ describe("createMcpTask context binding", () => {
     expect(result.content[0].text).toContain("not found or not accessible");
     expect(createTaskMock).not.toHaveBeenCalled();
   });
+
+  it("maps dynamic toggles + timeout_mode to source_meta identically to the web form", async () => {
+    const { createMcpTask } = await import("../../src/mcp/tools.js");
+    const { scanMetaFromValues } = await import("../../src/features/files/routes.js");
+    createTaskMock.mockClear();
+
+    await createMcpTask(
+      {
+        git_url: "https://example.com/project.git",
+        audit_focus: "auth",
+        scan_duration: 600,
+        timeout_mode: "custom",
+        enable_dynamic_verify: true,
+        enable_dynamic_exploit: true,
+      },
+      { ...ctx, credentialId: "cred-session" },
+    );
+
+    const chatMeta = createTaskMock.mock.calls.at(-1)![0].sourceMeta;
+    // The form channel builds meta from the same logical inputs via the same
+    // scanMetaFromValues — byte-equivalence is by construction.
+    const formMeta = scanMetaFromValues("auth", 600 * 60, undefined, "custom", {
+      enableDynamicVerify: true, enableDynamicExploit: true,
+    });
+    for (const [k, v] of Object.entries(formMeta)) {
+      expect(chatMeta[k]).toEqual(v);
+    }
+    expect(chatMeta.enable_poc).toBe(true);
+    expect(chatMeta.enable_exp).toBe(true);
+    expect(chatMeta.enable_chain).toBe(true);
+    expect(chatMeta.dynamic_enabled).toBe(true);
+    expect(chatMeta.timeout_mode).toBe("custom");
+    expect(chatMeta.scan_timeout).toBe(36000);
+  });
+
+  it("auto timeout_mode forces the fixed 72h ceiling and ignores scan_duration", async () => {
+    const { createMcpTask } = await import("../../src/mcp/tools.js");
+    createTaskMock.mockClear();
+
+    await createMcpTask(
+      { git_url: "https://example.com/project.git", scan_duration: 30, timeout_mode: "auto" },
+      { ...ctx, credentialId: "cred-session" },
+    );
+
+    const meta = createTaskMock.mock.calls.at(-1)![0].sourceMeta;
+    expect(meta.timeout_mode).toBe("auto");
+    expect(meta.scan_timeout).toBe(72 * 3600);
+  });
+
+  it("rejects enable_dynamic_exploit without enable_dynamic_verify (model must restate)", async () => {
+    const { createMcpTask } = await import("../../src/mcp/tools.js");
+    createTaskMock.mockClear();
+
+    const result = await createMcpTask(
+      { git_url: "https://example.com/project.git", enable_dynamic_exploit: true },
+      { ...ctx, credentialId: "cred-session" },
+    );
+
+    expect(result.content[0].text).toContain("Error");
+    expect(result.content[0].text).toContain("动态验证");
+    expect(createTaskMock).not.toHaveBeenCalled();
+  });
+
+  it("legacy calls (no new params) produce identical source_meta to before", async () => {
+    const { createMcpTask } = await import("../../src/mcp/tools.js");
+    createTaskMock.mockClear();
+
+    await createMcpTask({ git_url: "https://example.com/project.git" }, { ...ctx, credentialId: "cred-session" });
+
+    const meta = createTaskMock.mock.calls.at(-1)![0].sourceMeta;
+    expect(meta.enable_poc).toBeUndefined();
+    expect(meta.enable_exp).toBeUndefined();
+    expect(meta.enable_chain).toBeUndefined();
+    expect(meta.dynamic_enabled).toBeUndefined();
+    expect(meta.timeout_mode).toBeUndefined();
+  });
 });
