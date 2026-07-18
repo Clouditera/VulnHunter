@@ -51,7 +51,7 @@ describe("prepare-worker helpers", () => {
     await expect(resolvePrepareModel({ credential_id: null } as any, "http://service:28080")).rejects.toThrow();
   });
 
-  it("readPrepareResult parses a valid three-field result", () => {
+  it("readPrepareResult parses a valid three-field result", async () => {
     const dir = mkdtempSync(join(tmpdir(), "prepare-result-"));
     try {
       const good: PrepareResult = { project_complete: true, sandbox_type: "base-linux", reason: "complete" };
