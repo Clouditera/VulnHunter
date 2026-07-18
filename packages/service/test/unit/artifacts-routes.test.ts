@@ -221,6 +221,44 @@ describe("GET /:taskId/findings/:findingId/artifacts", () => {
   });
 });
 
+describe("GET /:taskId/exploits/:exploitId/artifacts", () => {
+  const req = (path: string) => artifactsRouter.request(path);
+
+  it("404 for unknown task and invalid exploit ids (no existence leak)", async () => {
+    store.task = null;
+    expect((await req(`/${TASK}/exploits/EXP-1/artifacts`)).status).toBe(404);
+    seedTask();
+    for (const bad of ["exp-1", "EXP-", "EXP-1%2f..%2f", "EXP-1/extra", "../EXP-1"]) {
+      expect((await req(`/${TASK}/exploits/${bad}/artifacts`)).status).toBe(404);
+    }
+  });
+
+  it("empty files when the exploit dir is absent", async () => {
+    const res = await req(`/${TASK}/exploits/EXP-1/artifacts`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ files: [] });
+  });
+
+  it("lists exploit-relative files with exp.md first, ignores nested report.yaml and other exploits", async () => {
+    seed({
+      [`${P}exploits/EXP-1/report.yaml`]: "metadata: {}",
+      [`${P}exploits/EXP-1/exp.md`]: "# exp\n",
+      [`${P}exploits/EXP-1/harness.c`]: "int main(){}",
+      [`${P}exploits/EXP-1/payload.db`]: Buffer.from([0x00, 0x01]).toString("binary"),
+      [`${P}exploits/EXP-2/exp.md`]: "other chain\n",
+    });
+    const res = await req(`/${TASK}/exploits/EXP-1/artifacts`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.files.map((f: any) => [f.path, f.kind, f.previewable])).toEqual([
+      ["exp.md", "text", true],
+      ["harness.c", "text", true],
+      ["payload.db", "binary", false],
+      ["report.yaml", "text", true],
+    ]);
+  });
+});
+
 describe("GET /:taskId/exploits", () => {
   const req = () => artifactsRouter.request(`/${TASK}/exploits`);
 

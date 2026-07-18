@@ -198,6 +198,25 @@ export async function listFindingArtifacts(taskId: string, findingId: string, bu
   return groups;
 }
 
+/**
+ * List a single exploit chain's artifacts (`exploits/<exploitId>/`) for the EXP
+ * page's companion file list (contract gap: H4 listed findings but not
+ * exploits). Returns exploit-relative paths (e.g. exp.md, harness.c) with
+ * exp.md prioritized. Whitelisted to the exploits/ root only — no traversal.
+ */
+export async function listExploitArtifacts(taskId: string, exploitId: string, bucket: string): Promise<{ files: ArtifactFileEntry[] }> {
+  const prefix = `scan-outputs/${taskId}/exploits/${exploitId}/`;
+  const objects = await listObjectKeys(bucket, prefix);
+  const files: ArtifactFileEntry[] = [];
+  for (const obj of objects) {
+    const rel = obj.name.slice(prefix.length); // e.g. exp.md, sub/harness.c
+    if (!rel || rel.endsWith("/")) continue;
+    const kind = await classifyListingEntry(bucket, obj.name, obj.size);
+    files.push({ path: rel, size: obj.size, kind, previewable: kind === "text" || kind === "image" });
+  }
+  return { files: sortArtifactFiles(files, "exp.md") };
+}
+
 /** Parse + project a chain-report.yaml (chain-report schema, no chain_status). */
 export function parseChainReport(raw: string): ChainReportProjection {
   const doc = yamlLoad(raw) as any;

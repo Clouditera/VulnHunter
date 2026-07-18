@@ -16,8 +16,10 @@ import { getAccessibleTask } from "../tasks/access.js";
 import {
   getArtifactFilePreview,
   getExploitPageData,
+  isValidExploitId,
   isValidFindingId,
   listArtifactTree,
+  listExploitArtifacts,
   listFindingArtifacts,
   normalizeArtifactPath,
 } from "./artifacts.js";
@@ -43,6 +45,24 @@ artifactsRouter.get("/:taskId/findings/:findingId/artifacts", async (c) => {
     return c.json(groups);
   } catch (error) {
     logger.warn({ code: "WARN_ARTIFACT_LIST_FAILED", taskId, findingId, error_class: safeErrorClass(error) }, "Finding artifact listing failed");
+    return c.json({ error: { code: "ERR_INTERNAL" } }, 500);
+  }
+});
+
+// GET /api/tasks/:taskId/exploits/:exploitId/artifacts — EXP page companion
+// file list. Same whitelist/404 discipline as the finding-artifacts route.
+artifactsRouter.get("/:taskId/exploits/:exploitId/artifacts", async (c) => {
+  const { taskId, exploitId } = c.req.param();
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+  if (!isValidExploitId(exploitId)) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+
+  const config = loadConfig();
+  try {
+    const data = await listExploitArtifacts(taskId, exploitId, config.minio.bucket);
+    return c.json(data);
+  } catch (error) {
+    logger.warn({ code: "WARN_ARTIFACT_LIST_FAILED", taskId, exploitId, error_class: safeErrorClass(error) }, "Exploit artifact listing failed");
     return c.json({ error: { code: "ERR_INTERNAL" } }, 500);
   }
 });

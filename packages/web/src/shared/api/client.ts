@@ -349,6 +349,9 @@ export const api = {
     /** H4: EXP independent page data (server-derived four-state + chain projections). */
     exploits: (id: string) =>
       request<ExploitPageData>(`/api/tasks/${id}/exploits`),
+    /** H4: single exploit chain's companion artifact file list (exploits/<id>/). */
+    exploitArtifacts: (id: string, exploitId: string) =>
+      request<{ files: ArtifactFileEntry[] }>(`/api/tasks/${id}/exploits/${encodeURIComponent(exploitId)}/artifacts`),
     pause: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/pause`, { method: "POST" }),
     resume: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/resume`, { method: "POST" }),
     restart: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/restart`, { method: "POST" }),
