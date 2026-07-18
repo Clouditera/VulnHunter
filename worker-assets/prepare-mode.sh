@@ -67,5 +67,13 @@ if [ -n "${PREPARE_SANDBOX_TYPES_FILE:-}" ]; then
 else
   /opt/prepare-result-postflight.py "$PREPARE_OUTPUT_DIR" "$PREPARE_DYNAMIC_ENABLED"
 fi
+# Ownership handoff: this worker runs as root with umask 077, so the output
+# dir (0700) and prepare-result.json (0600) are root-owned — but the service
+# reads the result as uid 1001 and cannot even traverse the dir (P0 caught by
+# the first real-model E2E, 2026-07-18). Hand ownership to the service uid
+# AFTER postflight has validated the 0600/regular/nlink1 contract; modes stay
+# exactly 0700/0600. chown failure is a loud nonzero exit via set -eu.
+owner_uid="${PREPARE_OUTPUT_OWNER_UID:-1001}"
+chown "$owner_uid:$owner_uid" "$PREPARE_OUTPUT_DIR" "$result_path"
 rm -rf -- "$runtime"
 runtime=""

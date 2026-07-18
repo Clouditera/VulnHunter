@@ -173,6 +173,10 @@ export async function createPrepareWorker(opts: SpawnPrepareWorkerOptions): Prom
       PREPARE_DYNAMIC_ENABLED: isDynamicEnabled(task) ? "true" : "false",
       PREPARE_SANDBOX_TYPES_FILE: CONTAINER_SANDBOX_TYPES_FILE,
       V_PREPARE_MODEL: modelString,
+      // The service reads the root-written result as its own uid — tell the
+      // worker who must own the outputs (self-aligning; prepare-mode.sh
+      // chowns dir+file to this after postflight, modes stay 0700/0600).
+      PREPARE_OUTPUT_OWNER_UID: String(process.getuid?.() ?? 1001),
     },
   });
 }

@@ -102,4 +102,15 @@ describe("minimal Prepare flow", () => {
     expect(mode).toContain("prepare-result-postflight.py");
     for (const legacy of ["PREPARE_CONTROL_DIR", "PREPARE_PLANNER_INPUT", "PREPARE_PLAN_SCHEMA"]) expect(mode).not.toContain(legacy);
   });
+
+  it("hands prepare-result ownership to the service uid AFTER postflight, modes unchanged (P0 2026-07-18)", () => {
+    const mode = readFileSync(join(root, "worker-assets/prepare-mode.sh"), "utf8");
+    // The worker writes root:root 0700-dir/0600-file but the service reads as
+    // its own uid — the handoff must exist and must come after postflight.
+    expect(mode).toContain("PREPARE_OUTPUT_OWNER_UID");
+    expect(mode).toContain('chown "$owner_uid:$owner_uid" "$PREPARE_OUTPUT_DIR" "$result_path"');
+    expect(mode.indexOf("prepare-result-postflight.py")).toBeLessThan(mode.indexOf("chown "));
+    const spawn = readFileSync(join(root, "packages/service/src/features/workers/prepare-worker.ts"), "utf8");
+    expect(spawn).toContain("PREPARE_OUTPUT_OWNER_UID: String(process.getuid");
+  });
 });
