@@ -18,13 +18,13 @@
  * so any provider-native path the model SDK emits is forwarded as-is.
  */
 import { Hono } from "hono";
-import { taskBearerAuth, getInternalTask } from "../internal/task-bearer-auth.js";
+import { modelProxyTaskBearerAuth, getInternalTask } from "../internal/task-bearer-auth.js";
 import { getCredentialById, getDefaultCredential, type DecryptedLlmCredential } from "../settings/storage.js";
 import { logger } from "../../infra/logger.js";
 
 export const modelProxyInternalRouter = new Hono();
 
-modelProxyInternalRouter.use("*", taskBearerAuth);
+modelProxyInternalRouter.use("*", modelProxyTaskBearerAuth);
 
 /** Hop-by-hop headers that must not be forwarded verbatim. */
 const STRIP_REQUEST_HEADERS = new Set([

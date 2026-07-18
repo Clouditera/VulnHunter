@@ -53,10 +53,21 @@ describe("modelProxyInternalRouter auth (shared taskBearerAuth)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects a task not in preparing state", async () => {
-    getTaskByIdMock.mockResolvedValue({ ...PREPARING_TASK, state: "running" });
-    const res = await req("/v1/chat/completions", { method: "POST" }, "task-1");
-    expect(res.status).toBe(401);
+  it("rejects a task in a non-allowed state (queued/completed), accepts preparing and running", async () => {
+    // queued and completed are NOT in {preparing, running} → 401
+    for (const state of ["queued", "completed", "cancelled", "paused"]) {
+      getTaskByIdMock.mockResolvedValue({ ...PREPARING_TASK, state });
+      const res = await req("/v1/chat/completions", { method: "POST" }, "task-1");
+      expect(res.status).toBe(401);
+    }
+    // preparing and running ARE allowed (scan workers run in `running`).
+    getCredentialByIdMock.mockResolvedValue(CRED);
+    fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+    for (const state of ["preparing", "running"]) {
+      getTaskByIdMock.mockResolvedValue({ ...PREPARING_TASK, state });
+      const res = await req("/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }, "task-1");
+      expect(res.status).toBe(200);
+    }
   });
 
   it("accepts a task id carried in the x-api-key header (anthropic-messages path)", async () => {

@@ -498,7 +498,11 @@ export class TaskScheduler {
       }
       if (!cred) throw new Error(missingCredentialFailureReason(credId));
       await this.assertSchedulerOwnership(task.id, token);
-      const llmEnv = { ...credentialToWorkerEnv(cred), YOUNGFLOW_MAX_PARALLEL: String(this.youngflowMaxParallel) };
+      // Scan worker model access goes through the credential-free internal
+      // model-proxy (task-id bearer); the real LLM key must NOT be injected
+      // into the worker env. Keep only the non-secret model selection vars.
+      const { LLM_API_KEY: _omitted, ...scanCredEnv } = credentialToWorkerEnv(cred);
+      const llmEnv = { ...scanCredEnv, YOUNGFLOW_MAX_PARALLEL: String(this.youngflowMaxParallel) };
 
       if (claim.mode === "continue") {
         published = await this.prepareWorkspace(task, token);

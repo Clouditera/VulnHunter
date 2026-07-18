@@ -216,12 +216,16 @@ echo "[scan] Preflight OK: python3 + main/finalizer flows + deadline gates avail
 MODEL_PROTO_TYPE="${MODEL_PROTO_TYPE:-openai-completions}"
 LLM_MODEL_NAME="${LLM_MODEL_NAME:-}"
 LLM_BASE_URL="${LLM_BASE_URL:-}"
-LLM_API_KEY="${LLM_API_KEY:-}"
 MODEL_EFFORT="${MODEL_EFFORT:-off}"
 LLM_CONTEXT_WINDOW_TOKENS="${LLM_CONTEXT_WINDOW_TOKENS:-128000}"
 
-if [ -z "$LLM_MODEL_NAME" ] || [ -z "$LLM_API_KEY" ]; then
-  echo "[scan] FATAL: model credential not configured (LLM_MODEL_NAME / LLM_API_KEY missing). Configure a model in Settings before scanning." >&2
+# Credential-free model access: the scan worker calls the platform's internal
+# model-proxy with its own (non-secret) task id; the real LLM key never enters
+# this container. SERVICE_URL + TASK_ID are injected by the service at spawn.
+MODEL_PROXY_URL="${SERVICE_URL%/}/internal/model-proxy"
+
+if [ -z "$LLM_MODEL_NAME" ] || [ -z "$TASK_ID" ] || [ -z "$SERVICE_URL" ]; then
+  echo "[scan] FATAL: model credential not configured (LLM_MODEL_NAME / TASK_ID / SERVICE_URL missing). Configure a model in Settings before scanning." >&2
   exit 1
 fi
 
@@ -230,7 +234,7 @@ fi
 V_DEFAULT_MODEL="$(
   MODEL_PROTO_TYPE="$MODEL_PROTO_TYPE" \
   LLM_MODEL_NAME="$LLM_MODEL_NAME" \
-  LLM_BASE_URL="$LLM_BASE_URL" \
+  MODEL_PROXY_URL="$MODEL_PROXY_URL" \
   LLM_CONTEXT_WINDOW_TOKENS="$LLM_CONTEXT_WINDOW_TOKENS" \
   MODEL_EFFORT="$MODEL_EFFORT" \
   python3 - "$FLOW_DIR/models.json" <<'PY'
@@ -239,7 +243,7 @@ import json, os, sys
 out_path = sys.argv[1]
 proto = (os.environ.get("MODEL_PROTO_TYPE") or "openai-completions").strip()
 model_id = (os.environ.get("LLM_MODEL_NAME") or "").strip()
-base_url = (os.environ.get("LLM_BASE_URL") or "").strip().rstrip("/")
+proxy_url = (os.environ.get("MODEL_PROXY_URL") or "").strip().rstrip("/")
 effort = (os.environ.get("MODEL_EFFORT") or "off").strip().lower()
 try:
     ctx = int(os.environ.get("LLM_CONTEXT_WINDOW_TOKENS") or "128000")
@@ -265,9 +269,9 @@ if not api_type:
     sys.exit(1)
 
 PROVIDER = "platform"
-API_KEY_ENV = "PLATFORM_API_KEY"
+API_KEY_ENV = "TASK_ID"
 
-lo = f"{model_id} {base_url}".lower()
+lo = f"{model_id}".lower()
 is_deepseek = "deepseek" in lo
 is_zai = (not is_deepseek) and ("glm" in lo or "bigmodel" in lo or "zhipu" in lo or "z.ai" in lo)
 
@@ -292,9 +296,11 @@ provider_cfg = {
     "api": api_type,
     "apiKey": f"${API_KEY_ENV}",
     "models": [model_entry],
+    # Credential-free: model calls go to the platform's internal model-proxy,
+    # which holds the real key server-side. apiKey above is the worker's own
+    # (non-secret) task id, expanded by youngflow from the $TASK_ID env.
+    "baseUrl": proxy_url,
 }
-if base_url:
-    provider_cfg["baseUrl"] = base_url
 
 models = {"providers": {PROVIDER: provider_cfg}}
 with open(out_path, "w", encoding="utf-8") as f:
@@ -313,11 +319,10 @@ if [ -z "$V_DEFAULT_MODEL" ]; then
   exit 1
 fi
 
-# Write .env for youngflow: model selection + API key + engine tuning.
-# enable_poc is intentionally NOT set (dynamic reproduction is out of scope).
-# The secret stays in .env; models.json contains only the env-var name.
+# Write .env for youngflow: model selection + engine tuning. No API key here —
+# the worker authenticates to the internal model-proxy with its own task id,
+# and the real key stays in the service process.
 cat > "$FLOW_DIR/.env" << EOF
-PLATFORM_API_KEY=${LLM_API_KEY}
 V_DEFAULT_MODEL=${V_DEFAULT_MODEL}
 V_STRONG_MODEL=${V_DEFAULT_MODEL}
 YOUNGFLOW_IDLE_TIMEOUT=${YOUNGFLOW_IDLE_TIMEOUT:-3600}
