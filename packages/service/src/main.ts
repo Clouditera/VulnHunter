@@ -8,6 +8,7 @@ import { initMinio } from "./infra/minio/index.js";
 import { logger } from "./infra/logger.js";
 import { initVault, checkCredentialHealth } from "./features/settings/index.js";
 import { initDocker, TaskScheduler, reconcileWorkers } from "./features/workers/index.js";
+import { initWorkerInstanceId } from "./features/workers/instance-id.js";
 import { createApp, startServer } from "./server.js";
 import { initInstallation } from "./features/system/index.js";
 
@@ -78,6 +79,11 @@ async function main(): Promise<void> {
 
   // Initialize Docker
   initDocker(config.docker.socketPath);
+
+  // Resolve this install's stable instance identity — every worker
+  // container is labeled with it so reconciliation on a shared Docker
+  // daemon never touches a sibling install's containers.
+  await initWorkerInstanceId();
 
   // Reconcile workers from previous run
   await reconcileWorkers().catch((err) =>

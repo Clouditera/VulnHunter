@@ -1,5 +1,6 @@
 import Dockerode from "dockerode";
 import { logger } from "../../infra/logger.js";
+import { getWorkerInstanceId } from "./instance-id.js";
 
 let _docker: Dockerode | null = null;
 
@@ -20,6 +21,7 @@ export const LABEL_MANAGED = "vulnagent.managed";
 export const LABEL_TASK_ID = "vulnagent.task_id";
 export const LABEL_TASK_TYPE = "vulnagent.task_type";
 export const LABEL_SCHEDULER_CLAIM = "vulnagent.scheduler_claim";
+export const LABEL_INSTANCE = "vulnagent.instance";
 
 export interface WorkerContainerSpec {
   taskId: string;
@@ -72,6 +74,7 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
     Env: env,
     Labels: {
       [LABEL_MANAGED]: "true",
+      [LABEL_INSTANCE]: getWorkerInstanceId(),
       [LABEL_TASK_ID]: spec.taskId,
       [LABEL_TASK_TYPE]: spec.taskType,
       "vulnagent.created_at": new Date().toISOString(),
@@ -172,7 +175,9 @@ export async function listManagedContainers(): Promise<Dockerode.ContainerInfo[]
   const docker = getDocker();
   return docker.listContainers({
     all: true,
-    filters: JSON.stringify({ label: [`${LABEL_MANAGED}=true`] }),
+    filters: JSON.stringify({
+      label: [`${LABEL_MANAGED}=true`, `${LABEL_INSTANCE}=${getWorkerInstanceId()}`],
+    }),
   });
 }
 
@@ -186,7 +191,7 @@ export function subscribeToDockerEvents(
   docker.getEvents(
     {
       filters: JSON.stringify({
-        label: [`${LABEL_MANAGED}=true`],
+        label: [`${LABEL_MANAGED}=true`, `${LABEL_INSTANCE}=${getWorkerInstanceId()}`],
         type: ["container"],
         event: ["start", "die", "oom"],
       }),
