@@ -523,8 +523,11 @@ export class TaskScheduler {
       // key-lost (restart)→recycle. Quota/capacity rejections requeue the
       // task with bounded backoff (see allocateSandboxForTask).
       const persistedSelection = ((task.metadata as Record<string, unknown> | undefined)?.prepare as { sandbox_type?: string | null } | undefined)?.sandbox_type;
-      if (isDynamicEnabled(task) && (prepareResult?.sandbox_type ?? persistedSelection)) {
-        await this.allocateSandboxForTask(task, token);
+      const resolvedSelection = prepareResult?.sandbox_type ?? persistedSelection;
+      if (isDynamicEnabled(task) && resolvedSelection) {
+        // Pass the freshly resolved selection down — the in-memory task can
+        // predate prepare persistence and must not be re-read for it (P0-2).
+        await this.allocateSandboxForTask(task, token, resolvedSelection);
         await this.assertSchedulerOwnership(task.id, token);
       }
 
@@ -672,11 +675,11 @@ export class TaskScheduler {
    * 6×5min retry (claim-skip gate in claimQueuedScanTasks), then the O1-style
    * user-visible error. Anything else propagates as a normal claim failure.
    */
-  private async allocateSandboxForTask(task: ClaimedScanTask, token: string): Promise<void> {
+  private async allocateSandboxForTask(task: ClaimedScanTask, token: string, sandboxType: string): Promise<void> {
     const meta = (task.metadata ?? {}) as Record<string, unknown>;
     const alloc = (meta.sandbox_alloc ?? {}) as { attempts?: number; next_attempt_at?: string };
     try {
-      const { mapping, reused } = await ensureSandboxForTask(task);
+      const { mapping, reused } = await ensureSandboxForTask(task, { profileId: sandboxType });
       await mergeTaskMetadata(task.id, {
         sandbox_alloc: { attempts: 0, next_attempt_at: null, sandbox_id: mapping.sandbox_id, profile_id: mapping.profile_id },
       }).catch((err) => logger.warn({ err, taskId: task.id }, "Failed to record sandbox_alloc metadata"));

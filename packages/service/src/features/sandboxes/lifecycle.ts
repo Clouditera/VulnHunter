@@ -177,7 +177,7 @@ async function createSkippingTerminalReplays(
 
 export async function ensureSandboxForTask(
   task: DbTask,
-  opts?: { pollTimeoutMs?: number },
+  opts?: { pollTimeoutMs?: number; profileId?: string },
 ): Promise<EnsureSandboxResult> {
   const requestId = sandboxRequestId(task.id);
   let existing = await getTaskSandbox(task.id);
@@ -211,8 +211,13 @@ export async function ensureSandboxForTask(
   }
 
   // Selection snapshot comes from the Prepare result recorded in metadata.
+  // The selection is resolved ONCE by the scheduler gate (fresh prepare
+  // result ?? persisted metadata) and passed in explicitly: the in-memory
+  // task object can predate prepare persistence (P0-2, 2026-07-18 — gate saw
+  // the fresh value while this re-read the stale copy and threw). The
+  // metadata fallback remains only for non-scheduler callers/tests.
   const prepare = (task.metadata as Record<string, unknown> | undefined)?.prepare as { sandbox_type?: string | null } | undefined;
-  const profileId = prepare?.sandbox_type;
+  const profileId = opts?.profileId ?? prepare?.sandbox_type ?? undefined;
   if (!profileId) throw new Error("Sandbox allocation requested without a Prepare sandbox_type selection");
 
   const profile = await getSandboxPlaneProfile(profileId);

@@ -192,6 +192,15 @@ describe("ensureSandboxForTask", () => {
     await expect(ensureSandboxForTask(task())).rejects.toBeInstanceOf(SandboxPlaneCapacityError);
   });
 
+  it("P0-2 regression: explicit profileId wins over stale/empty task metadata", async () => {
+    // The scheduler gate resolves the selection from the FRESH prepare result
+    // while the in-memory task may predate prepare persistence — the explicit
+    // param must carry the allocation through without re-reading metadata.
+    await ensureSandboxForTask(task({ metadata: {} }), { profileId: "linux-docker" });
+    expect(plane.create).toHaveBeenCalledWith(expect.objectContaining({ profile_id: "linux-docker" }));
+    expect(store.upsertTaskSandbox).toHaveBeenCalledWith(expect.objectContaining({ profile_id: "linux-docker" }));
+  });
+
   it("missing prepare selection / gone profile are terminal errors", async () => {
     await expect(ensureSandboxForTask(task({ metadata: {} }))).rejects.toThrow(/sandbox_type/);
     plane.getProfile.mockResolvedValue(null);
