@@ -19,6 +19,7 @@ import {
   markSchedulerClaimRunning,
   renewSchedulerClaim,
   clearContinueMode,
+  downgradeDynamicToggles,
   getSchedulerClaim,
   listStuckDeadlineRunningTasks,
   mergeTaskMetadata,
@@ -643,10 +644,29 @@ export class TaskScheduler {
     });
 
     if (!result.project_complete) {
-      // partial_source: continue scanning with a visible warning flag.
+      // partial_source: continue scanning with a visible warning flag — and
+      // DOWNGRADE to fully static (minimal baseline: incomplete source =
+      // warn + static-only). The scan worker would otherwise see
+      // dynamic_enabled=true and hard-require a sandbox that was never
+      // allocated (QA blocker #3).
       await mergeTaskMetadata(task.id, { source_incomplete: true }).catch((err) =>
         logger.warn({ err, taskId: task.id }, "Failed to set source_incomplete flag"),
       );
+      if (dynamicEnabled) {
+        // Persisted downgrade (never runtime-computed) so every reader — scan
+        // worker env, EXP page, three cards, future resumes — hears the same
+        // static voice. The in-memory task is patched in lockstep (P0-2
+        // lesson: no stale copies downstream of this function).
+        await downgradeDynamicToggles(task.id);
+        task.source_meta = {
+          ...task.source_meta,
+          dynamic_enabled: false,
+          enable_poc: false,
+          enable_exp: false,
+          enable_chain: false,
+        };
+        logger.warn({ taskId: task.id, token }, "Dynamic toggles downgraded to static (partial_source)");
+      }
       logger.warn({ taskId: task.id, token }, "Source is incomplete (partial_source); continuing scan with warning flag");
       return result;
     }
