@@ -38,14 +38,18 @@ function StateBadge({ color, icon, label }: { color: string; icon: CardIcon; lab
 }
 
 /** Read-only artifact file list + preview (no execution / no download). */
-function ArtifactFileList({ taskId, files, defaultPreviewPath }: { taskId: string; files: ArtifactFileEntry[]; defaultPreviewPath?: string }) {
+function ArtifactFileList({ taskId, files, defaultPreviewPath, pathPrefix = "" }: { taskId: string; files: ArtifactFileEntry[]; defaultPreviewPath?: string; pathPrefix?: string }) {
   const [selected, setSelected] = useState<string | null>(defaultPreviewPath ?? null);
   const previewable = files.filter((f) => f.previewable);
   const active = selected ?? previewable[0]?.path ?? null;
+  // The artifacts listing returns finding-relative paths (e.g. poc/poc.md),
+  // but the file-preview endpoint requires the task-root-relative path
+  // (findings/<findingId>/poc/poc.md). pathPrefix supplies the root prefix.
+  const activeFull = active ? `${pathPrefix}${active}` : null;
   const { data: preview } = useQuery<ArtifactFilePreview>({
-    queryKey: ["artifact-file", taskId, active],
-    queryFn: () => api.tasks.artifactFile(taskId, active!),
-    enabled: !!active,
+    queryKey: ["artifact-file", taskId, activeFull],
+    queryFn: () => api.tasks.artifactFile(taskId, activeFull!), 
+    enabled: !!activeFull,
   });
   if (files.length === 0) {
     return <div style={{ fontSize: "12px", color: "var(--text-secondary)", opacity: 0.7 }}>{i18n.t("finding.cards.noArtifacts")}</div>;
@@ -191,7 +195,7 @@ export function FindingDynamicCards({ taskId, finding, dynamicEnabled }: { taskI
         showIncomplete={showIncompleteBanner(dynamicEnabled, poc.status)}
       >
         {poc.derived === "not_enabled" ? null : (
-          <ArtifactFileList taskId={taskId} files={pocFiles} defaultPreviewPath={pocDefault} />
+          <ArtifactFileList taskId={taskId} files={pocFiles} defaultPreviewPath={pocDefault} pathPrefix={`findings/${findingId}/`} />
         )}
       </DynamicCard>
 
@@ -205,7 +209,7 @@ export function FindingDynamicCards({ taskId, finding, dynamicEnabled }: { taskI
         showIncomplete={showIncompleteBanner(dynamicEnabled, exp.status)}
       >
         {exp.derived === "not_enabled" ? null : (
-          <ArtifactFileList taskId={taskId} files={expFiles} defaultPreviewPath={expDefault} />
+          <ArtifactFileList taskId={taskId} files={expFiles} defaultPreviewPath={expDefault} pathPrefix={`findings/${findingId}/`} />
         )}
       </DynamicCard>
     </div>
