@@ -56,7 +56,7 @@ describe("prepare-worker helpers", () => {
     try {
       const good: PrepareResult = { project_complete: true, sandbox_type: "base-linux", reason: "complete" };
       writeFileSync(join(dir, "prepare-result.json"), JSON.stringify(good));
-      expect(readPrepareResult(dir)).resolves.toEqual(good);
+      await expect(readPrepareResult(dir)).resolves.toEqual(good);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
