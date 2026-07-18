@@ -6,8 +6,8 @@
  * closes crash windows.
  */
 
-import { generateKeyPairSync } from "node:crypto";
 import { logger } from "../../infra/logger.js";
+import { generateTaskSshKeypair, type TaskSshKeypair } from "./ssh-keys.js";
 import type { DbTask } from "../tasks/storage.js";
 import { getUserById } from "../auth/storage.js";
 import {
@@ -54,37 +54,31 @@ const CREATE_POLL_TIMEOUT_MS = 180_000;
 
 // ---------------------------------------------------------------------------
 // Per-task ed25519 keypair (H1 §2: never in DB/env/workspace/logs).
-// The private key lives only in this process's memory until H1 injects it
-// into the worker tmpfs at worker start. A service restart between create and
-// worker start loses it — the reconciler then fails the mapping loudly
-// (instance exists but is unreachable); H1 owns the regeneration path.
+// The private key lives only in this process's memory until injection into
+// the worker tmpfs at worker start. A service restart between create and
+// worker start loses it — ensureSandboxForTask then recycles the instance
+// (release + fresh create with a new key) instead of wedging on an
+// unreachable sandbox.
 // ---------------------------------------------------------------------------
-const sshKeys = new Map<string, { publicKeyOpenSsh: string; privateKeyPkcs8Pem: string }>();
-
-function toOpenSshEd25519PublicKey(spkiDer: Buffer): string {
-  // SPKI DER for ed25519 ends with the raw 32-byte public key.
-  const raw = spkiDer.subarray(spkiDer.length - 32);
-  const alg = Buffer.from("ssh-ed25519", "ascii");
-  const pack = (b: Buffer) => Buffer.concat([Buffer.from([0, 0, 0, b.length]), b]);
-  return `ssh-ed25519 ${Buffer.concat([pack(alg), pack(raw)]).toString("base64")}`;
-}
+const sshKeys = new Map<string, TaskSshKeypair>();
 
 export function ensureTaskSshKeypair(taskId: string): { publicKeyOpenSsh: string } {
   let entry = sshKeys.get(taskId);
   if (!entry) {
-    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-    entry = {
-      publicKeyOpenSsh: toOpenSshEd25519PublicKey(publicKey.export({ type: "spki", format: "der" })),
-      privateKeyPkcs8Pem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
-    };
+    entry = generateTaskSshKeypair();
     sshKeys.set(taskId, entry);
   }
   return { publicKeyOpenSsh: entry.publicKeyOpenSsh };
 }
 
-/** H1 handoff: read (and keep) the in-memory private key for worker injection. */
+/** True when the in-memory keypair for this task still exists (false after restart). */
+export function hasTaskSshKeypair(taskId: string): boolean {
+  return sshKeys.has(taskId);
+}
+
+/** H1 handoff: the OpenSSH private key file content for worker tmpfs injection. */
 export function peekTaskSshPrivateKey(taskId: string): string | null {
-  return sshKeys.get(taskId)?.privateKeyPkcs8Pem ?? null;
+  return sshKeys.get(taskId)?.privateKeyOpenSsh ?? null;
 }
 
 export function dropTaskSshKeypair(taskId: string): void {
@@ -186,7 +180,22 @@ export async function ensureSandboxForTask(
   opts?: { pollTimeoutMs?: number },
 ): Promise<EnsureSandboxResult> {
   const requestId = sandboxRequestId(task.id);
-  const existing = await getTaskSandbox(task.id);
+  let existing = await getTaskSandbox(task.id);
+
+  // H1 key continuity: a ready/stopped mapping is only usable when the
+  // in-memory keypair survives (same process). After a service restart the
+  // instance is unreachable — recycle (release + fresh create with a new
+  // key) instead of wedging the task on a sandbox nobody can enter.
+  if (existing && (existing.state === "ready" || existing.state === "stopped") && !hasTaskSshKeypair(task.id)) {
+    logger.warn({ taskId: task.id, sandboxId: existing.sandbox_id, state: existing.state }, "Task ssh keypair lost (service restart); recycling sandbox instance");
+    try {
+      await releaseSandboxPlaneSandbox(existing.sandbox_id);
+    } catch (error) {
+      logger.warn({ taskId: task.id, sandboxId: existing.sandbox_id, error_class: error instanceof Error ? error.name : "UnknownError" }, "Key-recycle release failed; reconciler will finish it");
+    }
+    await deleteTaskSandbox(task.id);
+    existing = null;
+  }
 
   // Continue/resume path: a stopped instance comes back instead of a new one.
   if (existing && (existing.state === "ready" || existing.state === "stopped")) {

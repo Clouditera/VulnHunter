@@ -69,6 +69,30 @@ describe("scanInputEnvFromMeta", () => {
     expect(env).not.toHaveProperty("enable_exp");
     expect(env).not.toHaveProperty("sandbox_cfg");
   });
+
+  it("dynamic mode: drops static-only sched_instr, emits enable flags + dynamic marker", () => {
+    const env = scanInputEnvFromMeta(
+      { audit_scope: "scope", sched_instr: "  focus poc first ", enable_chain: true },
+      { dynamicEnabled: true },
+    );
+    expect(env).toEqual({
+      VULNFORGE_AUDIT_SCOPE: "scope",
+      VULNFORGE_VULN_FOCUS: "",
+      VULNFORGE_USER_INSTR: "",
+      VULNFORGE_DYNAMIC_ENABLED: "true",
+      VULNFORGE_SCHED_INSTR: "focus poc first",
+      VULNFORGE_ENABLE_POC: "true",
+      VULNFORGE_ENABLE_EXP: "true",
+      VULNFORGE_ENABLE_CHAIN: "true",
+    });
+  });
+
+  it("dynamic mode without enable_chain/sched_instr: chain false, sched_instr empty (flow default)", () => {
+    const env = scanInputEnvFromMeta({}, { dynamicEnabled: true });
+    expect(env.VULNFORGE_ENABLE_CHAIN).toBe("false");
+    expect(env.VULNFORGE_SCHED_INSTR).toBe("");
+    expect(env.VULNFORGE_SCHED_INSTR).not.toBe(STATIC_ONLY_SCHED_INSTR);
+  });
 });
 
 describe("dynamic policy invariants", () => {
@@ -146,6 +170,36 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
     expect(valueAfter(argv, "--enable-exp")).toBe("false");
     expect(argv).not.toContain("--sandbox-cfg");
     expect(argv).not.toContain("--sandbox-config");
+  });
+
+  it("H1 dynamic argv: enable flags + sandbox cfg, no static-only sched_instr", () => {
+    const { argv } = captureArgv({
+      VULNFORGE_DYNAMIC_ENABLED: "true",
+      VULNFORGE_ENABLE_POC: "true",
+      VULNFORGE_ENABLE_EXP: "true",
+      VULNFORGE_ENABLE_CHAIN: "true",
+      VULNFORGE_SANDBOX_CFG: "/run/vulnagent/sandbox.md",
+    });
+    expect(argv).not.toContain(STATIC_ONLY_SCHED_INSTR);
+    expect(argv).not.toContain("--sched-instr");
+    expect(valueAfter(argv, "--enable-poc")).toBe("true");
+    expect(valueAfter(argv, "--enable-exp")).toBe("true");
+    expect(valueAfter(argv, "--enable-chain")).toBe("true");
+    expect(valueAfter(argv, "--sandbox-cfg")).toBe("/run/vulnagent/sandbox.md");
+  });
+
+  it("H1 dynamic argv: task sched_instr passes through; chain defaults off; missing sandbox_cfg omitted", () => {
+    const withInstr = captureArgv({
+      VULNFORGE_DYNAMIC_ENABLED: "true",
+      VULNFORGE_ENABLE_POC: "true",
+      VULNFORGE_ENABLE_EXP: "true",
+      VULNFORGE_SCHED_INSTR: "prioritize poc-verify",
+      VULNFORGE_SANDBOX_CFG: "/run/vulnagent/sandbox.md",
+    });
+    expect(valueAfter(withInstr.argv, "--sched-instr")).toBe("prioritize poc-verify");
+    expect(valueAfter(withInstr.argv, "--enable-chain")).toBe("false");
+    const noCfg = captureArgv({ VULNFORGE_DYNAMIC_ENABLED: "true" });
+    expect(noCfg.argv).not.toContain("--sandbox-cfg");
   });
 
   it("A08/A09 preserve continue and resume placement", () => {

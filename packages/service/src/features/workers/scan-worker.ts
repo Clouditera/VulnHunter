@@ -16,6 +16,13 @@ import {
 
 import type { DbTask } from "../tasks/storage.js";
 import { createAuditCompletionEngineRun, fingerprintAuditCompletion } from "./audit-completion.js";
+import { getTaskSandbox, peekTaskSshPrivateKey, type TaskSandbox } from "../sandboxes/index.js";
+import {
+  injectSandboxFiles,
+  renderInjectionFiles,
+  SANDBOX_CFG_CONTAINER_PATH,
+  SANDBOX_RUNTIME_DIR,
+} from "./sandbox-inject.js";
 
 export const STATIC_ONLY_SCHED_INSTR = "平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；完成静态审计后进入报告阶段。";
 
@@ -34,14 +41,30 @@ function optionalTextMeta(meta: DbTask["source_meta"] | null | undefined, key: s
   return normalized;
 }
 
-export function scanInputEnvFromMeta(meta: DbTask["source_meta"] | null | undefined): Record<string, string> {
+export function scanInputEnvFromMeta(meta: DbTask["source_meta"] | null | undefined, opts?: { dynamicEnabled?: boolean }): Record<string, string> {
   const canonicalUserInstr = optionalTextMeta(meta, "user_instr");
-  return {
+  const env: Record<string, string> = {
     VULNFORGE_AUDIT_SCOPE: optionalTextMeta(meta, "audit_scope"),
     VULNFORGE_VULN_FOCUS: optionalTextMeta(meta, "vuln_focus"),
-    VULNFORGE_SCHED_INSTR: STATIC_ONLY_SCHED_INSTR,
     VULNFORGE_USER_INSTR: canonicalUserInstr || optionalTextMeta(meta, "audit_focus"),
   };
+  if (opts?.dynamicEnabled) {
+    // H5 §5/H1: dynamic runs must not carry the static-only scheduling
+    // instruction — pass the task's own sched_instr (or none → flow default).
+    env.VULNFORGE_DYNAMIC_ENABLED = "true";
+    env.VULNFORGE_SCHED_INSTR = optionalTextMeta(meta, "sched_instr");
+    env.VULNFORGE_ENABLE_POC = "true";
+    env.VULNFORGE_ENABLE_EXP = "true";
+    env.VULNFORGE_ENABLE_CHAIN = booleanMeta(meta, "enable_chain") ? "true" : "false";
+  } else {
+    env.VULNFORGE_SCHED_INSTR = STATIC_ONLY_SCHED_INSTR;
+  }
+  return env;
+}
+
+function booleanMeta(meta: DbTask["source_meta"] | null | undefined, key: string): boolean {
+  const v = meta?.[key];
+  return v === true || v === "true";
 }
 
 export function getHostWorkDir(dataDir: string, taskId: string): string {
@@ -95,6 +118,21 @@ export async function spawnScanWorker(
     });
   }
 
+  const dynamicEnabled = booleanMeta(task.source_meta, "dynamic_enabled");
+  let sandbox: { mapping: TaskSandbox; privateKey: string } | null = null;
+  if (dynamicEnabled) {
+    const mapping = await getTaskSandbox(task.id);
+    const privateKey = mapping?.state === "ready" ? peekTaskSshPrivateKey(task.id) : null;
+    if (mapping?.state === "ready" && privateKey) {
+      sandbox = { mapping, privateKey };
+    } else {
+      // H2 allocation (with key recycle) must run before spawn; reaching here
+      // means the pipeline order broke — fail loud, never run dynamic locally.
+      throw new Error(`Dynamic task ${task.id} requires a ready sandbox + in-memory ssh key before worker start (mapping=${mapping?.state ?? "none"}, key=${privateKey ? "present" : "missing"})`);
+    }
+    assertDynamicInputPolicy(true, true, SANDBOX_CFG_CONTAINER_PATH);
+  }
+
   const container = await createWorkerContainer({
     taskId: task.id,
     taskType: "scan",
@@ -104,13 +142,15 @@ export async function spawnScanWorker(
     cpuQuota: 200000,
     memoryBytes: 4 * 1024 * 1024 * 1024,
     labels: { [LABEL_SCHEDULER_CLAIM]: claimToken },
+    ...(sandbox ? { tmpfs: { [SANDBOX_RUNTIME_DIR]: "rw,nosuid,nodev,size=4m" } } : {}),
     env: {
       ...llmEnv,
       MODE: "scan",
       TASK_ID: task.id,
       RESUME: resume ? "1" : "0",
       CONTINUE: continueMode ? "1" : "0",
-      ...scanInputEnvFromMeta(task.source_meta),
+      ...scanInputEnvFromMeta(task.source_meta, { dynamicEnabled: Boolean(sandbox) }),
+      ...(sandbox ? { VULNFORGE_SANDBOX_CFG: SANDBOX_CFG_CONTAINER_PATH } : {}),
       SCAN_TIMEOUT: stringMeta(task.source_meta, "scan_timeout"),
       TIMEOUT_MODE: stringMeta(task.source_meta, "timeout_mode"),
       MAX_ITEMS_PER_RECON: stringMeta(task.source_meta, "max_items_per_recon"),
@@ -123,7 +163,18 @@ export async function spawnScanWorker(
     },
   });
 
-  await container.start();
+  if (sandbox) {
+    // H1 §3: inject the four runtime files AFTER start — the tmpfs only
+    // exists once the container is running (putArchive before start lands in
+    // the image layer and gets mounted over). The agent only touches these
+    // files when it begins dynamic work, long after the ms-scale injection.
+    const files = renderInjectionFiles(task, sandbox.mapping, sandbox.privateKey, config.sandboxSshHostOverride ?? null);
+    await container.start();
+    await injectSandboxFiles(container, files);
+    logger.info({ taskId: task.id, sandboxId: sandbox.mapping.sandbox_id }, "Sandbox SSH files injected into worker tmpfs");
+  } else {
+    await container.start();
+  }
   // NOTE: spawnScanWorker no longer updates task state. The Scheduler performs
   // the token-CAS transition preparing → running (markSchedulerClaimRunning).
   logger.info({ taskId: task.id, claimToken, hostWorkDir, resume, continueMode }, "Scan worker started");

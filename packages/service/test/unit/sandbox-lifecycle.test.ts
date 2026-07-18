@@ -147,6 +147,7 @@ describe("ensureSandboxForTask", () => {
   });
 
   it("reuses an existing ready mapping without any plane call", async () => {
+    ensureTaskSshKeypair(TASK_ID); // same-process key present (else recycle)
     store.getTaskSandbox.mockResolvedValue({ task_id: TASK_ID, sandbox_id: "sb-1", state: "ready" });
     const result = await ensureSandboxForTask(task());
     expect(result.reused).toBe(true);
@@ -155,11 +156,22 @@ describe("ensureSandboxForTask", () => {
   });
 
   it("resumes a stopped mapping (continue/restart path)", async () => {
+    ensureTaskSshKeypair(TASK_ID);
     store.getTaskSandbox.mockResolvedValue({ task_id: TASK_ID, sandbox_id: "sb-1", state: "stopped", ssh_host: "10.0.0.5" });
     await ensureSandboxForTask(task());
     expect(plane.resume).toHaveBeenCalledWith("sb-1");
     expect(store.updateTaskSandboxState).toHaveBeenCalledWith(TASK_ID, "ready");
     expect(plane.create).not.toHaveBeenCalled();
+  });
+
+  it("recycles when the in-memory key was lost (service restart): release + fresh create", async () => {
+    // no ensureTaskSshKeypair call — key absent, mapping says ready
+    store.getTaskSandbox.mockResolvedValue({ task_id: TASK_ID, sandbox_id: "sb-old", state: "ready" });
+    store.getTaskSandbox.mockResolvedValueOnce({ task_id: TASK_ID, sandbox_id: "sb-old", state: "ready" }).mockResolvedValue({ task_id: TASK_ID, sandbox_id: "sb-1", state: "ready" });
+    await ensureSandboxForTask(task());
+    expect(plane.release).toHaveBeenCalledWith("sb-old");
+    expect(store.deleteTaskSandbox).toHaveBeenCalledWith(TASK_ID);
+    expect(plane.create).toHaveBeenCalled();
   });
 
   it("resumes when the idempotent replay returns a stopped record", async () => {

@@ -24,15 +24,31 @@ build_youngflow_args() {
   if [ -n "${VULNFORGE_VULN_FOCUS:-}" ]; then
     YOUNGFLOW_ARGS+=(--vuln-focus "$VULNFORGE_VULN_FOCUS")
   fi
-  EFFECTIVE_SCHED_INSTR="${VULNFORGE_SCHED_INSTR:-$STATIC_ONLY_SCHED_INSTR}"
-  YOUNGFLOW_ARGS+=(--sched-instr "$EFFECTIVE_SCHED_INSTR")
+  if [ "${VULNFORGE_DYNAMIC_ENABLED:-false}" = "true" ]; then
+    # H1/H5 §5: dynamic run — no static-only restriction; the task's own
+    # sched_instr (if any) passes through, otherwise the flow default applies.
+    if [ -n "${VULNFORGE_SCHED_INSTR:-}" ]; then
+      YOUNGFLOW_ARGS+=(--sched-instr "$VULNFORGE_SCHED_INSTR")
+    fi
+  else
+    EFFECTIVE_SCHED_INSTR="${VULNFORGE_SCHED_INSTR:-$STATIC_ONLY_SCHED_INSTR}"
+    YOUNGFLOW_ARGS+=(--sched-instr "$EFFECTIVE_SCHED_INSTR")
+  fi
   if [ -n "${VULNFORGE_USER_INSTR:-}" ]; then
     YOUNGFLOW_ARGS+=(--user-instr "$VULNFORGE_USER_INSTR")
   fi
 
-  # M1-02 hard gate: task metadata/env cannot enable dynamic execution and no
-  # sandbox_cfg is accepted until a validated Prepare allocation exists.
-  YOUNGFLOW_ARGS+=(--enable-poc false --enable-exp false)
+  if [ "${VULNFORGE_DYNAMIC_ENABLED:-false}" = "true" ]; then
+    # H1: dynamic inputs consumed from the platform env (sandbox_cfg always
+    # present on this path — spawn fails loud otherwise).
+    YOUNGFLOW_ARGS+=(--enable-poc "${VULNFORGE_ENABLE_POC:-false}" --enable-exp "${VULNFORGE_ENABLE_EXP:-false}" --enable-chain "${VULNFORGE_ENABLE_CHAIN:-false}")
+    if [ -n "${VULNFORGE_SANDBOX_CFG:-}" ]; then
+      YOUNGFLOW_ARGS+=(--sandbox-cfg "$VULNFORGE_SANDBOX_CFG")
+    fi
+  else
+    # M1-02 hard gate: static tasks never execute dynamic stages.
+    YOUNGFLOW_ARGS+=(--enable-poc false --enable-exp false)
+  fi
 
   if [ -n "${UNTIL:-}" ]; then
     YOUNGFLOW_ARGS+=(--until "$UNTIL")
@@ -49,8 +65,12 @@ build_youngflow_args() {
 }
 
 log_input_summary() {
-  local effective_sched_instr="${EFFECTIVE_SCHED_INSTR:-${VULNFORGE_SCHED_INSTR:-$STATIC_ONLY_SCHED_INSTR}}"
-  echo "[scan] VulnForge inputs: audit_scope_present=$([ -n "${VULNFORGE_AUDIT_SCOPE:-}" ] && echo true || echo false) audit_scope_chars=${#VULNFORGE_AUDIT_SCOPE} vuln_focus_present=$([ -n "${VULNFORGE_VULN_FOCUS:-}" ] && echo true || echo false) vuln_focus_chars=${#VULNFORGE_VULN_FOCUS} user_instr_present=$([ -n "${VULNFORGE_USER_INSTR:-}" ] && echo true || echo false) user_instr_chars=${#VULNFORGE_USER_INSTR} sched_instr_present=true sched_instr_chars=${#effective_sched_instr} enable_poc=false enable_exp=false sandbox_cfg_present=false" >&2
+  if [ "${VULNFORGE_DYNAMIC_ENABLED:-false}" = "true" ]; then
+    echo "[scan] VulnForge inputs: dynamic=true enable_poc=${VULNFORGE_ENABLE_POC:-false} enable_exp=${VULNFORGE_ENABLE_EXP:-false} enable_chain=${VULNFORGE_ENABLE_CHAIN:-false} sandbox_cfg_present=$([ -n "${VULNFORGE_SANDBOX_CFG:-}" ] && echo true || echo false) audit_scope_chars=${#VULNFORGE_AUDIT_SCOPE} vuln_focus_chars=${#VULNFORGE_VULN_FOCUS} user_instr_chars=${#VULNFORGE_USER_INSTR}" >&2
+  else
+    local effective_sched_instr="${EFFECTIVE_SCHED_INSTR:-${VULNFORGE_SCHED_INSTR:-$STATIC_ONLY_SCHED_INSTR}}"
+    echo "[scan] VulnForge inputs: audit_scope_present=$([ -n "${VULNFORGE_AUDIT_SCOPE:-}" ] && echo true || echo false) audit_scope_chars=${#VULNFORGE_AUDIT_SCOPE} vuln_focus_present=$([ -n "${VULNFORGE_VULN_FOCUS:-}" ] && echo true || echo false) vuln_focus_chars=${#VULNFORGE_VULN_FOCUS} user_instr_present=$([ -n "${VULNFORGE_USER_INSTR:-}" ] && echo true || echo false) user_instr_chars=${#VULNFORGE_USER_INSTR} sched_instr_present=true sched_instr_chars=${#effective_sched_instr} enable_poc=false enable_exp=false sandbox_cfg_present=false" >&2
+  fi
 }
 
 calculate_finalize_budget() {

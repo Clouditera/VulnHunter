@@ -33,6 +33,8 @@ export interface WorkerContainerSpec {
   network?: string;
   autoRemove?: boolean; // auto-remove container on exit (chat/report)
   extraMounts?: Array<{ Type: "bind"; Source: string; Target: string; ReadOnly?: boolean }>;
+  /** tmpfs mounts (in-memory, never on host disk) — H1 uses one for /run/vulnagent. */
+  tmpfs?: Record<string, string>;
   labels?: Record<string, string>;
 }
 
@@ -81,7 +83,8 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
       MemorySwap: spec.memoryBytes ?? 4 * 1024 * 1024 * 1024,
       NetworkMode: spec.network ?? "vulnagent-internal",
       Mounts: mounts,
-      ExtraHosts: ["vulnagent-service:host-gateway"],
+      ExtraHosts: ["vulnagent-service:host-gateway", "host.docker.internal:host-gateway"],
+      ...(spec.tmpfs ? { Tmpfs: spec.tmpfs } : {}),
       ...(spec.autoRemove ? { AutoRemove: true } : {}),
     },
   });

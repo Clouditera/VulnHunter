@@ -39,6 +39,7 @@ import {
   reconcileSandboxes,
   SandboxQuotaError,
 } from "../sandboxes/lifecycle.js";
+import { scanOutputsForKeyMaterial } from "./sandbox-inject.js";
 import { SandboxPlaneCapacityError } from "../sandbox-plane/client.js";
 import { reconcileSchedulerClaims } from "./reconciler.js";
 import { downloadObjectWithRetry } from "./minio-download.js";
@@ -265,7 +266,9 @@ export class TaskScheduler {
           // Still sync outputs for cancelled tasks (may have partial results)
           if (currentTask.state === "cancelled") {
             try {
-              await syncOutputsToMinio(taskId, this.config);
+              if (await this.guardNoKeyMaterialLeak(taskId)) {
+                await syncOutputsToMinio(taskId, this.config);
+              }
             } catch (err) {
               logger.warn({ err, taskId }, "Failed to sync outputs on cancel");
             }
@@ -292,7 +295,9 @@ export class TaskScheduler {
           }
           if (ok) {
             try {
-              await syncOutputsToMinio(taskId, this.config);
+              if (await this.guardNoKeyMaterialLeak(taskId)) {
+                await syncOutputsToMinio(taskId, this.config);
+              }
             } catch (err) {
               logger.error({ err, taskId }, "Failed to sync outputs to MinIO");
             }
@@ -512,10 +517,13 @@ export class TaskScheduler {
         await this.assertSchedulerOwnership(task.id, token);
       }
 
-      // H2 §3: dynamic on + Prepare selected a sandbox type → allocate before
-      // the scan worker starts. Quota/capacity rejections requeue the task
-      // with bounded backoff (see allocateSandboxForTask).
-      if (isDynamicEnabled(task) && prepareResult?.sandbox_type) {
+      // H2 §3: dynamic on + a sandbox selection (fresh prepare result OR the
+      // persisted one on resume) → allocate before the scan worker starts.
+      // ensureSandboxForTask is idempotent: ready→reuse, stopped→resume,
+      // key-lost (restart)→recycle. Quota/capacity rejections requeue the
+      // task with bounded backoff (see allocateSandboxForTask).
+      const persistedSelection = ((task.metadata as Record<string, unknown> | undefined)?.prepare as { sandbox_type?: string | null } | undefined)?.sandbox_type;
+      if (isDynamicEnabled(task) && (prepareResult?.sandbox_type ?? persistedSelection)) {
         await this.allocateSandboxForTask(task, token);
         await this.assertSchedulerOwnership(task.id, token);
       }
@@ -705,6 +713,33 @@ export class TaskScheduler {
   }
 
   /**
+   * H1 §7 key-material leak guard. Returns true when the output tree is
+   * clean. On a hit: quarantine (metadata + visible event), skip the sync —
+   * the private key must never reach MinIO. Expected to never fire.
+   */
+  private async guardNoKeyMaterialLeak(taskId: string): Promise<boolean> {
+    const outDir = join(getHostWorkDir(this.config.dataDir, taskId), "out");
+    const hits = await scanOutputsForKeyMaterial(outDir).catch((err) => {
+      logger.warn({ err, taskId }, "Key-material leak scan failed; treating as clean");
+      return [] as string[];
+    });
+    if (hits.length === 0) return true;
+    logger.error({ taskId, hits }, "SECURITY: key material detected in scan outputs; quarantining (sync skipped)");
+    await mergeTaskMetadata(taskId, {
+      security_quarantine: { reason: "key_material_in_outputs", files: hits.length, at: new Date().toISOString() },
+    }).catch(() => undefined);
+    appendAndBroadcastCompletionEvent(taskId, {
+      type: "error",
+      source: "service",
+      seq: 0,
+      ts: new Date().toISOString(),
+      code: "ERR_KEY_MATERIAL_LEAK",
+      summary: "检测到产物中包含密钥材料，已按安全策略隔离（产物未回传）。",
+    });
+    return false;
+  }
+
+  /**
    * Periodically sync + index findings for running tasks so the UI surfaces
    * vulnerabilities mid-scan instead of only at task completion. Throttled per
    * task (every INCREMENTAL_INDEX_INTERVAL_MS), and syncs only the lightweight
@@ -726,6 +761,7 @@ export class TaskScheduler {
       if (now - last < INCREMENTAL_INDEX_INTERVAL_MS) continue;
       this.lastIncrementalAt.set(taskId, now);
       try {
+        if (!(await this.guardNoKeyMaterialLeak(taskId))) continue;
         await syncOutputsToMinio(taskId, this.config, { includeDirs: INCREMENTAL_SYNC_DIRS });
         const count = await indexFindings(taskId, this.config.minio.bucket);
         notify({ type: "findings_indexed", taskId, count });

@@ -37,6 +37,8 @@ export interface ServiceConfig {
     token: string | null;
     timeoutMs: number;
   };
+  /** H1: override the worker-facing ssh host when SandboxPlane is not on this host. */
+  sandboxSshHostOverride: string | null;
   log: {
     level: string;
   };
@@ -77,6 +79,9 @@ export function loadConfig(): ServiceConfig {
       token: process.env.SANDBOXPLANE_TOKEN || null,
       timeoutMs: Number(optionalEnv("SANDBOXPLANE_TIMEOUT_MS", "5000")),
     },
+    // Worker-facing ssh host for sandbox instances. Default: the plane's
+    // reported host, with loopback translated to host.docker.internal.
+    sandboxSshHostOverride: process.env.SANDBOX_SSH_HOST_OVERRIDE || null,
     log: {
       level: optionalEnv("LOG_LEVEL", "info"),
     },
