@@ -52,7 +52,7 @@ export function renderSandboxMd(capabilities: string[]): string {
     : "- 沙箱能力以所选 profile 为准（本实例不含内部 docker）";
   return `使用 \`ssh vulnagent-sandbox\` 可以连接到本任务的沙箱环境（scp 同别名可用）。
 
-- 远程工作目录：/home/sandbox/vulnagent-work（每次命令显式 cd；ssh 无状态）
+- 远程工作目录：/home/sandbox/vulnagent-work（每次命令显式 cd；ssh 无状态；目录可能尚未创建，首次使用先执行 mkdir -p /home/sandbox/vulnagent-work）
 - 所有目标构建、运行、触发、验证命令必须通过该 ssh 连接在沙箱内执行；不要在本机运行目标
 - 文件上传/下载使用 \`scp <local> vulnagent-sandbox:<remote>\` / \`scp vulnagent-sandbox:<remote> <local>\`
 - 禁止读取或输出 SSH 私钥内容；禁止把任何 key material 写入产物
