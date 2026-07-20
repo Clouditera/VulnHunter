@@ -54,7 +54,11 @@ export type IconName =
   | "user"
   | "info"
   | "image"
-  | "book-open";
+  | "book-open"
+  | "check-circle"
+  | "alert-circle"
+  | "shield-alert"
+  | "trending-down";
 
 interface IconProps {
   name: IconName;
@@ -327,6 +331,32 @@ const PATHS: Record<IconName, JSX.Element> = {
     <>
       <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
       <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+    </>
+  ),
+  "check-circle": (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8.5 12.2l2.4 2.4 4.6-5.2" />
+    </>
+  ),
+  "alert-circle": (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5v5.5" />
+      <circle cx="12" cy="16.3" r="0.4" fill="currentColor" stroke="none" />
+    </>
+  ),
+  "shield-alert": (
+    <>
+      <path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6z" />
+      <path d="M12 8v4.5" />
+      <circle cx="12" cy="15.5" r="0.4" fill="currentColor" stroke="none" />
+    </>
+  ),
+  "trending-down": (
+    <>
+      <path d="M3 7l7 7 4-4 7 7" />
+      <path d="M15 17h6v-6" />
     </>
   ),
 };

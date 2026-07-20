@@ -31,7 +31,7 @@ const CARD_STYLE: React.CSSProperties = {
 function StateBadge({ color, icon, label }: { color: string; icon: CardIcon; label: string }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: 600, color }}>
-      <Icon name={icon as never} size={12} strokeWidth={2.5} />
+      <Icon name={icon} size={12} strokeWidth={2.5} />
       {label}
     </span>
   );
@@ -166,25 +166,6 @@ export function FindingDynamicCards({ taskId, finding, dynamicEnabled }: { taskI
 
   return (
     <div data-testid="finding-dynamic-cards" style={{ marginTop: "16px" }}>
-      {showDowngradeBannerVisible(expStatus) ? (
-        <div style={{ fontSize: "12px", color: "#2563eb", background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.3)", borderRadius: "6px", padding: "8px 10px", marginBottom: "12px" }}>
-          {i18n.t("finding.cards.downgradeBanner")}
-        </div>
-      ) : null}
-
-      {/* Static analysis card — constant "已确认" */}
-      <div style={CARD_STYLE} data-testid="finding-card-static">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-          <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            {i18n.t("finding.cards.static.title")}
-          </span>
-          <StateBadge color="#2563eb" icon="check-circle" label={i18n.t("finding.cards.static.confirmed")} />
-        </div>
-        <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-          {finding.finding_class === "risk" ? i18n.t("finding.cards.static.helperRisk") : i18n.t("finding.cards.static.helper")}
-        </div>
-      </div>
-
       {/* POC card */}
       <DynamicCard
         titleKey="poc"
@@ -214,8 +195,4 @@ export function FindingDynamicCards({ taskId, finding, dynamicEnabled }: { taskI
       </DynamicCard>
     </div>
   );
-}
-
-function showDowngradeBannerVisible(expStatus: ExpStatus | null): boolean {
-  return expStatus === "downgraded";
 }

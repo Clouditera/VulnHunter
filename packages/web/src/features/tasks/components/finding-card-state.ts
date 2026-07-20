@@ -4,10 +4,13 @@
  * component for testability. Status enums come from the shared domain
  * (finding-dynamic.ts) and match the SSOT exactly; `upgraded` does NOT exist.
  */
+import type { IconName } from "../../../shared/components/Icon";
 import type { PocStatus, ExpStatus } from "@vulnagent/shared";
 
-export type CardIcon =
-  | "check-circle" | "clock" | "alert-circle" | "shield-alert" | "trending-down" | "alert-triangle";
+export type CardIcon = Extract<
+  IconName,
+  "check-circle" | "clock" | "alert-circle" | "shield-alert" | "trending-down" | "alert-triangle"
+>;
 
 export interface CardStateDisplay {
   /** i18n key suffix for the status label. */

@@ -17,6 +17,7 @@ import { Splitter, useResizableWidth } from "../../../../shared/components/Split
 import { ReviewStatusBadge, ReviewStatusSelect, ReviewHistoryTimeline, ReviewNoteModal, REVIEW_STATUS_META } from "../../components/FindingReviewControls.js";
 import { CodeViewer, EmptyCodePlaceholder } from "../../components/CodeViewer.js";
 import { FindingDynamicCards } from "../../components/FindingDynamicCards.js";
+import { FindingStageRail } from "../../components/FindingStageRail.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Severity helpers                                                          */
@@ -1370,7 +1371,12 @@ function FindingDetailPanel({
       {/* Review status section */}
       <FindingReviewSection taskId={taskId} finding={finding} />
 
+      {/* Stage summary rail (static / POC / impact) — shown immediately below
+          review, matching the confirmed prototype's above-the-fold placement. */}
+      <FindingStageRail finding={finding} dynamicEnabled={dynamicEnabled} />
+
       {/* CVSS / Exploit-Value scoring card (VulnForge) */}
+      <div data-testid="finding-card-static" style={{ scrollMarginTop: "12px" }} />
       <CvssEvCard finding={finding} />
 
       <AnchorSection anchors={anchors} onViewCode={viewSource} />
@@ -1407,13 +1413,13 @@ function FindingDetailPanel({
         defaultOpen
         structuredFields={[
           [i18n.t("findings.field.background"), "background"],
+          [i18n.t("findings.field.detail"), "detailed_description"],
+          [i18n.t("findings.field.payload"), "attack_payload_description"],
+          [i18n.t("findings.section.attack"), "attack_description"],
           [i18n.t("findings.field.entryPoint"), "entry_point"],
           [i18n.t("findings.field.taintSource"), "taint_source"],
           [i18n.t("findings.field.trigger"), "trigger_condition"],
-          [i18n.t("findings.field.payload"), "attack_payload_description"],
-          [i18n.t("findings.section.attack"), "attack_description"],
         ]}
-        leadingField="detailed_description"
       />
 
       <DataflowSection dataflow={dataflow} />
