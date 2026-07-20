@@ -152,14 +152,18 @@ describe("VulnForge 2 discovery/upsert isolation", () => {
   it("indexes distinct canonical parents, ignores nested, keeps risk path type and advances timestamp", async () => {
     const keys = [`${base}findings/BUG-1/report.yaml`, `${base}findings/BUG-2/report.yaml`, `${base}findings/BUG-1/poc/poc.yaml`];
     state.listed.set(`${base}findings/`, keys);
-    state.listed.set(`${base}risks/`, [`${base}risks/RISK-1.yaml`]);
+    state.listed.set(`${base}risks/`, [`${base}risks/RISK-1.yaml`, `${base}risks/RISK-2.yaml`]);
     state.yaml.set(keys[0]!, valid());
     state.yaml.set(keys[1]!, "metadata:\n  title: Risk-class finding\n  finding_class: risk\n  poc_status: pending\n");
-    state.yaml.set(`${base}risks/RISK-1.yaml`, "metadata:\n  title: risk\n");
-    expect(await indexFindings(taskId, "bucket")).toBe(3);
-    expect([...state.rows.values()].map((row) => row.finding_key).sort()).toEqual(["BUG-1", "BUG-2", "RISK-1"]);
-    expect(state.rows.get(`${taskId}:BUG-2`)).toMatchObject({ item_type: "finding", finding_class: "risk" });
+    state.yaml.set(`${base}risks/RISK-1.yaml`, "metadata:\n  title: legacy risk without class\n");
+    state.yaml.set(`${base}risks/RISK-2.yaml`, "metadata:\n  title: vulnerability in legacy path\n  finding_class: vulnerability\n");
+    expect(await indexFindings(taskId, "bucket")).toBe(4);
+    expect([...state.rows.values()].map((row) => row.finding_key).sort()).toEqual(["BUG-1", "BUG-2", "RISK-1", "RISK-2"]);
+    // VulnForge 2 stores vulnerability and risk under findings/BUG-* alike;
+    // finding_class is authoritative and the path is only a legacy fallback.
+    expect(state.rows.get(`${taskId}:BUG-2`)).toMatchObject({ item_type: "risk", finding_class: "risk" });
     expect(state.rows.get(`${taskId}:RISK-1`)).toMatchObject({ item_type: "risk", finding_class: null });
+    expect(state.rows.get(`${taskId}:RISK-2`)).toMatchObject({ item_type: "finding", finding_class: "vulnerability" });
     expect(state.timestampUpdates).toBe(1);
   });
 

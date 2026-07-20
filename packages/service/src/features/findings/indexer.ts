@@ -480,6 +480,15 @@ async function indexOneCandidate(
     }
     const severity = normalizeSeverity(meta.severity ?? "");
     const severityNumeric = SEVERITY_NUMERIC[severity];
+    // VulnForge 2 writes vulnerability and risk reports under the same
+    // findings/BUG-* path. finding_class is therefore authoritative whenever
+    // present; the discovery path remains a fallback for legacy reports that
+    // predate the structured field.
+    const itemType = dynamic.finding_class === "risk"
+      ? "risk"
+      : dynamic.finding_class !== null
+        ? "finding"
+        : candidate.itemType;
 
     await db`
       INSERT INTO findings_meta (
@@ -504,7 +513,7 @@ async function indexOneCandidate(
         ${meta.ev_priority}, ${meta.ev_rationale},
         ${dynamic.finding_class}, ${dynamic.poc_status},
         ${dynamic.exp_status}, ${dynamic.affected_versions},
-        ${candidate.itemType}, ${meta.title ?? null}
+        ${itemType}, ${meta.title ?? null}
       )
       ON CONFLICT (task_id, finding_key) DO UPDATE SET
         yaml_minio_key = EXCLUDED.yaml_minio_key,
