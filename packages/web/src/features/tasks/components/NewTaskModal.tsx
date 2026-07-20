@@ -580,13 +580,12 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
               <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "8px" }}>
                 {i18n.t("newTask.scanDuration")}
               </label>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>
                 <label
                   style={{
                     display: "flex",
                     alignItems: "flex-start",
                     gap: "10px",
-                    minHeight: "88px",
                     padding: "12px",
                     border: `1px solid ${timeoutMode === "custom" ? "var(--brand)" : "var(--border)"}`,
                     borderRadius: "8px",
@@ -611,7 +610,6 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                     display: "flex",
                     alignItems: "flex-start",
                     gap: "10px",
-                    minHeight: "88px",
                     padding: "12px",
                     border: `1px solid ${timeoutMode === "auto" ? "var(--brand)" : "var(--border)"}`,
                     borderRadius: "8px",

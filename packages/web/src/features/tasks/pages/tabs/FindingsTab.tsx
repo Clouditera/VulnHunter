@@ -1432,6 +1432,7 @@ function FindingDetailPanel({
         codeTone="bad"
         structuredCodePairs={[
           [i18n.t("findings.field.vulnerableCode"), "vulnerable_code", "bad"],
+          [i18n.t("findings.field.fixPatch"), "fix_patch", "good"],
           [i18n.t("findings.field.fixCode"), "fix_code", "good"],
         ]}
       />
