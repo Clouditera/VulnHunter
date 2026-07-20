@@ -109,6 +109,25 @@ function ArtifactFileList({ taskId, files, defaultPreviewPath, pathPrefix = "" }
   );
 }
 
+function RiskSkipCard({ titleKey }: { titleKey: "poc" | "exp" }) {
+  return (
+    <div style={{ ...CARD_STYLE, borderStyle: "dashed" }} data-testid={`finding-card-${titleKey}`}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+        <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          {i18n.t(`finding.cards.${titleKey}.title`)}
+        </span>
+        <StateBadge color="#737373" icon="minus-circle" label={i18n.t(`finding.cards.${titleKey}.riskSkipLabel`)} />
+      </div>
+      <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "8px" }}>
+        {i18n.t(`finding.cards.${titleKey}.riskSkipHelper`)}
+      </div>
+      <div style={{ border: "1px dashed var(--border)", borderRadius: "8px", background: "var(--bg-page)", padding: "12px", color: "var(--text-secondary)", fontSize: "11px" }}>
+        {i18n.t("finding.cards.riskNoArtifacts")}
+      </div>
+    </div>
+  );
+}
+
 function DynamicCard({
   titleKey,
   derived,
@@ -161,10 +180,11 @@ function DynamicCard({
 
 export function FindingDynamicCards({ taskId, finding, dynamicEnabled }: { taskId: string; finding: FindingMeta; dynamicEnabled: boolean }) {
   const findingId = finding.finding_key;
+  const isRisk = finding.item_type === "risk" || finding.finding_class === "risk";
   const { data: groups } = useQuery<FindingArtifactGroups>({
     queryKey: ["finding-artifacts", taskId, findingId],
     queryFn: () => api.findings.artifacts(taskId, findingId),
-    enabled: dynamicEnabled,
+    enabled: dynamicEnabled && !isRisk,
   });
 
   const pocStatus = finding.poc_status;
@@ -177,8 +197,17 @@ export function FindingDynamicCards({ taskId, finding, dynamicEnabled }: { taskI
   const pocDefault = pocFiles.find((f) => f.path.endsWith("/poc.md") || f.path.endsWith("poc.md"))?.path;
   const expDefault = expFiles.find((f) => f.path.endsWith("/exp.md") || f.path.endsWith("exp.md"))?.path;
 
+  if (isRisk) {
+    return (
+      <div data-testid="finding-dynamic-cards" data-finding-class="risk" style={{ marginTop: "16px" }}>
+        <RiskSkipCard titleKey="poc" />
+        <RiskSkipCard titleKey="exp" />
+      </div>
+    );
+  }
+
   return (
-    <div data-testid="finding-dynamic-cards" style={{ marginTop: "16px" }}>
+    <div data-testid="finding-dynamic-cards" data-finding-class="vulnerability" style={{ marginTop: "16px" }}>
       {/* POC card */}
       <DynamicCard
         titleKey="poc"

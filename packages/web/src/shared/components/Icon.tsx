@@ -58,7 +58,8 @@ export type IconName =
   | "check-circle"
   | "alert-circle"
   | "shield-alert"
-  | "trending-down";
+  | "trending-down"
+  | "minus-circle";
 
 interface IconProps {
   name: IconName;
@@ -357,6 +358,12 @@ const PATHS: Record<IconName, JSX.Element> = {
     <>
       <path d="M3 7l7 7 4-4 7 7" />
       <path d="M15 17h6v-6" />
+    </>
+  ),
+  "minus-circle": (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12h8" />
     </>
   ),
 };

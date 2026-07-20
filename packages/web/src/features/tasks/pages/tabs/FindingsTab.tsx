@@ -252,12 +252,19 @@ export function FindingsTab() {
   /* -------- Filtered findings (left panel) -------- */
 
   const filteredFindings = useMemo(() => {
-    if (!fileFilter) return allFindings;
-    return allFindings.filter((f) => {
-      const fp = normalizePath(f.primary_file ?? "");
-      // Exact match or suffix match (zip root prefix may differ)
-      return fp === fileFilter || fileFilter.endsWith("/" + fp) || fp.endsWith("/" + fileFilter);
-    });
+    const scoped = fileFilter
+      ? allFindings.filter((f) => {
+          const fp = normalizePath(f.primary_file ?? "");
+          // Exact match or suffix match (zip root prefix may differ)
+          return fp === fileFilter || fileFilter.endsWith("/" + fp) || fp.endsWith("/" + fileFilter);
+        })
+      : allFindings;
+    // Stable partition: vulnerabilities first, risks second. Preserve the
+    // service-provided severity/review order within each class.
+    return [
+      ...scoped.filter((f) => f.item_type !== "risk"),
+      ...scoped.filter((f) => f.item_type === "risk"),
+    ];
   }, [allFindings, fileFilter]);
 
   // When the filter changes and current selection is out of scope, re-select first match.
@@ -955,10 +962,12 @@ function FindingRow({
   onClick: () => void;
 }) {
   const sev = (f.severity ?? "info").toLowerCase();
+  const isRisk = f.item_type === "risk" || f.finding_class === "risk";
   return (
     <div
       data-testid="finding-row"
       data-finding-id={f.id}
+      data-finding-class={isRisk ? "risk" : "vulnerability"}
       data-severity={sev}
       data-selected={selected || undefined}
       onClick={onClick}
@@ -1002,6 +1011,8 @@ function FindingRow({
               style={{
                 fontSize: "12px",
                 fontWeight: 600,
+                color: isRisk ? "var(--text-secondary)" : "var(--text-primary)",
+                opacity: isRisk ? 0.6 : 1,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
@@ -1011,10 +1022,13 @@ function FindingRow({
             >
               {f.title ?? f.vuln_type_full ?? f.finding_key}
             </span>
-            {f.item_type === "risk" && (
+            {isRisk && (
               <span
                 data-testid="finding-risk-badge"
                 style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "3px",
                   fontSize: "9.5px",
                   fontWeight: 700,
                   color: "var(--text-secondary)",
@@ -1026,6 +1040,7 @@ function FindingRow({
                   flexShrink: 0,
                 }}
               >
+                <Icon name="shield" size={10} />
                 {i18n.t("findings.itemType.risk")}
               </span>
             )}
@@ -1038,6 +1053,7 @@ function FindingRow({
             style={{
               fontSize: "11px",
               color: "var(--text-secondary)",
+              opacity: isRisk ? 0.6 : 1,
               marginTop: "2px",
             }}
           >
@@ -1235,6 +1251,7 @@ function FindingDetailPanel({
   const navigate = useNavigate();
   const sev = (finding.severity ?? "info").toLowerCase();
   const sevColor = SEV_COLORS[sev] ?? SEV_COLORS.info;
+  const isRisk = finding.item_type === "risk" || finding.finding_class === "risk";
 
   if (loading) {
     return (
@@ -1319,6 +1336,25 @@ function FindingDetailPanel({
         />
         <span style={{ fontWeight: 600, fontSize: "14px", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {finding.title ?? finding.vuln_type_full ?? finding.finding_key}
+        </span>
+        <span
+          data-testid={isRisk ? "finding-detail-risk-badge" : "finding-detail-vuln-badge"}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "3px",
+            padding: "1px 5px",
+            borderRadius: "4px",
+            border: isRisk ? "1px solid var(--border)" : "1px solid rgba(220,38,38,.35)",
+            background: isRisk ? "var(--bg-page)" : "var(--bg-error)",
+            color: isRisk ? "var(--text-secondary)" : "var(--brand)",
+            fontSize: "9.5px",
+            fontWeight: 700,
+            flexShrink: 0,
+          }}
+        >
+          {isRisk ? <Icon name="shield" size={10} /> : null}
+          {i18n.t(isRisk ? "finding.riskBadge" : "finding.vulnBadge")}
         </span>
         <span
           style={{

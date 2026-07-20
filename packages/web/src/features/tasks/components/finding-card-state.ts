@@ -9,7 +9,7 @@ import type { PocStatus, ExpStatus } from "@vulnagent/shared";
 
 export type CardIcon = Extract<
   IconName,
-  "check-circle" | "clock" | "alert-circle" | "shield-alert" | "trending-down" | "alert-triangle"
+  "check-circle" | "clock" | "alert-circle" | "shield-alert" | "trending-down" | "alert-triangle" | "minus-circle"
 >;
 
 export interface CardStateDisplay {
@@ -38,7 +38,7 @@ export const EXP_STATE_DISPLAY: Record<ExpStatus, CardStateDisplay> = {
   downgraded: { labelKey: "downgraded", color: "#2563eb", icon: "trending-down", helperKey: "downgraded" },
   failed: { labelKey: "failed", color: "#ea580c", icon: "alert-circle", helperKey: "failed" },
   blocked: { labelKey: "blocked", color: "#ca8a04", icon: "shield-alert", helperKey: "blocked" },
-  "not-needed": { labelKey: "notNeededExp", color: "#0891b2", icon: "check-circle", helperKey: "notNeeded" },
+  "not-needed": { labelKey: "notNeededExp", color: "#0891b2", icon: "check-circle", helperKey: "notNeededExp" },
   unknown: { labelKey: "unknown", color: "#dc2626", icon: "alert-triangle", helperKey: "unknown" },
 };
 

@@ -70,14 +70,14 @@ export function FindingStageRail({ finding, dynamicEnabled }: { finding: Finding
   const exp = resolveExpCardState({ dynamicEnabled, pocStatus, expStatus });
   const pocDisplay = POC_STATE_DISPLAY[poc.status];
   const expDisplay = EXP_STATE_DISPLAY[exp.status];
-  const isRisk = finding.finding_class === "risk";
+  const isRisk = finding.item_type === "risk" || finding.finding_class === "risk";
 
   const scrollTo = (testid: string) => {
     document.querySelector<HTMLElement>(`[data-testid="${testid}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const showIncompleteStrip = dynamicEnabled && (poc.derived === null && poc.status === "pending");
-  const showDowngrade = showDowngradeBanner(expStatus);
+  const showIncompleteStrip = !isRisk && dynamicEnabled && (poc.derived === null && poc.status === "pending");
+  const showDowngrade = !isRisk && showDowngradeBanner(expStatus);
 
   return (
     <div data-testid="finding-stage-rail" style={{ marginBottom: "12px" }}>
@@ -137,20 +137,20 @@ export function FindingStageRail({ finding, dynamicEnabled }: { finding: Finding
         />
         <StageBox
           labelKey="finding.cards.poc.title"
-          color={poc.derived ? (poc.derived === "env_lost" ? "#dc2626" : "#737373") : pocDisplay.color}
-          icon={poc.derived ? "clock" : pocDisplay.icon}
-          stateLabel={poc.derived ? i18n.t(`finding.cards.${poc.derived === "env_lost" ? "envLost" : "notEnabled"}`) : i18n.t(`finding.cards.status.${pocDisplay.labelKey}`)}
-          helper={poc.derived ? "" : i18n.t(`finding.cards.helper.${pocDisplay.helperKey}`)}
-          dashed={poc.derived === "not_enabled"}
+          color={isRisk ? "#737373" : poc.derived ? (poc.derived === "env_lost" ? "#dc2626" : "#737373") : pocDisplay.color}
+          icon={isRisk ? "minus-circle" : poc.derived ? "clock" : pocDisplay.icon}
+          stateLabel={isRisk ? i18n.t("finding.cards.poc.riskSkipLabel") : poc.derived ? i18n.t(`finding.cards.${poc.derived === "env_lost" ? "envLost" : "notEnabled"}`) : i18n.t(`finding.cards.status.${pocDisplay.labelKey}`)}
+          helper={isRisk ? i18n.t("finding.cards.poc.riskSkipHelper") : poc.derived ? "" : i18n.t(`finding.cards.helper.${pocDisplay.helperKey}`)}
+          dashed={isRisk || poc.derived === "not_enabled"}
           onClick={() => scrollTo("finding-card-poc")}
         />
         <StageBox
           labelKey="finding.cards.exp.title"
-          color={exp.derived ? (exp.derived === "env_lost" ? "#dc2626" : "#737373") : expDisplay.color}
-          icon={exp.derived ? "clock" : expDisplay.icon}
-          stateLabel={exp.derived ? i18n.t(`finding.cards.${exp.derived === "env_lost" ? "envLost" : "notEnabled"}`) : i18n.t(`finding.cards.status.${expDisplay.labelKey}`)}
-          helper={exp.derived ? "" : i18n.t(`finding.cards.helper.${expDisplay.helperKey}`)}
-          dashed={exp.derived === "not_enabled"}
+          color={isRisk ? "#737373" : exp.derived ? (exp.derived === "env_lost" ? "#dc2626" : "#737373") : expDisplay.color}
+          icon={isRisk ? "minus-circle" : exp.derived ? "clock" : expDisplay.icon}
+          stateLabel={isRisk ? i18n.t("finding.cards.exp.riskSkipLabel") : exp.derived ? i18n.t(`finding.cards.${exp.derived === "env_lost" ? "envLost" : "notEnabled"}`) : i18n.t(`finding.cards.status.${expDisplay.labelKey}`)}
+          helper={isRisk ? i18n.t("finding.cards.exp.riskSkipHelper") : exp.derived ? "" : i18n.t(`finding.cards.helper.${expDisplay.helperKey}`)}
+          dashed={isRisk || exp.derived === "not_enabled"}
           onClick={() => scrollTo("finding-card-exp")}
         />
       </div>
