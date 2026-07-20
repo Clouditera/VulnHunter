@@ -1,8 +1,8 @@
 ---
-title: VulnAgent 2.2.1 离线部署与基础操作帮助手册
+title: VulnAgent 2.3.0 离线部署与基础操作帮助手册
 ---
 
-# VulnAgent 2.2.1 离线部署与基础操作帮助手册
+# VulnAgent 2.3.0 离线部署与基础操作帮助手册
 
 本文用于离线环境中的平台部署、初始化和基础操作。安装包为离线包，沿用一键 `install.sh`，安装后按本文完成 License 激活、管理员初始化、模型配置、创建扫描任务和查看结果。
 
@@ -29,9 +29,9 @@ df -h
 ## 2. 校验并解压离线包
 
 ```bash
-sha256sum -c vulnagent-release-2.2.1-c277a21.tar.gz.sha256
-tar -xzf vulnagent-release-2.2.1-c277a21.tar.gz
-cd vulnagent-release-2.2.1-c277a21
+sha256sum -c vulnagent-release-2.3.0.tar.gz.sha256
+tar -xzf vulnagent-release-2.3.0.tar.gz
+cd vulnagent-release-2.3.0
 ```
 
 离线包内应包含：
@@ -198,7 +198,7 @@ docker ps
 
 ## 9. 验收清单
 
-- `sha256sum -c vulnagent-release-2.2.1-c277a21.tar.gz.sha256` 通过
+- `sha256sum -c vulnagent-release-2.3.0.tar.gz.sha256` 通过
 - `./install.sh` 成功完成
 - `./doctor.sh` 全部通过
 - Web 可访问
