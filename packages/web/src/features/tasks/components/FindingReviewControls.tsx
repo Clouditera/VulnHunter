@@ -1,6 +1,6 @@
 /**
  * Shared UI primitives for Finding Review Workflow.
- * Used by FindingsTab, PocTab, and ReportGenerateModal.
+ * Used by FindingsTab and ReportGenerateModal.
  */
 import { useState } from "react";
 import { i18n } from "../../../shared/i18n/index.js";

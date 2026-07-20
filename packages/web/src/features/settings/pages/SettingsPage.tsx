@@ -6,7 +6,6 @@ import { theme as themeStore } from "../../../shared/theme/index.js";
 import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential, type SystemConfig } from "../../../shared/api/client.js";
 import { SkillsSection } from "../components/SkillsSection.js";
-import { PocSettingsSection } from "../components/PocSettingsSection.js";
 import { UsersSection } from "../components/UsersSection.js";
 import { ProfileSection } from "../components/ProfileSection.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
@@ -765,7 +764,6 @@ export function SettingsPage() {
     ? [
         ...(isEnterprise ? [{ id: "license", labelKey: "settings.nav.license" }] : []),
         { id: "credentials", labelKey: "settings.nav.credentials" },
-        { id: "poc", labelKey: "settings.nav.poc" },
         ...(isEnterprise ? [{ id: "users", labelKey: "settings.nav.users" }] : []),
         { id: "skills", labelKey: "settings.nav.skills" },
         { id: "appearance", labelKey: "settings.nav.appearance" },
@@ -1767,9 +1765,6 @@ export function SettingsPage() {
           {/* ============================================================= */}
           {isAdmin && (
             <>
-              <div id="poc" style={{ scrollMarginTop: "20px" }} />
-              <PocSettingsSection />
-
               {isEnterprise ? (
                 <>
                   <div id="users" style={{ scrollMarginTop: "20px" }} />
