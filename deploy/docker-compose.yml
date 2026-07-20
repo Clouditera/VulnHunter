@@ -42,6 +42,11 @@ services:
       DATA_DIR: "${DATA_DIR:-/opt/vulnagent/data}"
       VULNAGENT_MASTER_KEY_FILE: "${VULNAGENT_MASTER_KEY_FILE:-/run/secrets/vulnagent-master.key}"
       VULNAGENT_LICENSE_PUBLIC_KEY_FILE: "${VULNAGENT_LICENSE_PUBLIC_KEY_FILE:-/run/secrets/license-public.pem}"
+      # SandboxPlane integration (dynamic verification). Empty = not configured;
+      # static scans unaffected, dynamic tasks fail closed with a visible reason.
+      SANDBOXPLANE_BASE_URL: "${SANDBOXPLANE_BASE_URL:-}"
+      SANDBOXPLANE_TOKEN: "${SANDBOXPLANE_TOKEN:-}"
+      SANDBOX_SSH_HOST_OVERRIDE: "${SANDBOX_SSH_HOST_OVERRIDE:-}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
     group_add:
       - "${DOCKER_GID:-0}"
