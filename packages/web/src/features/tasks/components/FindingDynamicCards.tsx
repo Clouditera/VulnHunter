@@ -31,24 +31,33 @@ const CARD_STYLE: React.CSSProperties = {
 function StateBadge({ color, icon, label }: { color: string; icon: CardIcon; label: string }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: 600, color }}>
-      <Icon name={icon as never} size={12} strokeWidth={2.5} />
+      <Icon name={icon} size={12} strokeWidth={2.5} />
       {label}
     </span>
   );
 }
 
 /** Read-only artifact file list + preview (no execution / no download). */
+function formatArtifactSize(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function artifactBadge(path: string): string {
+  const ext = path.split(".").pop()?.toUpperCase() ?? "FILE";
+  return ext.length <= 3 ? ext : ext.slice(0, 3);
+}
+
+/** Read-only main preview + prototype-style artifact file list. */
 function ArtifactFileList({ taskId, files, defaultPreviewPath, pathPrefix = "" }: { taskId: string; files: ArtifactFileEntry[]; defaultPreviewPath?: string; pathPrefix?: string }) {
   const [selected, setSelected] = useState<string | null>(defaultPreviewPath ?? null);
   const previewable = files.filter((f) => f.previewable);
   const active = selected ?? previewable[0]?.path ?? null;
-  // The artifacts listing returns finding-relative paths (e.g. poc/poc.md),
-  // but the file-preview endpoint requires the task-root-relative path
-  // (findings/<findingId>/poc/poc.md). pathPrefix supplies the root prefix.
   const activeFull = active ? `${pathPrefix}${active}` : null;
-  const { data: preview } = useQuery<ArtifactFilePreview>({
+  const { data: preview, isLoading } = useQuery<ArtifactFilePreview>({
     queryKey: ["artifact-file", taskId, activeFull],
-    queryFn: () => api.tasks.artifactFile(taskId, activeFull!), 
+    queryFn: () => api.tasks.artifactFile(taskId, activeFull!),
     enabled: !!activeFull,
   });
   if (files.length === 0) {
@@ -56,47 +65,46 @@ function ArtifactFileList({ taskId, files, defaultPreviewPath, pathPrefix = "" }
   }
   return (
     <div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
-        {files.map((f) => (
-          <button
-            key={f.path}
-            type="button"
-            disabled={!f.previewable}
-            onClick={() => f.previewable && setSelected(f.path)}
-            title={f.path}
-            style={{
-              fontSize: "11px",
-              padding: "3px 8px",
-              borderRadius: "6px",
-              border: `1px solid ${active === f.path ? "var(--brand)" : "var(--border)"}`,
-              background: active === f.path ? "var(--bg-error)" : "transparent",
-              color: f.previewable ? "var(--text-primary)" : "var(--text-secondary)",
-              cursor: f.previewable ? "pointer" : "not-allowed",
-              opacity: f.previewable ? 1 : 0.6,
-              maxWidth: "220px",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {f.path.split("/").pop()}
-          </button>
-        ))}
-      </div>
-      {active && preview?.kind === "text" && preview.content !== undefined ? (
-        <div style={{ border: "1px solid var(--border)", borderRadius: "6px", padding: "10px 12px", background: "var(--bg-page)", maxHeight: "360px", overflow: "auto" }}>
-          {active.endsWith(".md") ? (
-            <Markdown content={preview.content} />
-          ) : (
-            <pre style={{ margin: 0, fontSize: "12px", fontFamily: "monospace", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{preview.content}</pre>
-          )}
-          {preview.truncated ? <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "6px" }}>{i18n.t("finding.cards.truncated")}</div> : null}
+      <div style={{ border: "1px solid var(--border)", borderRadius: "8px", background: "var(--bg-card)", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "7px 10px", borderBottom: "1px solid var(--divider)", background: "var(--bg-page)", fontSize: "11px", fontWeight: 700 }}>
+          <span style={{ width: "22px", height: "22px", borderRadius: "5px", display: "grid", placeItems: "center", background: "rgba(37,99,235,0.1)", color: "#2563eb", fontSize: "9px" }}>{active ? artifactBadge(active) : "MD"}</span>
+          {active?.split("/").pop() ?? i18n.t("finding.cards.noArtifacts")}
+          <span style={{ marginLeft: "auto", color: "var(--text-secondary)", fontSize: "9.5px", fontWeight: 600 }}>{i18n.t("finding.cards.mainPreview")}</span>
         </div>
-      ) : active && preview?.kind === "image" && preview.data_base64 ? (
-        <img src={`data:${preview.mime ?? "image/png"};base64,${preview.data_base64}`} alt={active} style={{ maxWidth: "100%", borderRadius: "6px", border: "1px solid var(--border)" }} />
-      ) : active ? (
-        <div style={{ fontSize: "12px", color: "var(--text-secondary)", opacity: 0.7 }}>{i18n.t("finding.cards.binaryNoPreview")}</div>
-      ) : null}
+        <div style={{ padding: "10px 12px", maxHeight: "360px", overflow: "auto" }}>
+          {isLoading ? (
+            <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{i18n.t("expPage.loadingDoc")}</div>
+          ) : active && preview?.kind === "text" && preview.content !== undefined ? (
+            active.endsWith(".md") ? <Markdown content={preview.content} /> : <pre style={{ margin: 0, fontSize: "12px", fontFamily: "monospace", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{preview.content}</pre>
+          ) : active && preview?.kind === "image" && preview.data_base64 ? (
+            <img src={`data:${preview.mime ?? "image/png"};base64,${preview.data_base64}`} alt={active} style={{ maxWidth: "100%", borderRadius: "6px" }} />
+          ) : (
+            <div style={{ fontSize: "12px", color: "var(--text-secondary)", opacity: 0.7 }}>{i18n.t("finding.cards.binaryNoPreview")}</div>
+          )}
+          {preview?.truncated ? <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "6px" }}>{i18n.t("finding.cards.truncated")}</div> : null}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "5px", marginTop: "8px" }}>
+        {files.map((f) => {
+          const isActive = active === f.path;
+          return (
+            <div key={f.path} style={{ display: "flex", alignItems: "center", gap: "8px", border: "1px solid var(--border)", borderRadius: "7px", background: "var(--bg-card)", padding: "7px 9px" }}>
+              <span style={{ width: "26px", height: "26px", borderRadius: "6px", display: "grid", placeItems: "center", background: "var(--bg-page)", color: "#2563eb", fontSize: "9px", fontWeight: 800, flexShrink: 0 }}>{artifactBadge(f.path)}</span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: "11.5px", fontWeight: 650, wordBreak: "break-word" }}>{f.path.split("/").pop()}</div>
+                <div style={{ fontSize: "10px", color: "var(--text-secondary)", marginTop: "1px" }}>{f.kind} · {formatArtifactSize(f.size)}</div>
+              </div>
+              <button type="button" disabled={!f.previewable} onClick={() => f.previewable && setSelected(f.path)} style={{ flexShrink: 0, border: `1px solid ${isActive ? "var(--brand)" : "var(--border)"}`, background: isActive ? "var(--brand)" : "var(--bg-card)", color: isActive ? "#fff" : "var(--text-primary)", borderRadius: "5px", padding: "3px 8px", fontSize: "10px", cursor: f.previewable ? "pointer" : "not-allowed", opacity: f.previewable ? 1 : 0.55 }}>
+                {i18n.t("finding.cards.preview")}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: "7px", alignItems: "flex-start", background: "rgba(202,138,4,0.08)", border: "1px solid rgba(202,138,4,0.3)", color: "#92400e", borderRadius: "7px", padding: "7px 9px", fontSize: "10.8px", lineHeight: 1.5, marginTop: "8px" }}>
+        <Icon name="lock" size={12} /> {i18n.t("finding.cards.readOnlyNote")}
+      </div>
     </div>
   );
 }
@@ -141,7 +149,12 @@ function DynamicCard({
           {i18n.t(`finding.cards.helper.${display.helperKey}`)}
         </div>
       ) : null}
-      {children}
+      {derived === "not_enabled" ? (
+        <div style={{ border: "1px dashed var(--border)", borderRadius: "8px", background: "var(--bg-card)", padding: "16px 14px", textAlign: "center" }}>
+          <div style={{ fontSize: "12.5px", fontWeight: 700, marginBottom: "4px" }}>{i18n.t(`finding.cards.${titleKey}.notEnabledTitle`)}</div>
+          <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.55 }}>{i18n.t(`finding.cards.${titleKey}.notEnabledHint`)}</div>
+        </div>
+      ) : children}
     </div>
   );
 }
@@ -166,25 +179,6 @@ export function FindingDynamicCards({ taskId, finding, dynamicEnabled }: { taskI
 
   return (
     <div data-testid="finding-dynamic-cards" style={{ marginTop: "16px" }}>
-      {showDowngradeBannerVisible(expStatus) ? (
-        <div style={{ fontSize: "12px", color: "#2563eb", background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.3)", borderRadius: "6px", padding: "8px 10px", marginBottom: "12px" }}>
-          {i18n.t("finding.cards.downgradeBanner")}
-        </div>
-      ) : null}
-
-      {/* Static analysis card — constant "已确认" */}
-      <div style={CARD_STYLE} data-testid="finding-card-static">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-          <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            {i18n.t("finding.cards.static.title")}
-          </span>
-          <StateBadge color="#2563eb" icon="check-circle" label={i18n.t("finding.cards.static.confirmed")} />
-        </div>
-        <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-          {finding.finding_class === "risk" ? i18n.t("finding.cards.static.helperRisk") : i18n.t("finding.cards.static.helper")}
-        </div>
-      </div>
-
       {/* POC card */}
       <DynamicCard
         titleKey="poc"
@@ -214,8 +208,4 @@ export function FindingDynamicCards({ taskId, finding, dynamicEnabled }: { taskI
       </DynamicCard>
     </div>
   );
-}
-
-function showDowngradeBannerVisible(expStatus: ExpStatus | null): boolean {
-  return expStatus === "downgraded";
 }

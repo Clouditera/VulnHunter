@@ -17,6 +17,7 @@ import { Splitter, useResizableWidth } from "../../../../shared/components/Split
 import { ReviewStatusBadge, ReviewStatusSelect, ReviewHistoryTimeline, ReviewNoteModal, REVIEW_STATUS_META } from "../../components/FindingReviewControls.js";
 import { CodeViewer, EmptyCodePlaceholder } from "../../components/CodeViewer.js";
 import { FindingDynamicCards } from "../../components/FindingDynamicCards.js";
+import { FindingStageRail } from "../../components/FindingStageRail.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Severity helpers                                                          */
@@ -1370,7 +1371,12 @@ function FindingDetailPanel({
       {/* Review status section */}
       <FindingReviewSection taskId={taskId} finding={finding} />
 
+      {/* Stage summary rail (static / POC / impact) — shown immediately below
+          review, matching the confirmed prototype's above-the-fold placement. */}
+      <FindingStageRail finding={finding} dynamicEnabled={dynamicEnabled} />
+
       {/* CVSS / Exploit-Value scoring card (VulnForge) */}
+      <div data-testid="finding-card-static" style={{ scrollMarginTop: "12px" }} />
       <CvssEvCard finding={finding} />
 
       <AnchorSection anchors={anchors} onViewCode={viewSource} />
@@ -1407,13 +1413,13 @@ function FindingDetailPanel({
         defaultOpen
         structuredFields={[
           [i18n.t("findings.field.background"), "background"],
+          [i18n.t("findings.field.detail"), "detailed_description"],
+          [i18n.t("findings.field.payload"), "attack_payload_description"],
+          [i18n.t("findings.section.attack"), "attack_description"],
           [i18n.t("findings.field.entryPoint"), "entry_point"],
           [i18n.t("findings.field.taintSource"), "taint_source"],
           [i18n.t("findings.field.trigger"), "trigger_condition"],
-          [i18n.t("findings.field.payload"), "attack_payload_description"],
-          [i18n.t("findings.section.attack"), "attack_description"],
         ]}
-        leadingField="detailed_description"
       />
 
       <DataflowSection dataflow={dataflow} />
@@ -1845,6 +1851,41 @@ function Section({
   );
 }
 
+function isUnifiedDiff(content: string): boolean {
+  return /^diff --git /m.test(content) || /^@@\s+[-+]/m.test(content) || (/^---\s+/m.test(content) && /^\+\+\+\s+/m.test(content));
+}
+
+function DiffPatch({ content }: { content: string }) {
+  return (
+    <div
+      data-testid="finding-diff-patch"
+      style={{ margin: "6px 0 0", border: "1px solid var(--border)", borderRadius: "7px", overflow: "auto", maxHeight: "320px", background: "var(--code-bg)", fontFamily: "'SF Mono', Menlo, Consolas, monospace", fontSize: "11.5px", lineHeight: 1.55 }}
+    >
+      {content.split("\n").map((line, index) => {
+        const added = line.startsWith("+") && !line.startsWith("+++");
+        const removed = line.startsWith("-") && !line.startsWith("---");
+        const hunk = line.startsWith("@@");
+        const header = line.startsWith("diff --git") || line.startsWith("index ") || line.startsWith("---") || line.startsWith("+++");
+        return (
+          <div
+            key={index}
+            style={{
+              minHeight: "1.55em",
+              padding: "0 10px",
+              whiteSpace: "pre",
+              background: added ? "rgba(22,163,74,0.12)" : removed ? "rgba(220,38,38,0.12)" : hunk ? "rgba(37,99,235,0.09)" : "transparent",
+              color: added ? "#15803d" : removed ? "#b91c1c" : hunk ? "#1d4ed8" : header ? "var(--text-secondary)" : "var(--text-primary)",
+              fontWeight: header || hunk ? 600 : 400,
+            }}
+          >
+            {line || " "}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function CodeBlock({
   content,
   tone,
@@ -1852,6 +1893,8 @@ function CodeBlock({
   content: string;
   tone: "bad" | "good" | "neutral";
 }) {
+  if (isUnifiedDiff(content)) return <DiffPatch content={content} />;
+
   const bg =
     tone === "bad"
       ? "var(--bg-error)"

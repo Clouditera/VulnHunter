@@ -16,6 +16,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "2.3.0",
+    releasedAt: "2026-07",
+    title: "VulnAgent v2.3.0 更新",
+    markdown: `
+### 🛡️ 动态验证
+- **优化「POC/EXP」功能**：支持 Web 服务、Linux 应用程序、库、内核等常见项目类型
+- **新增「动态利用」**：自动根据已有漏洞发现，构造更复杂的组合漏洞利用
+- **漏洞详情页调整**：更清晰地展示漏洞分析状态、漏洞报告、POC/EXP 结果等相关数据
+
+### 🔧 其它调整
+- 任务创建功能优化
+- Chat 助手优化
+- 修复多个已知问题
+`.trim(),
+  },
+  {
     version: "2.2.1",
     releasedAt: "2026-07",
     title: "VulnAgent v2.2.1 更新",
