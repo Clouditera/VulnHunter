@@ -19,7 +19,6 @@ import {
   markSchedulerClaimRunning,
   renewSchedulerClaim,
   clearContinueMode,
-  downgradeDynamicToggles,
   getSchedulerClaim,
   listStuckDeadlineRunningTasks,
   mergeTaskMetadata,
@@ -606,7 +605,8 @@ export class TaskScheduler {
    * one-shot prepare worker against the published source, consumes the
    * three-field result, records it in task metadata, emits the prepare events,
    * and applies the branch matrix:
-   *   - partial_source        → flag source_incomplete, continue (with warning);
+   *   - partial_source        → interrupt: fail in preparing with a reason
+   *                              (dynamic/static alike; no scan, no sandbox);
    *   - complete + dynamic on + no compatible sandbox → O1: fail in preparing;
    *   - otherwise             → proceed to the scan worker.
    * All side effects run under the owner's scheduler claim (②). Throws on any
@@ -648,31 +648,27 @@ export class TaskScheduler {
     });
 
     if (!result.project_complete) {
-      // partial_source: continue scanning with a visible warning flag — and
-      // DOWNGRADE to fully static (minimal baseline: incomplete source =
-      // warn + static-only). The scan worker would otherwise see
-      // dynamic_enabled=true and hard-require a sandbox that was never
-      // allocated (QA blocker #3).
+      // partial_source: INTERRUPT (fish 2026-07-20). The audit target must be a
+      // self-contained, complete functional project (web app / CLI / library);
+      // code fragments, docs, and case demos cannot establish complete code
+      // semantics, so the task fails in the prepare phase and reports why —
+      // dynamic and static alike (no downgrade, no scan worker, no sandbox).
       await mergeTaskMetadata(task.id, { source_incomplete: true }).catch((err) =>
         logger.warn({ err, taskId: task.id }, "Failed to set source_incomplete flag"),
       );
-      if (dynamicEnabled) {
-        // Persisted downgrade (never runtime-computed) so every reader — scan
-        // worker env, EXP page, three cards, future resumes — hears the same
-        // static voice. The in-memory task is patched in lockstep (P0-2
-        // lesson: no stale copies downstream of this function).
-        await downgradeDynamicToggles(task.id);
-        task.source_meta = {
-          ...task.source_meta,
-          dynamic_enabled: false,
-          enable_poc: false,
-          enable_exp: false,
-          enable_chain: false,
-        };
-        logger.warn({ taskId: task.id, token }, "Dynamic toggles downgraded to static (partial_source)");
-      }
-      logger.warn({ taskId: task.id, token }, "Source is incomplete (partial_source); continuing scan with warning flag");
-      return result;
+      const remediation = "请补充完整项目源码后重新创建任务";
+      appendAndBroadcastCompletionEvent(task.id, {
+        type: "prepare_failed",
+        source: "scan",
+        seq: 0,
+        ts: new Date().toISOString(),
+        reason: "source_incomplete",
+        remediation,
+      });
+      logger.warn({ taskId: task.id, token }, "Source is incomplete (partial_source); interrupting task");
+      throw new Error(
+        `源码不完整：功能代码缺失，无法建立完整的代码功能语义。审计目标应是自洽完整的功能项目（如 web 应用、CLI 应用、库）。${remediation}。`,
+      );
     }
 
     if (dynamicEnabled && result.sandbox_type === null) {

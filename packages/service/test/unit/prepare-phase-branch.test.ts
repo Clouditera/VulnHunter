@@ -5,7 +5,6 @@ const m = vi.hoisted(() => ({
   dynamicEnabled: false,
   events: [] as any[],
   metadataPatches: [] as any[],
-  downgradeCalls: [] as string[],
   run: vi.fn(async function (this: any) { return (m as any).prepareResult; }),
 }));
 
@@ -20,7 +19,6 @@ vi.mock("../../src/features/events/event-store.js", () => ({
 vi.mock("../../src/features/events/ws-live-log.js", () => ({ broadcastEvent: vi.fn() }));
 vi.mock("../../src/features/tasks/storage.js", () => ({
   mergeTaskMetadata: vi.fn(async (taskId: string, patch: any) => { m.metadataPatches.push(patch); }),
-  downgradeDynamicToggles: vi.fn(async (taskId: string) => { m.downgradeCalls.push(taskId); }),
 }));
 vi.mock("../../src/infra/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -42,7 +40,6 @@ describe("runPreparePhase branch matrix", () => {
   beforeEach(() => {
     m.events = [];
     m.metadataPatches = [];
-    m.downgradeCalls = [];
     m.dynamicEnabled = false;
     m.prepareResult = { project_complete: true, sandbox_type: null, reason: "complete" };
     baseTask.source_meta = {};
@@ -61,24 +58,29 @@ describe("runPreparePhase branch matrix", () => {
     expect(m.metadataPatches.some((p) => p.source_incomplete)).toBe(false);
   });
 
-  it("partial_source + dynamic on → downgrades four keys (persisted + in-memory), continues static", async () => {
+  it("partial_source + dynamic on → interrupts: throws reason, emits prepare_failed, flags incomplete, no downgrade", async () => {
     m.dynamicEnabled = true;
     baseTask.source_meta = { dynamic_enabled: true, enable_poc: true, enable_exp: true, enable_chain: true };
     m.prepareResult = { project_complete: false, sandbox_type: null, reason: "partial_source" };
-    await (scheduler() as any).runPreparePhase(baseTask, token, "/tmp/w");
+    await expect((scheduler() as any).runPreparePhase(baseTask, token, "/tmp/w")).rejects.toThrow(/源码不完整：功能代码缺失/);
     expect(m.metadataPatches.some((p) => p.source_incomplete === true)).toBe(true);
-    expect(m.downgradeCalls).toEqual(["task-1"]);
-    expect(baseTask.source_meta).toEqual({ dynamic_enabled: false, enable_poc: false, enable_exp: false, enable_chain: false });
-    expect(m.events.map((e) => e.type)).toEqual(["prepare_started", "prepare_completed"]);
+    // dynamic toggles are NOT touched — task is interrupted, not downgraded
+    expect(baseTask.source_meta).toEqual({ dynamic_enabled: true, enable_poc: true, enable_exp: true, enable_chain: true });
+    const failed = m.events.find((e) => e.type === "prepare_failed");
+    expect(failed).toMatchObject({ reason: "source_incomplete" });
+    expect(failed.remediation).toBeTruthy();
+    expect(m.events.map((e) => e.type)).toEqual(["prepare_started", "prepare_completed", "prepare_failed"]);
   });
 
-  it("partial_source + dynamic off → flag only, no downgrade write", async () => {
+  it("partial_source + dynamic off → same interrupt (fish: static also interrupts)", async () => {
     m.dynamicEnabled = false;
     m.prepareResult = { project_complete: false, sandbox_type: null, reason: "partial_source" };
-    await (scheduler() as any).runPreparePhase(baseTask, token, "/tmp/w");
+    await expect((scheduler() as any).runPreparePhase(baseTask, token, "/tmp/w")).rejects.toThrow(/源码不完整：功能代码缺失/);
     expect(m.metadataPatches.some((p) => p.source_incomplete === true)).toBe(true);
-    expect(m.downgradeCalls).toEqual([]);
     expect(baseTask.source_meta).toEqual({});
+    const failed = m.events.find((e) => e.type === "prepare_failed");
+    expect(failed).toMatchObject({ reason: "source_incomplete" });
+    expect(m.events.map((e) => e.type)).toEqual(["prepare_started", "prepare_completed", "prepare_failed"]);
   });
 
   it("complete + dynamic on + sandbox chosen → proceeds (no throw), records sandbox_type", async () => {
@@ -89,7 +91,6 @@ describe("runPreparePhase branch matrix", () => {
     const recorded = m.metadataPatches.find((p) => p.prepare);
     expect(recorded.prepare.sandbox_type).toBe("linux-docker");
     expect(m.metadataPatches.some((p) => p.source_incomplete)).toBe(false);
-    expect(m.downgradeCalls).toEqual([]);
   });
 
   it("complete + dynamic on + no compatible sandbox → O1: throws with reason + remediation, emits prepare_failed", async () => {

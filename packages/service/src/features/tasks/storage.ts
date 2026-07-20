@@ -325,23 +325,6 @@ export async function clearContinueMode(id: string): Promise<void> {
   `;
 }
 
-/**
- * P0-3: partial_source must downgrade the task to fully static (minimal
- * baseline semantics: incomplete source = warn + static-only scan). Persist
- * all four dynamic keys false in source_meta so EVERY reader (scan worker
- * env, EXP page, three cards, future resumes) hears the same static voice —
- * never a runtime-computed downgrade that would diverge after a restart.
- */
-export async function downgradeDynamicToggles(id: string): Promise<void> {
-  const db = getDb();
-  await db`
-    UPDATE tasks
-    SET source_meta = COALESCE(source_meta, '{}'::jsonb)
-        || ${db.json({ dynamic_enabled: false, enable_poc: false, enable_exp: false, enable_chain: false })}::jsonb
-    WHERE id = ${id}
-  `;
-}
-
 /** True when a task is queued/running in CONTINUE mode (source_meta flag). */
 export function isContinueMode(task: DbTask): boolean {
   let meta: unknown = task.source_meta;
