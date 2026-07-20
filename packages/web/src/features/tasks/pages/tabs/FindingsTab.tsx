@@ -1508,7 +1508,7 @@ function FindingDetailPanel({
         </Section>
       )}
 
-      {/* Dynamic capability three cards (static / POC / impact assessment) */}
+      {/* Dynamic capability three cards (static / POC / exploitability assessment EXP) */}
       <FindingDynamicCards taskId={taskId} finding={finding} dynamicEnabled={dynamicEnabled} />
     </div>
   );

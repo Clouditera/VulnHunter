@@ -403,11 +403,11 @@ export const createTaskSchema = {
   enable_dynamic_verify: z
     .boolean()
     .optional()
-    .describe("动态验证/影响力评估——大幅提升漏洞准确率，但显著延长任务时间。用户只说“扫一下”时默认不开。"),
+    .describe("动态验证/漏洞利用评估（EXP）——大幅提升漏洞准确率，但显著延长任务时间。用户只说“扫一下”时默认不开。"),
   enable_dynamic_exploit: z
     .boolean()
     .optional()
-    .describe("漏洞利用（组合链）——需先开启动态验证/评估（enable_dynamic_verify）。"),
+    .describe("漏洞利用（组合链）——需先开启动态验证/漏洞利用评估（EXP）（enable_dynamic_verify）。"),
 };
 
 export async function createMcpTask(args: {

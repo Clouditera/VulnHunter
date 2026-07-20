@@ -1,6 +1,6 @@
 /**
  * Finding stage rail — a compact 3-column summary (静态分析 / 动态验证 POC /
- * 影响力评估) shown at the top of the Finding detail panel, immediately below
+ * 漏洞利用评估 EXP) shown at the top of the Finding detail panel, immediately below
  * the review-status row. Mirrors prototype-finding-detail-dynamic-v1.html's
  * `.rail` + downgrade/incomplete banners. This is a *summary*; the full
  * per-stage sections (artifact previews, file lists) render further down via

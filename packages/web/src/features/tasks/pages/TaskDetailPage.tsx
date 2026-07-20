@@ -10,11 +10,11 @@ import { formatDateTime } from "../../../shared/utils/format.js";
 
 const TABS = [
   { labelKey: "taskDetail.tab.overview", path: "" },
+  { labelKey: "taskDetail.tab.workspace", path: "workspace" },
   { labelKey: "taskDetail.tab.wiki", path: "wiki" },
   { labelKey: "taskDetail.tab.findings", path: "findings" },
-  { labelKey: "taskDetail.tab.reports", path: "reports" },
   { labelKey: "taskDetail.tab.exploits", path: "exploits" },
-  { labelKey: "taskDetail.tab.workspace", path: "workspace" },
+  { labelKey: "taskDetail.tab.reports", path: "reports" },
 ];
 
 function formatDuration(ms: number | null): string {

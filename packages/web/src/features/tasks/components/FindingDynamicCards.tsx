@@ -1,5 +1,5 @@
 /**
- * Finding three dynamic cards (静态分析 / 动态验证 POC / 影响力评估) per the
+ * Finding three dynamic cards (静态分析 / 动态验证 POC / 漏洞利用评估 EXP) per the
  * SSOT (design-spec-finding-three-card-ssot-v1.0.md) and PRD §2. Data comes
  * from the H4 artifact read API; state from FindingDynamicMeta on the finding.
  * All artifact previews are read-only — no execution, no download.
@@ -50,8 +50,8 @@ function artifactBadge(path: string): string {
 }
 
 /** Read-only main preview + prototype-style artifact file list. */
-function ArtifactFileList({ taskId, files, defaultPreviewPath, pathPrefix = "" }: { taskId: string; files: ArtifactFileEntry[]; defaultPreviewPath?: string; pathPrefix?: string }) {
-  const [selected, setSelected] = useState<string | null>(defaultPreviewPath ?? null);
+function ArtifactFileList({ taskId, files, pathPrefix = "" }: { taskId: string; files: ArtifactFileEntry[]; pathPrefix?: string }) {
+  const [selected, setSelected] = useState<string | null>(null);
   const previewable = files.filter((f) => f.previewable);
   const active = selected ?? previewable[0]?.path ?? null;
   const activeFull = active ? `${pathPrefix}${active}` : null;
@@ -65,43 +65,56 @@ function ArtifactFileList({ taskId, files, defaultPreviewPath, pathPrefix = "" }
   }
   return (
     <div>
-      <div style={{ border: "1px solid var(--border)", borderRadius: "8px", background: "var(--bg-card)", overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "7px 10px", borderBottom: "1px solid var(--divider)", background: "var(--bg-page)", fontSize: "11px", fontWeight: 700 }}>
-          <span style={{ width: "22px", height: "22px", borderRadius: "5px", display: "grid", placeItems: "center", background: "rgba(37,99,235,0.1)", color: "#2563eb", fontSize: "9px" }}>{active ? artifactBadge(active) : "MD"}</span>
-          {active?.split("/").pop() ?? i18n.t("finding.cards.noArtifacts")}
-          <span style={{ marginLeft: "auto", color: "var(--text-secondary)", fontSize: "9.5px", fontWeight: 600 }}>{i18n.t("finding.cards.mainPreview")}</span>
-        </div>
-        <div style={{ padding: "10px 12px", maxHeight: "360px", overflow: "auto" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+        {files.map((f) => {
+          const isActive = active === f.path;
+          return (
+            <button
+              key={f.path}
+              type="button"
+              disabled={!f.previewable}
+              aria-pressed={isActive}
+              onClick={() => f.previewable && setSelected(f.path)}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                border: `1px solid ${isActive ? "var(--brand)" : "var(--border)"}`,
+                borderRadius: "7px",
+                background: isActive ? "var(--bg-error)" : "var(--bg-card)",
+                padding: "7px 9px",
+                color: "var(--text-primary)",
+                textAlign: "left",
+                cursor: f.previewable ? "pointer" : "not-allowed",
+                opacity: f.previewable ? 1 : 0.55,
+              }}
+            >
+              <span style={{ width: "26px", height: "26px", borderRadius: "6px", display: "grid", placeItems: "center", background: "var(--bg-page)", color: "#2563eb", fontSize: "9px", fontWeight: 800, flexShrink: 0 }}>{artifactBadge(f.path)}</span>
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <span style={{ display: "block", fontSize: "11.5px", fontWeight: 650, wordBreak: "break-word" }}>{f.path.split("/").pop()}</span>
+                <span style={{ display: "block", fontSize: "10px", color: "var(--text-secondary)", marginTop: "1px" }}>{f.kind} · {formatArtifactSize(f.size)}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {active ? (
+        <div data-testid="finding-artifact-content" style={{ marginTop: "8px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--bg-card)", padding: "10px 12px", maxHeight: "360px", overflow: "auto" }}>
           {isLoading ? (
             <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{i18n.t("expPage.loadingDoc")}</div>
-          ) : active && preview?.kind === "text" && preview.content !== undefined ? (
+          ) : preview?.kind === "text" && preview.content !== undefined ? (
             active.endsWith(".md") ? <Markdown content={preview.content} /> : <pre style={{ margin: 0, fontSize: "12px", fontFamily: "monospace", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{preview.content}</pre>
-          ) : active && preview?.kind === "image" && preview.data_base64 ? (
+          ) : preview?.kind === "image" && preview.data_base64 ? (
             <img src={`data:${preview.mime ?? "image/png"};base64,${preview.data_base64}`} alt={active} style={{ maxWidth: "100%", borderRadius: "6px" }} />
           ) : (
             <div style={{ fontSize: "12px", color: "var(--text-secondary)", opacity: 0.7 }}>{i18n.t("finding.cards.binaryNoPreview")}</div>
           )}
           {preview?.truncated ? <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "6px" }}>{i18n.t("finding.cards.truncated")}</div> : null}
         </div>
-      </div>
+      ) : null}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "5px", marginTop: "8px" }}>
-        {files.map((f) => {
-          const isActive = active === f.path;
-          return (
-            <div key={f.path} style={{ display: "flex", alignItems: "center", gap: "8px", border: "1px solid var(--border)", borderRadius: "7px", background: "var(--bg-card)", padding: "7px 9px" }}>
-              <span style={{ width: "26px", height: "26px", borderRadius: "6px", display: "grid", placeItems: "center", background: "var(--bg-page)", color: "#2563eb", fontSize: "9px", fontWeight: 800, flexShrink: 0 }}>{artifactBadge(f.path)}</span>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: "11.5px", fontWeight: 650, wordBreak: "break-word" }}>{f.path.split("/").pop()}</div>
-                <div style={{ fontSize: "10px", color: "var(--text-secondary)", marginTop: "1px" }}>{f.kind} · {formatArtifactSize(f.size)}</div>
-              </div>
-              <button type="button" disabled={!f.previewable} onClick={() => f.previewable && setSelected(f.path)} style={{ flexShrink: 0, border: `1px solid ${isActive ? "var(--brand)" : "var(--border)"}`, background: isActive ? "var(--brand)" : "var(--bg-card)", color: isActive ? "#fff" : "var(--text-primary)", borderRadius: "5px", padding: "3px 8px", fontSize: "10px", cursor: f.previewable ? "pointer" : "not-allowed", opacity: f.previewable ? 1 : 0.55 }}>
-                {i18n.t("finding.cards.preview")}
-              </button>
-            </div>
-          );
-        })}
-      </div>
       <div style={{ display: "flex", gap: "7px", alignItems: "flex-start", background: "rgba(202,138,4,0.08)", border: "1px solid rgba(202,138,4,0.3)", color: "#92400e", borderRadius: "7px", padding: "7px 9px", fontSize: "10.8px", lineHeight: 1.5, marginTop: "8px" }}>
         <Icon name="lock" size={12} /> {i18n.t("finding.cards.readOnlyNote")}
       </div>
@@ -194,8 +207,6 @@ export function FindingDynamicCards({ taskId, finding, dynamicEnabled }: { taskI
 
   const pocFiles = groups?.poc.files ?? [];
   const expFiles = groups?.exp.files ?? [];
-  const pocDefault = pocFiles.find((f) => f.path.endsWith("/poc.md") || f.path.endsWith("poc.md"))?.path;
-  const expDefault = expFiles.find((f) => f.path.endsWith("/exp.md") || f.path.endsWith("exp.md"))?.path;
 
   if (isRisk) {
     return (
@@ -218,7 +229,7 @@ export function FindingDynamicCards({ taskId, finding, dynamicEnabled }: { taskI
         showIncomplete={showIncompleteBanner(dynamicEnabled, poc.status)}
       >
         {poc.derived === "not_enabled" ? null : (
-          <ArtifactFileList taskId={taskId} files={pocFiles} defaultPreviewPath={pocDefault} pathPrefix={`findings/${findingId}/`} />
+          <ArtifactFileList taskId={taskId} files={pocFiles} pathPrefix={`findings/${findingId}/`} />
         )}
       </DynamicCard>
 
@@ -232,7 +243,7 @@ export function FindingDynamicCards({ taskId, finding, dynamicEnabled }: { taskI
         showIncomplete={showIncompleteBanner(dynamicEnabled, exp.status)}
       >
         {exp.derived === "not_enabled" ? null : (
-          <ArtifactFileList taskId={taskId} files={expFiles} defaultPreviewPath={expDefault} pathPrefix={`findings/${findingId}/`} />
+          <ArtifactFileList taskId={taskId} files={expFiles} pathPrefix={`findings/${findingId}/`} />
         )}
       </DynamicCard>
     </div>
