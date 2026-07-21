@@ -8,16 +8,12 @@ import {
   type FindingMeta,
   type FindingReviewStatus,
   type Task,
-  type WorkspaceFile,
-  type WorkspaceTreeNode,
 } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon } from "../../../../shared/components/Icon.js";
 import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
 import { ReviewStatusBadge, ReviewStatusSelect, ReviewHistoryTimeline, ReviewNoteModal, REVIEW_STATUS_META } from "../../components/FindingReviewControls.js";
-import { CodeViewer, EmptyCodePlaceholder } from "../../components/CodeViewer.js";
-import { FindingDynamicCards } from "../../components/FindingDynamicCards.js";
-import { FindingStageRail } from "../../components/FindingStageRail.js";
+import { StaticStatusCard, FindingPocPanel, FindingExpPanel, resolvePocTabPill, resolveExpTabPill } from "../../components/FindingDynamicCards.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Severity helpers                                                          */
@@ -31,27 +27,8 @@ const SEV_COLORS: Record<string, string> = {
   info: "var(--sev-info)",
 };
 
-/** Severity ranking for max-severity rollup in file tree. Higher = worse. */
-const SEV_RANK: Record<string, number> = {
-  critical: 5,
-  high: 4,
-  medium: 3,
-  low: 2,
-  info: 1,
-};
-
-function maxSeverity(a: string | null, b: string): string {
-  if (!a) return b;
-  return (SEV_RANK[b] ?? 0) > (SEV_RANK[a] ?? 0) ? b : a;
-}
-
 function normalizePath(raw: string): string {
   return raw.replace(/^\/+workspace\/+/, "").replace(/^\/+/, "");
-}
-
-interface CodeTarget {
-  path: string;
-  line: number | null;
 }
 
 interface FindingAnchor {
@@ -65,115 +42,6 @@ interface DataflowStep {
   location?: string;
   description?: string;
 }
-
-/* -------------------------------------------------------------------------- */
-/*  File tree aggregation                                                     */
-/* -------------------------------------------------------------------------- */
-
-interface FlatFileNode {
-  name: string;
-  path: string;
-  depth: number;
-  isDir: boolean;
-  vulnCount: number;
-  vulnSeverity: string | null; // max severity for marker color
-  collapsed: boolean;
-}
-
-/**
- * Flatten the backend tree, annotating each node with aggregated
- * vulnerability count + max-severity (rolled up to directories).
- */
-function flattenFindingsTree(
-  tree: WorkspaceTreeNode[],
-  findings: FindingMeta[],
-  collapsed: Set<string>,
-): FlatFileNode[] {
-  // Build path → (count, maxSev) lookup from findings.
-  const byPath = new Map<string, { count: number; maxSev: string }>();
-  for (const f of findings) {
-    const raw = normalizePath(f.primary_file ?? "");
-    if (!raw) continue;
-    const sev = (f.severity ?? "info").toLowerCase();
-    const slot = byPath.get(raw);
-    if (slot) {
-      slot.count += 1;
-      slot.maxSev = maxSeverity(slot.maxSev, sev)!;
-    } else {
-      byPath.set(raw, { count: 1, maxSev: sev });
-    }
-  }
-
-  const out: FlatFileNode[] = [];
-
-  function walk(
-    nodes: WorkspaceTreeNode[],
-    depth: number,
-    parentPath: string,
-    target: FlatFileNode[],
-  ): { count: number; maxSev: string | null } {
-    let dirCount = 0;
-    let dirSev: string | null = null;
-
-    for (const node of nodes) {
-      const path = parentPath ? `${parentPath}/${node.name}` : node.name;
-      const isDir =
-        node.type === "dir" || !!(node.children && node.children.length > 0);
-
-      if (isDir) {
-        const sub: FlatFileNode[] = [];
-        const rollup = walk(node.children ?? [], depth + 1, path, sub);
-        const isCollapsed = collapsed.has(path);
-        target.push({
-          name: node.name,
-          path,
-          depth,
-          isDir: true,
-          vulnCount: rollup.count,
-          vulnSeverity: rollup.maxSev,
-          collapsed: isCollapsed,
-        });
-        if (!isCollapsed) target.push(...sub);
-        dirCount += rollup.count;
-        if (rollup.maxSev)
-          dirSev = maxSeverity(dirSev, rollup.maxSev) ?? dirSev;
-      } else {
-        // Try exact path match, then suffix match
-        let hit = byPath.get(path);
-        if (!hit) {
-          for (const [fp, slot] of byPath) {
-            if (path.endsWith("/" + fp) || fp.endsWith("/" + path)) {
-              hit = slot;
-              break;
-            }
-          }
-        }
-        target.push({
-          name: node.name,
-          path,
-          depth,
-          isDir: false,
-          vulnCount: hit?.count ?? 0,
-          vulnSeverity: hit?.maxSev ?? null,
-          collapsed: false,
-        });
-        if (hit) {
-          dirCount += hit.count;
-          dirSev = maxSeverity(dirSev, hit.maxSev) ?? dirSev;
-        }
-      }
-    }
-
-    return { count: dirCount, maxSev: dirSev };
-  }
-
-  walk(tree, 0, "", out);
-  return out;
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Component                                                                 */
-/* -------------------------------------------------------------------------- */
 
 export function FindingsTab() {
   const { task } = useOutletContext<{ task: Task }>();
@@ -204,17 +72,11 @@ export function FindingsTab() {
   );
   /** Active file filter. When set, left list shows only findings in this file. */
   const [fileFilter, setFileFilter] = useState<string | null>(null);
-  /** Explicitly view a non-vuln file in right panel (not a finding). */
-  const [nonVulnFile, setNonVulnFile] = useState<string | null>(null);
-  /** Explicit source target chosen from new-schema metadata.anchors[]. */
-  const [detailCodeTarget, setDetailCodeTarget] = useState<CodeTarget | null>(null);
-  const [treeCollapsed, setTreeCollapsed] = useState<Set<string>>(new Set());
-
   const [LEFT_PANEL_WIDTH, setLeftPanelWidth] = useResizableWidth("findings-left-width", 260, { min: 200, max: 600 });
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
-  /** Right-side view: detail (7-section YAML) or code+files (inline split). */
-  const [rightView, setRightView] = useState<"detail" | "code">("detail");
+  /** Right-side sub-tabs: 漏洞详情 / 动态验证 / 可利用性评估. */
+  const [rightView, setRightView] = useState<"detail" | "poc" | "exp">("detail");
 
   /* -------- Data queries -------- */
 
@@ -230,13 +92,6 @@ export function FindingsTab() {
   });
 
   const itemCounts = findingsData?.counts ?? { finding: 0, risk: 0, all: 0 };
-
-  const { data: treeData } = useQuery({
-    queryKey: ["workspace-tree", task.id],
-    queryFn: () => api.tasks.workspaceTree(task.id),
-    staleTime: 60_000,
-    retry: false,
-  });
 
   const allFindings = findingsData?.findings ?? [];
 
@@ -283,41 +138,6 @@ export function FindingsTab() {
     [allFindings, selectedFindingId],
   );
 
-  /* -------- Right panel: resolve which file to show -------- */
-
-  const viewPath: string | null = useMemo(() => {
-    if (detailCodeTarget?.path) return normalizePath(detailCodeTarget.path);
-    if (selectedFinding?.primary_file)
-      return normalizePath(selectedFinding.primary_file);
-    return nonVulnFile;
-  }, [selectedFinding, nonVulnFile, detailCodeTarget]);
-
-  const { data: fileData, isLoading: fileLoading } = useQuery<WorkspaceFile>({
-    queryKey: ["workspace-file", task.id, viewPath],
-    queryFn: () => api.tasks.workspaceFile(task.id, viewPath!),
-    enabled: !!viewPath,
-    staleTime: 5 * 60_000,
-  });
-
-  /* -------- Vuln line decorations for current viewPath -------- */
-
-  const vulnLineSet = useMemo(() => {
-    const set = new Set<number>();
-    if (!viewPath) return set;
-    (fileData?.vuln_decorations ?? []).forEach((d) => set.add(d.line));
-    // Fallback: derive from findings list matching current path.
-    if (set.size === 0) {
-      for (const f of allFindings) {
-        if (!f.primary_line) continue;
-        if (normalizePath(f.primary_file ?? "") === viewPath)
-          set.add(f.primary_line);
-      }
-    }
-    return set;
-  }, [fileData, allFindings, viewPath]);
-
-  const activeLine = detailCodeTarget?.line ?? selectedFinding?.primary_line ?? null;
-
   /* -------- Finding detail query (7-section YAML) -------- */
 
   const {
@@ -336,53 +156,11 @@ export function FindingsTab() {
     staleTime: 5 * 60_000,
   });
 
-  /* -------- File tree (middle panel) -------- */
-
-  const flatTree = useMemo(
-    () =>
-      flattenFindingsTree(
-        treeData?.tree ?? [],
-        allFindings,
-        treeCollapsed,
-      ),
-    [treeData, allFindings, treeCollapsed],
-  );
-
-  function toggleDir(path: string) {
-    setTreeCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  }
-
   /* -------- Interaction handlers -------- */
 
   function handlePickFinding(f: FindingMeta) {
     setSelectedFindingId((cur) => (cur === f.id ? null : f.id));
-    setNonVulnFile(null);
-    setDetailCodeTarget(null);
-  }
-
-  function handlePickTreeNode(node: FlatFileNode) {
-    if (node.isDir) {
-      toggleDir(node.path);
-      return;
-    }
-    if (node.vulnCount > 0) {
-      // Vulnerable file → filter left list, auto-select first.
-      setFileFilter(node.path);
-      setNonVulnFile(null);
-      setDetailCodeTarget(null);
-      // selectedFindingId will be auto-set by the useEffect above.
-    } else {
-      // Non-vuln file → clear filter + finding, just display file.
-      setFileFilter(null);
-      setSelectedFindingId(null);
-      setDetailCodeTarget(null);
-      setNonVulnFile(node.path);
-    }
+    setRightView("detail");
   }
 
   function clearFilter() {
@@ -657,7 +435,7 @@ export function FindingsTab() {
             background: "var(--bg-card)",
           }}
         >
-          {/* Tab bar */}
+          {/* Tab bar — 漏洞详情 / 动态验证 / 可利用性评估 */}
           <div
             data-testid="findings-right-tabs"
             style={{
@@ -667,42 +445,72 @@ export function FindingsTab() {
               borderBottom: "1px solid var(--divider)",
               background: "var(--bg-card)",
               flexShrink: 0,
+              overflowX: "auto",
+              whiteSpace: "nowrap",
             }}
           >
-            {(["detail", "code"] as const).map((tab) => {
-              const active = rightView === tab;
-              const label =
-                tab === "detail"
-                  ? i18n.t("findings.tab.detail")
-                  : i18n.t("findings.tab.code");
+            {([
+              { id: "detail" as const, label: i18n.t("findings.tab.detail"), pill: null },
+              {
+                id: "poc" as const,
+                label: i18n.t("findings.tab.poc"),
+                pill: selectedFinding ? resolvePocTabPill(selectedFinding, dynamicEnabled) : null,
+              },
+              {
+                id: "exp" as const,
+                label: i18n.t("findings.tab.exp"),
+                pill: selectedFinding ? resolveExpTabPill(selectedFinding, dynamicEnabled) : null,
+              },
+            ]).map((tab) => {
+              const active = rightView === tab.id;
               return (
                 <button
-                  key={tab}
+                  key={tab.id}
                   type="button"
-                  data-testid={`findings-tab-${tab}`}
-                  onClick={() => setRightView(tab)}
+                  data-testid={`findings-tab-${tab.id}`}
+                  onClick={() => setRightView(tab.id)}
                   style={{
-                    padding: "10px 18px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "10px 16px",
                     border: "none",
                     borderBottom: active
                       ? "2px solid var(--brand)"
                       : "2px solid transparent",
                     background: "transparent",
                     color: active
-                      ? "var(--text-primary)"
+                      ? "var(--brand)"
                       : "var(--text-secondary)",
                     fontSize: "12.5px",
                     fontWeight: active ? 600 : 400,
                     cursor: "pointer",
                     fontFamily: "inherit",
                     transition: "color 0.12s, border-color 0.12s",
+                    flexShrink: 0,
                   }}
                 >
-                  {label}
+                  {tab.label}
+                  {tab.pill ? (
+                    <span
+                      data-testid={`findings-tab-${tab.id}-pill`}
+                      style={{
+                        fontSize: "9.5px",
+                        fontWeight: 700,
+                        borderRadius: "8px",
+                        padding: "1px 6px",
+                        background: tab.pill.background,
+                        color: tab.pill.color,
+                        border: tab.pill.border,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {tab.pill.label}
+                    </span>
+                  ) : null}
                 </button>
               );
             })}
-            {/* File filter chip (shown when a file is active) */}
             {fileFilter && (
               <span
                 style={{
@@ -713,6 +521,7 @@ export function FindingsTab() {
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "4px",
+                  flexShrink: 0,
                 }}
               >
                 {fileFilter.split("/").pop()}
@@ -736,91 +545,21 @@ export function FindingsTab() {
           </div>
 
           {/* Tab content — only one rendered at a time */}
-          <div style={{ flex: 1, minHeight: 0, overflow: rightView === "code" ? "hidden" : "auto" }}>
-            {rightView === "detail" && (
-              selectedFinding ? (
-                <FindingDetailPanel
-                  taskId={task.id}
-                  finding={selectedFinding}
-                  detail={detailData?.detail}
-                  loading={detailLoading}
-                  error={detailError as Error | null}
-                  dynamicEnabled={dynamicEnabled}
-                  onViewCode={(target) => {
-                    if (target) setDetailCodeTarget(target);
-                    setRightView("code");
-                  }}
-                />
-              ) : (
-                <EmptyState icon="chevron-left" text={i18n.t("findings.detail.placeholder")} />
-              )
-            )}
-
-            {rightView === "code" && (
-              <div
-                style={{
-                  display: "flex",
-                  flex: 1,
-                  height: "100%",
-                  minHeight: 0,
-                  overflow: "hidden",
-                }}
-              >
-                {/* Inline file tree (left side of code tab) */}
-                <div
-                  data-testid="findings-file-tree"
-                  style={{
-                    width: "220px",
-                    flexShrink: 0,
-                    minHeight: 0,
-                    overflow: "auto",
-                    overscrollBehavior: "contain",
-                    borderRight: "1px solid var(--border)",
-                    background: "var(--bg-page)",
-                    padding: "6px 0",
-                  }}
-                >
-                  {!treeData || (treeData.tree ?? []).length === 0 ? (
-                    allFindings.length === 0 ? (
-                      <EmptyState
-                        icon="check"
-                        text={i18n.t("findings.noVulnFiles")}
-                      />
-                    ) : (
-                      <div style={MSG_STYLE}>
-                        {i18n.t("findings.filesEmpty")}
-                      </div>
-                    )
-                  ) : (
-                    flatTree.map((n) => (
-                      <FileTreeRow
-                        key={n.path}
-                        node={n}
-                        selected={
-                          (viewPath ?? "") === n.path ||
-                          (fileFilter ?? "") === n.path
-                        }
-                        onClick={() => handlePickTreeNode(n)}
-                      />
-                    ))
-                  )}
-                </div>
-                {/* Code viewer (right side of code tab) */}
-                <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                  {viewPath ? (
-                    <CodeViewer
-                      path={viewPath}
-                      file={fileData}
-                      loading={fileLoading}
-                      vulnLines={vulnLineSet}
-                      activeLine={activeLine}
-                      testIdPrefix="findings"
-                    />
-                  ) : (
-                    <EmptyCodePlaceholder testId="findings-code-empty" label={i18n.t("findings.selectToView")} />
-                  )}
-                </div>
-              </div>
+          <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            {!selectedFinding ? (
+              <EmptyState icon="chevron-left" text={i18n.t("findings.detail.placeholder")} />
+            ) : rightView === "detail" ? (
+              <FindingDetailPanel
+                taskId={task.id}
+                finding={selectedFinding}
+                detail={detailData?.detail}
+                loading={detailLoading}
+                error={detailError as Error | null}
+              />
+            ) : rightView === "poc" ? (
+              <FindingPocPanel taskId={task.id} finding={selectedFinding} dynamicEnabled={dynamicEnabled} />
+            ) : (
+              <FindingExpPanel taskId={task.id} finding={selectedFinding} dynamicEnabled={dynamicEnabled} />
             )}
           </div>
         </div>
@@ -1081,124 +820,6 @@ function FindingRow({
   );
 }
 
-function FileTreeRow({
-  node,
-  selected,
-  onClick,
-}: {
-  node: FlatFileNode;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  const markerColor =
-    node.vulnSeverity && SEV_COLORS[node.vulnSeverity]
-      ? SEV_COLORS[node.vulnSeverity]
-      : "var(--brand)";
-  return (
-    <div
-      data-testid="findings-file-tree-row"
-      data-file-path={node.path}
-      data-is-dir={node.isDir || undefined}
-      data-has-vuln={node.vulnCount > 0 || undefined}
-      data-selected={selected || undefined}
-      data-severity={node.vulnSeverity ?? undefined}
-      data-count={node.vulnCount || undefined}
-      onClick={onClick}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "6px",
-        padding: "4px 12px",
-        paddingLeft: `${12 + node.depth * 14}px`,
-        cursor: "pointer",
-        fontSize: "12px",
-        color: selected
-          ? "var(--text-primary)"
-          : node.isDir
-            ? "var(--text-primary)"
-            : "var(--text-secondary)",
-        fontWeight: node.isDir ? 600 : selected ? 500 : 400,
-        background: selected ? "var(--border)" : "transparent",
-        borderLeft: selected
-          ? "2px solid var(--brand)"
-          : "2px solid transparent",
-        lineHeight: 1.6,
-        userSelect: "none",
-      }}
-      onMouseEnter={(e) => {
-        if (!selected) e.currentTarget.style.background = "var(--bg-hover)";
-      }}
-      onMouseLeave={(e) => {
-        if (!selected) e.currentTarget.style.background = "transparent";
-      }}
-    >
-      {node.isDir ? (
-        <Icon
-          name={node.collapsed ? "chevron-right" : "chevron-down"}
-          size={12}
-          style={{ color: "var(--text-secondary)", flexShrink: 0 }}
-        />
-      ) : (
-        <Icon
-          name="file-text"
-          size={12}
-          style={{
-            color: "var(--text-secondary)",
-            flexShrink: 0,
-            opacity: 0.7,
-          }}
-        />
-      )}
-
-      <span
-        style={{
-          flex: 1,
-          minWidth: 0,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {node.name}
-        {node.isDir ? "/" : ""}
-      </span>
-
-      {/* Vuln badge: dot + count */}
-      {node.vulnCount > 0 && (
-        <span
-          data-testid="findings-file-decor"
-          data-severity={node.vulnSeverity ?? undefined}
-          data-count={node.vulnCount}
-          title={i18n
-            .t("findings.vulnsInFile")
-            .replace("{n}", String(node.vulnCount))}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "4px",
-            flexShrink: 0,
-            color: "var(--text-secondary)",
-            fontSize: "11px",
-            fontFeatureSettings: "'tnum'",
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          <span
-            style={{
-              width: "8px",
-              height: "8px",
-              borderRadius: "50%",
-              background: markerColor,
-              display: "inline-block",
-            }}
-          />
-          {node.vulnCount > 99 ? "99+" : node.vulnCount}
-        </span>
-      )}
-    </div>
-  );
-}
-
 function EmptyState({
   icon,
   text,
@@ -1236,17 +857,12 @@ function FindingDetailPanel({
   detail,
   loading,
   error,
-  dynamicEnabled = false,
-  onViewCode,
 }: {
   taskId: string;
   finding: FindingMeta;
   detail: FindingDetailData | undefined;
   loading: boolean;
   error: Error | null;
-  dynamicEnabled?: boolean;
-  /** Switch to the code tab within the same page (two-column layout). */
-  onViewCode?: (target?: CodeTarget) => void;
 }) {
   const navigate = useNavigate();
   const sev = (finding.severity ?? "info").toLowerCase();
@@ -1301,14 +917,10 @@ function FindingDetailPanel({
     const path = anchor?.file_path ?? finding.primary_file;
     if (!path) return;
     const line = typeof anchor?.line === "number" ? anchor.line : finding.primary_line ?? null;
-    if (onViewCode) {
-      onViewCode({ path: normalizePath(path), line });
-    } else {
-      const params = new URLSearchParams();
-      params.set("file", normalizePath(path));
-      if (line) params.set("line", String(line));
-      navigate(`/tasks/${taskId}/workspace?${params.toString()}`);
-    }
+    const params = new URLSearchParams();
+    params.set("file", normalizePath(path));
+    if (line) params.set("line", String(line));
+    navigate(`/tasks/${taskId}/workspace?${params.toString()}`);
   };
 
   return (
@@ -1407,12 +1019,10 @@ function FindingDetailPanel({
       {/* Review status section */}
       <FindingReviewSection taskId={taskId} finding={finding} />
 
-      {/* Stage summary rail (static / POC / impact) — shown immediately below
-          review, matching the confirmed prototype's above-the-fold placement. */}
-      <FindingStageRail finding={finding} dynamicEnabled={dynamicEnabled} />
+      {/* Static-analysis card only — POC/EXP live in their own sub-tabs. */}
+      <StaticStatusCard finding={finding} />
 
       {/* CVSS / Exploit-Value scoring card (VulnForge) */}
-      <div data-testid="finding-card-static" style={{ scrollMarginTop: "12px" }} />
       <CvssEvCard finding={finding} />
 
       <AnchorSection anchors={anchors} onViewCode={viewSource} />
@@ -1462,7 +1072,7 @@ function FindingDetailPanel({
 
       <FlexibleSection
         testid="finding-section-code"
-        title={i18n.t("findings.section.code")}
+        title={i18n.t("findings.section.affectedCode")}
         raw={code}
         defaultOpen
         codeTone="bad"
@@ -1508,8 +1118,6 @@ function FindingDetailPanel({
         </Section>
       )}
 
-      {/* Dynamic capability three cards (static / POC / exploitability assessment EXP) */}
-      <FindingDynamicCards taskId={taskId} finding={finding} dynamicEnabled={dynamicEnabled} />
     </div>
   );
 }
