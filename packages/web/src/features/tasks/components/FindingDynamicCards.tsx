@@ -37,7 +37,8 @@ export const STAGE_CARD_STYLE: React.CSSProperties = {
   borderRadius: "8px",
   padding: "12px 14px",
   marginBottom: "12px",
-  maxWidth: "460px",
+  width: "100%",
+  boxSizing: "border-box",
 };
 
 function StateBadge({ color, icon, label }: { color: string; icon: CardIcon; label: string }) {
