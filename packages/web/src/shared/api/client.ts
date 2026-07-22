@@ -632,6 +632,23 @@ export const api = {
   sandbox: {
     capacity: () => request<SandboxCapacity>("/api/sandbox/capacity"),
   },
+  feedback: {
+    submit: (data: { satisfaction: number; content: string; contact_email?: string | null }) =>
+      request<{ ok: boolean; feedback: FeedbackItem }>("/api/feedback", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    list: (opts?: { limit?: number; offset?: number }) => {
+      const params = new URLSearchParams();
+      if (opts?.limit != null) params.set("limit", String(opts.limit));
+      if (opts?.offset != null) params.set("offset", String(opts.offset));
+      const qs = params.toString();
+      return request<{ total: number; feedback: FeedbackItem[] }>(`/api/feedback${qs ? `?${qs}` : ""}`);
+    },
+  },
+  home: {
+    stats: () => request<{ stats: HomePublicStats }>("/api/system/home-stats"),
+  },
   dashboard: {
     get: (range?: string, userId?: string) => {
       const params = new URLSearchParams();
@@ -643,8 +660,34 @@ export const api = {
   },
   chat: {
     sessions: {
-      list: () =>
-        request<{ sessions: ChatSessionApi[] }>("/api/chat/sessions"),
+      list: (opts?: { limit?: number; offset?: number }) => {
+        if (opts?.limit != null || opts?.offset != null) {
+          const params = new URLSearchParams();
+          if (opts.limit != null) params.set("limit", String(opts.limit));
+          if (opts.offset != null) params.set("offset", String(opts.offset));
+          return request<{ sessions: ChatSessionApi[]; next_offset: number | null; total: number }>(
+            `/api/chat/sessions?${params}`,
+          );
+        }
+        return request<{ sessions: ChatSessionApi[] }>("/api/chat/sessions");
+      },
+      search: (q: string) =>
+        request<{
+          query: string;
+          results: Array<{ session: ChatSessionApi; match: string; snippet: string | null }>;
+          groups: {
+            today: ChatSessionApi[];
+            yesterday: ChatSessionApi[];
+            last_7_days: ChatSessionApi[];
+            this_year: ChatSessionApi[];
+            earlier: ChatSessionApi[];
+          };
+        }>(`/api/chat/sessions/search?q=${encodeURIComponent(q)}`),
+      rename: (id: string, title: string) =>
+        request<{ session: ChatSessionApi }>(`/api/chat/sessions/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ title }),
+        }),
       create: (title?: string) =>
         request<{ session: ChatSessionApi }>("/api/chat/sessions", {
           method: "POST",
@@ -952,6 +995,22 @@ export interface UserApi {
   task_limit?: number;
   task_count?: number;
   admin_remark?: string | null;
+}
+
+export interface HomePublicStats {
+  findings_total: number;
+  findings_high: number;
+  tasks_completed: number;
+  as_of: string;
+}
+
+export interface FeedbackItem {
+  id: string;
+  satisfaction: number;
+  content: string;
+  contact_email: string | null;
+  created_at: string;
+  user?: { id: string; email: string | null; display_name: string | null } | null;
 }
 
 export interface SandboxCapacity {
