@@ -347,54 +347,127 @@ rename_backup_database() {
 }
 
 # ALTER DATABASE / ROLE from old names to new names against DATA_DIR/db.
+# Critical: PostgreSQL refuses `ALTER ROLE <session_user> RENAME` — so we
+# create a temporary SUPERUSER, rename via that session, then drop it.
+# Ends with \l/\du-style assertions; non-zero if names did not land.
 rename_database_identifiers() {
   local dir="${DATA_DIR:-}/db"
   [[ -d "$dir" ]] || { rename_warn "no DB dir — skip ALTER RENAME"; return 0; }
   local pg_image="${POSTGRES_IMAGE:-postgres:16-alpine}"
   local cname="vh-rename-pg-$$"
+  local admin_role="vh_rename_admin_$$"
+  # Sanitize role name (postgres identifiers: letters/digits/underscore)
+  admin_role="vh_rename_admin"
   rename_log "renaming DB identifiers: $RENAME_OLD_DB_NAME/$RENAME_OLD_DB_ROLE → $RENAME_NEW_DB_NAME/$RENAME_NEW_DB_ROLE"
   docker run -d --name "$cname" \
     -v "$dir:/var/lib/postgresql/data" \
     -e POSTGRES_HOST_AUTH_METHOD=trust \
     -e POSTGRES_USER="$RENAME_OLD_DB_ROLE" \
     "$pg_image" >/dev/null
-  local i ready=0
+  local i ready=0 bootstrap_role=""
   for i in $(seq 1 40); do
-    if docker exec "$cname" pg_isready -U "$RENAME_OLD_DB_ROLE" >/dev/null 2>&1 \
-      || docker exec "$cname" pg_isready -U "$RENAME_NEW_DB_ROLE" >/dev/null 2>&1; then
-      ready=1
-      break
+    if docker exec "$cname" pg_isready -U "$RENAME_OLD_DB_ROLE" >/dev/null 2>&1; then
+      ready=1; bootstrap_role="$RENAME_OLD_DB_ROLE"; break
+    fi
+    if docker exec "$cname" pg_isready -U "$RENAME_NEW_DB_ROLE" >/dev/null 2>&1; then
+      ready=1; bootstrap_role="$RENAME_NEW_DB_ROLE"; break
     fi
     sleep 1
   done
-  if [[ "$ready" != 1 ]]; then
+  if [[ "$ready" != 1 || -z "$bootstrap_role" ]]; then
     docker rm -f "$cname" >/dev/null 2>&1 || true
     rename_die "temp postgres failed to become ready for DB rename"
     return 1
   fi
 
-  # Already renamed?
+  # Already fully renamed? Assert both db + role, then done.
   if docker exec "$cname" psql -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
-      "SELECT 1 FROM pg_database WHERE datname='${RENAME_NEW_DB_NAME}'" 2>/dev/null | grep -q 1; then
-    rename_log "database already renamed to $RENAME_NEW_DB_NAME"
+        "SELECT 1 FROM pg_database WHERE datname='${RENAME_NEW_DB_NAME}'" 2>/dev/null | grep -q 1 \
+     && docker exec "$cname" psql -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
+        "SELECT 1 FROM pg_roles WHERE rolname='${RENAME_NEW_DB_ROLE}'" 2>/dev/null | grep -q 1 \
+     && ! docker exec "$cname" psql -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
+        "SELECT 1 FROM pg_roles WHERE rolname='${RENAME_OLD_DB_ROLE}'" 2>/dev/null | grep -q 1; then
+    rename_log "database already renamed (db+role=$RENAME_NEW_DB_NAME) — skip"
     docker rm -f "$cname" >/dev/null 2>&1 || true
     return 0
   fi
 
-  # Terminate backends on old DB, then rename. Connect via old role to postgres db.
-  docker exec "$cname" psql -U "$RENAME_OLD_DB_ROLE" -d postgres -v ON_ERROR_STOP=1 <<SQL
-SELECT pg_terminate_backend(pid) FROM pg_stat_activity
-  WHERE datname = '${RENAME_OLD_DB_NAME}' AND pid <> pg_backend_pid();
-ALTER DATABASE ${RENAME_OLD_DB_NAME} RENAME TO ${RENAME_NEW_DB_NAME};
-ALTER ROLE ${RENAME_OLD_DB_ROLE} RENAME TO ${RENAME_NEW_DB_ROLE};
+  # Create a throwaway SUPERUSER so we are not the session user being renamed.
+  # (session user cannot be renamed — the 31.102 silent-failure root cause.)
+  if ! docker exec "$cname" psql -U "$bootstrap_role" -d postgres -v ON_ERROR_STOP=1 <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${admin_role}') THEN
+    CREATE ROLE ${admin_role} WITH SUPERUSER LOGIN;
+  END IF;
+END
+\$\$;
 SQL
-  local rc=$?
-  docker rm -f "$cname" >/dev/null 2>&1 || true
-  if [[ $rc -ne 0 ]]; then
-    rename_die "ALTER DATABASE/ROLE failed (rc=$rc)"
+  then
+    docker rm -f "$cname" >/dev/null 2>&1 || true
+    rename_die "failed to create temporary SUPERUSER ${admin_role}"
     return 1
   fi
-  rename_log "database identifiers renamed"
+
+  # Rename via the temporary admin (not the role being renamed).
+  if ! docker exec "$cname" psql -U "$admin_role" -d postgres -v ON_ERROR_STOP=1 <<SQL
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+  WHERE datname IN ('${RENAME_OLD_DB_NAME}', '${RENAME_NEW_DB_NAME}')
+    AND pid <> pg_backend_pid();
+-- Database rename (idempotent)
+DO \$\$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_database WHERE datname = '${RENAME_OLD_DB_NAME}')
+     AND NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${RENAME_NEW_DB_NAME}') THEN
+    EXECUTE 'ALTER DATABASE ${RENAME_OLD_DB_NAME} RENAME TO ${RENAME_NEW_DB_NAME}';
+  END IF;
+END
+\$\$;
+-- Role rename (idempotent); MUST NOT run as the role being renamed
+DO \$\$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${RENAME_OLD_DB_ROLE}')
+     AND NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${RENAME_NEW_DB_ROLE}') THEN
+    EXECUTE 'ALTER ROLE ${RENAME_OLD_DB_ROLE} RENAME TO ${RENAME_NEW_DB_ROLE}';
+  END IF;
+END
+\$\$;
+SQL
+  then
+    docker exec "$cname" psql -U "$admin_role" -d postgres -c "DROP ROLE IF EXISTS ${admin_role};" >/dev/null 2>&1 || true
+    docker rm -f "$cname" >/dev/null 2>&1 || true
+    rename_die "ALTER DATABASE/ROLE via temporary SUPERUSER failed"
+    return 1
+  fi
+
+  # Drop temporary admin (connect as the new role if rename succeeded).
+  local cleanup_role="$RENAME_NEW_DB_ROLE"
+  if ! docker exec "$cname" pg_isready -U "$cleanup_role" >/dev/null 2>&1; then
+    cleanup_role="$admin_role"
+  fi
+  docker exec "$cname" psql -U "$cleanup_role" -d postgres -c "DROP ROLE IF EXISTS ${admin_role};" >/dev/null 2>&1 || true
+
+  # Hard assertions — refuse to claim success without on-disk proof.
+  local db_ok=0 role_ok=0 old_role_gone=0
+  if docker exec "$cname" psql -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
+      "SELECT 1 FROM pg_database WHERE datname='${RENAME_NEW_DB_NAME}'" 2>/dev/null | grep -q 1; then
+    db_ok=1
+  fi
+  if docker exec "$cname" psql -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
+      "SELECT 1 FROM pg_roles WHERE rolname='${RENAME_NEW_DB_ROLE}'" 2>/dev/null | grep -q 1; then
+    role_ok=1
+  fi
+  if ! docker exec "$cname" psql -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
+      "SELECT 1 FROM pg_roles WHERE rolname='${RENAME_OLD_DB_ROLE}'" 2>/dev/null | grep -q 1; then
+    old_role_gone=1
+  fi
+  docker rm -f "$cname" >/dev/null 2>&1 || true
+
+  if [[ "$db_ok" != 1 || "$role_ok" != 1 || "$old_role_gone" != 1 ]]; then
+    rename_die "DB rename assertion failed (db_ok=$db_ok role_ok=$role_ok old_role_gone=$old_role_gone) — names did not land on disk"
+    return 1
+  fi
+  rename_log "database identifiers renamed and asserted (db+role=$RENAME_NEW_DB_NAME)"
 }
 
 # Count files under a path (host-side; root-owned trees are still listable).
@@ -547,43 +620,161 @@ ${dir}/.minio.sys/buckets/${old_bucket} if present).
 EOF
 }
 
-# Ensure the new docker network exists and reattach SandboxPlane if present.
-rename_prepare_network() {
-  if ! docker network ls --format '{{.Name}}' | grep -qx "$RENAME_NEW_NETWORK"; then
-    rename_log "creating network $RENAME_NEW_NETWORK"
-    docker network create --driver bridge "$RENAME_NEW_NETWORK" >/dev/null
-  else
-    rename_log "network $RENAME_NEW_NETWORK already exists"
-  fi
-
-  # SandboxPlane may be named sandbox-plane (31.102) — reconnect for dynamic continuity.
-  local plane
-  for plane in sandbox-plane sandbox_plane; do
-    if docker ps -a --format '{{.Names}}' | grep -qx "$plane"; then
-      rename_log "attaching $plane to $RENAME_NEW_NETWORK"
-      docker network connect "$RENAME_NEW_NETWORK" "$plane" 2>/dev/null \
-        || rename_log "$plane already on $RENAME_NEW_NETWORK (or connect skipped)"
+# List known SandboxPlane container names (31.102 uses sandbox-plane).
+rename_plane_containers() {
+  local n
+  for n in sandbox-plane sandbox_plane; do
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$n"; then
+      printf '%s
+' "$n"
     fi
   done
 }
 
-# After new stack is up: detach plane from old network and remove it if empty.
-rename_cleanup_old_network() {
+# BEFORE compose up: free the old network so compose can create vulnhunter-internal
+# with its own labels/subnet. Do NOT pre-create the new network — unlabeled
+# pre-create collides with compose (31.102 P0-2).
+rename_prepare_network() {
   local plane
-  for plane in sandbox-plane sandbox_plane; do
-    if docker ps -a --format '{{.Names}}' | grep -qx "$plane"; then
-      docker network disconnect "$RENAME_OLD_NETWORK" "$plane" 2>/dev/null || true
+  while IFS= read -r plane; do
+    [[ -n "$plane" ]] || continue
+    rename_log "disconnecting $plane from $RENAME_OLD_NETWORK (pre-compose)"
+    docker network disconnect -f "$RENAME_OLD_NETWORK" "$plane" 2>/dev/null || true
+  done < <(rename_plane_containers)
+
+  # Drop any leftover unlabeled new-network from a previous failed attempt so
+  # compose can recreate it with project labels.
+  if docker network ls --format '{{.Name}}' | grep -qx "$RENAME_NEW_NETWORK"; then
+    local labeled
+    labeled="$(docker network inspect "$RENAME_NEW_NETWORK" --format '{{index .Labels "com.docker.compose.network"}}' 2>/dev/null || true)"
+    if [[ -z "$labeled" ]]; then
+      rename_log "removing unlabeled pre-existing $RENAME_NEW_NETWORK so compose can own it"
+      docker network rm "$RENAME_NEW_NETWORK" >/dev/null 2>&1 || true
     fi
-  done
-  # Only remove old network if nothing is attached
-  local remaining
-  remaining="$(docker network inspect "$RENAME_OLD_NETWORK" --format '{{len .Containers}}' 2>/dev/null || echo 0)"
-  if [[ "$remaining" == "0" ]]; then
-    docker network rm "$RENAME_OLD_NETWORK" >/dev/null 2>&1 || true
-    rename_log "removed empty old network $RENAME_OLD_NETWORK"
-  else
-    rename_warn "old network $RENAME_OLD_NETWORK still has $remaining endpoint(s) — left in place"
   fi
+
+  if docker network ls --format '{{.Name}}' | grep -qx "$RENAME_OLD_NETWORK"; then
+    local remaining
+    remaining="$(docker network inspect "$RENAME_OLD_NETWORK" --format '{{len .Containers}}' 2>/dev/null || echo 0)"
+    if [[ "$remaining" == "0" ]]; then
+      docker network rm "$RENAME_OLD_NETWORK" >/dev/null 2>&1 || true
+      rename_log "removed empty old network $RENAME_OLD_NETWORK"
+    else
+      # Force-disconnect any residual endpoints (stopped containers etc.) then rm.
+      rename_warn "old network $RENAME_OLD_NETWORK still has $remaining endpoint(s) — force-clearing"
+      local eid ename
+      while IFS=$'\t' read -r eid ename; do
+        [[ -n "$ename" ]] || continue
+        docker network disconnect -f "$RENAME_OLD_NETWORK" "$ename" 2>/dev/null || true
+      done < <(docker network inspect "$RENAME_OLD_NETWORK" --format '{{range $k,$v := .Containers}}{{println $k "\t" $v.Name}}{{end}}' 2>/dev/null || true)
+      docker network rm "$RENAME_OLD_NETWORK" >/dev/null 2>&1 \
+        || rename_warn "could not remove $RENAME_OLD_NETWORK — compose may hit subnet conflict"
+    fi
+  fi
+}
+
+# AFTER compose up: attach SandboxPlane to the compose-managed new network.
+# If the plane was started with NetworkMode pinned to the old network name,
+# connect to the new bridge network is enough (multi-network); we already
+# force-disconnected the old one in rename_prepare_network. If connect still
+# fails, recreate the plane container on the new network preserving mounts/env.
+rename_attach_plane_to_new_network() {
+  if ! docker network ls --format '{{.Name}}' | grep -qx "$RENAME_NEW_NETWORK"; then
+    rename_warn "new network $RENAME_NEW_NETWORK missing after compose up — plane not attached"
+    return 0
+  fi
+  local plane
+  while IFS= read -r plane; do
+    [[ -n "$plane" ]] || continue
+    # Already on the new network?
+    if docker inspect "$plane" --format '{{json .NetworkSettings.Networks}}' 2>/dev/null \
+        | grep -q "\"$RENAME_NEW_NETWORK\""; then
+      rename_log "$plane already on $RENAME_NEW_NETWORK"
+      continue
+    fi
+    rename_log "attaching $plane to $RENAME_NEW_NETWORK"
+    if docker network connect "$RENAME_NEW_NETWORK" "$plane" 2>/dev/null; then
+      rename_log "$plane connected to $RENAME_NEW_NETWORK"
+      continue
+    fi
+    # Connect failed (e.g. NetworkMode hard-pin). Recreate on the new network.
+    rename_warn "connect failed for $plane — recreating container on $RENAME_NEW_NETWORK"
+    rename_recreate_plane_on_new_network "$plane" \
+      || rename_warn "failed to recreate $plane on new network — dynamic path may be broken"
+  done < <(rename_plane_containers)
+}
+
+# Recreate a SandboxPlane container on the new network, preserving image, env,
+# mounts, restart policy, and published ports. Used only when live connect fails.
+rename_recreate_plane_on_new_network() {
+  local plane="$1"
+  local image
+  image="$(docker inspect "$plane" --format '{{.Config.Image}}' 2>/dev/null || true)"
+  [[ -n "$image" ]] || return 1
+
+  local tmp_env tmp_labels
+  tmp_env="$(mktemp)"
+  docker inspect "$plane" --format '{{range .Config.Env}}{{println .}}{{end}}' > "$tmp_env"
+
+  # Build -v and -p args from inspect
+  local run_args=(run -d --name "$plane" --network "$RENAME_NEW_NETWORK")
+  local restart
+  restart="$(docker inspect "$plane" --format '{{.HostConfig.RestartPolicy.Name}}' 2>/dev/null || echo unless-stopped)"
+  [[ -n "$restart" && "$restart" != "no" ]] && run_args+=(--restart "$restart")
+
+  local src dst mode
+  while IFS=$'\t' read -r src dst mode; do
+    [[ -n "$src" && -n "$dst" ]] || continue
+    if [[ "$mode" == *"ro"* ]]; then
+      run_args+=(-v "${src}:${dst}:ro")
+    else
+      run_args+=(-v "${src}:${dst}")
+    fi
+  done < <(docker inspect "$plane" --format '{{range .Mounts}}{{println .Source "\t" .Destination "\t" .Mode}}{{end}}' 2>/dev/null || true)
+
+  local host_ip host_port container_port
+  while IFS=$'\t' read -r host_ip host_port container_port; do
+    [[ -n "$host_port" && -n "$container_port" ]] || continue
+    if [[ -n "$host_ip" && "$host_ip" != "0.0.0.0" && "$host_ip" != "::" ]]; then
+      run_args+=(-p "${host_ip}:${host_port}:${container_port}")
+    else
+      run_args+=(-p "${host_port}:${container_port}")
+    fi
+  done < <(docker inspect "$plane" --format '{{range $p,$arr := .NetworkSettings.Ports}}{{range $arr}}{{println .HostIp "\t" .HostPort "\t" $p}}{{end}}{{end}}' 2>/dev/null | sed 's|/tcp||g' || true)
+
+  # env-file
+  run_args+=(--env-file "$tmp_env")
+  run_args+=("$image")
+  # Preserve original command if any
+  local cmd
+  cmd="$(docker inspect "$plane" --format '{{json .Config.Cmd}}' 2>/dev/null || echo null)"
+
+  docker stop "$plane" >/dev/null 2>&1 || true
+  docker rename "$plane" "${plane}-old-$$" >/dev/null 2>&1 || docker rm -f "$plane" >/dev/null 2>&1 || true
+
+  if [[ "$cmd" != "null" && -n "$cmd" ]]; then
+    # shellcheck disable=SC2068
+    if ! docker "${run_args[@]}" >/dev/null; then
+      docker rename "${plane}-old-$$" "$plane" >/dev/null 2>&1 || true
+      rm -f "$tmp_env"
+      return 1
+    fi
+  else
+    # shellcheck disable=SC2068
+    if ! docker "${run_args[@]}" >/dev/null; then
+      docker rename "${plane}-old-$$" "$plane" >/dev/null 2>&1 || true
+      rm -f "$tmp_env"
+      return 1
+    fi
+  fi
+  docker rm -f "${plane}-old-$$" >/dev/null 2>&1 || true
+  rm -f "$tmp_env"
+  rename_log "recreated $plane on $RENAME_NEW_NETWORK"
+}
+
+# Back-compat alias used by upgrade.sh after compose up.
+rename_cleanup_old_network() {
+  rename_attach_plane_to_new_network
 }
 
 # Promote install manifest filename.
@@ -614,11 +805,15 @@ If the post-rename stack fails and you must restore the previous VulnAgent layou
    rm -f <old-path-symlink>
    mv <new-path> <old-path>
 
-4. If the DB was renamed, start a temp postgres against DATA_DIR/db and reverse:
+4. If the DB was renamed, start a temp postgres against DATA_DIR/db and **probe first**:
+   \`SELECT datname FROM pg_database; SELECT rolname FROM pg_roles;\`
+   Only reverse when the new names are actually present (do not blind ALTER):
    ALTER DATABASE ${RENAME_NEW_DB_NAME} RENAME TO ${RENAME_OLD_DB_NAME};
    ALTER ROLE ${RENAME_NEW_DB_ROLE} RENAME TO ${RENAME_OLD_DB_ROLE};
+   (Use a temporary SUPERUSER — session user cannot rename itself.)
 
 5. Point MINIO_BUCKET back to \`${RENAME_OLD_BUCKET}\` (old bucket was retained).
+   A leftover \`${RENAME_NEW_BUCKET}\` directory is harmless to the old stack; delete manually if desired.
 
 6. Reattach SandboxPlane to \`${RENAME_OLD_NETWORK}\` if needed:
    docker network connect ${RENAME_OLD_NETWORK} sandbox-plane
