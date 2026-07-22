@@ -25,15 +25,72 @@ async function getOwnedSession(c: any) {
   return chatStorage.getSessionForContext(c.req.param("id"), ctx);
 }
 
-// GET /api/chat/sessions
+// GET /api/chat/sessions — supports ?limit=&offset= for infinite scroll (default 20)
 chatRouter.get("/sessions", async (c) => {
   const ctx = queryContextFromUser(c.get("user"));
+  const hasPaging = c.req.query("limit") != null || c.req.query("offset") != null;
+  if (hasPaging) {
+    const limit = Number(c.req.query("limit") ?? 20);
+    const offset = Number(c.req.query("offset") ?? 0);
+    const page = await chatStorage.listSessionsPage(ctx, { limit, offset });
+    let sessions = page.sessions;
+    if (ctx.role === "admin") {
+      const creators = await listUsersByIds(uniqueCreatorIds(sessions, "user_id"));
+      sessions = attachCreatorSummaries(ctx.role, sessions, "user_id", creators) as typeof sessions;
+    }
+    return c.json({ sessions, next_offset: page.next_offset, total: page.total });
+  }
+  // Backward-compatible unpaged list (legacy clients)
   const sessions = await chatStorage.listSessions(ctx);
   if (ctx.role !== "admin") return c.json({ sessions });
-
   const creators = await listUsersByIds(uniqueCreatorIds(sessions, "user_id"));
   return c.json({ sessions: attachCreatorSummaries(ctx.role, sessions, "user_id", creators) });
 });
+
+// GET /api/chat/sessions/search?q=
+chatRouter.get("/sessions/search", async (c) => {
+  const ctx = queryContextFromUser(c.get("user"));
+  const q = (c.req.query("q") ?? "").trim();
+  if (!q) return c.json({ query: q, results: [], groups: emptySearchGroups() });
+  if (q.length > 200) {
+    return c.json({ error: { code: "ERR_VALIDATION", message: "query too long" } }, 400);
+  }
+  const hits = await chatStorage.searchSessions(ctx, q, { limit: 50 });
+  const results = hits.map((h) => ({
+    session: h.session,
+    match: h.match,
+    snippet: h.snippet,
+  }));
+  return c.json({ query: q, results, groups: groupSearchByDate(results.map((r) => r.session)) });
+});
+
+function emptySearchGroups(): {
+  today: chatStorage.DbChatSession[];
+  yesterday: chatStorage.DbChatSession[];
+  last_7_days: chatStorage.DbChatSession[];
+  this_year: chatStorage.DbChatSession[];
+  earlier: chatStorage.DbChatSession[];
+} {
+  return { today: [], yesterday: [], last_7_days: [], this_year: [], earlier: [] };
+}
+
+function groupSearchByDate(sessions: chatStorage.DbChatSession[]) {
+  const groups = emptySearchGroups();
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
+  const startOf7 = new Date(startOfToday.getTime() - 6 * 86400000);
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  for (const s of sessions) {
+    const t = new Date(s.updated_at).getTime();
+    if (t >= startOfToday.getTime()) groups.today.push(s);
+    else if (t >= startOfYesterday.getTime()) groups.yesterday.push(s);
+    else if (t >= startOf7.getTime()) groups.last_7_days.push(s);
+    else if (t >= startOfYear.getTime()) groups.this_year.push(s);
+    else groups.earlier.push(s);
+  }
+  return groups;
+}
 
 // POST /api/chat/sessions — create new session
 chatRouter.post("/sessions", async (c) => {
@@ -77,6 +134,17 @@ chatRouter.delete("/sessions/:id", async (c) => {
   await destroySession(session.id);
   await chatStorage.deleteSession(session.id);
   return c.json({ ok: true });
+});
+
+// PATCH /api/chat/sessions/:id — rename
+chatRouter.patch("/sessions/:id", async (c) => {
+  const session = await getOwnedSession(c);
+  if (!session) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  const body = await c.req.json<{ title?: string }>();
+  const title = (body.title ?? "").trim();
+  if (!title) return c.json({ error: { code: "ERR_VALIDATION", message: "title required" } }, 400);
+  const updated = await chatStorage.renameSession(session.id, title);
+  return c.json({ session: updated });
 });
 
 // GET /api/chat/sessions/:id/messages
