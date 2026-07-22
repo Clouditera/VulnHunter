@@ -218,8 +218,8 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
       onClick={onClose}
     >
       <div style={MODAL} onClick={(e) => e.stopPropagation()}>
-        {/* Search input */}
-        <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--divider)" }}>
+        {/* 横线1 之上：搜索框区 */}
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
           <input
             ref={inputRef}
             data-testid="session-search-input"
@@ -231,10 +231,10 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
           />
         </div>
 
+        {/* 中部：左栏 | 通高竖线 | 右栏 */}
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-          {/* Left column */}
-          <div style={{ width: "46%", borderRight: "1px solid var(--divider)", display: "flex", flexDirection: "column", minHeight: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px" }}>
+          <div style={{ width: "46%", display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px 8px" }}>
               <button type="button" data-testid="search-new-chat" onClick={() => { onNewChat(); onClose(); }} style={ACTION_BTN}>
                 {i18n.t("search.newChat")}
               </button>
@@ -242,12 +242,13 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
                 {i18n.t("search.showAll")}
               </button>
             </div>
-            <div style={{ flex: 1, overflow: "auto", padding: "0 8px 12px" }}>
+            <div style={{ flex: 1, overflow: "auto", padding: "0 10px 12px" }}>
               {loading && items.length === 0 ? (
                 <div style={EMPTY}>{i18n.t("search.loading")}</div>
               ) : items.length === 0 ? (
                 <div style={EMPTY} data-testid="search-empty">
-                  {i18n.t("search.empty")}
+                  <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.35 }}>⌕</div>
+                  <div>{i18n.t("search.empty")}</div>
                   {q.trim() ? (
                     <button type="button" onClick={() => setQ("")} style={{ ...LINK_BTN, display: "block", margin: "10px auto 0" }}>
                       {i18n.t("search.clear")}
@@ -259,7 +260,7 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
                   const list = grouped.get(key) ?? [];
                   if (list.length === 0) return null;
                   return (
-                    <div key={key} style={{ marginBottom: 10 }}>
+                    <div key={key} style={{ marginBottom: 6 }}>
                       <div style={GROUP_LABEL}>{i18n.t(`search.group.${key}`)}</div>
                       {list.map((it) => {
                         flatIndex += 1;
@@ -272,38 +273,50 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
                             data-testid="search-result-row"
                             className="vh-search-row"
                             onMouseEnter={() => setSelectedIdx(idx)}
-                            onClick={() => {
-                              setSelectedIdx(idx);
-                            }}
+                            onClick={() => setSelectedIdx(idx)}
                             onDoubleClick={openSelected}
                             style={{
                               ...ROW,
-                              background: active ? "var(--bg-hover)" : "transparent",
+                              background: active ? "var(--bg-page)" : "transparent",
                             }}
                           >
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                                 <span
                                   style={{
                                     flex: 1,
+                                    minWidth: 0,
                                     fontSize: 13,
                                     fontWeight: 600,
                                     overflow: "hidden",
                                     textOverflow: "ellipsis",
                                     whiteSpace: "nowrap",
+                                    color: "var(--text-primary)",
                                   }}
                                   dangerouslySetInnerHTML={{
                                     __html: highlight(it.session.title || i18n.t("search.untitled"), q),
                                   }}
                                 />
                                 {isCurrent ? <span style={CURRENT_BADGE}>{i18n.t("search.current")}</span> : null}
-                                <span style={{ fontSize: 11, color: "var(--text-secondary)", flexShrink: 0 }}>
+                                <span style={{
+                                  fontSize: 11,
+                                  color: "var(--text-tertiary, var(--text-secondary))",
+                                  flexShrink: 0,
+                                  marginLeft: 8,
+                                }}>
                                   {relTime(it.session.updated_at)}
                                 </span>
                               </div>
                               {it.snippet ? (
                                 <div
-                                  style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                  style={{
+                                    fontSize: 11,
+                                    color: "var(--text-secondary)",
+                                    marginTop: 2,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
                                   dangerouslySetInnerHTML={{ __html: highlight(it.snippet, q) }}
                                 />
                               ) : null}
@@ -323,12 +336,21 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
             </div>
           </div>
 
-          {/* Right preview */}
+          {/* Right preview — 距竖线 20px */}
           <div style={{ width: "54%", display: "flex", flexDirection: "column", minHeight: 0 }}>
-            <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--divider)", fontSize: 13, fontWeight: 700 }}>
+            <div style={{
+              padding: "14px 20px",
+              borderBottom: "1px solid var(--border)",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "var(--text-primary)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}>
               {selected?.session.title || i18n.t("search.previewTitle")}
             </div>
-            <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+            <div style={{ flex: 1, overflow: "auto", padding: "16px 20px" }}>
               {!selected ? (
                 <div style={EMPTY}>{i18n.t("search.previewEmpty")}</div>
               ) : previewLoading ? (
@@ -336,44 +358,53 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
               ) : previewMsgs.length === 0 ? (
                 <div style={EMPTY}>{i18n.t("search.previewNoMessages")}</div>
               ) : (
-                previewMsgs.map((m, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      marginBottom: 10,
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      background: m.role === "user" ? "rgba(37,99,235,0.08)" : "var(--bg-page)",
-                      border: "1px solid var(--divider)",
-                      fontSize: 12.5,
-                      lineHeight: 1.55,
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 4 }}>
-                      {m.role === "user" ? i18n.t("search.roleUser") : i18n.t("search.roleAssistant")}
+                previewMsgs.map((m, i) => {
+                  const isUser = m.role === "user";
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        marginBottom: 10,
+                        display: "flex",
+                        justifyContent: isUser ? "flex-end" : "flex-start",
+                      }}
+                    >
+                      <div
+                        style={{
+                          maxWidth: "88%",
+                          padding: "8px 12px",
+                          borderRadius: 10,
+                          background: isUser ? "var(--bg-page)" : "#fff",
+                          border: isUser ? "1px solid transparent" : "1px solid var(--border)",
+                          fontSize: 12.5,
+                          lineHeight: 1.55,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                          color: "var(--text-primary)",
+                        }}
+                      >
+                        {m.content.slice(0, 800)}
+                        {m.content.length > 800 ? "…" : ""}
+                      </div>
                     </div>
-                    {m.content.slice(0, 800)}
-                    {m.content.length > 800 ? "…" : ""}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
         </div>
 
+        {/* 横线2 + 快捷键条左对齐 20px */}
         <div style={FOOTER}>
           <span>↵ {i18n.t("search.open")}</span>
-          <span>·</span>
           <span>↑↓ {i18n.t("search.navigate")}</span>
-          <span>·</span>
           <span>Esc {i18n.t("search.close")}</span>
         </div>
       </div>
       <style>{`
         .vh-search-row .vh-search-ops { opacity: 0; transition: opacity .12s; }
         .vh-search-row:hover .vh-search-ops { opacity: 1; }
+        .vh-search-hl { background: rgba(229,52,45,0.12); color: #e5342d; padding: 0 1px; border-radius: 2px; }
       `}</style>
     </div>
   );
@@ -394,11 +425,19 @@ function bucketDate(iso: string): GroupKey {
 }
 
 function relTime(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
+  const d = new Date(iso);
+  const ms = Date.now() - d.getTime();
   if (ms < 60_000) return "刚刚";
-  if (ms < 3600_000) return `${Math.floor(ms / 60_000)}m`;
-  if (ms < 86400_000) return `${Math.floor(ms / 3600_000)}h`;
-  return `${Math.floor(ms / 86400_000)}d`;
+  if (ms < 3600_000) return `${Math.floor(ms / 60_000)} 分钟前`;
+  if (ms < 86400_000) return `${Math.floor(ms / 3600_000)} 小时前`;
+  if (ms < 7 * 86400_000) return `${Math.floor(ms / 86400_000)} 天前`;
+  const now = new Date();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  if (d.getFullYear() !== now.getFullYear()) {
+    return `${d.getFullYear()} 年 ${m} 月 ${day} 日`;
+  }
+  return `${m} 月 ${day} 日`;
 }
 
 function highlight(text: string, q: string): string {
@@ -407,7 +446,7 @@ function highlight(text: string, q: string): string {
   if (!qq) return safe;
   try {
     const re = new RegExp(`(${escapeRegExp(qq)})`, "ig");
-    return safe.replace(re, '<mark style="background:rgba(229,52,45,0.14);color:inherit;padding:0 1px;border-radius:2px">$1</mark>');
+    return safe.replace(re, '<mark class="vh-search-hl">$1</mark>');
   } catch {
     return safe;
   }
@@ -425,12 +464,12 @@ const OVERLAY: CSSProperties = {
   display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
 };
 const MODAL: CSSProperties = {
-  width: "min(1080px, 92vw)", height: "min(640px, 84vh)", background: "var(--bg-card)",
+  width: "min(1080px, 92vw)", height: "min(640px, 84vh)", background: "var(--bg-card, #fff)",
   borderRadius: 12, boxShadow: "0 24px 60px rgba(0,0,0,0.28)", display: "flex", flexDirection: "column", overflow: "hidden",
 };
 const SEARCH_INPUT: CSSProperties = {
   width: "100%", height: 44, border: "1px solid var(--border)", borderRadius: 10,
-  padding: "0 14px", fontSize: 14, outline: "none", background: "var(--bg-page)", color: "var(--text-primary)",
+  padding: "0 14px", fontSize: 14, outline: "none", background: "var(--bg-page, #f6f7f9)", color: "var(--text-primary)",
 };
 const ACTION_BTN: CSSProperties = {
   border: "1px solid var(--border)", background: "var(--bg-page)", borderRadius: 8,
@@ -440,23 +479,24 @@ const LINK_BTN: CSSProperties = {
   border: "none", background: "none", color: "var(--link, #2563eb)", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
 };
 const GROUP_LABEL: CSSProperties = {
-  fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", padding: "6px 8px 4px", textTransform: "uppercase", letterSpacing: "0.04em",
+  fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", padding: "10px 10px 4px", letterSpacing: "0.02em",
 };
 const ROW: CSSProperties = {
-  display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, cursor: "pointer",
+  display: "flex", alignItems: "center", gap: 8, height: 40, padding: "0 10px", borderRadius: 6, cursor: "pointer",
 };
-const OPS: CSSProperties = { display: "flex", gap: 2, flexShrink: 0 };
+const OPS: CSSProperties = { display: "flex", gap: 6, flexShrink: 0, alignItems: "center" };
 const OP_BTN: CSSProperties = {
-  border: "none", background: "transparent", cursor: "pointer", fontSize: 13, padding: "2px 5px", color: "var(--text-secondary)",
+  border: "none", background: "transparent", cursor: "pointer", fontSize: 13, padding: "2px 4px",
+  color: "var(--text-secondary)", lineHeight: 1,
 };
 const CURRENT_BADGE: CSSProperties = {
-  fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 999,
-  background: "rgba(37,99,235,0.12)", color: "#2563eb", flexShrink: 0,
+  fontSize: 9.5, fontWeight: 700, padding: "1px 6px", borderRadius: 999,
+  background: "rgba(22,163,74,0.12)", color: "#16a34a", border: "1px solid rgba(22,163,74,0.28)", flexShrink: 0,
 };
 const EMPTY: CSSProperties = {
-  textAlign: "center", color: "var(--text-secondary)", fontSize: 13, padding: "40px 16px",
+  textAlign: "center", color: "var(--text-secondary)", fontSize: 13, padding: "48px 16px",
 };
 const FOOTER: CSSProperties = {
-  display: "flex", gap: 10, alignItems: "center", justifyContent: "center",
-  padding: "8px 12px", borderTop: "1px solid var(--divider)", fontSize: 11, color: "var(--text-secondary)",
+  display: "flex", gap: 18, alignItems: "center", justifyContent: "flex-start",
+  padding: "10px 20px", borderTop: "1px solid var(--border)", fontSize: 11, color: "var(--text-secondary)",
 };
