@@ -93,6 +93,9 @@ docker save "$POSTGRES_IMAGE" -o "$OUT/images/postgres-16-alpine.tar"
 docker save "$MINIO_IMAGE" -o "$OUT/images/minio.tar"
 
 cp deploy/docker-compose.yml deploy/.env.example deploy/install.sh deploy/upgrade.sh deploy/uninstall.sh deploy/doctor.sh "$OUT/"
+# upgrade.sh sources lib/rename-migrate.sh (VulnHunter rename migration). Ship the whole lib/.
+mkdir -p "$OUT/lib"
+cp deploy/lib/*.sh "$OUT/lib/"
 LICENSE_PUBLIC_KEY_SOURCE="${LICENSE_PUBLIC_KEY_FILE:-$HOME/.vulnhunt-issuer/license-public.pem}"
 if [[ ! -f "$LICENSE_PUBLIC_KEY_SOURCE" ]]; then
   echo "missing license public key: $LICENSE_PUBLIC_KEY_SOURCE" >&2
@@ -122,7 +125,8 @@ if find "$OUT" -type f ! -path "$OUT/images/*" ! -path "$OUT/.secrets/license-pu
 fi
 cp -r docs/vulnhunter-srv/releases/. "$OUT/docs/"
 cp deploy/README.md "$OUT/docs/install.md" 2>/dev/null || true
-chmod +x "$OUT"/*.sh
+chmod +x "$OUT"/*.sh "$OUT"/lib/*.sh
+[[ -x "$OUT/lib/rename-migrate.sh" ]] || { echo "release validation failed: missing lib/rename-migrate.sh (required by upgrade.sh)" >&2; exit 1; }
 if find "$OUT" -type f ! -path "$OUT/images/*" \( -name "*.map" -o -name "*.d.ts" -o -name "*.d.ts.map" \) | grep -q .; then
   echo "release validation failed: map/declaration files found in release files" >&2
   find "$OUT" -type f ! -path "$OUT/images/*" \( -name "*.map" -o -name "*.d.ts" -o -name "*.d.ts.map" \) | head -20 >&2
@@ -137,6 +141,7 @@ fi
   cd "$OUT"
   find images -type f -name '*.tar' -print | sort
   printf '%s\n' docker-compose.yml .env.example install.sh doctor.sh upgrade.sh uninstall.sh VERSION.json .secrets/license-public.pem
+  find lib -type f -name '*.sh' -print | sort
   find docs -type f -print | sort
 ) | while IFS= read -r file; do
   [[ -f "$OUT/$file" ]] && sha256sum "$OUT/$file"
