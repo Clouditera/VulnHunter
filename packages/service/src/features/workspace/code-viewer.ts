@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { LRUCache } from "./lru-cache.js";
 import { fileTypeFromBuffer } from "file-type";
 import { listArchiveEntries, readArchiveFile, type ArchiveEntry } from "../source-archives/reader.js";
+import { decodeTextFileContent } from "../source-archives/charset.js";
 
 const FILE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 export const MAX_FILE_SIZE_BYTES = 1024 * 1024; // 1MB — larger files get truncated
@@ -138,10 +139,10 @@ export async function classifyCodeFileBuffer(buf: Buffer, filePath: string, opts
     };
   }
 
-  const full = buf.toString("utf-8");
+  const full = decodeTextFileContent(buf);
   const truncated = buf.length > MAX_FILE_SIZE_BYTES;
   const content = truncated
-    ? buf.slice(0, MAX_FILE_SIZE_BYTES).toString("utf-8") + (opts?.truncatedMarker ?? TRUNCATED_MARKER)
+    ? decodeTextFileContent(buf.subarray(0, MAX_FILE_SIZE_BYTES)) + (opts?.truncatedMarker ?? TRUNCATED_MARKER)
     : full;
   return {
     content,
