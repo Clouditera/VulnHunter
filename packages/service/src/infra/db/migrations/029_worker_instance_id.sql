@@ -1,5 +1,5 @@
 -- Stable per-install instance identity, used to scope worker container
--- ownership (label vulnagent.instance=<id>) so reconciler/event-subscription
+-- ownership (label vulnhunter.instance=<id>) so reconciler/event-subscription
 -- on a shared Docker daemon only ever sees this install's own containers.
 CREATE TABLE IF NOT EXISTS worker_instance (
   id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),

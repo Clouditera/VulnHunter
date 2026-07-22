@@ -5,7 +5,7 @@
  * (finding-dynamic.ts) and match the SSOT exactly; `upgraded` does NOT exist.
  */
 import type { IconName } from "../../../shared/components/Icon";
-import type { PocStatus, ExpStatus } from "@vulnagent/shared";
+import type { PocStatus, ExpStatus } from "@vulnhunter/shared";
 
 export type CardIcon = Extract<
   IconName,

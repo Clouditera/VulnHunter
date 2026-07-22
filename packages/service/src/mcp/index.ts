@@ -27,7 +27,7 @@ const mcpSessions = new Map<string, McpSession>();
 
 function createToolServer(ctx: McpContext): McpServer {
   const server = new McpServer(
-    { name: "vulnagent", version: "1.0.0" },
+    { name: "vulnhunter", version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
 

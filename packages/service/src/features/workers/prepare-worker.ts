@@ -1,7 +1,7 @@
 /**
  * Prepare worker (H5 §2): runs the minimal Prepare Flow (source-completeness
  * check + dynamic sandbox-type selection) inside the same worker image as a
- * scan, as a one-shot `va-prepare-<task>` container, before the scan worker is
+ * scan, as a one-shot `vh-prepare-<task>` container, before the scan worker is
  * started.
  *
  * Owner discipline (②): the Scheduler spawns/stops this container while it
@@ -42,7 +42,7 @@ const CONTAINER_OUTPUT_DIR = "/prepare-out";
 // start empty and postflight requires it to contain only prepare-result.json.
 const CONTAINER_SANDBOX_TYPES_FILE = "/prepare-meta/sandbox-types.json";
 /** In-container path of the flow's models.json (COPY flows/prepare → /opt/...). */
-const CONTAINER_FLOW_MODELS_JSON = "/opt/vulnagent/flows/prepare/models.json";
+const CONTAINER_FLOW_MODELS_JSON = "/opt/vulnhunter/flows/prepare/models.json";
 
 /** The three-field Prepare result contract (P1/P2 frozen). */
 export interface PrepareResult {
@@ -120,7 +120,7 @@ export async function resolvePrepareModel(task: DbTask, serviceUrl: string): Pro
 /**
  * Create (but do not start) the prepare worker container. The source tree is
  * mounted read-only at PREPARE_SOURCE_ROOT; an empty dir is mounted at
- * PREPARE_OUTPUT_DIR. The deterministic name va-prepare-<task> is the final
+ * PREPARE_OUTPUT_DIR. The deterministic name vh-prepare-<task> is the final
  * atomic guard; a name conflict fails closed rather than replacing.
  */
 export async function createPrepareWorker(opts: SpawnPrepareWorkerOptions): Promise<Dockerode.Container> {
@@ -141,7 +141,7 @@ export async function createPrepareWorker(opts: SpawnPrepareWorkerOptions): Prom
   await writeFile(modelsJsonHostPath, modelsJson, { mode: 0o644 });
 
   try {
-    const old = getDocker().getContainer(`va-prepare-${task.id}`);
+    const old = getDocker().getContainer(`vh-prepare-${task.id}`);
     const info = await old.inspect();
     throw new Error(`Prepare worker name conflict for task ${task.id} (state=${info.State?.Status ?? "unknown"})`);
   } catch (err: any) {

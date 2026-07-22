@@ -761,7 +761,7 @@ function toDomainMessage(m: ChatMessageApi): ChatMessage {
 
 /** Build a ws:// or wss:// URL from a path. */
 function formatChatSendError(raw: string): string {
-  if (raw.includes("VULNAGENT_MASTER_KEY_FILE") || raw.includes("凭证加密 key 未配置")) {
+  if (raw.includes("VULNHUNTER_MASTER_KEY_FILE") || raw.includes("凭证加密 key 未配置")) {
     return "Chat 暂时无法响应：模型凭证加密 key 未配置。请管理员检查服务端 master key 配置后重试。";
   }
   if (raw.includes("无法解密") || raw.includes("cannot be decrypted")) {

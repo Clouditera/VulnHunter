@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "../../infra/db/client.js";
-import type { TaskMetadata, TaskState } from "@vulnagent/shared";
+import type { TaskMetadata, TaskState } from "@vulnhunter/shared";
 import type { QueryContext } from "../../infra/query-context.js";
 import { shouldFilterByUser } from "../../infra/query-context.js";
 

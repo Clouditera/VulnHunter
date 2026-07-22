@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-FLOW_DIR="/opt/vulnagent/flows/vulnforge"
+FLOW_DIR="/opt/vulnhunter/flows/vulnforge"
 FLOW_FILE="$FLOW_DIR/flow.audit.yaml"
-TIMEOUT_FLOW_FILE="/opt/vulnagent/flows/vulnforge-timeout/flow.timeout-finalize.yaml"
+TIMEOUT_FLOW_FILE="/opt/vulnhunter/flows/vulnforge-timeout/flow.timeout-finalize.yaml"
 DEADLINE_RUNNER="/opt/run-with-deadline.py"
 FINALIZE_ARTIFACTS="/opt/timeout-finalize-artifacts.py"
 FINALIZE_CONTROL="/workspace/.timeout-finalize"

@@ -378,7 +378,7 @@ const ZH: Record<string, string> = {
   "login.errorInvalid": "邮箱或密码错误。",
 
   // Activate
-  "activate.title": "激活 VulnAgent",
+  "activate.title": "激活 VulnHunter",
   "activate.desc": "复制机器码发给供应商获取授权证书，然后粘贴证书激活平台。",
   "activate.machineCode": "机器码",
   "activate.copyMachineCode": "复制机器码",
@@ -393,8 +393,8 @@ const ZH: Record<string, string> = {
   "activate.error.invalid_format": "授权证书格式无效，请粘贴完整 JSON 证书。",
   "activate.error.invalid_signature": "授权证书签名无效，请联系供应商重新签发。",
   "activate.error.machine_code_mismatch": "授权证书与本机机器码不匹配，请使用当前机器码重新申请。",
-  "activate.error.wrong_software": "授权证书不适用于 VulnAgent，请联系供应商重新签发。",
-  "activate.error.version_mismatch": "授权证书不适用于当前 VulnAgent 版本，请联系供应商重新签发。",
+  "activate.error.wrong_software": "授权证书不适用于 VulnHunter，请联系供应商重新签发。",
+  "activate.error.version_mismatch": "授权证书不适用于当前 VulnHunter 版本，请联系供应商重新签发。",
   "activate.error.already_expired": "授权证书已过期，请联系供应商获取新证书。",
   "activate.error.license_verifier_unconfigured": "授权校验未配置，请联系部署管理员检查授权公钥配置。",
   "activate.error.default": "授权激活失败，请检查证书或联系供应商。",
@@ -1185,7 +1185,7 @@ const EN: Record<string, string> = {
   "dashboard.loading": "Loading…",
 
   // Login
-  "login.title": "VulnAgent",
+  "login.title": "VulnHunter",
   "login.subtitle": "Sign in to continue",
   "login.email": "Email",
   "login.password": "Password",
@@ -1195,7 +1195,7 @@ const EN: Record<string, string> = {
   "login.errorInvalid": "Invalid email or password.",
 
   // Activate
-  "activate.title": "Activate VulnAgent",
+  "activate.title": "Activate VulnHunter",
   "activate.desc": "Copy the machine code, request a license certificate from your vendor, then paste it below to activate.",
   "activate.machineCode": "Machine Code",
   "activate.copyMachineCode": "Copy Machine Code",
@@ -1210,8 +1210,8 @@ const EN: Record<string, string> = {
   "activate.error.invalid_format": "Invalid license certificate format. Paste the full JSON certificate.",
   "activate.error.invalid_signature": "Invalid license signature. Contact your vendor for a new certificate.",
   "activate.error.machine_code_mismatch": "This license does not match the current machine code.",
-  "activate.error.wrong_software": "This license is not for VulnAgent. Contact your vendor for a new certificate.",
-  "activate.error.version_mismatch": "This license is not valid for the current VulnAgent version.",
+  "activate.error.wrong_software": "This license is not for VulnHunter. Contact your vendor for a new certificate.",
+  "activate.error.version_mismatch": "This license is not valid for the current VulnHunter version.",
   "activate.error.already_expired": "This license certificate has expired.",
   "activate.error.license_verifier_unconfigured": "License verifier is not configured. Contact the deployment administrator.",
   "activate.error.default": "License activation failed. Check the certificate or contact your vendor.",

@@ -22,11 +22,11 @@ describe("worker instance identity", () => {
     vi.resetModules();
     selectResult = [];
     insertCalls = 0;
-    delete process.env.VULNAGENT_INSTANCE_ID;
+    delete process.env.VULNHUNTER_INSTANCE_ID;
   });
 
-  it("prefers VULNAGENT_INSTANCE_ID env override over any DB row", async () => {
-    process.env.VULNAGENT_INSTANCE_ID = "operator-forced-id";
+  it("prefers VULNHUNTER_INSTANCE_ID env override over any DB row", async () => {
+    process.env.VULNHUNTER_INSTANCE_ID = "operator-forced-id";
     selectResult = [{ instance_id: "db-id-should-be-ignored" }];
     const { initWorkerInstanceId, getWorkerInstanceId } = await import("../../src/features/workers/instance-id.js");
     const resolved = await initWorkerInstanceId();

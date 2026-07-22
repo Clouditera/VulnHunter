@@ -1,5 +1,5 @@
 {
-  "name": "@vulnagent/web",
+  "name": "@vulnhunter/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.7",
-    "@vulnagent/shared": "workspace:*",
+    "@vulnhunter/shared": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",

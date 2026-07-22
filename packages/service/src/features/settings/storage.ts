@@ -15,11 +15,11 @@ function normalizeContextWindowTokens(value?: number | null): number {
 let _vaultUnavailableReason: string | null = null;
 
 export function initVault(dataDir: string): void {
-  const keyPath = process.env.VULNAGENT_MASTER_KEY_FILE
-    ?? (process.env.VULNAGENT_ALLOW_DATA_DIR_MASTER_KEY_FALLBACK === "1" ? join(dataDir, ".master.key") : undefined);
+  const keyPath = process.env.VULNHUNTER_MASTER_KEY_FILE
+    ?? (process.env.VULNHUNTER_ALLOW_DATA_DIR_MASTER_KEY_FALLBACK === "1" ? join(dataDir, ".master.key") : undefined);
   if (!keyPath) {
     _vault = null;
-    _vaultUnavailableReason = "VULNAGENT_MASTER_KEY_FILE is not configured";
+    _vaultUnavailableReason = "VULNHUNTER_MASTER_KEY_FILE is not configured";
     return;
   }
   try {
@@ -34,7 +34,7 @@ export function initVault(dataDir: string): void {
 function getVault(): MasterKeyVault {
   if (!_vault) {
     throw new CredentialKeyUnavailableError(
-      "凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。",
+      "凭证加密 key 未配置。请管理员设置 VULNHUNTER_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。",
     );
   }
   return _vault;

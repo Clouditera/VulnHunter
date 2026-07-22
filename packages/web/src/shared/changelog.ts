@@ -18,7 +18,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     version: "2.3.0",
     releasedAt: "2026-07",
-    title: "VulnAgent v2.3.0 更新",
+    title: "VulnHunter v2.3.0 更新",
     markdown: `
 ### 🛡️ 动态验证
 - **优化「POC/EXP」功能**：支持 Web 服务、Linux 应用程序、库、内核等常见项目类型
@@ -34,7 +34,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     version: "2.2.1",
     releasedAt: "2026-07",
-    title: "VulnAgent v2.2.1 更新",
+    title: "VulnHunter v2.2.1 更新",
     markdown: `
 ### 📝 问题修复
 修复报告生成功能内容缺失的问题。
@@ -46,7 +46,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     version: "2.2.0",
     releasedAt: "2026-06",
-    title: "VulnAgent v2.2.0 更新",
+    title: "VulnHunter v2.2.0 更新",
     markdown: `
 ### 🔍 更精准的漏洞发现
 - 扫描结果分为**漏洞**和**风险**两类，帮你区分处理优先级
@@ -76,7 +76,7 @@ export const CURRENT_CHANGELOG_VERSION = LATEST_CHANGELOG_ENTRY?.version ?? "unk
 // Compatibility exports for the login modal and any legacy imports.
 export const CURRENT_VERSION = CURRENT_CHANGELOG_VERSION;
 export const CHANGELOG_MARKDOWN = LATEST_CHANGELOG_ENTRY?.markdown ?? "";
-export const CHANGELOG_STORAGE_KEY = "vulnagent_lastSeenVersion";
+export const CHANGELOG_STORAGE_KEY = "vulnhunter_lastSeenVersion";
 
 export function getChangelogEntry(version?: string): ChangelogEntry | undefined {
   if (!version) return undefined;

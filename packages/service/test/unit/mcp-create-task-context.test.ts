@@ -34,7 +34,7 @@ vi.mock("../../src/infra/minio/client.js", () => ({
   uploadFile: vi.fn(),
 }));
 vi.mock("../../src/infra/config.js", () => ({
-  loadConfig: vi.fn(() => ({ minio: { bucket: "vulnagent" } })),
+  loadConfig: vi.fn(() => ({ minio: { bucket: "artifact-store" } })),
 }));
 vi.mock("../../src/features/notifications/index.js", () => ({
   notify: vi.fn(),
@@ -85,7 +85,7 @@ describe("createMcpTask context binding", () => {
       credentialId: "cred-session",
     }));
     expect(getCredentialByIdMock).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", tenantId: "tenant-1", role: "member" }), "cred-session");
-    expect(cloneAndUploadMock).toHaveBeenCalledWith("task-1", "https://example.com/project.git", undefined, "vulnagent");
+    expect(cloneAndUploadMock).toHaveBeenCalledWith("task-1", "https://example.com/project.git", undefined, "artifact-store");
   });
 
   it("rejects invalid git urls before creating a task", async () => {
@@ -168,7 +168,7 @@ describe("createMcpTask context binding", () => {
       sourceType: "upload",
       credentialId: "cred-1",
     }));
-    expect(copyObjectMock).toHaveBeenCalledWith("vulnagent", "code-packages/task-1.zip", "/vulnagent/chat-artifacts/sess-1/project.zip");
+    expect(copyObjectMock).toHaveBeenCalledWith("artifact-store", "code-packages/task-1.zip", "/artifact-store/chat-artifacts/sess-1/project.zip");
   });
 
   it("rejects inaccessible attachment ids", async () => {

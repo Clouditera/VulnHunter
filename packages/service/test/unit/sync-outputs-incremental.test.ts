@@ -39,7 +39,7 @@ function seed() {
   writeFileSync(join(outDir, ".youngflow", "sessions", "session.jsonl"), "{}\n");
 }
 
-const config = { dataDir, minio: { bucket: "vulnagent" } } as never;
+const config = { dataDir, minio: { bucket: "artifact-store" } } as never;
 
 describe("syncOutputsToMinio includeDirs (incremental)", () => {
   beforeEach(() => { vi.clearAllMocks(); seed(); });

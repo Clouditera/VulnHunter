@@ -82,7 +82,7 @@ export function createApp(): Hono {
 
 export function startServer(port: number, app: Hono = createApp()): void {
   const httpServer = serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
-    logger.info({ port: info.port }, `VulnAgent Service listening`);
+    logger.info({ port: info.port }, `VulnHunter Service listening`);
   }) as unknown as Server;
 
   // Unified WebSocket routing (live-log + chat)

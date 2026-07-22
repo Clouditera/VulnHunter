@@ -1,6 +1,6 @@
 -- Migration 028: H2 sandbox instance lifecycle (docker-style: stop-not-destroy,
 -- release only on task delete, no lease). task_sandboxes is the 1:1
--- task↔sandbox-instance mapping owned by VulnAgent; SandboxPlane stays
+-- task↔sandbox-instance mapping owned by VulnHunter; SandboxPlane stays
 -- generic/opaque. Deterministic request_id makes create idempotent (no
 -- double-open across owner crashes). No FK to tasks by design: the delete
 -- flow and the reconciler own the release ordering, and a crashed delete must
@@ -10,7 +10,7 @@
 CREATE TABLE IF NOT EXISTS task_sandboxes (
   task_id        UUID PRIMARY KEY,
   sandbox_id     TEXT NOT NULL,
-  consumer       TEXT NOT NULL DEFAULT 'vulnagent',
+  consumer       TEXT NOT NULL DEFAULT 'vulnhunter',
   request_id     TEXT NOT NULL,
   profile_id     TEXT NOT NULL,
   arch           TEXT,

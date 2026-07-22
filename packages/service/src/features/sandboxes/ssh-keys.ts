@@ -59,7 +59,7 @@ export function generateTaskSshKeypair(): TaskSshKeypair {
     packString(Buffer.from(SSH_ALG, "ascii")),
     packString(rawPublic),
     packString(privateSecret),
-    packString(Buffer.from("vulnagent-task", "ascii")),
+    packString(Buffer.from("vulnhunter-task", "ascii")),
   ]);
   const blockSize = 8;
   const padded: Buffer[] = [privateSection];

@@ -1,4 +1,4 @@
-# VulnAgent POC Flow — 漏洞复现验证流水线
+# VulnHunter POC Flow — 漏洞复现验证流水线
 version: "1.0"
 
 artifacts:

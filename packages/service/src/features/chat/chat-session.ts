@@ -211,7 +211,7 @@ export class ChatSession {
         cred = credId ? await getCredentialById(queryCtx, credId) : await getDefaultOrFirstAvailableCredential(queryCtx);
       } catch (err) {
         if (err instanceof CredentialKeyUnavailableError) {
-          throw new ChatCredentialUnavailableError("凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。");
+          throw new ChatCredentialUnavailableError("凭证加密 key 未配置。请管理员设置 VULNHUNTER_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。");
         }
         if (err instanceof CredentialDecryptError) {
           throw new ChatCredentialUnavailableError("当前会话选择的模型凭证无法解密。请在 Settings 重新保存凭证，或恢复原 master key 后重试。");

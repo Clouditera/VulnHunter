@@ -1,5 +1,5 @@
 /**
- * VulnAgent Service — entry point
+ * VulnHunter Service — entry point
  */
 
 import { loadConfig } from "./infra/config.js";
@@ -12,11 +12,11 @@ import { initWorkerInstanceId } from "./features/workers/instance-id.js";
 import { createApp, startServer } from "./server.js";
 import { initInstallation } from "./features/system/index.js";
 
-type EnterpriseModule = typeof import("@vulnagent/enterprise");
+type EnterpriseModule = typeof import("@vulnhunter/enterprise");
 
 async function loadEnterpriseModule(): Promise<EnterpriseModule> {
   try {
-    return await import("@vulnagent/enterprise");
+    return await import("@vulnhunter/enterprise");
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ERR_MODULE_NOT_FOUND") throw err;
     const enterprisePath = "../../enterprise/dist/index.js";
@@ -27,7 +27,7 @@ async function loadEnterpriseModule(): Promise<EnterpriseModule> {
 async function main(): Promise<void> {
   const config = loadConfig();
 
-  logger.info("VulnAgent Service starting...");
+  logger.info("VulnHunter Service starting...");
 
   // Initialize DB
   await initDb(config.db.url);
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   if (credentialHealth?.keyUnavailable) {
     logger.warn(
       { total: credentialHealth.total },
-      "Credential encryption key unavailable. Configure VULNAGENT_MASTER_KEY_FILE; credential operations will fail until configured.",
+      "Credential encryption key unavailable. Configure VULNHUNTER_MASTER_KEY_FILE; credential operations will fail until configured.",
     );
   } else if (credentialHealth?.failed) {
     logger.error(
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
         currentKeyFingerprint: credentialHealth.currentKeyFingerprint,
         failedCredentials: credentialHealth.failedCredentials,
       },
-      "Credential decrypt health degraded. Re-save credentials or restore the original master key file referenced by VULNAGENT_MASTER_KEY_FILE.",
+      "Credential decrypt health degraded. Re-save credentials or restore the original master key file referenced by VULNHUNTER_MASTER_KEY_FILE.",
     );
   }
 

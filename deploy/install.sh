@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 WEB_PORT="${WEB_PORT:-23000}"
-DATA_DIR_DEFAULT="/opt/vulnagent/data"
+DATA_DIR_DEFAULT="/opt/vulnhunter/data"
 
 rand_hex() { openssl rand -hex "$1"; }
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "[install] missing command: $1" >&2; exit 1; }; }
@@ -39,10 +39,10 @@ image_exists() {
 }
 required_images() {
   printf '%s\n' \
-    "${SERVICE_IMAGE:-vulnagent-service:latest}" \
-    "${WEB_IMAGE:-vulnagent-web:latest}" \
-    "${WORKER_IMAGE:-vulnagent-worker:latest}" \
-    "${EVAL_WORKER_IMAGE:-vulnagent-eval-worker:latest}" \
+    "${SERVICE_IMAGE:-vulnhunter-service:latest}" \
+    "${WEB_IMAGE:-vulnhunter-web:latest}" \
+    "${WORKER_IMAGE:-vulnhunter-worker:latest}" \
+    "${EVAL_WORKER_IMAGE:-vulnhunter-eval-worker:latest}" \
     "${POSTGRES_IMAGE:-postgres:16-alpine}" \
     "${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}" \
     | awk 'NF && !seen[$0]++'
@@ -80,20 +80,20 @@ non_empty_dir() {
 }
 existing_install_marker() {
   local data_dir="$1"
-  if [[ -f .vulnagent-install.json ]]; then echo ".vulnagent-install.json"; return 0; fi
+  if [[ -f .vulnhunter-install.json ]]; then echo ".vulnhunter-install.json"; return 0; fi
   if [[ -f .env ]]; then echo ".env"; return 0; fi
-  if [[ -f "$data_dir/.secrets/vulnagent-master.key" ]]; then echo "$data_dir/.secrets/vulnagent-master.key"; return 0; fi
+  if [[ -f "$data_dir/.secrets/vulnhunter-master.key" ]]; then echo "$data_dir/.secrets/vulnhunter-master.key"; return 0; fi
   if [[ -f "$data_dir/.install_id" ]]; then echo "$data_dir/.install_id"; return 0; fi
   if [[ -f "$data_dir/db/PG_VERSION" ]] || non_empty_dir "$data_dir/db"; then echo "$data_dir/db"; return 0; fi
   if non_empty_dir "$data_dir/minio"; then echo "$data_dir/minio"; return 0; fi
-  for c in vulnagent-service vulnagent-web vulnagent-db vulnagent-minio; do
+  for c in vulnhunter-service vulnhunter-web vulnhunter-db vulnhunter-minio; do
     if container_exists "$c"; then echo "container:$c"; return 0; fi
   done
   return 1
 }
 refuse_existing_install() {
   local marker="$1"
-  echo "[install] existing VulnAgent installation marker detected: $marker" >&2
+  echo "[install] existing VulnHunter installation marker detected: $marker" >&2
   echo "[install] install.sh is only for a clean first install directory." >&2
   echo "[install] For same-directory upgrades, run: ./upgrade.sh" >&2
   echo "[install] If .env is missing but old DATA_DIR still exists, restore the old .env from backup or contact support; refusing to generate new secrets over existing data." >&2
@@ -108,11 +108,11 @@ write_install_manifest() {
   youngflow="$(version_field youngflowVersion)"
   install_id="$(printf '%s' "$status_json" | sed -n 's/.*"installation_id":"\([^"]*\)".*/\1/p')"
   [[ -n "$install_id" ]] || install_id="$(printf '%s' "$status_json" | sed -n 's/.*"machine_code":"\([^"]*\)".*/\1/p')"
-  tmp=".vulnagent-install.json.tmp"
+  tmp=".vulnhunter-install.json.tmp"
   cat > "$tmp" << JSON
 {
   "schema_version": 1,
-  "product": "vulnagent",
+  "product": "vulnhunter",
   "install_dir": "$(json_escape "$ROOT")",
   "data_dir": "$(json_escape "${DATA_DIR:-$DATA_DIR_DEFAULT}")",
   "edition": "$(json_escape "${EDITION:-community}")",
@@ -131,13 +131,13 @@ write_install_manifest() {
   },
   "compose": {
     "file": "docker-compose.yml",
-    "network": "vulnagent-internal",
-    "containers": ["vulnagent-web", "vulnagent-service", "vulnagent-db", "vulnagent-minio"]
+    "network": "vulnhunter-internal",
+    "containers": ["vulnhunter-web", "vulnhunter-service", "vulnhunter-db", "vulnhunter-minio"]
   },
   "managed_files": [
     { "path": ".env", "kind": "config", "preserve": true, "secret_values": true },
     { "path": ".secrets/license-public.pem", "kind": "license_public_key", "preserve": true, "secret_values": false },
-    { "path": "${DATA_DIR}/.secrets/vulnagent-master.key", "kind": "master_key", "preserve": true, "secret_values": true },
+    { "path": "${DATA_DIR}/.secrets/vulnhunter-master.key", "kind": "master_key", "preserve": true, "secret_values": true },
     { "path": "${DATA_DIR}/.install_id", "kind": "installation_id", "preserve": true, "secret_values": false }
   ],
   "managed_dirs": [
@@ -153,8 +153,8 @@ write_install_manifest() {
   }
 }
 JSON
-  mv "$tmp" .vulnagent-install.json
-  echo "[install] wrote install manifest: .vulnagent-install.json"
+  mv "$tmp" .vulnhunter-install.json
+  echo "[install] wrote install manifest: .vulnhunter-install.json"
 }
 
 require_cmd docker
@@ -184,7 +184,7 @@ default_data_dir() {
   if [[ "$(id -u)" == "0" ]]; then
     printf '%s\n' "$DATA_DIR_DEFAULT"
   else
-    printf '%s\n' "${HOME:-/tmp}/vulnagent-data"
+    printf '%s\n' "${HOME:-/tmp}/vulnhunter-data"
   fi
 }
 port_available() {
@@ -204,7 +204,7 @@ fi
 if [[ ! -f .env ]]; then
   if [[ -z "${DATA_DIR:-}" ]] && ! is_tty; then
     echo "[install] DATA_DIR is required in non-interactive first install." >&2
-    echo "Example: DATA_DIR=/opt/vulnagent/data WEB_PORT=23000 ./install.sh" >&2
+    echo "Example: DATA_DIR=/opt/vulnhunter/data WEB_PORT=23000 ./install.sh" >&2
     exit 1
   fi
 
@@ -212,7 +212,7 @@ if [[ ! -f .env ]]; then
   web_port="${WEB_PORT:-23000}"
 
   if [[ -z "${DATA_DIR:-}" ]] && is_tty; then
-    echo "VulnAgent 安装向导"
+    echo "VulnHunter 安装向导"
     echo ""
     echo "数据目录会保存数据库、扫描工作区、报告、对象存储和授权状态。"
     echo "请使用持久化磁盘路径，不建议使用 /tmp。"
@@ -243,7 +243,7 @@ if [[ ! -f .env ]]; then
   fi
   if ! mkdir -p "$data_dir" 2>/dev/null || [[ ! -w "$data_dir" ]]; then
     echo "[install] 当前用户无法写入数据目录：$data_dir" >&2
-    echo "请选择其他目录，例如：${HOME:-/tmp}/vulnagent-data" >&2
+    echo "请选择其他目录，例如：${HOME:-/tmp}/vulnhunter-data" >&2
     exit 1
   fi
   if ! port_available "$web_port"; then
@@ -259,9 +259,9 @@ if [[ ! -f .env ]]; then
   sed -i "s|^WEB_PORT=.*|WEB_PORT=$web_port|" .env
   default_edition="$(grep -E '^EDITION=' .env | tail -n 1 | cut -d= -f2-)"
   sed -i "s|^EDITION=.*|EDITION=${EDITION:-${default_edition:-community}}|" .env
-  master_key_file="$data_dir/.secrets/vulnagent-master.key"
+  master_key_file="$data_dir/.secrets/vulnhunter-master.key"
   sed -i "s|^MASTER_KEY_FILE=.*|MASTER_KEY_FILE=$master_key_file|" .env
-  sed -i "s|^VULNAGENT_MASTER_KEY_FILE=.*|VULNAGENT_MASTER_KEY_FILE=$master_key_file|" .env
+  sed -i "s|^VULNHUNTER_MASTER_KEY_FILE=.*|VULNHUNTER_MASTER_KEY_FILE=$master_key_file|" .env
   if [[ "$(id -u)" == "0" ]]; then
     sed -i "s|^SERVICE_UID=.*|SERVICE_UID=1001|" .env
     sed -i "s|^SERVICE_GID=.*|SERVICE_GID=1001|" .env
@@ -285,11 +285,11 @@ if [[ "${DATA_DIR:-$DATA_DIR_DEFAULT}" != /* ]]; then
   echo "[install] DATA_DIR must be an absolute host path: ${DATA_DIR:-$DATA_DIR_DEFAULT}" >&2
   exit 1
 fi
-mkdir -p "${DATA_DIR:-$DATA_DIR_DEFAULT}" "${DATA_DIR:-$DATA_DIR_DEFAULT}/db" "${DATA_DIR:-$DATA_DIR_DEFAULT}/minio" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}")" .secrets
+mkdir -p "${DATA_DIR:-$DATA_DIR_DEFAULT}" "${DATA_DIR:-$DATA_DIR_DEFAULT}/db" "${DATA_DIR:-$DATA_DIR_DEFAULT}/minio" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}")" .secrets
 SERVICE_UID="${SERVICE_UID:-1001}"
 SERVICE_GID="${SERVICE_GID:-1001}"
 if [[ "$(id -u)" == "0" ]]; then
-  chown -R "${SERVICE_UID}:${SERVICE_GID}" "${DATA_DIR:-$DATA_DIR_DEFAULT}" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}")" .secrets
+  chown -R "${SERVICE_UID}:${SERVICE_GID}" "${DATA_DIR:-$DATA_DIR_DEFAULT}" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}")" .secrets
   chown -R 70:70 "${DATA_DIR:-$DATA_DIR_DEFAULT}/db" 2>/dev/null || echo "[install] warning: could not chown Postgres data dir to uid 70" >&2
 else
   if [[ "$SERVICE_UID" != "$(id -u)" || "$SERVICE_GID" != "$(id -g)" ]]; then
@@ -302,26 +302,26 @@ else
     chmod -R a+rwX "${DATA_DIR:-$DATA_DIR_DEFAULT}/db"
   fi
 fi
-if ! chmod u+rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}" "${DATA_DIR:-$DATA_DIR_DEFAULT}/minio" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}")" .secrets 2>/dev/null; then
+if ! chmod u+rwx "${DATA_DIR:-$DATA_DIR_DEFAULT}" "${DATA_DIR:-$DATA_DIR_DEFAULT}/minio" "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}")" .secrets 2>/dev/null; then
   echo "[install] warning: could not chmod DATA_DIR/.secrets" >&2
 fi
-if [[ ! -w "${DATA_DIR:-$DATA_DIR_DEFAULT}" || ! -w "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}")" || ! -w .secrets ]]; then
+if [[ ! -w "${DATA_DIR:-$DATA_DIR_DEFAULT}" || ! -w "$(dirname "${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}")" || ! -w .secrets ]]; then
   echo "[install] DATA_DIR, master key directory, or .secrets is not writable by service/install user" >&2
   exit 1
 fi
-if [[ -d "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}" ]]; then
+if [[ -d "${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}" ]]; then
   echo "[install] master key path is a directory: ${MASTER_KEY_FILE}" >&2
   exit 1
 fi
-if [[ ! -f "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}" ]]; then
-  openssl rand -hex 32 > "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}"
-  chmod 0400 "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}"
-  echo "[install] generated master key: ${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}"
+if [[ ! -f "${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}" ]]; then
+  openssl rand -hex 32 > "${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}"
+  chmod 0400 "${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}"
+  echo "[install] generated master key: ${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}"
 fi
 if [[ "$(id -u)" == "0" ]]; then
-  chown "${SERVICE_UID}:${SERVICE_GID}" "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}"
+  chown "${SERVICE_UID}:${SERVICE_GID}" "${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}"
 fi
-chmod 0400 "${MASTER_KEY_FILE:-./.secrets/vulnagent-master.key}"
+chmod 0400 "${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}"
 
 if [[ -f checksums.sha256 ]]; then
   echo "[install] verifying release files..."
@@ -337,7 +337,7 @@ if [[ -d images ]]; then
 fi
 validate_local_images
 
-echo "[install] starting VulnAgent..."
+echo "[install] starting VulnHunter..."
 compose_up_detached
 
 url="http://127.0.0.1:${WEB_PORT}/api/system/status"
@@ -359,7 +359,7 @@ write_install_manifest "$status_json"
 machine_code="$(printf '%s' "$status_json" | sed -n 's/.*"installation_id":"\([^"]*\)".*/\1/p')"
 [[ -n "$machine_code" ]] || machine_code="$(printf '%s' "$status_json" | sed -n 's/.*"machine_code":"\([^"]*\)".*/\1/p')"
 echo ""
-echo "VulnAgent installed."
+echo "VulnHunter installed."
 echo "URL: http://$(hostname -I 2>/dev/null | awk '{print $1}'):${WEB_PORT}/"
 echo "Local URL: http://127.0.0.1:${WEB_PORT}/"
 [[ -n "$machine_code" ]] && echo "Machine code: $machine_code"

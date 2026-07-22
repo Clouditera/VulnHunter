@@ -17,11 +17,11 @@ export function initDocker(socketPath = "/var/run/docker.sock"): Dockerode {
   return _docker;
 }
 
-export const LABEL_MANAGED = "vulnagent.managed";
-export const LABEL_TASK_ID = "vulnagent.task_id";
-export const LABEL_TASK_TYPE = "vulnagent.task_type";
-export const LABEL_SCHEDULER_CLAIM = "vulnagent.scheduler_claim";
-export const LABEL_INSTANCE = "vulnagent.instance";
+export const LABEL_MANAGED = "vulnhunter.managed";
+export const LABEL_TASK_ID = "vulnhunter.task_id";
+export const LABEL_TASK_TYPE = "vulnhunter.task_type";
+export const LABEL_SCHEDULER_CLAIM = "vulnhunter.scheduler_claim";
+export const LABEL_INSTANCE = "vulnhunter.instance";
 
 export interface WorkerContainerSpec {
   taskId: string;
@@ -35,7 +35,7 @@ export interface WorkerContainerSpec {
   network?: string;
   autoRemove?: boolean; // auto-remove container on exit (chat/report)
   extraMounts?: Array<{ Type: "bind"; Source: string; Target: string; ReadOnly?: boolean }>;
-  /** tmpfs mounts (in-memory, never on host disk) — H1 uses one for /run/vulnagent. */
+  /** tmpfs mounts (in-memory, never on host disk) — H1 uses one for /run/vulnhunter. */
   tmpfs?: Record<string, string>;
   labels?: Record<string, string>;
 }
@@ -77,16 +77,16 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
       [LABEL_INSTANCE]: getWorkerInstanceId(),
       [LABEL_TASK_ID]: spec.taskId,
       [LABEL_TASK_TYPE]: spec.taskType,
-      "vulnagent.created_at": new Date().toISOString(),
+      "vulnhunter.created_at": new Date().toISOString(),
       ...(spec.labels ?? {}),
     },
     HostConfig: {
       CpuQuota: spec.cpuQuota ?? 200000,
       Memory: spec.memoryBytes ?? 4 * 1024 * 1024 * 1024,
       MemorySwap: spec.memoryBytes ?? 4 * 1024 * 1024 * 1024,
-      NetworkMode: spec.network ?? "vulnagent-internal",
+      NetworkMode: spec.network ?? "vulnhunter-internal",
       Mounts: mounts,
-      ExtraHosts: ["vulnagent-service:host-gateway", "host.docker.internal:host-gateway"],
+      ExtraHosts: ["vulnhunter-service:host-gateway", "host.docker.internal:host-gateway"],
       ...(spec.tmpfs ? { Tmpfs: spec.tmpfs } : {}),
       ...(spec.autoRemove ? { AutoRemove: true } : {}),
     },
@@ -104,7 +104,7 @@ export function ensureWorkDir(hostPath: string): void {
   logger.debug({ hostPath }, "Work directory ensured");
 }
 
-export async function removeWorkDir(hostPath: string, cleanupImage = "vulnagent-worker:latest"): Promise<void> {
+export async function removeWorkDir(hostPath: string, cleanupImage = "vulnhunter-worker:latest"): Promise<void> {
   try {
     rmSync(hostPath, { recursive: true, force: true });
     logger.info({ hostPath }, "Work directory removed");

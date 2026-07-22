@@ -28,7 +28,7 @@ import {
   type CardIcon,
   type CardStateDisplay,
 } from "./finding-card-state";
-import type { PocStatus, ExpStatus } from "@vulnagent/shared";
+import type { PocStatus, ExpStatus } from "@vulnhunter/shared";
 
 /** Unified status-card chrome (fish: thin border, radius 8, no shadow). */
 export const STAGE_CARD_STYLE: React.CSSProperties = {

@@ -1,4 +1,4 @@
-declare module "@vulnagent/enterprise" {
+declare module "@vulnhunter/enterprise" {
   import type { Hono } from "hono";
   import type { ServiceConfig } from "./infra/config.js";
 

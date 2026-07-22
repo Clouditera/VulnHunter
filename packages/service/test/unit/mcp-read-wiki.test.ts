@@ -19,7 +19,7 @@ vi.mock("../../src/features/tasks/storage.js", () => ({
   getTaskById: (...a: any[]) => getTaskByIdMock(...a),
 }));
 vi.mock("../../src/infra/config.js", () => ({
-  loadConfig: vi.fn(() => ({ minio: { bucket: "vulnagent" }, dataDir: "/tmp" })),
+  loadConfig: vi.fn(() => ({ minio: { bucket: "artifact-store" }, dataDir: "/tmp" })),
 }));
 vi.mock("../../src/features/wiki/routes.js", () => ({
   listWikiPageNames: (...a: any[]) => listWikiPageNamesMock(...a),

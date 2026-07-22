@@ -1,8 +1,8 @@
 ---
-title: VulnAgent 2.3.0 离线部署与基础操作帮助手册
+title: VulnHunter 2.3.0 离线部署与基础操作帮助手册
 ---
 
-# VulnAgent 2.3.0 离线部署与基础操作帮助手册
+# VulnHunter 2.3.0 离线部署与基础操作帮助手册
 
 本文用于离线环境中的平台部署、初始化和基础操作。安装包为离线包，沿用一键 `install.sh`，安装后按本文完成 License 激活、管理员初始化、模型配置、创建扫描任务和查看结果。
 
@@ -29,14 +29,14 @@ df -h
 ## 2. 校验并解压离线包
 
 ```bash
-sha256sum -c vulnagent-release-2.3.0.tar.gz.sha256
-tar -xzf vulnagent-release-2.3.0.tar.gz
-cd vulnagent-release-2.3.0
+sha256sum -c vulnhunter-release-2.3.0.tar.gz.sha256
+tar -xzf vulnhunter-release-2.3.0.tar.gz
+cd vulnhunter-release-2.3.0
 ```
 
 离线包内应包含：
 
-- `images/*.tar`：VulnAgent、Postgres、MinIO 离线 Docker 镜像
+- `images/*.tar`：VulnHunter、Postgres、MinIO 离线 Docker 镜像
 - `install.sh` / `doctor.sh` / `upgrade.sh` / `uninstall.sh`
 - `docker-compose.yml` / `.env.example`
 - `VERSION.json` / `checksums.sha256`
@@ -47,13 +47,13 @@ cd vulnagent-release-2.3.0
 推荐使用持久化绝对路径作为数据目录：
 
 ```bash
-DATA_DIR=/opt/vulnagent/data WEB_PORT=23000 ./install.sh
+DATA_DIR=/opt/vulnhunter/data WEB_PORT=23000 ./install.sh
 ```
 
 普通用户部署可使用当前用户可写目录：
 
 ```bash
-DATA_DIR=$HOME/vulnagent-data WEB_PORT=23000 ./install.sh
+DATA_DIR=$HOME/vulnhunter-data WEB_PORT=23000 ./install.sh
 ```
 
 交互式终端中也可以直接运行：
@@ -139,7 +139,7 @@ docker compose logs -f web
 升级前需备份：
 
 - 整个 `DATA_DIR`
-- `$DATA_DIR/.secrets/vulnagent-master.key`
+- `$DATA_DIR/.secrets/vulnhunter-master.key`
 - 安装目录下 `.env`
 
 升级命令：
@@ -190,7 +190,7 @@ docker ps
 
 ### 授权失败
 
-检查 License 是否完整、是否绑定当前机器码、是否过期、是否适配 VulnAgent 2.x。
+检查 License 是否完整、是否绑定当前机器码、是否过期、是否适配 VulnHunter 2.x。
 
 ### 模型验证失败
 
@@ -198,7 +198,7 @@ docker ps
 
 ## 9. 验收清单
 
-- `sha256sum -c vulnagent-release-2.3.0.tar.gz.sha256` 通过
+- `sha256sum -c vulnhunter-release-2.3.0.tar.gz.sha256` 通过
 - `./install.sh` 成功完成
 - `./doctor.sh` 全部通过
 - Web 可访问

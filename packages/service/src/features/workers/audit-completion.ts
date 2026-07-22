@@ -16,7 +16,7 @@ import type {
   TaskAuditCompletion,
   TaskEngineRun,
   TaskState,
-} from "@vulnagent/shared";
+} from "@vulnhunter/shared";
 
 export const AUDIT_COMPLETION_CONTRACT = "audit-completion/v1" as const;
 export const AUDIT_COMPLETION_RELATIVE_PATH = "report/completion.yaml" as const;

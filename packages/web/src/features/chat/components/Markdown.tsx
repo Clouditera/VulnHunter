@@ -4,7 +4,7 @@
  * Adapted from the bossmode project's Markdown.tsx — keeps the same
  * react-markdown + remark-gfm foundation (so GFM tables, task lists,
  * strikethrough, and autolinks all work out of the box) but swaps the
- * Tailwind class-based styling for VulnAgent's CSS-variable + inline-style
+ * Tailwind class-based styling for VulnHunter's CSS-variable + inline-style
  * system (matches the rest of the app).
  *
  * We deliberately do NOT pull in react-syntax-highlighter here — it would

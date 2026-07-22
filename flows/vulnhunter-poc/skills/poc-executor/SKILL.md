@@ -10,7 +10,7 @@ description: POC 脚本执行器 — 通过 run_poc.py 包装器执行 poc.sh，
 **不要直接运行 `bash poc.sh`**，使用 `run_poc.py` 包装器：
 
 ```bash
-python3 /opt/vulnagent/flows/vulnagent-poc/skills/poc-executor/run_poc.py \
+python3 /opt/vulnhunter/flows/vulnhunter-poc/skills/poc-executor/run_poc.py \
   --bug-id BUG-001 \
   --script ./poc.sh \
   --target-url http://target:8080 \
@@ -44,4 +44,4 @@ python3 /opt/vulnagent/flows/vulnagent-poc/skills/poc-executor/run_poc.py \
 {"type":"poc_exit","ts":"...","stage":"generate-and-run-poc/BUG-001","exit_code":0,"duration_ms":12345}
 ```
 
-这些事件会被 VulnAgent 的 LiveLog 系统自动发现并推送到前端。
+这些事件会被 VulnHunter 的 LiveLog 系统自动发现并推送到前端。

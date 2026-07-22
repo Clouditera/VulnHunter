@@ -52,10 +52,10 @@ export function loadConfig(): ServiceConfig {
 
   return {
     port: Number(optionalEnv("PORT", "28080")),
-    dataDir: optionalEnv("DATA_DIR", "/data/vulnagent"),
+    dataDir: optionalEnv("DATA_DIR", "/data/vulnhunter"),
     edition,
     db: {
-      url: optionalEnv("DATABASE_URL", "postgresql://vulnagent:vulnagent@localhost:25432/vulnagent"),
+      url: optionalEnv("DATABASE_URL", "postgresql://vulnhunter:vulnhunter@localhost:25432/vulnhunter"),
     },
     minio: {
       endpoint: optionalEnv("MINIO_ENDPOINT", "localhost"),
@@ -63,13 +63,13 @@ export function loadConfig(): ServiceConfig {
       useSSL: optionalEnv("MINIO_USE_SSL", "false") === "true",
       accessKey: optionalEnv("MINIO_ACCESS_KEY", "minioadmin"),
       secretKey: optionalEnv("MINIO_SECRET_KEY", "minioadmin"),
-      bucket: optionalEnv("MINIO_BUCKET", "vulnagent"),
+      bucket: optionalEnv("MINIO_BUCKET", "artifact-store"),
     },
     docker: {
       socketPath: optionalEnv("DOCKER_SOCKET", "/var/run/docker.sock"),
-      workerImage: optionalEnv("WORKER_IMAGE", "vulnagent-worker:latest"),
-      evalWorkerImage: optionalEnv("EVAL_WORKER_IMAGE", "vulnagent-eval-worker:latest"),
-      network: optionalEnv("DOCKER_NETWORK", "vulnagent-internal"),
+      workerImage: optionalEnv("WORKER_IMAGE", "vulnhunter-worker:latest"),
+      evalWorkerImage: optionalEnv("EVAL_WORKER_IMAGE", "vulnhunter-eval-worker:latest"),
+      network: optionalEnv("DOCKER_NETWORK", "vulnhunter-internal"),
       workerServiceUrl: optionalEnv("WORKER_SERVICE_URL", "http://service:28080"),
     },
     sandboxPlane: {

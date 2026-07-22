@@ -57,7 +57,7 @@ describe("MasterKeyVault", () => {
   });
 
   it("fails fast when key file is missing", () => {
-    expect(() => new MasterKeyVault(join(tmpdir(), "missing-vulnagent-master.key"))).toThrow(/Master key file not found/);
+    expect(() => new MasterKeyVault(join(tmpdir(), "missing-vulnhunter-master.key"))).toThrow(/Master key file not found/);
   });
 
   it("fails fast when key file format is invalid", () => {

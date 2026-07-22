@@ -20,7 +20,7 @@ describe("system config validation", () => {
   beforeEach(() => {
     config = { max_parallel_scan: 3, youngflow_max_parallel: 3 };
     delete process.env.UPLOAD_GATEWAY_LIMIT_MB;
-    delete process.env.VULNAGENT_UPLOAD_GATEWAY_LIMIT_MB;
+    delete process.env.VULNHUNTER_UPLOAD_GATEWAY_LIMIT_MB;
   });
 
   it("saves valid youngflow_max_parallel as an object", async () => {

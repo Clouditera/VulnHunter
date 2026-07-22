@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="packages/web/public/favicon.svg" width="80" height="80" alt="VulnAgent Logo">
+  <img src="packages/web/public/favicon.svg" width="80" height="80" alt="VulnHunter Logo">
 </p>
 
-<h1 align="center">VulnAgent</h1>
+<h1 align="center">VulnHunter</h1>
 
 <p align="center">
   <strong>AI-Powered Automated Vulnerability Discovery Agent Platform</strong>
@@ -23,7 +23,7 @@
 
 ---
 
-VulnAgent is an open-source AI vulnerability hunting workbench that combines automated target profiling, AI-assisted vulnerability discovery, chat-based investigation, POC/EXP generation and verification, review workflows, and report delivery — all in a self-hosted deployment.
+VulnHunter is an open-source AI vulnerability hunting workbench that combines automated target profiling, AI-assisted vulnerability discovery, chat-based investigation, POC/EXP generation and verification, review workflows, and report delivery — all in a self-hosted deployment.
 
 ---
 
@@ -56,9 +56,9 @@ _Professional report output with Markdown export_
 
 ---
 
-## ⚡ Why VulnAgent?
+## ⚡ Why VulnHunter?
 
-| 😫 Traditional Approach | 💡 VulnAgent Solution |
+| 😫 Traditional Approach | 💡 VulnHunter Solution |
 |---|---|
 | **Manual code audit is slow** — can't keep up with code iteration | **🤖 AI Agent automation** — YoungFlow orchestrates multi-agent collaboration |
 | **High false positives** — traditional SAST lacks semantic understanding | **🧠 Context-aware analysis** — AI combines code semantics and business logic |
@@ -102,7 +102,7 @@ _Professional report output with Markdown export_
 └──────────────────────┬──────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────┐
-│        VulnAgent Service (Hono + WebSocket + MCP)    │
+│        VulnHunter Service (Hono + WebSocket + MCP)    │
 │                                                      │
 │  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
 │  │ Tasks    │  │ Chat     │  │ Reports/POC      │  │
@@ -147,8 +147,8 @@ packages/
 
 ```bash
 # Clone
-git clone https://github.com/user/VulnAgent.git
-cd VulnAgent
+git clone https://github.com/user/VulnHunter.git
+cd VulnHunter
 
 # Configure
 cp deploy/.env.example .env
@@ -180,10 +180,10 @@ See `deploy/.env.example` for all options. Common settings:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `WEB_PORT` | Web UI port | `23000` |
-| `DATA_DIR` | Persistent data directory | `/opt/vulnagent/data` |
+| `DATA_DIR` | Persistent data directory | `/opt/vulnhunter/data` |
 | `DOCKER_SUBNET` | Docker bridge subnet | `10.177.0.0/24` |
-| `VULNAGENT_MASTER_KEY_FILE` | Credential encryption key path | — |
-| `WORKER_IMAGE` | Scan worker image | `vulnagent-worker:latest` |
+| `VULNHUNTER_MASTER_KEY_FILE` | Credential encryption key path | — |
+| `WORKER_IMAGE` | Scan worker image | `vulnhunter-worker:latest` |
 | `EDITION` | Edition mode | `community` |
 
 ---
@@ -212,7 +212,7 @@ Contributions are welcome! The detailed contribution guide is being finalized. F
 
 ## ⚠️ Security Notice
 
-VulnAgent is a security research tool. Only scan systems, codebases, and services that you own or are explicitly authorized to test.
+VulnHunter is a security research tool. Only scan systems, codebases, and services that you own or are explicitly authorized to test.
 
 ---
 

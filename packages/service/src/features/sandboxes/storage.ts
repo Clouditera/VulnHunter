@@ -1,5 +1,5 @@
 /**
- * H2 task_sandboxes mapping (VulnAgent-owned; SandboxPlane stays opaque).
+ * H2 task_sandboxes mapping (VulnHunter-owned; SandboxPlane stays opaque).
  * 1:1 per task (v1), deterministic request_id anchors the idempotent create.
  */
 

@@ -1,5 +1,5 @@
 {
-  "name": "@vulnagent/worker-bridge",
+  "name": "@vulnhunter/worker-bridge",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@vulnagent/shared": "workspace:*",
+    "@vulnhunter/shared": "workspace:*",
     "ws": "^8.18.0"
   },
   "devDependencies": {

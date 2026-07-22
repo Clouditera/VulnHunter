@@ -12,12 +12,12 @@
  * embedded in this script.
  *
  * Options:
- *   --data-dir DIR    VulnAgent DATA_DIR; defaults to .data under current cwd.
+ *   --data-dir DIR    VulnHunter DATA_DIR; defaults to .data under current cwd.
  *   --dry-run         Print summaries only; do not update DB.
  *
  * DB connection:
  *   - If DATABASE_URL is set, uses local `psql "$DATABASE_URL"`.
- *   - Otherwise uses `docker exec vulnagent-db psql -U vulnagent -d vulnagent`.
+ *   - Otherwise uses `docker exec vulnhunter-db psql -U vulnhunter -d vulnhunter`.
  *
  * Idempotency: updates are overwrites of derived totals, not increments.
  */
@@ -59,7 +59,7 @@ function printHelp() {
 function dbCommand() {
   return process.env.DATABASE_URL
     ? ["psql", [process.env.DATABASE_URL, "-v", "ON_ERROR_STOP=1"]]
-    : ["docker", ["exec", "-i", "vulnagent-db", "psql", "-U", "vulnagent", "-d", "vulnagent", "-v", "ON_ERROR_STOP=1"]];
+    : ["docker", ["exec", "-i", "vulnhunter-db", "psql", "-U", "vulnhunter", "-d", "vulnhunter", "-v", "ON_ERROR_STOP=1"]];
 }
 
 function runDb(input) {

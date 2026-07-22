@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-IMAGE_TAG="${1:-vulnagent-worker:local}"
+IMAGE_TAG="${1:-vulnhunter-worker:local}"
 if [[ $# -gt 0 ]]; then shift; fi
 
 VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0-5-g1782ef6}"
@@ -32,7 +32,7 @@ test -x submodules/youngflow/release/youngflow-linux-x64 || {
 }
 
 corepack pnpm install --frozen-lockfile
-corepack pnpm --filter @vulnagent/worker-bridge build
+corepack pnpm --filter @vulnhunter/worker-bridge build
 test -s packages/worker-bridge/dist/bundle.js || {
   echo "worker build failed: worker-bridge bundle was not generated" >&2
   exit 1

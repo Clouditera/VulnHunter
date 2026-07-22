@@ -4,10 +4,10 @@ import { logger } from "../../infra/logger.js";
 
 /**
  * Stable per-install instance identity. Resolution order:
- * 1. VULNAGENT_INSTANCE_ID env override (explicit operator control).
+ * 1. VULNHUNTER_INSTANCE_ID env override (explicit operator control).
  * 2. Persisted DB row (worker_instance, id=1) — created on first boot.
  *
- * Used to label every worker container with vulnagent.instance=<id> so a
+ * Used to label every worker container with vulnhunter.instance=<id> so a
  * reconciler / event subscription on a shared Docker daemon only ever
  * discovers containers spawned by THIS install, never a sibling install's
  * (2026-07-18 near-miss: an unscoped reconciler force-removed another
@@ -17,7 +17,7 @@ import { logger } from "../../infra/logger.js";
 let workerInstanceId = "";
 
 export async function initWorkerInstanceId(): Promise<string> {
-  const override = process.env.VULNAGENT_INSTANCE_ID?.trim();
+  const override = process.env.VULNHUNTER_INSTANCE_ID?.trim();
   if (override) {
     workerInstanceId = override;
     logger.info({ instanceId: workerInstanceId, source: "env" }, "Worker instance identity resolved");

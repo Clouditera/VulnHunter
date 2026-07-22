@@ -11,7 +11,7 @@
  *   - apply rewrites MinIO YAML, then reindexes affected tasks when service dist is available
  *   - restore copies backed-up YAML back and restores backed-up findings_meta rows
  *
- * Intended runtime: inside vulnagent-service container or an equivalent env with
+ * Intended runtime: inside vulnhunter-service container or an equivalent env with
  * MINIO_* and DATABASE_URL configured.
  */
 
@@ -279,14 +279,14 @@ function loadRuntimeDeps() {
 
 function loadConfigFromEnv() {
   return {
-    dbUrl: process.env.DATABASE_URL ?? "postgresql://vulnagent:vulnagent@db:5432/vulnagent",
+    dbUrl: process.env.DATABASE_URL ?? "postgresql://vulnhunter:vulnhunter@db:5432/vulnhunter",
     minio: {
       endPoint: process.env.MINIO_ENDPOINT ?? "minio",
       port: Number(process.env.MINIO_PORT ?? 9000),
       useSSL: process.env.MINIO_USE_SSL === "true",
       accessKey: process.env.MINIO_ACCESS_KEY ?? "minioadmin",
       secretKey: process.env.MINIO_SECRET_KEY ?? "minioadmin",
-      bucket: process.env.MINIO_BUCKET ?? "vulnagent",
+      bucket: process.env.MINIO_BUCKET ?? "artifact-store",
     },
   };
 }
@@ -471,7 +471,7 @@ function printHelp() {
   node scripts/ops/vulnforge-schema-migration.mjs --mode restore --restore-prefix PREFIX
 
 Runtime:
-  Preferred: run inside the vulnagent-service container.
+  Preferred: run inside the vulnhunter-service container.
   Host execution is supported only when service workspace deps are available and
   DATABASE_URL / MINIO_* point at the target DB+MinIO.
 

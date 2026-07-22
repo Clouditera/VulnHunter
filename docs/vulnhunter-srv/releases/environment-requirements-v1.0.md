@@ -1,8 +1,8 @@
 ---
-title: VulnAgent 2.3.0 环境要求
+title: VulnHunter 2.3.0 环境要求
 ---
 
-# VulnAgent 2.3.0 环境要求
+# VulnHunter 2.3.0 环境要求
 
 ## 服务器
 

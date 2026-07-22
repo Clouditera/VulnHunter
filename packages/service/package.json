@@ -1,5 +1,5 @@
 {
-  "name": "@vulnagent/service",
+  "name": "@vulnhunter/service",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
   "dependencies": {
     "@hono/node-server": "^1.13.7",
     "@modelcontextprotocol/sdk": "^1.9.0",
-    "@vulnagent/shared": "workspace:*",
+    "@vulnhunter/shared": "workspace:*",
     "bcrypt": "^5.1.1",
     "dockerode": "^4.0.4",
     "file-type": "^20.5.0",

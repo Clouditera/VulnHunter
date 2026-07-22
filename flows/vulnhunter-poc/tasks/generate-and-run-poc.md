@@ -55,7 +55,7 @@ fi
 使用 `run_poc.py` 执行脚本（不要直接 `bash poc.sh`）：
 
 ```bash
-python3 /opt/vulnagent/flows/vulnagent-poc/skills/poc-executor/run_poc.py \
+python3 /opt/vulnhunter/flows/vulnhunter-poc/skills/poc-executor/run_poc.py \
   --bug-id <BUG-ID> \
   --script ./poc.sh \
   --target-url <TARGET_URL> \

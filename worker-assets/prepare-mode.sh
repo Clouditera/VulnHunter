@@ -55,7 +55,7 @@ if [ ! -e "$PREPARE_OUTPUT_DIR" ]; then mkdir "$PREPARE_OUTPUT_DIR"; output_crea
 chmod 700 "$PREPARE_OUTPUT_DIR"
 result_path="$PREPARE_OUTPUT_DIR/prepare-result.json"
 
-youngflow /opt/vulnagent/flows/prepare/flow.prepare.yaml \
+youngflow /opt/vulnhunter/flows/prepare/flow.prepare.yaml \
   --work-dir "$PREPARE_SOURCE_ROOT" --output-dir "$runtime" \
   --dynamic-enabled "$PREPARE_DYNAMIC_ENABLED" --result-path "$result_path" &
 child=$!
