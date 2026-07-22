@@ -318,7 +318,7 @@ function RegisterPanel({ onBack }: { onBack: () => void }) {
         if (!cancelled) setAgreements(res.agreements ?? []);
       })
       .catch(() => {
-        // Fallback labels if catalog endpoint not yet upgraded
+        // Fallback labels if catalog endpoint not yet upgraded (three private-deploy + SaaS docs).
         if (!cancelled) {
           setAgreements([
             {
@@ -336,6 +336,14 @@ function RegisterPanel({ onBack }: { onBack: () => void }) {
               effective_date: "2026-07-21",
               required_on_register: true,
               html_url: "/api/auth/agreements/privacy-policy",
+            },
+            {
+              id: "saas-service",
+              title: "VulHunter SaaS 平台服务协议及软件许可条款",
+              version: "1.0",
+              effective_date: "2026-07-21",
+              required_on_register: true,
+              html_url: "/api/auth/agreements/saas-service",
             },
           ]);
         }
@@ -406,8 +414,7 @@ function RegisterPanel({ onBack }: { onBack: () => void }) {
     }
   }
 
-  const service = agreements.find((a) => a.id === "user-service") ?? agreements[0];
-  const privacy = agreements.find((a) => a.id === "privacy-policy") ?? agreements[1];
+  const requiredAgreements = agreements.filter((a) => a.required_on_register !== false);
 
   return (
     <div data-testid="auth-panel-register">
@@ -471,47 +478,36 @@ function RegisterPanel({ onBack }: { onBack: () => void }) {
           />
           <span>
             {i18n.t("auth.agreePrefix")}
-            <button
-              type="button"
-              data-testid="open-agreement-user-service"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (service) void openAgreement(service.id, service.title);
-              }}
-              style={{
-                border: "none",
-                background: "none",
-                padding: 0,
-                color: "var(--brand)",
-                fontWeight: 600,
-                cursor: "pointer",
-                fontSize: "inherit",
-              }}
-            >
-              《{service?.title ?? i18n.t("auth.userServiceTitle")}》
-            </button>
-            {i18n.t("auth.agreeAnd")}
-            <button
-              type="button"
-              data-testid="open-agreement-privacy"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (privacy) void openAgreement(privacy.id, privacy.title);
-              }}
-              style={{
-                border: "none",
-                background: "none",
-                padding: 0,
-                color: "var(--brand)",
-                fontWeight: 600,
-                cursor: "pointer",
-                fontSize: "inherit",
-              }}
-            >
-              《{privacy?.title ?? i18n.t("auth.privacyTitle")}》
-            </button>
+            {requiredAgreements.map((a, idx) => (
+              <span key={a.id}>
+                {idx > 0 ? (
+                  <span>{idx === requiredAgreements.length - 1 ? i18n.t("auth.agreeAnd") : i18n.t("auth.agreeComma")}</span>
+                ) : null}
+                <button
+                  type="button"
+                  data-testid={`open-agreement-${a.id}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void openAgreement(a.id, a.title);
+                  }}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    padding: 0,
+                    /* Regular link color — not brand red (fish 2026-07-22) */
+                    color: "var(--link, #2563eb)",
+                    fontWeight: 500,
+                    textDecoration: "underline",
+                    textUnderlineOffset: "2px",
+                    cursor: "pointer",
+                    fontSize: "inherit",
+                  }}
+                >
+                  《{a.title}》
+                </button>
+              </span>
+            ))}
           </span>
         </label>
 
