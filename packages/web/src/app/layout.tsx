@@ -97,10 +97,10 @@ export function AppLayout() {
       .list({ limit: 20, offset: 0 })
       .then((res) => {
         if (!mounted) return;
-        const sessions = ("sessions" in res ? res.sessions : []) as ChatSessionApi[];
+        const sessions = res.sessions ?? [];
         setRecentSessions(sessions.filter(hasPersistedContent).map(toRecentSession));
-        const next = "next_offset" in res ? res.next_offset : null;
-        setNextOffset(next ?? null);
+        const next = res.next_offset ?? null;
+        setNextOffset(next);
         setReachedEnd(next == null);
       })
       .catch(() => {
@@ -126,8 +126,9 @@ export function AppLayout() {
         const seen = new Set(prev.map((s) => s.id));
         return [...prev, ...sessions.filter((s) => !seen.has(s.id))];
       });
-      setNextOffset(res.next_offset ?? null);
-      setReachedEnd(res.next_offset == null);
+      const next = res.next_offset ?? null;
+      setNextOffset(next);
+      setReachedEnd(next == null);
     } catch {
       setListError(true);
     } finally {

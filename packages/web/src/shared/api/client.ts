@@ -660,7 +660,12 @@ export const api = {
   },
   chat: {
     sessions: {
-      list: (opts?: { limit?: number; offset?: number }) => {
+      /** With limit/offset → paged shape; without → legacy list (next_offset/total absent). */
+      list: (opts?: { limit?: number; offset?: number }): Promise<{
+        sessions: ChatSessionApi[];
+        next_offset?: number | null;
+        total?: number;
+      }> => {
         if (opts?.limit != null || opts?.offset != null) {
           const params = new URLSearchParams();
           if (opts.limit != null) params.set("limit", String(opts.limit));
