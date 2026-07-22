@@ -7,6 +7,11 @@ import * as authService from "./service.js";
 import * as authStorage from "./storage.js";
 import * as emailCodes from "./email-codes.js";
 import { isSmtpConfigured, sendVerificationEmail } from "../settings/smtp.js";
+import {
+  listRegisterAgreements,
+  getAgreementHtml,
+  recordRegisterAcceptances,
+} from "./agreements.js";
 
 const SESSION_COOKIE = "va_session";
 const COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds
@@ -104,6 +109,28 @@ authRouter.post("/login", licenseGuard, async (c) => {
   });
 });
 
+// GET /api/auth/agreements — public catalog for register checkbox labels
+authRouter.get("/agreements", licenseGuard, async (c) => {
+  return c.json({ agreements: listRegisterAgreements() });
+});
+
+// GET /api/auth/agreements/:id — full HTML body for in-product viewer
+authRouter.get("/agreements/:id", licenseGuard, async (c) => {
+  const found = getAgreementHtml(c.req.param("id"));
+  if (!found) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  const format = c.req.query("format");
+  if (format === "json") {
+    return c.json({
+      id: found.def.id,
+      title: found.def.title,
+      version: found.def.version,
+      effective_date: found.def.effective_date,
+      html: found.html,
+    });
+  }
+  return c.html(found.html);
+});
+
 // POST /api/auth/register/request-code
 authRouter.post("/register/request-code", licenseGuard, async (c) => {
   const body = await c.req.json<{ email?: string }>();
@@ -151,7 +178,13 @@ authRouter.post("/register/request-code", licenseGuard, async (c) => {
 
 // POST /api/auth/register/verify
 authRouter.post("/register/verify", licenseGuard, async (c) => {
-  const body = await c.req.json<{ email?: string; code?: string; password?: string; display_name?: string }>();
+  const body = await c.req.json<{
+    email?: string;
+    code?: string;
+    password?: string;
+    display_name?: string;
+    accept_agreements?: boolean;
+  }>();
   const email = (body.email ?? "").trim().toLowerCase();
   const code = (body.code ?? "").trim();
   const password = body.password ?? "";
@@ -163,6 +196,14 @@ authRouter.post("/register/verify", licenseGuard, async (c) => {
   }
   if (!isStrongPassword(password)) {
     return c.json({ error: { code: "weak_password", message: PASSWORD_RULE_MESSAGE } }, 400);
+  }
+  if (body.accept_agreements !== true) {
+    return c.json({
+      error: {
+        code: "agreements_required",
+        message: "请先阅读并同意《用户服务协议》和《隐私政策》",
+      },
+    }, 400);
   }
   const existing = await authStorage.findUserByEmail(email);
   if (existing) {
@@ -179,6 +220,7 @@ authRouter.post("/register/verify", licenseGuard, async (c) => {
     ip: clientIp(c),
     userAgent: c.req.header("user-agent"),
   });
+  await recordRegisterAcceptances(result.user.id);
   setSessionCookie(c, result.sessionId);
   return c.json({ user: userPayload(result.user), session: { ok: true } });
 });
