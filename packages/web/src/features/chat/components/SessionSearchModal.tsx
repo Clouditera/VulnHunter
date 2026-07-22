@@ -280,11 +280,12 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
                               background: active ? "var(--bg-page)" : "transparent",
                             }}
                           >
-                            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                            {/* Left: title + badge + snippet — takes remaining space */}
+                            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", paddingRight: 8 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                                 <span
                                   style={{
-                                    flex: 1,
+                                    flex: "0 1 auto",
                                     minWidth: 0,
                                     fontSize: 13,
                                     fontWeight: 600,
@@ -298,14 +299,6 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
                                   }}
                                 />
                                 {isCurrent ? <span style={CURRENT_BADGE}>{i18n.t("search.current")}</span> : null}
-                                <span style={{
-                                  fontSize: 11,
-                                  color: "var(--text-tertiary, var(--text-secondary))",
-                                  flexShrink: 0,
-                                  marginLeft: 8,
-                                }}>
-                                  {relTime(it.session.updated_at)}
-                                </span>
                               </div>
                               {it.snippet ? (
                                 <div
@@ -321,10 +314,26 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
                                 />
                               ) : null}
                             </div>
-                            <div className="vh-search-ops" style={OPS}>
-                              <button type="button" title={i18n.t("search.open")} onClick={(e) => { e.stopPropagation(); setSelectedIdx(idx); openSelected(); }} style={OP_BTN}>↗</button>
-                              <button type="button" title={i18n.t("search.rename")} onClick={(e) => { e.stopPropagation(); setSelectedIdx(idx); void renameSelected(); }} style={OP_BTN}>✎</button>
-                              <button type="button" title={i18n.t("search.delete")} onClick={(e) => { e.stopPropagation(); setSelectedIdx(idx); void deleteSelected(); }} style={OP_BTN}>🗑</button>
+                            {/* Right edge: time always flush-right; hover ops sit just left of time */}
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: "auto" }}>
+                              <div className="vh-search-ops" style={OPS}>
+                                <button type="button" title={i18n.t("search.open")} onClick={(e) => { e.stopPropagation(); setSelectedIdx(idx); openSelected(); }} style={OP_BTN}>↗</button>
+                                <button type="button" title={i18n.t("search.rename")} onClick={(e) => { e.stopPropagation(); setSelectedIdx(idx); void renameSelected(); }} style={OP_BTN}>✎</button>
+                                <button type="button" title={i18n.t("search.delete")} onClick={(e) => { e.stopPropagation(); setSelectedIdx(idx); void deleteSelected(); }} style={OP_BTN}>🗑</button>
+                              </div>
+                              <span
+                                data-testid="search-result-time"
+                                style={{
+                                  fontSize: 11,
+                                  color: "var(--text-tertiary, var(--text-secondary))",
+                                  flexShrink: 0,
+                                  whiteSpace: "nowrap",
+                                  textAlign: "right",
+                                  minWidth: 64,
+                                }}
+                              >
+                                {relTime(it.session.updated_at)}
+                              </span>
                             </div>
                           </div>
                         );
@@ -482,7 +491,8 @@ const GROUP_LABEL: CSSProperties = {
   fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", padding: "10px 10px 4px", letterSpacing: "0.02em",
 };
 const ROW: CSSProperties = {
-  display: "flex", alignItems: "center", gap: 8, height: 40, padding: "0 10px", borderRadius: 6, cursor: "pointer",
+  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+  height: 40, padding: "0 10px", borderRadius: 6, cursor: "pointer",
 };
 const OPS: CSSProperties = { display: "flex", gap: 6, flexShrink: 0, alignItems: "center" };
 const OP_BTN: CSSProperties = {
