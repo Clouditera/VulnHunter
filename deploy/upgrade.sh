@@ -104,12 +104,13 @@ dir_empty() {
 }
 legacy_volume_candidates() {
   local suffix="$1"
-  docker volume ls --format '{{.Name}}' | grep -E "(^|_)vulnhunter-${suffix}$" || true
+  # Accept both pre-rename (vulnagent-*) and post-rename (vulnhunter-*) volume names.
+  docker volume ls --format '{{.Name}}' | grep -E "(^|_)vuln(agent|hunter)-${suffix}$" || true
 }
 migrate_volume_data() {
   local volume="$1" target="$2" service="$3"
   echo "[upgrade] migrating $service data from legacy volume $volume to $target"
-  docker stop vulnhunter-service vulnhunter-web >/dev/null 2>&1 || true
+  docker stop vulnhunter-service vulnhunter-web vulnagent-service vulnagent-web >/dev/null 2>&1 || true
   if ! docker run --rm -v "$volume:/from:ro" -v "$target:/to" "${POSTGRES_IMAGE:-postgres:16-alpine}" sh -c 'cd /from && cp -a . /to/ && chmod -R u+rwX /to'; then
     echo "[upgrade] failed to migrate $service data from volume $volume; aborting to avoid empty data startup" >&2
     exit 1
@@ -188,14 +189,11 @@ validate_upgrade_preconditions() {
     echo "[upgrade] For a clean first install, run ./install.sh. If this is an old install, restore .env from backup before upgrading." >&2
     exit 1
   fi
-  if docker ps --format '{{.Names}}' | grep -q '^vh-scan-'; then
-    if [[ "${ALLOW_ACTIVE_SCAN_UPGRADE:-}" != "1" ]]; then
-      echo "[upgrade] active vh-scan-* containers detected; refusing to upgrade while scans are running." >&2
-      echo "[upgrade] Stop/cancel scans first, or set ALLOW_ACTIVE_SCAN_UPGRADE=1 to override." >&2
-      docker ps --format '{{.Names}}\t{{.Status}}' | grep '^vh-scan-' >&2 || true
-      exit 1
-    fi
-  fi
+  # Quiet window: refuse while any managed worker (legacy va-* or new vh-*) is running.
+  # Shared with the rename migration gate so both old and new installs are covered.
+  # shellcheck disable=SC1091
+  source "$ROOT/lib/rename-migrate.sh"
+  rename_quiet_window_gate || exit 1
 }
 validate_enterprise_assets() {
   if [[ "${EDITION:-}" == "enterprise" ]]; then
@@ -218,11 +216,13 @@ write_install_manifest() {
   installed_version="$version"
   installed_commit="$git_commit"
   installed_youngflow="$youngflow"
-  if [[ -f .vulnhunter-install.json ]]; then
-    installed_at="$(sed -n 's/.*"installed_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .vulnhunter-install.json | head -n 1)"
-    installed_version="$(sed -n '/"installed_version"/,/}/s/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .vulnhunter-install.json | head -n 1)"
-    installed_commit="$(sed -n '/"installed_version"/,/}/s/.*"git_commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .vulnhunter-install.json | head -n 1)"
-    installed_youngflow="$(sed -n '/"installed_version"/,/}/s/.*"youngflow_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .vulnhunter-install.json | head -n 1)"
+  local manifest=".vulnhunter-install.json"
+  [[ -f "$manifest" ]] || manifest=".vulnagent-install.json"
+  if [[ -f "$manifest" ]]; then
+    installed_at="$(sed -n 's/.*"installed_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
+    installed_version="$(sed -n '/"installed_version"/,/}/s/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
+    installed_commit="$(sed -n '/"installed_version"/,/}/s/.*"git_commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
+    installed_youngflow="$(sed -n '/"installed_version"/,/}/s/.*"youngflow_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
   fi
   [[ -n "$installed_at" ]] || installed_at="$now"
   [[ -n "$installed_version" ]] || installed_version="$version"
@@ -287,7 +287,7 @@ migrate_container_data() {
     exit 1
   fi
   echo "[upgrade] migrating $service data from $container:$dest to $target"
-  docker stop vulnhunter-service vulnhunter-web >/dev/null 2>&1 || true
+  docker stop vulnhunter-service vulnhunter-web vulnagent-service vulnagent-web >/dev/null 2>&1 || true
   docker stop "$container" >/dev/null 2>&1 || true
   if ! docker cp "$container:$dest/." "$target/"; then
     echo "[upgrade] failed to migrate $service data; aborting to avoid empty data startup" >&2
@@ -304,7 +304,17 @@ mkdir -p backups
 stamp="$(date +%Y%m%d-%H%M%S)"
 cp .env "backups/.env.$stamp"
 [[ -d .secrets ]] && tar -czf "backups/secrets.$stamp.tar.gz" .secrets
+[[ -f .vulnagent-install.json ]] && cp .vulnagent-install.json "backups/install-manifest.$stamp.json"
 [[ -f .vulnhunter-install.json ]] && cp .vulnhunter-install.json "backups/install-manifest.$stamp.json"
+
+# One-shot VulnAgent → VulnHunter rename migration (no-op when package or install
+# does not need it). Stops old stack, moves DATA_DIR, renames DB/role, copies
+# MinIO bucket → artifact-store, rewrites .env, prepares vulnhunter-internal and
+# reattaches SandboxPlane. See deploy/lib/rename-migrate.sh.
+# shellcheck disable=SC1091
+source "$ROOT/lib/rename-migrate.sh"
+rename_run_migration
+
 sync_release_env
 set -a
 # shellcheck disable=SC1091
@@ -321,12 +331,24 @@ if [[ -d images ]]; then
 fi
 validate_local_images
 prepare_data_dirs
+# Dual-name: support both pre-rename (vulnagent-*) and post-rename (vulnhunter-*) containers.
+migrate_container_data vulnagent-db /var/lib/postgresql/data "${DATA_DIR:-/opt/vulnagent/data}/db" db
 migrate_container_data vulnhunter-db /var/lib/postgresql/data "${DATA_DIR:-/opt/vulnhunter/data}/db" db
+migrate_container_data vulnagent-minio /data "${DATA_DIR:-/opt/vulnagent/data}/minio" minio
 migrate_container_data vulnhunter-minio /data "${DATA_DIR:-/opt/vulnhunter/data}/minio" minio
+protect_or_migrate_legacy_volume db "${DATA_DIR:-/opt/vulnagent/data}/db" db
 protect_or_migrate_legacy_volume db "${DATA_DIR:-/opt/vulnhunter/data}/db" db
+protect_or_migrate_legacy_volume minio "${DATA_DIR:-/opt/vulnagent/data}/minio" minio
 protect_or_migrate_legacy_volume minio "${DATA_DIR:-/opt/vulnhunter/data}/minio" minio
 prepare_data_dirs
-docker rm -f vulnhunter-web vulnhunter-service vulnhunter-db vulnhunter-minio >/dev/null 2>&1 || true
+docker rm -f \
+  vulnagent-web vulnagent-service vulnagent-db vulnagent-minio \
+  vulnhunter-web vulnhunter-service vulnhunter-db vulnhunter-minio \
+  >/dev/null 2>&1 || true
 compose_up_detached
+# Detach SandboxPlane from the legacy network once the new stack is up.
+if declare -F rename_cleanup_old_network >/dev/null 2>&1; then
+  rename_cleanup_old_network || true
+fi
 "$ROOT/doctor.sh"
 write_install_manifest
