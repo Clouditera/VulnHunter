@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { api, type LlmCredential, type SourceArchivePolicy } from "../../../shared/api/client.js";
+import { api, type LlmCredential, type SourceArchivePolicy, type SandboxCapacity } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 
 interface Props {
@@ -44,6 +44,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [timeoutMode, setTimeoutMode] = useState<"custom" | "auto">("custom");
   const [enableDynamicVerify, setEnableDynamicVerify] = useState(false);
   const [enableDynamicExploit, setEnableDynamicExploit] = useState(false);
+  const [sandboxCapacity, setSandboxCapacity] = useState<SandboxCapacity | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
@@ -78,6 +79,20 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   }, []);
   const [, forceI18n] = useState(0);
   useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
+
+  // Capacity is a soft hint only (contract B3) — never blocks create.
+  useEffect(() => {
+    if (!enableDynamicVerify) {
+      setSandboxCapacity(null);
+      return;
+    }
+    let cancelled = false;
+    api.sandbox
+      .capacity()
+      .then((c) => { if (!cancelled) setSandboxCapacity(c); })
+      .catch(() => { if (!cancelled) setSandboxCapacity(null); });
+    return () => { cancelled = true; };
+  }, [enableDynamicVerify]);
 
   useEffect(() => {
     let mounted = true;
@@ -662,6 +677,25 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                 <div style={{ fontSize: "11px", color: "var(--brand, #b45309)", background: "var(--bg-warning, rgba(180,83,9,0.08))", border: "1px solid var(--border-warning, rgba(180,83,9,0.3))", borderRadius: "7px", padding: "8px 10px", lineHeight: 1.5 }}>
                   {i18n.t("newTask.dynamicHint")}
                 </div>
+                {enableDynamicVerify && sandboxCapacity && sandboxCapacity.available_now === false ? (
+                  <div
+                    data-testid="sandbox-queue-hint"
+                    style={{
+                      fontSize: "12px",
+                      color: "#b45309",
+                      background: "rgba(180,83,9,0.1)",
+                      border: "1px solid rgba(180,83,9,0.35)",
+                      borderRadius: "7px",
+                      padding: "9px 11px",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {i18n.t("newTask.willQueue")}
+                    {sandboxCapacity.queue_depth > 0
+                      ? ` (${i18n.t("newTask.queueDepth").replace("{n}", String(sandboxCapacity.queue_depth))})`
+                      : ""}
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

@@ -67,6 +67,7 @@ export function UsersSection() {
           <div style={{ width: "120px" }}>{i18n.t("settings.users.col.name")}</div>
           <div style={{ width: "180px" }}>{i18n.t("settings.users.col.remark")}</div>
           <div style={{ width: "100px" }}>{i18n.t("settings.users.col.role")}</div>
+          <div style={{ width: "90px" }}>{i18n.t("settings.users.col.source")}</div>
           <div style={{ width: "110px" }}>{i18n.t("settings.users.col.taskLimit")}</div>
           <div style={{ width: "100px" }}>{i18n.t("settings.users.col.lastLogin")}</div>
           <div style={{ width: "40px" }} />
@@ -97,6 +98,9 @@ export function UsersSection() {
             <div title={u.admin_remark ?? ""} style={{ width: "180px", fontSize: "12px", color: u.admin_remark ? "var(--text-primary)" : "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.admin_remark || "—"}</div>
             <div style={{ width: "100px" }}>
               <RoleBadge role={u.role} />
+            </div>
+            <div style={{ width: "90px" }}>
+              <SourceBadge source={u.source} />
             </div>
             <div style={{ width: "110px", fontSize: "12px", color: "var(--text-secondary)" }}>{formatTaskLimit(u)}</div>
             <div style={{ width: "100px", fontSize: "12px", color: "var(--text-secondary)" }}>{relativeTime(u.last_login_at)}</div>
@@ -134,6 +138,31 @@ function formatTaskLimit(user: UserApi): string {
   const used = user.task_count ?? 0;
   const limit = user.task_limit ?? 0;
   return limit > 0 ? `${used}/${limit}` : `${used}/∞`;
+}
+
+
+function SourceBadge({ source }: { source?: string }) {
+  const registered = source === "registered";
+  const label = registered
+    ? i18n.t("settings.users.source.registered")
+    : i18n.t("settings.users.source.admin");
+  return (
+    <span
+      data-testid="user-source-badge"
+      style={{
+        display: "inline-block",
+        fontSize: "11px",
+        fontWeight: 600,
+        padding: "2px 7px",
+        borderRadius: "999px",
+        background: registered ? "rgba(37,99,235,0.1)" : "var(--bg-page)",
+        color: registered ? "#2563eb" : "var(--text-secondary)",
+        border: `1px solid ${registered ? "rgba(37,99,235,0.25)" : "var(--border)"}`,
+      }}
+    >
+      {label}
+    </span>
+  );
 }
 
 function RoleBadge({ role }: { role: string }) {

@@ -79,6 +79,7 @@ export interface Task {
   project_name: string;
   display_name?: string | null;
   state: string;
+  sandbox_queue?: SandboxQueueInfo | null;
   risk_score: number | null;
   failure_reason: string | null;
   source_type: string;
@@ -566,6 +567,48 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    /** Registration — request email verification code */
+    registerRequestCode: (email: string) =>
+      request<{ ok: boolean; cooldown_seconds: number }>("/api/auth/register/request-code", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      }),
+    /** Registration — verify code + set password, auto-login */
+    registerVerify: (data: { email: string; code: string; password: string; display_name?: string }) =>
+      request<{ user: { id: string; email: string; displayName: string; role: string; mustChangePassword: boolean }; session?: unknown }>(
+        "/api/auth/register/verify",
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    /** Forgot password — always ok (no email existence leak) */
+    passwordForgot: (email: string) =>
+      request<{ ok: boolean }>("/api/auth/password/forgot", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      }),
+    passwordReset: (data: { email: string; code: string; new_password: string }) =>
+      request<{ ok: boolean }>("/api/auth/password/reset", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+  },
+  settingsSmtp: {
+    get: () => request<SmtpConfigView>("/api/settings/smtp"),
+    put: (data: {
+      host: string;
+      port: number;
+      username: string;
+      password?: string;
+      from_address: string;
+      encryption: "none" | "ssl" | "starttls";
+    }) => request<{ ok: boolean }>("/api/settings/smtp", { method: "PUT", body: JSON.stringify(data) }),
+    test: (to: string) =>
+      request<{ ok: boolean; detail?: string }>("/api/settings/smtp/test", {
+        method: "POST",
+        body: JSON.stringify({ to }),
+      }),
+  },
+  sandbox: {
+    capacity: () => request<SandboxCapacity>("/api/sandbox/capacity"),
   },
   dashboard: {
     get: (range?: string, userId?: string) => {
@@ -879,12 +922,41 @@ export interface UserApi {
   display_name: string;
   role: string;
   status: string;
+  /** 'admin' | 'registered' — source of account creation */
+  source?: string;
   must_change_password: boolean;
   last_login_at: string | null;
   created_at: string;
   task_limit?: number;
   task_count?: number;
   admin_remark?: string | null;
+}
+
+export interface SandboxCapacity {
+  available_now: boolean;
+  running_sandboxes: number;
+  queue_depth: number;
+  detail: "ok" | "capacity_tight" | string;
+}
+
+export interface SandboxQueueInfo {
+  waiting: boolean;
+  reason?: "capacity" | "quota" | string;
+  since?: string;
+  attempts?: number;
+}
+
+export interface SmtpConfigView {
+  configured: boolean;
+  host?: string | null;
+  port?: number | null;
+  username?: string | null;
+  /** password never returned — only whether one is stored */
+  password_configured?: boolean;
+  from_address?: string | null;
+  encryption?: "none" | "ssl" | "starttls" | string;
+  last_tested_at?: string | null;
+  last_test_ok?: boolean | null;
 }
 
 export interface PocSettingsApi {

@@ -416,7 +416,29 @@ export function TasksListPage() {
                       {subtitle ? <div style={{ marginLeft: 22, marginTop: 3, fontSize: 11, color: "var(--text-secondary)", fontWeight: 400 }}>{subtitle}</div> : null}
                     </td>
                     <td style={{ padding: "14px 20px" }}>
-                      <StatusPill state={task.state} />
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                        <StatusPill state={task.state} />
+                        {task.sandbox_queue?.waiting ? (
+                          <span
+                            data-testid="task-queue-badge"
+                            title={task.sandbox_queue.reason === "quota"
+                              ? i18n.t("tasks.queue.quota")
+                              : i18n.t("tasks.queue.capacity")}
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 650,
+                              padding: "2px 7px",
+                              borderRadius: "999px",
+                              background: "rgba(180,83,9,0.12)",
+                              color: "#b45309",
+                              border: "1px solid rgba(180,83,9,0.3)",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {i18n.t("tasks.queue.badge")}
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td
                       data-testid="task-findings-cell"
