@@ -81,6 +81,35 @@ assert_eq "password with substring NOT rewritten" "secret-with-vulnagent-substri
 assert_eq "MASTER_KEY_FILE path+name" "/home/clouditera/vulnhunter-data/.secrets/vulnhunter-master.key" \
   "$(printf '%s\n' "$out" | sed -n 's/^MASTER_KEY_FILE=//p')"
 
+echo "== rename_minio_plan (idempotent branches) =="
+minio_fx="$(mktemp -d)"
+# layout: old bucket with 2 files; no new bucket → full_copy
+mkdir -p "$minio_fx/oldb" "$minio_fx/oldm"
+printf a > "$minio_fx/oldb/f1"; printf b > "$minio_fx/oldb/f2"
+printf m > "$minio_fx/oldm/meta"
+assert_eq "full_copy when new missing" "full_copy" \
+  "$(rename_minio_plan "$minio_fx/oldb" "$minio_fx/newb" "$minio_fx/oldm" "$minio_fx/newm")"
+# content present + matching counts, metadata missing → meta_only (31.102 half-migrate)
+mkdir -p "$minio_fx/newb"
+cp -a "$minio_fx/oldb/." "$minio_fx/newb/"
+# simulate root-owned meta dir unreadable for write by using a present old meta + absent new meta
+assert_eq "meta_only when content ok meta missing" "meta_only" \
+  "$(rename_minio_plan "$minio_fx/oldb" "$minio_fx/newb" "$minio_fx/oldm" "$minio_fx/newm")"
+# content + metadata both present → skip
+mkdir -p "$minio_fx/newm"
+assert_eq "skip when content+meta ok" "skip" \
+  "$(rename_minio_plan "$minio_fx/oldb" "$minio_fx/newb" "$minio_fx/oldm" "$minio_fx/newm")"
+# count mismatch → fail
+printf c > "$minio_fx/newb/extra"
+assert_eq "fail on count mismatch" "fail:mismatch" \
+  "$(rename_minio_plan "$minio_fx/oldb" "$minio_fx/newb" "$minio_fx/oldm" "$minio_fx/newm")"
+# neither side → create_empty
+rm -rf "$minio_fx"
+minio_fx="$(mktemp -d)"
+assert_eq "create_empty when neither side" "create_empty" \
+  "$(rename_minio_plan "$minio_fx/oldb" "$minio_fx/newb" "$minio_fx/oldm" "$minio_fx/newm")"
+rm -rf "$minio_fx"
+
 echo "== package detection (fixture) =="
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT

@@ -300,6 +300,11 @@ rename_rewrite_env_file() {
 rename_backup_database() {
   local dir="${DATA_DIR:-}/db"
   [[ -d "$dir" ]] || { rename_warn "no DB dir at $dir — skip dump"; return 0; }
+  # Idempotent: if a prior dump already exists from this install, skip re-dump.
+  if compgen -G "backups/db-pre-rename.*.sql.gz" >/dev/null 2>&1; then
+    rename_log "existing db-pre-rename dump found — skip re-dump"
+    return 0
+  fi
   mkdir -p backups
   local stamp out
   stamp="$(date +%Y%m%d-%H%M%S)"
@@ -307,7 +312,8 @@ rename_backup_database() {
   rename_log "dumping database to $out"
   local pg_image="${POSTGRES_IMAGE:-postgres:16-alpine}"
   local cname="vh-rename-pgdump-$$"
-  # Start postgres against existing data (trust auth for local dump only)
+  # Start postgres against existing data (trust auth for local dump only).
+  # POSTGRES_USER is only used on first init; existing clusters keep their role.
   if ! docker run -d --name "$cname" \
       -v "$dir:/var/lib/postgresql/data" \
       -e POSTGRES_HOST_AUTH_METHOD=trust \
@@ -316,21 +322,23 @@ rename_backup_database() {
     rename_warn "could not start temp postgres for dump — continuing without dump"
     return 0
   fi
-  local i ready=0
-  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 30; do
+  local i ready=0 role=""
+  for i in $(seq 1 40); do
     if docker exec "$cname" pg_isready -U "$RENAME_OLD_DB_ROLE" >/dev/null 2>&1; then
-      ready=1
-      break
+      ready=1; role="$RENAME_OLD_DB_ROLE"; break
+    fi
+    if docker exec "$cname" pg_isready -U "$RENAME_NEW_DB_ROLE" >/dev/null 2>&1; then
+      ready=1; role="$RENAME_NEW_DB_ROLE"; break
     fi
     sleep 1
   done
-  if [[ "$ready" != 1 ]]; then
+  if [[ "$ready" != 1 || -z "$role" ]]; then
     rename_warn "temp postgres not ready for dump — skipping"
     docker rm -f "$cname" >/dev/null 2>&1 || true
     return 0
   fi
-  if docker exec "$cname" pg_dumpall -U "$RENAME_OLD_DB_ROLE" 2>/dev/null | gzip > "$out"; then
-    rename_log "database dump ok ($(wc -c < "$out") bytes)"
+  if docker exec "$cname" pg_dumpall -U "$role" 2>/dev/null | gzip > "$out"; then
+    rename_log "database dump ok via role=$role ($(wc -c < "$out") bytes)"
   else
     rename_warn "pg_dumpall failed — dump file may be incomplete"
     rm -f "$out"
@@ -389,67 +397,153 @@ SQL
   rename_log "database identifiers renamed"
 }
 
-# Copy old MinIO bucket → artifact-store at the filesystem layer (MinIO layout is
-# one directory per bucket under DATA_DIR/minio). No external mc image required
-# (offline-safe). Leaves the old bucket directory as rollback.
+# Count files under a path (host-side; root-owned trees are still listable).
+rename_count_files() {
+  local p="$1"
+  [[ -d "$p" ]] || { printf '0'; return 0; }
+  find "$p" -type f 2>/dev/null | wc -l | tr -d ' '
+}
+
+# Pure decision helper for the MinIO step (unit-tested).
+# Args: old_bucket_dir new_bucket_dir old_meta_dir new_meta_dir
+# Prints one of: skip | meta_only | full_copy | create_empty | fail:mismatch
+rename_minio_plan() {
+  local old_b="$1" new_b="$2" old_m="$3" new_m="$4"
+  local old_count new_count
+  old_count="$(rename_count_files "$old_b")"
+  new_count="$(rename_count_files "$new_b")"
+
+  if [[ ! -d "$old_b" && ! -d "$new_b" ]]; then
+    printf 'create_empty'
+    return 0
+  fi
+  if [[ -d "$new_b" && -d "$old_b" && "$old_count" != "$new_count" ]]; then
+    printf 'fail:mismatch'
+    return 0
+  fi
+  if [[ -d "$new_b" && ( ! -d "$old_b" || "$old_count" == "$new_count" ) ]]; then
+    # Content ok — metadata may still be missing (the 31.102 half-migrate case).
+    if [[ -d "$old_m" && ! -d "$new_m" ]]; then
+      printf 'meta_only'
+      return 0
+    fi
+    printf 'skip'
+    return 0
+  fi
+  # new missing (old present) → full copy
+  printf 'full_copy'
+}
+
+# Run a root command against the MinIO data dir via docker (handles root-owned
+# .minio.sys and bucket objects written by the MinIO container). Offline-safe:
+# only uses images already loaded locally (minio → postgres → any), never pulls.
+rename_minio_root_sh() {
+  local dir="$1"; shift
+  local image=""
+  for image in \
+      "${MINIO_IMAGE:-}" \
+      "minio/minio:RELEASE.2025-09-07T16-13-09Z" \
+      "${POSTGRES_IMAGE:-postgres:16-alpine}" \
+      "alpine:3.20"; do
+    [[ -n "$image" ]] || continue
+    if docker image inspect "$image" >/dev/null 2>&1; then
+      break
+    fi
+    image=""
+  done
+  if [[ -z "$image" ]]; then
+    image="$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>' | head -n 1)"
+  fi
+  [[ -n "$image" ]] || { rename_die "no local docker image available for root minio copy"; return 1; }
+  docker run --rm --user 0:0 --entrypoint sh \
+    -v "$dir:/data" \
+    "$image" \
+    -c "$*"
+}
+
+# Copy old MinIO bucket → artifact-store at the filesystem layer. All writes go
+# through a root docker run so root-owned .minio.sys is writable. Idempotent:
+#   skip       — content+metadata already ok
+#   meta_only  — content ok, only copy .minio.sys/buckets/<new> (31.102 resume)
+#   full_copy  — content missing → cp -a bucket + metadata
+#   create_empty — neither side present
+#   fail       — content counts disagree
 rename_migrate_minio_bucket() {
   local dir="${DATA_DIR:-}/minio"
   [[ -d "$dir" ]] || { rename_warn "no minio dir — skip bucket migrate"; return 0; }
 
-  local old_bucket_dir="$dir/$RENAME_OLD_BUCKET"
-  local new_bucket_dir="$dir/$RENAME_NEW_BUCKET"
-  local old_meta="$dir/.minio.sys/buckets/$RENAME_OLD_BUCKET"
-  local new_meta="$dir/.minio.sys/buckets/$RENAME_NEW_BUCKET"
+  local old_bucket="$RENAME_OLD_BUCKET"
+  local new_bucket="$RENAME_NEW_BUCKET"
+  local old_bucket_dir="$dir/$old_bucket"
+  local new_bucket_dir="$dir/$new_bucket"
+  local old_meta="$dir/.minio.sys/buckets/$old_bucket"
+  local new_meta="$dir/.minio.sys/buckets/$new_bucket"
 
-  if [[ -d "$new_bucket_dir" ]]; then
+  local plan
+  plan="$(rename_minio_plan "$old_bucket_dir" "$new_bucket_dir" "$old_meta" "$new_meta")"
+  rename_log "minio plan=$plan (old_files=$(rename_count_files "$old_bucket_dir") new_files=$(rename_count_files "$new_bucket_dir"))"
+
+  case "$plan" in
+    skip)
+      rename_log "bucket '$new_bucket' content+metadata already ok — skip"
+      ;;
+    meta_only)
+      rename_log "bucket content ok; copying missing metadata via docker root"
+      rename_minio_root_sh "$dir" "
+        set -e
+        mkdir -p /data/.minio.sys/buckets
+        cp -a /data/.minio.sys/buckets/${old_bucket} /data/.minio.sys/buckets/${new_bucket}
+      " || { rename_die "root bucket metadata copy failed"; return 1; }
+      ;;
+    full_copy)
+      rename_log "copying MinIO bucket via docker root: $old_bucket → $new_bucket"
+      rename_minio_root_sh "$dir" "
+        set -e
+        cp -a /data/${old_bucket} /data/${new_bucket}
+        if [ -d /data/.minio.sys/buckets/${old_bucket} ]; then
+          mkdir -p /data/.minio.sys/buckets
+          rm -rf /data/.minio.sys/buckets/${new_bucket}
+          cp -a /data/.minio.sys/buckets/${old_bucket} /data/.minio.sys/buckets/${new_bucket}
+        else
+          mkdir -p /data/.minio.sys/buckets/${new_bucket}
+        fi
+      " || { rename_die "root bucket full copy failed"; return 1; }
+      ;;
+    create_empty)
+      rename_log "creating empty new bucket via docker root"
+      rename_minio_root_sh "$dir" \
+        "mkdir -p /data/${new_bucket} /data/.minio.sys/buckets/${new_bucket}" \
+        || return 1
+      ;;
+    fail:mismatch)
+      rename_die "bucket file count mismatch (old=$(rename_count_files "$old_bucket_dir") new=$(rename_count_files "$new_bucket_dir")) — refusing to continue"
+      return 1
+      ;;
+    *)
+      rename_die "unknown minio plan: $plan"
+      return 1
+      ;;
+  esac
+
+  # Final count check when old side still exists.
+  if [[ -d "$old_bucket_dir" ]]; then
     local old_count new_count
-    old_count=0; new_count=0
-    [[ -d "$old_bucket_dir" ]] && old_count="$(find "$old_bucket_dir" -type f 2>/dev/null | wc -l | tr -d ' ')"
-    new_count="$(find "$new_bucket_dir" -type f 2>/dev/null | wc -l | tr -d ' ')"
-    if [[ ! -d "$old_bucket_dir" || "$old_count" == "$new_count" ]]; then
-      rename_log "bucket '$RENAME_NEW_BUCKET' already present (files=$new_count) — skip copy"
-      return 0
+    old_count="$(rename_count_files "$old_bucket_dir")"
+    new_count="$(rename_count_files "$new_bucket_dir")"
+    rename_log "object file count old=$old_count new=$new_count"
+    if [[ "$old_count" != "$new_count" ]]; then
+      rename_die "bucket file count mismatch after copy (old=$old_count new=$new_count)"
+      return 1
     fi
-    rename_warn "new bucket exists but file count differs (old=$old_count new=$new_count); re-copying"
-    rm -rf "$new_bucket_dir"
   fi
 
-  if [[ ! -d "$old_bucket_dir" ]]; then
-    rename_log "old bucket dir '$old_bucket_dir' absent — creating empty new bucket dir"
-    mkdir -p "$new_bucket_dir"
-    if [[ -d "$dir/.minio.sys/buckets" && ! -d "$new_meta" ]]; then
-      mkdir -p "$new_meta"
-    fi
-    return 0
-  fi
-
-  rename_log "copying MinIO bucket filesystem: $RENAME_OLD_BUCKET → $RENAME_NEW_BUCKET (data stays on host)"
-  # cp -a preserves modes/timestamps; old dir left intact for rollback.
-  cp -a "$old_bucket_dir" "$new_bucket_dir"
-
-  # Copy bucket metadata if MinIO has written any (config/policy/etc.).
-  if [[ -d "$old_meta" && ! -d "$new_meta" ]]; then
-    mkdir -p "$(dirname "$new_meta")"
-    cp -a "$old_meta" "$new_meta"
-    rename_log "copied MinIO bucket metadata"
-  fi
-
-  local old_count new_count
-  old_count="$(find "$old_bucket_dir" -type f 2>/dev/null | wc -l | tr -d ' ')"
-  new_count="$(find "$new_bucket_dir" -type f 2>/dev/null | wc -l | tr -d ' ')"
-  rename_log "object file count old=$old_count new=$new_count"
-  if [[ "$old_count" != "$new_count" ]]; then
-    rename_die "bucket file count mismatch (old=$old_count new=$new_count) — refusing to continue"
-    return 1
-  fi
-
-  rename_log "bucket migration complete; old bucket '$RENAME_OLD_BUCKET' retained as rollback"
+  rename_log "bucket migration complete; old bucket '$old_bucket' retained as rollback"
   mkdir -p backups
   cat > "backups/minio-bucket-rollback.txt" <<EOF
-Old MinIO bucket retained on disk: ${dir}/${RENAME_OLD_BUCKET}
-New MinIO bucket in use:           ${dir}/${RENAME_NEW_BUCKET}
+Old MinIO bucket retained on disk: ${dir}/${old_bucket}
+New MinIO bucket in use:           ${dir}/${new_bucket}
 After confirming the upgrade, remove the old bucket directory (and
-${dir}/.minio.sys/buckets/${RENAME_OLD_BUCKET} if present).
+${dir}/.minio.sys/buckets/${old_bucket} if present).
 EOF
 }
 
