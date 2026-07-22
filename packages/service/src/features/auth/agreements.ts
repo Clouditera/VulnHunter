@@ -15,7 +15,7 @@ export interface AgreementDef {
   required_on_register: boolean;
 }
 
-/** Currently shipped private-deploy agreements (SaaS agreement intentionally omitted). */
+/** Agreements required at registration (fish 2026-07-22: all three shipped docs). */
 export const REGISTER_AGREEMENTS: AgreementDef[] = [
   {
     id: "user-service",
@@ -31,6 +31,14 @@ export const REGISTER_AGREEMENTS: AgreementDef[] = [
     version: "1.0",
     effective_date: "2026-07-21",
     html_file: "privacy-policy.html",
+    required_on_register: true,
+  },
+  {
+    id: "saas-service",
+    title: "VulHunter SaaS 平台服务协议及软件许可条款",
+    version: "1.1",
+    effective_date: "2026-07-21",
+    html_file: "saas-service.html",
     required_on_register: true,
   },
 ];
