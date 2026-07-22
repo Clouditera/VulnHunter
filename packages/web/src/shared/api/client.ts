@@ -574,10 +574,32 @@ export const api = {
         body: JSON.stringify({ email }),
       }),
     /** Registration — verify code + set password, auto-login */
-    registerVerify: (data: { email: string; code: string; password: string; display_name?: string }) =>
+    registerVerify: (data: {
+      email: string;
+      code: string;
+      password: string;
+      display_name?: string;
+      /** required true — backend records agreement acceptances */
+      accept_agreements: boolean;
+    }) =>
       request<{ user: { id: string; email: string; displayName: string; role: string; mustChangePassword: boolean }; session?: unknown }>(
         "/api/auth/register/verify",
         { method: "POST", body: JSON.stringify(data) },
+      ),
+    listAgreements: () =>
+      request<{
+        agreements: Array<{
+          id: string;
+          title: string;
+          version: string;
+          effective_date: string;
+          required_on_register: boolean;
+          html_url: string;
+        }>;
+      }>("/api/auth/agreements"),
+    getAgreement: (id: string) =>
+      request<{ id: string; title: string; version: string; effective_date: string; html: string }>(
+        `/api/auth/agreements/${encodeURIComponent(id)}?format=json`,
       ),
     /** Forgot password — always ok (no email existence leak) */
     passwordForgot: (email: string) =>
