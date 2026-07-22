@@ -201,7 +201,7 @@ authRouter.post("/register/verify", licenseGuard, async (c) => {
     return c.json({
       error: {
         code: "agreements_required",
-        message: "请先阅读并同意《用户服务协议》和《隐私政策》",
+        message: "请先阅读并同意《用户服务协议》《隐私政策》和《SaaS 平台服务协议》",
       },
     }, 400);
   }
