@@ -723,18 +723,49 @@ function PillFromTab({ pill }: { pill: TabStatusPill }) {
   );
 }
 
+/** Prefix status with stage name so chips read as complete phrases. */
+function labeledStatus(stage: string, statusLabel: string, ok: boolean): string {
+  return ok ? `${stage} ✓${statusLabel}` : `${stage} ${statusLabel}`;
+}
+
 function JudgmentStrip({
   finding,
   dynamicEnabled,
-  isRisk,
+  isRisk: _isRisk,
 }: {
   finding: FindingMeta;
   dynamicEnabled: boolean;
   isRisk: boolean;
 }) {
+  void _isRisk;
   const [pop, setPop] = useState<"cvss" | "ev" | null>(null);
   const pocPill = resolvePocTabPill(finding, dynamicEnabled);
   const expPill = resolveExpTabPill(finding, dynamicEnabled);
+
+  // Judgment-strip labels: always include the stage name (fish v3.1).
+  // Risk skip labels already embed the stage verb — use them as-is to avoid
+  // "动态验证 不执行动态验证" duplication.
+  const staticLabel = labeledStatus(
+    i18n.t("finding.judgment.static"),
+    i18n.t("finding.cards.static.confirmed"),
+    true,
+  );
+  const pocIsRiskSkip = pocPill.label === i18n.t("finding.cards.poc.riskSkipLabel");
+  const expIsRiskSkip = expPill.label === i18n.t("finding.cards.exp.riskSkipLabel");
+  const pocLabel = pocIsRiskSkip
+    ? pocPill.label
+    : labeledStatus(
+        i18n.t("finding.judgment.poc"),
+        pocPill.label,
+        /reproduced|已复现/i.test(pocPill.label),
+      );
+  const expLabel = expIsRiskSkip
+    ? expPill.label
+    : labeledStatus(
+        i18n.t("finding.judgment.exp"),
+        expPill.label,
+        /confirmed|影响已确认/i.test(expPill.label),
+      );
 
   const cvssParts = useMemo(() => {
     const v = finding.cvss_vector ?? "";
@@ -770,114 +801,128 @@ function JudgmentStrip({
       .map((p) => ({ key: p, gloss: map[p] ?? p }));
   }, [finding.cvss_vector]);
 
+  const rowStyle: React.CSSProperties = {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "6px",
+    width: "100%",
+  };
+
   return (
     <div
       data-testid="finding-judgment-strip"
       style={{
         display: "flex",
-        flexWrap: "wrap",
-        alignItems: "center",
-        gap: "6px",
+        flexDirection: "column",
+        alignItems: "stretch",
+        gap: "8px",
         marginBottom: "12px",
         width: "100%",
       }}
     >
-      <Chip tone="ok" testid="finding-chip-static">
-        ✓ {i18n.t("finding.cards.static.confirmed")}
-        <span style={{ fontWeight: 500, color: "inherit", opacity: 0.85 }}>
-          · {isRisk ? i18n.t("finding.cards.static.helperRisk") : i18n.t("finding.cards.static.helper")}
+      {/* Row 1: three stage statuses with name labels (must be its own flex row). */}
+      <div data-testid="finding-judgment-status-row" style={rowStyle}>
+        <Chip tone="ok" testid="finding-chip-static">
+          {staticLabel}
+        </Chip>
+        <span data-testid="finding-chip-poc">
+          <PillFromTab pill={{ ...pocPill, label: pocLabel }} />
         </span>
-      </Chip>
-
-      {(finding.cvss_score != null || finding.cvss_vector) && (
-        <span style={{ position: "relative", display: "inline-flex" }}>
-          <Chip testid="finding-chip-cvss">
-            <b style={{ fontWeight: 800, color: "var(--text-primary)" }}>CVSS {finding.cvss_score ?? "—"}</b>
-            {finding.cvss_vector ? (
-              <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: "10px", fontWeight: 500, color: "var(--text-secondary)" }}>
-                {finding.cvss_vector}
-              </span>
-            ) : null}
-            <button
-              type="button"
-              aria-label="CVSS info"
-              data-testid="finding-chip-cvss-info"
-              onClick={() => setPop((p) => (p === "cvss" ? null : "cvss"))}
-              style={{
-                border: "none",
-                background: "transparent",
-                color: "var(--text-secondary)",
-                cursor: "pointer",
-                padding: 0,
-                width: "16px",
-                height: "16px",
-                display: "inline-grid",
-                placeItems: "center",
-                fontSize: "12px",
-                lineHeight: 1,
-              }}
-            >
-              ⓘ
-            </button>
-          </Chip>
-          <InfoPopover open={pop === "cvss"} onClose={() => setPop(null)} title={i18n.t("findings.cvss.popoverTitle")}>
-            {cvssParts.length === 0 ? (
-              <div>—</div>
-            ) : (
-              <ul style={{ margin: 0, paddingLeft: "18px" }}>
-                {cvssParts.map((p) => (
-                  <li key={p.key} style={{ marginBottom: "3px" }}>
-                    <code style={{ fontSize: "11px" }}>{p.key}</code> = {p.gloss}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </InfoPopover>
+        <span data-testid="finding-chip-exp">
+          <PillFromTab pill={{ ...expPill, label: expLabel }} />
         </span>
-      )}
+      </div>
 
-      {(finding.ev_score != null || finding.ev_priority || finding.ev_rationale) && (
-        <span style={{ position: "relative", display: "inline-flex" }}>
-          <Chip testid="finding-chip-ev">
-            <b style={{ fontWeight: 800, color: "var(--text-primary)" }}>
-              EV {finding.ev_score ?? "—"}
-              {finding.ev_priority ? ` ${finding.ev_priority}` : ""}
-            </b>
-            {finding.ev_vector ? (
-              <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: "10px", fontWeight: 500, color: "var(--text-secondary)" }}>
-                {finding.ev_vector}
-              </span>
-            ) : null}
-            <button
-              type="button"
-              aria-label="EV info"
-              data-testid="finding-chip-ev-info"
-              onClick={() => setPop((p) => (p === "ev" ? null : "ev"))}
-              style={{
-                border: "none",
-                background: "transparent",
-                color: "var(--text-secondary)",
-                cursor: "pointer",
-                padding: 0,
-                width: "16px",
-                height: "16px",
-                display: "inline-grid",
-                placeItems: "center",
-                fontSize: "12px",
-                lineHeight: 1,
-              }}
-            >
-              ⓘ
-            </button>
-          </Chip>
-          <InfoPopover open={pop === "ev"} onClose={() => setPop(null)} title={i18n.t("findings.ev.popoverTitle")}>
-            <div style={{ whiteSpace: "pre-wrap" }}>{finding.ev_rationale?.trim() || "—"}</div>
-          </InfoPopover>
-        </span>
-      )}
+      {/* Row 2: scores only — separate block so it never sits on the status row. */}
+      <div data-testid="finding-judgment-score-row" style={rowStyle}>
+        {(finding.cvss_score != null || finding.cvss_vector) && (
+          <span style={{ position: "relative", display: "inline-flex" }}>
+            <Chip testid="finding-chip-cvss">
+              <b style={{ fontWeight: 800, color: "var(--text-primary)" }}>CVSS {finding.cvss_score ?? "—"}</b>
+              {finding.cvss_vector ? (
+                <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: "10px", fontWeight: 500, color: "var(--text-secondary)" }}>
+                  {finding.cvss_vector}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                aria-label="CVSS info"
+                data-testid="finding-chip-cvss-info"
+                onClick={() => setPop((p) => (p === "cvss" ? null : "cvss"))}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  padding: 0,
+                  width: "16px",
+                  height: "16px",
+                  display: "inline-grid",
+                  placeItems: "center",
+                  fontSize: "12px",
+                  lineHeight: 1,
+                }}
+              >
+                ⓘ
+              </button>
+            </Chip>
+            <InfoPopover open={pop === "cvss"} onClose={() => setPop(null)} title={i18n.t("findings.cvss.popoverTitle")}>
+              {cvssParts.length === 0 ? (
+                <div>—</div>
+              ) : (
+                <ul style={{ margin: 0, paddingLeft: "18px" }}>
+                  {cvssParts.map((p) => (
+                    <li key={p.key} style={{ marginBottom: "3px" }}>
+                      <code style={{ fontSize: "11px" }}>{p.key}</code> = {p.gloss}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </InfoPopover>
+          </span>
+        )}
 
-      <PillFromTab pill={pocPill} />
-      <PillFromTab pill={expPill} />
+        {(finding.ev_score != null || finding.ev_priority || finding.ev_rationale) && (
+          <span style={{ position: "relative", display: "inline-flex" }}>
+            <Chip testid="finding-chip-ev">
+              <b style={{ fontWeight: 800, color: "var(--text-primary)" }}>
+                EV {finding.ev_score ?? "—"}
+                {finding.ev_priority ? ` ${finding.ev_priority}` : ""}
+              </b>
+              {finding.ev_vector ? (
+                <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: "10px", fontWeight: 500, color: "var(--text-secondary)" }}>
+                  {finding.ev_vector}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                aria-label="EV info"
+                data-testid="finding-chip-ev-info"
+                onClick={() => setPop((p) => (p === "ev" ? null : "ev"))}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  padding: 0,
+                  width: "16px",
+                  height: "16px",
+                  display: "inline-grid",
+                  placeItems: "center",
+                  fontSize: "12px",
+                  lineHeight: 1,
+                }}
+              >
+                ⓘ
+              </button>
+            </Chip>
+            <InfoPopover open={pop === "ev"} onClose={() => setPop(null)} title={i18n.t("findings.ev.popoverTitle")}>
+              <div style={{ whiteSpace: "pre-wrap" }}>{finding.ev_rationale?.trim() || "—"}</div>
+            </InfoPopover>
+          </span>
+        )}
+      </div>
     </div>
   );
 }

@@ -33,7 +33,7 @@ export const POC_STATE_DISPLAY: Record<PocStatus, CardStateDisplay> = {
 
 /** EXP 6-state display map (SSOT §3). No `upgraded` — the engine has none. */
 export const EXP_STATE_DISPLAY: Record<ExpStatus, CardStateDisplay> = {
-  pending: { labelKey: "pending", color: "#ca8a04", icon: "clock", helperKey: "pending" },
+  pending: { labelKey: "pendingExp", color: "#ca8a04", icon: "clock", helperKey: "pending" },
   confirmed: { labelKey: "confirmed", color: "#dc2626", icon: "shield-alert", helperKey: "confirmed" },
   downgraded: { labelKey: "downgraded", color: "#2563eb", icon: "trending-down", helperKey: "downgraded" },
   failed: { labelKey: "failed", color: "#ea580c", icon: "alert-circle", helperKey: "failed" },

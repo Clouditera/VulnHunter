@@ -496,7 +496,7 @@ export function resolveExpTabPill(finding: FindingMeta, dynamicEnabled: boolean)
     case "not-needed":
       return { label: i18n.t("finding.cards.status.notNeededExp"), ...PILL_CYAN };
     case "pending":
-      return { label: i18n.t("finding.cards.status.pending"), ...PILL_GRAY };
+      return { label: i18n.t("finding.cards.status.pendingExp"), ...PILL_GRAY };
     default:
       return { label: i18n.t("finding.cards.status.unknown"), ...PILL_RED };
   }
