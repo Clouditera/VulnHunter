@@ -6,8 +6,15 @@ import { getLicenseStatus } from "./license-status.js";
 import { loadConfig } from "../../infra/config.js";
 import { countTasksForUser } from "../tasks/storage.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
+import { getHomePublicStats } from "../home/stats.js";
 
 export const systemRouter = new Hono();
+
+// GET /api/system/home-stats  (public marketing aggregates — no PII)
+systemRouter.get("/home-stats", async (c) => {
+  const stats = await getHomePublicStats();
+  return c.json({ stats });
+});
 
 // GET /api/system/status  (public, no auth required)
 systemRouter.get("/status", async (c) => {

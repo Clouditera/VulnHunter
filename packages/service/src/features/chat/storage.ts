@@ -172,3 +172,143 @@ export async function listMessages(sessionId: string, sinceSeq?: number): Promis
     LIMIT 200
   `;
 }
+
+
+export interface ListSessionsPage {
+  sessions: DbChatSession[];
+  next_offset: number | null;
+  total: number;
+}
+
+export async function listSessionsPage(
+  ctx: QueryContext,
+  opts?: { limit?: number; offset?: number },
+): Promise<ListSessionsPage> {
+  const db = getDb();
+  const limit = Math.min(Math.max(opts?.limit ?? 20, 1), 100);
+  const offset = Math.max(opts?.offset ?? 0, 0);
+
+  const totalRows = shouldFilterByUser(ctx)
+    ? await db<{ count: string }[]>`
+        SELECT COUNT(*)::text AS count FROM chat_sessions
+        WHERE tenant_id = ${ctx.tenantId} AND user_id = ${ctx.userId}
+      `
+    : await db<{ count: string }[]>`
+        SELECT COUNT(*)::text AS count FROM chat_sessions
+        WHERE tenant_id = ${ctx.tenantId}
+      `;
+  const total = Number(totalRows[0]?.count ?? 0);
+
+  const sessions = shouldFilterByUser(ctx)
+    ? await db<DbChatSession[]>`
+        SELECT * FROM chat_sessions
+        WHERE tenant_id = ${ctx.tenantId} AND user_id = ${ctx.userId}
+        ORDER BY updated_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `
+    : await db<DbChatSession[]>`
+        SELECT * FROM chat_sessions
+        WHERE tenant_id = ${ctx.tenantId}
+        ORDER BY updated_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `;
+
+  const next_offset = offset + sessions.length < total ? offset + sessions.length : null;
+  return { sessions, next_offset, total };
+}
+
+export interface ChatSearchHit {
+  session: DbChatSession;
+  match: "title" | "message" | "both";
+  snippet: string | null;
+}
+
+export async function searchSessions(
+  ctx: QueryContext,
+  query: string,
+  opts?: { limit?: number },
+): Promise<ChatSearchHit[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const db = getDb();
+  const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100);
+  const pattern = `%${q.replace(/[%_\\]/g, "\\$&")}%`;
+
+  // Own sessions only for members; admin sees all tenant sessions.
+  const rows = shouldFilterByUser(ctx)
+    ? await db<(DbChatSession & { match_title: boolean; snippet: string | null })[]>`
+        SELECT DISTINCT ON (s.id)
+          s.*,
+          (s.title ILIKE ${pattern}) AS match_title,
+          (
+            SELECT left(m.content, 160)
+            FROM chat_messages m
+            WHERE m.session_id = s.id AND m.content ILIKE ${pattern}
+            ORDER BY m.seq DESC
+            LIMIT 1
+          ) AS snippet
+        FROM chat_sessions s
+        WHERE s.tenant_id = ${ctx.tenantId}
+          AND s.user_id = ${ctx.userId}
+          AND (
+            s.title ILIKE ${pattern}
+            OR EXISTS (
+              SELECT 1 FROM chat_messages m
+              WHERE m.session_id = s.id AND m.content ILIKE ${pattern}
+            )
+          )
+        ORDER BY s.id, s.updated_at DESC
+        LIMIT ${limit}
+      `
+    : await db<(DbChatSession & { match_title: boolean; snippet: string | null })[]>`
+        SELECT DISTINCT ON (s.id)
+          s.*,
+          (s.title ILIKE ${pattern}) AS match_title,
+          (
+            SELECT left(m.content, 160)
+            FROM chat_messages m
+            WHERE m.session_id = s.id AND m.content ILIKE ${pattern}
+            ORDER BY m.seq DESC
+            LIMIT 1
+          ) AS snippet
+        FROM chat_sessions s
+        WHERE s.tenant_id = ${ctx.tenantId}
+          AND (
+            s.title ILIKE ${pattern}
+            OR EXISTS (
+              SELECT 1 FROM chat_messages m
+              WHERE m.session_id = s.id AND m.content ILIKE ${pattern}
+            )
+          )
+        ORDER BY s.id, s.updated_at DESC
+        LIMIT ${limit}
+      `;
+
+  // Re-sort by updated_at after DISTINCT ON
+  rows.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+
+  return rows.map((r) => {
+    const matchTitle = !!r.match_title;
+    const matchMsg = r.snippet != null;
+    const match: ChatSearchHit["match"] =
+      matchTitle && matchMsg ? "both" : matchTitle ? "title" : "message";
+    const { match_title: _mt, snippet, ...session } = r;
+    return {
+      session: session as DbChatSession,
+      match,
+      snippet: snippet ?? null,
+    };
+  });
+}
+
+export async function renameSession(id: string, title: string): Promise<DbChatSession | null> {
+  const db = getDb();
+  const trimmed = title.trim().slice(0, 200);
+  if (!trimmed) return null;
+  const rows = await db<DbChatSession[]>`
+    UPDATE chat_sessions SET title = ${trimmed}, updated_at = now()
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return rows[0] ?? null;
+}
