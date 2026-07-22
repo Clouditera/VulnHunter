@@ -488,11 +488,18 @@ SQL
     return 1
   fi
 
-  # Drop admin using itself (still exists) then assert via new owner role.
-  rename_psql "$cname" "$admin_role" "$admin_pass" -c "DROP ROLE IF EXISTS ${admin_role};" >/dev/null 2>&1 || true
+  # Drop admin via the NEW owner role — cannot DROP the role you are connected as
+  # (same class of bug as session-user rename; QA found leftover vh_rename_admin).
+  if ! docker exec -e "PGPASSWORD=$owner_pass" "$cname" \
+      psql -h 127.0.0.1 -U "$RENAME_NEW_DB_ROLE" -d postgres -v ON_ERROR_STOP=1 \
+      -c "DROP ROLE IF EXISTS ${admin_role};" ; then
+    # Fallback: re-create is impossible mid-flight; try bootstrap if rename did not land.
+    rename_psql "$cname" "$bootstrap_role" "$bootstrap_pass" \
+      -c "DROP ROLE IF EXISTS ${admin_role};" >/dev/null 2>&1 || true
+  fi
 
   # Hard assertions via new role + owner password (role rename keeps password).
-  local db_ok=0 role_ok=0 old_role_gone=0
+  local db_ok=0 role_ok=0 old_role_gone=0 admin_gone=0
   if docker exec -e "PGPASSWORD=$owner_pass" "$cname" \
       psql -h 127.0.0.1 -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
       "SELECT 1 FROM pg_database WHERE datname='${RENAME_NEW_DB_NAME}'" 2>/dev/null | grep -q 1; then
@@ -508,13 +515,22 @@ SQL
       "SELECT 1 FROM pg_roles WHERE rolname='${RENAME_OLD_DB_ROLE}'" 2>/dev/null | grep -q 1; then
     old_role_gone=1
   fi
+  if ! docker exec -e "PGPASSWORD=$owner_pass" "$cname" \
+      psql -h 127.0.0.1 -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
+      "SELECT 1 FROM pg_roles WHERE rolname='${admin_role}'" 2>/dev/null | grep -q 1; then
+    admin_gone=1
+  fi
   docker rm -f "$cname" >/dev/null 2>&1 || true
 
   if [[ "$db_ok" != 1 || "$role_ok" != 1 || "$old_role_gone" != 1 ]]; then
     rename_die "DB rename assertion failed (db_ok=$db_ok role_ok=$role_ok old_role_gone=$old_role_gone) — names did not land on disk"
     return 1
   fi
-  rename_log "database identifiers renamed and asserted (db+role=$RENAME_NEW_DB_NAME)"
+  if [[ "$admin_gone" != 1 ]]; then
+    rename_die "temporary SUPERUSER ${admin_role} still present after cleanup — refuse to leave a leftover superuser"
+    return 1
+  fi
+  rename_log "database identifiers renamed and asserted (db+role=$RENAME_NEW_DB_NAME, admin dropped)"
 }
 
 # Count files under a path (host-side; root-owned trees are still listable).
