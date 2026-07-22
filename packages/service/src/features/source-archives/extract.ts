@@ -1,10 +1,10 @@
 import { createWriteStream, existsSync, mkdirSync, rmSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rename, symlink } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
-import { TextDecoder } from "node:util";
 import yauzl from "yauzl";
 import * as tar from "tar";
 import { detectSourceArchive, type SourceArchiveFormat } from "./detect.js";
+import { decodeArchiveBytes, decodeTarEntryPath, decodeZipEntryName } from "./charset.js";
 import { SourceArchiveError } from "./errors.js";
 import { SOURCE_ARCHIVE_MAX_FILES, maxExtractedBytes, type SourceArchivePolicy } from "./policy.js";
 
@@ -100,22 +100,27 @@ function readZipEntry(zipfile: yauzl.ZipFile, entry: yauzl.Entry): Promise<Buffe
 
 async function buildZipManifest(archivePath: string, policy: SourceArchivePolicy): Promise<ArchiveManifest> {
   const state: InspectState = { entries: 0, regularFiles: 0, bytes: 0 }; const entries: ManifestEntry[] = [];
-  await new Promise<void>((resolve, reject) => yauzl.open(archivePath, { lazyEntries: true }, (err, zipfile) => {
+  await new Promise<void>((resolve, reject) => yauzl.open(archivePath, { lazyEntries: true, decodeStrings: false }, (err, zipfile) => {
     if (err || !zipfile) return reject(archiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Cannot open ZIP archive"));
     let stopped = false; const stop = (error: unknown) => { if (!stopped) { stopped = true; zipfile.close(); reject(error); } };
     zipfile.on("entry", async (entry) => {
       try {
-        const path = normalizeEntryPath(entry.fileName); const mode = zipEntryMode(entry); const namedDir = entry.fileName.endsWith("/");
+        const rawName = entry.fileName as string | Buffer;
+        const nameStr = decodeZipEntryName(rawName);
+        const namedDir = (Buffer.isBuffer(rawName) ? rawName[rawName.length - 1] === 0x2f : String(rawName).endsWith("/"))
+          || false;
+        const path = normalizeEntryPath(nameStr);
+        const mode = zipEntryMode(entry);
         let kind: EntryKind;
         if (namedDir && (mode === 0 || mode === 0o040000)) kind = "directory";
         else if (!namedDir && (mode === 0 || mode === 0o100000)) kind = "file";
         else if (!namedDir && mode === 0o120000) kind = "symlink";
-        else throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive contains unsupported entry: ${entry.fileName}`);
+        else throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive contains unsupported entry: ${nameStr}`);
         if (kind === "directory") { bumpState(state, 0, false, policy); entries.push({ path, kind, size: 0 }); }
         else if (kind === "file") { bumpState(state, entry.uncompressedSize ?? 0, true, policy); entries.push({ path, kind, size: entry.uncompressedSize ?? 0 }); }
         else {
           bumpState(state, entry.uncompressedSize ?? 0, false, policy); const raw = await readZipEntry(zipfile, entry); let target: string;
-          try { target = new TextDecoder("utf-8", { fatal: true }).decode(raw); } catch { throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive symbolic link target is not UTF-8: ${entry.fileName}`); }
+          try { target = decodeArchiveBytes(raw, "symlink target"); } catch { throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive symbolic link target is not UTF-8/GBK: ${nameStr}`); }
           entries.push({ path, kind, size: raw.length, linkTarget: target });
         }
         if (!stopped) zipfile.readEntry();
@@ -134,7 +139,8 @@ async function buildTarManifest(archivePath: string, policy: SourceArchivePolicy
   try {
     await tar.t({ file: archivePath, onentry(entry: any) {
       if (!firstError) try {
-        const raw = String(entry.path ?? ""); if (raw === "." || raw === "./") { entry.resume?.(); return; }
+        const rawPath = entry.path ?? ""; if (String(rawPath) === "." || String(rawPath) === "./") { entry.resume?.(); return; }
+        const raw = decodeTarEntryPath(rawPath as string | Buffer); if (raw === "." || raw === "./" || raw === "") { entry.resume?.(); return; }
         const path = normalizeEntryPath(raw); const type = String(entry.type ?? ""); let kind: EntryKind;
         if (type === "Directory") kind = "directory";
         else if (["File", "OldFile", "ContiguousFile"].includes(type)) kind = "file";
@@ -160,11 +166,11 @@ async function buildManifest(archivePath: string, filename: string, policy: Sour
 export async function inspectSourceArchive(archivePath: string, filename: string, policy: SourceArchivePolicy): Promise<void> { await buildManifest(archivePath, filename, policy); }
 
 async function extractZip(archivePath: string, destDir: string, manifest: ArchiveManifest): Promise<void> {
-  await new Promise<void>((resolve, reject) => yauzl.open(archivePath, { lazyEntries: true }, (err, zipfile) => {
+  await new Promise<void>((resolve, reject) => yauzl.open(archivePath, { lazyEntries: true, decodeStrings: false }, (err, zipfile) => {
     if (err || !zipfile) return reject(archiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Cannot open ZIP archive"));
     const next = () => zipfile.readEntry();
     zipfile.on("entry", (entry) => {
-      let path: string; try { path = normalizeEntryPath(entry.fileName); } catch (error) { zipfile.close(); reject(error); return; }
+      let path: string; try { path = normalizeEntryPath(decodeZipEntryName(entry.fileName as string | Buffer)); } catch (error) { zipfile.close(); reject(error); return; }
       const item = manifest.byPath.get(path); if (!item) { zipfile.close(); reject(archiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "ZIP manifest changed during extraction")); return; }
       const target = join(destDir, path);
       if (item.kind === "directory") { mkdir(target, { recursive: true, mode: 0o755 }).then(next, reject); return; }
@@ -186,7 +192,8 @@ async function extractTar(archivePath: string, destDir: string, manifest: Archiv
   try {
     await tar.x({ file: archivePath, cwd: destDir, preserveOwner: false, noChmod: true, strict: true, filter(path: string) {
       if (path === "." || path === "./") return false;
-      const normalized = normalizeEntryPath(path); const item = manifest.byPath.get(normalized); return item?.kind === "file" || item?.kind === "directory";
+      const decoded = decodeTarEntryPath(path as string | Buffer);
+      const normalized = normalizeEntryPath(decoded); const item = manifest.byPath.get(normalized); return item?.kind === "file" || item?.kind === "directory";
     } });
   } catch (error) { throw error instanceof SourceArchiveError ? error : archiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Cannot extract TAR archive"); }
   await createLinks(destDir, manifest);

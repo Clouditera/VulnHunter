@@ -2,6 +2,7 @@ import yauzl from "yauzl";
 import * as tar from "tar";
 import { detectSourceArchive } from "./detect.js";
 import { SourceArchiveError } from "./errors.js";
+import { decodeTarEntryPath, decodeZipEntryName } from "./charset.js";
 
 export interface ArchiveEntry {
   path: string;
@@ -22,12 +23,15 @@ export async function listArchiveEntries(archivePath: string, filename: string):
 function listZipEntries(zipPath: string): Promise<ArchiveEntry[]> {
   return new Promise((resolve, reject) => {
     const entries: ArchiveEntry[] = [];
-    yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
+    yauzl.open(zipPath, { lazyEntries: true, decodeStrings: false }, (err, zipfile) => {
       if (err || !zipfile) return reject(new SourceArchiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Cannot open ZIP archive"));
       zipfile.readEntry();
       zipfile.on("entry", (entry) => {
-        const isDir = entry.fileName.endsWith("/");
-        const path = normalizeReaderPath(entry.fileName);
+        const rawName = entry.fileName as string | Buffer;
+        const isDir = Buffer.isBuffer(rawName)
+          ? rawName.length > 0 && rawName[rawName.length - 1] === 0x2f
+          : String(rawName).endsWith("/");
+        const path = normalizeReaderPath(decodeZipEntryName(rawName));
         if (path) entries.push({ path, isDir });
         zipfile.readEntry();
       });
@@ -46,7 +50,7 @@ async function listTarEntries(tarPath: string): Promise<ArchiveEntry[]> {
         const type = entry.type as string;
         const isDir = type === "Directory";
         const isFile = type === "File" || type === "OldFile" || type === "ContiguousFile";
-        const path = normalizeReaderPath(String(entry.path ?? ""));
+        const path = normalizeReaderPath(decodeTarEntryPath(entry.path ?? ""));
         if (path && (isDir || isFile)) entries.push({ path, isDir });
         entry.resume?.();
       },
@@ -72,11 +76,12 @@ function matchesTarget(entryPath: string, targetPath: string): boolean {
 
 function readZipFile(zipPath: string, targetPath: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
+    yauzl.open(zipPath, { lazyEntries: true, decodeStrings: false }, (err, zipfile) => {
       if (err || !zipfile) return reject(new SourceArchiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Cannot open ZIP archive"));
       zipfile.readEntry();
       zipfile.on("entry", (entry) => {
-        if (matchesTarget(entry.fileName, targetPath)) {
+        const name = decodeZipEntryName(entry.fileName as string | Buffer);
+        if (matchesTarget(name, targetPath)) {
           zipfile.openReadStream(entry, (streamErr, stream) => {
             if (streamErr || !stream) { zipfile.close(); reject(streamErr ?? new Error("Cannot open ZIP entry")); return; }
             const chunks: Buffer[] = [];
@@ -100,7 +105,8 @@ async function readTarFile(tarPath: string, targetPath: string): Promise<Buffer>
     await tar.t({
       file: tarPath,
       onentry(entry: any) {
-        if (found || !matchesTarget(String(entry.path ?? ""), targetPath)) {
+        const name = decodeTarEntryPath(entry.path ?? "");
+        if (found || !matchesTarget(name, targetPath)) {
           entry.resume?.();
           return;
         }
