@@ -631,53 +631,80 @@ rename_plane_containers() {
   done
 }
 
-# BEFORE compose up: free the old network so compose can create vulnhunter-internal
-# with its own labels/subnet. Do NOT pre-create the new network — unlabeled
-# pre-create collides with compose (31.102 P0-2).
+# BEFORE compose up: do NOT pre-create the new network (unlabeled pre-create
+# collides with compose — 31.102 P0-2). Do NOT delete the old network either
+# (architect: leave as fact; plane keeps its NetworkMode pin; cleanup is a
+# later ops concern). Only remove a leftover *unlabeled* new-network from a
+# previous failed attempt so compose can own the name with project labels.
 rename_prepare_network() {
-  local plane
-  while IFS= read -r plane; do
-    [[ -n "$plane" ]] || continue
-    rename_log "disconnecting $plane from $RENAME_OLD_NETWORK (pre-compose)"
-    docker network disconnect -f "$RENAME_OLD_NETWORK" "$plane" 2>/dev/null || true
-  done < <(rename_plane_containers)
-
-  # Drop any leftover unlabeled new-network from a previous failed attempt so
-  # compose can recreate it with project labels.
   if docker network ls --format '{{.Name}}' | grep -qx "$RENAME_NEW_NETWORK"; then
     local labeled
     labeled="$(docker network inspect "$RENAME_NEW_NETWORK" --format '{{index .Labels "com.docker.compose.network"}}' 2>/dev/null || true)"
     if [[ -z "$labeled" ]]; then
       rename_log "removing unlabeled pre-existing $RENAME_NEW_NETWORK so compose can own it"
+      # Detach anything sitting on the unlabeled network first.
+      local ename
+      while IFS= read -r ename; do
+        [[ -n "$ename" ]] || continue
+        docker network disconnect -f "$RENAME_NEW_NETWORK" "$ename" 2>/dev/null || true
+      done < <(docker network inspect "$RENAME_NEW_NETWORK" --format '{{range .Containers}}{{println .Name}}{{end}}' 2>/dev/null || true)
       docker network rm "$RENAME_NEW_NETWORK" >/dev/null 2>&1 || true
+    else
+      rename_log "compose-labeled $RENAME_NEW_NETWORK already present — leave for compose"
     fi
   fi
-
   if docker network ls --format '{{.Name}}' | grep -qx "$RENAME_OLD_NETWORK"; then
-    local remaining
-    remaining="$(docker network inspect "$RENAME_OLD_NETWORK" --format '{{len .Containers}}' 2>/dev/null || echo 0)"
-    if [[ "$remaining" == "0" ]]; then
-      docker network rm "$RENAME_OLD_NETWORK" >/dev/null 2>&1 || true
-      rename_log "removed empty old network $RENAME_OLD_NETWORK"
-    else
-      # Force-disconnect any residual endpoints (stopped containers etc.) then rm.
-      rename_warn "old network $RENAME_OLD_NETWORK still has $remaining endpoint(s) — force-clearing"
-      local eid ename
-      while IFS=$'\t' read -r eid ename; do
-        [[ -n "$ename" ]] || continue
-        docker network disconnect -f "$RENAME_OLD_NETWORK" "$ename" 2>/dev/null || true
-      done < <(docker network inspect "$RENAME_OLD_NETWORK" --format '{{range $k,$v := .Containers}}{{println $k "\t" $v.Name}}{{end}}' 2>/dev/null || true)
-      docker network rm "$RENAME_OLD_NETWORK" >/dev/null 2>&1 \
-        || rename_warn "could not remove $RENAME_OLD_NETWORK — compose may hit subnet conflict"
-    fi
+    rename_log "keeping old network $RENAME_OLD_NETWORK in place (no delete; plane may still reference it)"
+    # If the old network already holds the default DOCKER_SUBNET, compose cannot
+    # create vulnhunter-internal with the same pool. Pick a free alternate and
+    # write it into .env so compose up succeeds without removing the old net.
+    rename_avoid_subnet_collision_with_old_network
   fi
 }
 
-# AFTER compose up: attach SandboxPlane to the compose-managed new network.
-# If the plane was started with NetworkMode pinned to the old network name,
-# connect to the new bridge network is enough (multi-network); we already
-# force-disconnected the old one in rename_prepare_network. If connect still
-# fails, recreate the plane container on the new network preserving mounts/env.
+# When old+new networks would share DOCKER_SUBNET, retarget .env to an alternate.
+rename_avoid_subnet_collision_with_old_network() {
+  local desired alternate old_subnets
+  desired="${DOCKER_SUBNET:-}"
+  if [[ -z "$desired" && -f .env ]]; then
+    desired="$(grep -E '^DOCKER_SUBNET=' .env 2>/dev/null | tail -n 1 | cut -d= -f2-)"
+  fi
+  desired="${desired:-10.177.0.0/24}"
+  old_subnets="$(docker network inspect "$RENAME_OLD_NETWORK" --format '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' 2>/dev/null || true)"
+  if ! printf '%s
+' "$old_subnets" | grep -qx "$desired"; then
+    rename_log "old network subnet(s) [$old_subnets] do not include $desired — no collision"
+    return 0
+  fi
+  # Prefer 10.178.0.0/24 then 10.179.0.0/24
+  local cand
+  for cand in 10.178.0.0/24 10.179.0.0/24 10.180.0.0/24; do
+    if ! printf '%s
+' "$old_subnets" | grep -qx "$cand"; then
+      alternate="$cand"
+      break
+    fi
+  done
+  if [[ -z "$alternate" ]]; then
+    rename_warn "could not find free alternate DOCKER_SUBNET; compose may fail on pool overlap"
+    return 0
+  fi
+  rename_log "old network holds $desired — setting DOCKER_SUBNET=$alternate for new network"
+  if [[ -f .env ]]; then
+    if grep -qE '^DOCKER_SUBNET=' .env; then
+      sed -i "s|^DOCKER_SUBNET=.*|DOCKER_SUBNET=${alternate}|" .env
+    else
+      printf 'DOCKER_SUBNET=%s\n' "$alternate" >> .env
+    fi
+  fi
+  DOCKER_SUBNET="$alternate"
+  export DOCKER_SUBNET
+}
+
+# AFTER compose up: attach SandboxPlane to the compose-managed new network with
+# alias sandbox-plane (service discovers it by that DNS name). Plane stays on
+# the old network too if NetworkMode is pinned — multi-homed is fine; we do
+# not force-disconnect or recreate unless connect itself fails.
 rename_attach_plane_to_new_network() {
   if ! docker network ls --format '{{.Name}}' | grep -qx "$RENAME_NEW_NETWORK"; then
     rename_warn "new network $RENAME_NEW_NETWORK missing after compose up — plane not attached"
@@ -692,12 +719,12 @@ rename_attach_plane_to_new_network() {
       rename_log "$plane already on $RENAME_NEW_NETWORK"
       continue
     fi
-    rename_log "attaching $plane to $RENAME_NEW_NETWORK"
-    if docker network connect "$RENAME_NEW_NETWORK" "$plane" 2>/dev/null; then
+    rename_log "attaching $plane to $RENAME_NEW_NETWORK (alias sandbox-plane)"
+    if docker network connect --alias sandbox-plane "$RENAME_NEW_NETWORK" "$plane" 2>/dev/null; then
       rename_log "$plane connected to $RENAME_NEW_NETWORK"
       continue
     fi
-    # Connect failed (e.g. NetworkMode hard-pin). Recreate on the new network.
+    # Connect failed — last resort recreate on the new network.
     rename_warn "connect failed for $plane — recreating container on $RENAME_NEW_NETWORK"
     rename_recreate_plane_on_new_network "$plane" \
       || rename_warn "failed to recreate $plane on new network — dynamic path may be broken"
