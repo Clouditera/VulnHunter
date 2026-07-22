@@ -42,10 +42,10 @@ image_exists() {
 }
 required_images() {
   printf '%s\n' \
-    "${SERVICE_IMAGE:-vulnagent-service:latest}" \
-    "${WEB_IMAGE:-vulnagent-web:latest}" \
-    "${WORKER_IMAGE:-vulnagent-worker:latest}" \
-    "${EVAL_WORKER_IMAGE:-vulnagent-eval-worker:latest}" \
+    "${SERVICE_IMAGE:-vulnhunter-service:latest}" \
+    "${WEB_IMAGE:-vulnhunter-web:latest}" \
+    "${WORKER_IMAGE:-vulnhunter-worker:latest}" \
+    "${EVAL_WORKER_IMAGE:-vulnhunter-eval-worker:latest}" \
     "${POSTGRES_IMAGE:-postgres:16-alpine}" \
     "${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}" \
     | awk 'NF && !seen[$0]++'
@@ -104,12 +104,12 @@ dir_empty() {
 }
 legacy_volume_candidates() {
   local suffix="$1"
-  docker volume ls --format '{{.Name}}' | grep -E "(^|_)vulnagent-${suffix}$" || true
+  docker volume ls --format '{{.Name}}' | grep -E "(^|_)vulnhunter-${suffix}$" || true
 }
 migrate_volume_data() {
   local volume="$1" target="$2" service="$3"
   echo "[upgrade] migrating $service data from legacy volume $volume to $target"
-  docker stop vulnagent-service vulnagent-web >/dev/null 2>&1 || true
+  docker stop vulnhunter-service vulnhunter-web >/dev/null 2>&1 || true
   if ! docker run --rm -v "$volume:/from:ro" -v "$target:/to" "${POSTGRES_IMAGE:-postgres:16-alpine}" sh -c 'cd /from && cp -a . /to/ && chmod -R u+rwX /to'; then
     echo "[upgrade] failed to migrate $service data from volume $volume; aborting to avoid empty data startup" >&2
     exit 1
@@ -138,7 +138,7 @@ postgres_dir_rw() {
   docker run --rm --user 70:70 -v "$DATA_DIR/db:/var/lib/postgresql/data" "${POSTGRES_IMAGE:-postgres:16-alpine}" sh -c 'test -r /var/lib/postgresql/data && touch /var/lib/postgresql/data/.perm-test && rm /var/lib/postgresql/data/.perm-test' >/dev/null 2>&1
 }
 prepare_data_dirs() {
-  DATA_DIR="${DATA_DIR:-/opt/vulnagent/data}"
+  DATA_DIR="${DATA_DIR:-/opt/vulnhunter/data}"
   SERVICE_UID="${SERVICE_UID:-1001}"
   SERVICE_GID="${SERVICE_GID:-1001}"
   mkdir -p "$DATA_DIR/db" "$DATA_DIR/minio"
@@ -175,9 +175,9 @@ sync_release_env() {
     echo "[upgrade] synced enterprise edition"
     local license_key_file license_key_container
     license_key_file="$(env_value LICENSE_PUBLIC_KEY_FILE .env.example)"
-    license_key_container="$(env_value VULNAGENT_LICENSE_PUBLIC_KEY_FILE .env.example)"
+    license_key_container="$(env_value VULNHUNTER_LICENSE_PUBLIC_KEY_FILE .env.example)"
     [[ -n "$license_key_file" ]] && set_env_key LICENSE_PUBLIC_KEY_FILE "$license_key_file"
-    [[ -n "$license_key_container" ]] && set_env_key VULNAGENT_LICENSE_PUBLIC_KEY_FILE "$license_key_container"
+    [[ -n "$license_key_container" ]] && set_env_key VULNHUNTER_LICENSE_PUBLIC_KEY_FILE "$license_key_container"
   fi
 
   add_missing_env_from_example
@@ -188,11 +188,11 @@ validate_upgrade_preconditions() {
     echo "[upgrade] For a clean first install, run ./install.sh. If this is an old install, restore .env from backup before upgrading." >&2
     exit 1
   fi
-  if docker ps --format '{{.Names}}' | grep -q '^va-scan-'; then
+  if docker ps --format '{{.Names}}' | grep -q '^vh-scan-'; then
     if [[ "${ALLOW_ACTIVE_SCAN_UPGRADE:-}" != "1" ]]; then
-      echo "[upgrade] active va-scan-* containers detected; refusing to upgrade while scans are running." >&2
+      echo "[upgrade] active vh-scan-* containers detected; refusing to upgrade while scans are running." >&2
       echo "[upgrade] Stop/cancel scans first, or set ALLOW_ACTIVE_SCAN_UPGRADE=1 to override." >&2
-      docker ps --format '{{.Names}}\t{{.Status}}' | grep '^va-scan-' >&2 || true
+      docker ps --format '{{.Names}}\t{{.Status}}' | grep '^vh-scan-' >&2 || true
       exit 1
     fi
   fi
@@ -213,28 +213,28 @@ write_install_manifest() {
   git_commit="$(version_field gitCommit)"
   youngflow="$(version_field youngflowVersion)"
   install_id=""
-  [[ -f "${DATA_DIR:-/opt/vulnagent/data}/.install_id" ]] && install_id="$(cat "${DATA_DIR:-/opt/vulnagent/data}/.install_id" 2>/dev/null || true)"
+  [[ -f "${DATA_DIR:-/opt/vulnhunter/data}/.install_id" ]] && install_id="$(cat "${DATA_DIR:-/opt/vulnhunter/data}/.install_id" 2>/dev/null || true)"
   installed_at="$now"
   installed_version="$version"
   installed_commit="$git_commit"
   installed_youngflow="$youngflow"
-  if [[ -f .vulnagent-install.json ]]; then
-    installed_at="$(sed -n 's/.*"installed_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .vulnagent-install.json | head -n 1)"
-    installed_version="$(sed -n '/"installed_version"/,/}/s/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .vulnagent-install.json | head -n 1)"
-    installed_commit="$(sed -n '/"installed_version"/,/}/s/.*"git_commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .vulnagent-install.json | head -n 1)"
-    installed_youngflow="$(sed -n '/"installed_version"/,/}/s/.*"youngflow_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .vulnagent-install.json | head -n 1)"
+  if [[ -f .vulnhunter-install.json ]]; then
+    installed_at="$(sed -n 's/.*"installed_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .vulnhunter-install.json | head -n 1)"
+    installed_version="$(sed -n '/"installed_version"/,/}/s/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .vulnhunter-install.json | head -n 1)"
+    installed_commit="$(sed -n '/"installed_version"/,/}/s/.*"git_commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .vulnhunter-install.json | head -n 1)"
+    installed_youngflow="$(sed -n '/"installed_version"/,/}/s/.*"youngflow_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .vulnhunter-install.json | head -n 1)"
   fi
   [[ -n "$installed_at" ]] || installed_at="$now"
   [[ -n "$installed_version" ]] || installed_version="$version"
   [[ -n "$installed_commit" ]] || installed_commit="$git_commit"
   [[ -n "$installed_youngflow" ]] || installed_youngflow="$youngflow"
-  tmp=".vulnagent-install.json.tmp"
+  tmp=".vulnhunter-install.json.tmp"
   cat > "$tmp" << JSON
 {
   "schema_version": 1,
-  "product": "vulnagent",
+  "product": "vulnhunter",
   "install_dir": "$(json_escape "$ROOT")",
-  "data_dir": "$(json_escape "${DATA_DIR:-/opt/vulnagent/data}")",
+  "data_dir": "$(json_escape "${DATA_DIR:-/opt/vulnhunter/data}")",
   "edition": "$(json_escape "${EDITION:-community}")",
   "installed_at": "$(json_escape "$installed_at")",
   "updated_at": "$now",
@@ -251,13 +251,13 @@ write_install_manifest() {
   },
   "compose": {
     "file": "docker-compose.yml",
-    "network": "vulnagent-internal",
-    "containers": ["vulnagent-web", "vulnagent-service", "vulnagent-db", "vulnagent-minio"]
+    "network": "vulnhunter-internal",
+    "containers": ["vulnhunter-web", "vulnhunter-service", "vulnhunter-db", "vulnhunter-minio"]
   },
   "managed_files": [
     { "path": ".env", "kind": "config", "preserve": true, "secret_values": true },
     { "path": ".secrets/license-public.pem", "kind": "license_public_key", "preserve": true, "secret_values": false },
-    { "path": "${DATA_DIR}/.secrets/vulnagent-master.key", "kind": "master_key", "preserve": true, "secret_values": true },
+    { "path": "${DATA_DIR}/.secrets/vulnhunter-master.key", "kind": "master_key", "preserve": true, "secret_values": true },
     { "path": "${DATA_DIR}/.install_id", "kind": "installation_id", "preserve": true, "secret_values": false }
   ],
   "managed_dirs": [
@@ -273,8 +273,8 @@ write_install_manifest() {
   }
 }
 JSON
-  mv "$tmp" .vulnagent-install.json
-  echo "[upgrade] updated install manifest: .vulnagent-install.json"
+  mv "$tmp" .vulnhunter-install.json
+  echo "[upgrade] updated install manifest: .vulnhunter-install.json"
 }
 
 migrate_container_data() {
@@ -287,7 +287,7 @@ migrate_container_data() {
     exit 1
   fi
   echo "[upgrade] migrating $service data from $container:$dest to $target"
-  docker stop vulnagent-service vulnagent-web >/dev/null 2>&1 || true
+  docker stop vulnhunter-service vulnhunter-web >/dev/null 2>&1 || true
   docker stop "$container" >/dev/null 2>&1 || true
   if ! docker cp "$container:$dest/." "$target/"; then
     echo "[upgrade] failed to migrate $service data; aborting to avoid empty data startup" >&2
@@ -304,7 +304,7 @@ mkdir -p backups
 stamp="$(date +%Y%m%d-%H%M%S)"
 cp .env "backups/.env.$stamp"
 [[ -d .secrets ]] && tar -czf "backups/secrets.$stamp.tar.gz" .secrets
-[[ -f .vulnagent-install.json ]] && cp .vulnagent-install.json "backups/install-manifest.$stamp.json"
+[[ -f .vulnhunter-install.json ]] && cp .vulnhunter-install.json "backups/install-manifest.$stamp.json"
 sync_release_env
 set -a
 # shellcheck disable=SC1091
@@ -321,12 +321,12 @@ if [[ -d images ]]; then
 fi
 validate_local_images
 prepare_data_dirs
-migrate_container_data vulnagent-db /var/lib/postgresql/data "${DATA_DIR:-/opt/vulnagent/data}/db" db
-migrate_container_data vulnagent-minio /data "${DATA_DIR:-/opt/vulnagent/data}/minio" minio
-protect_or_migrate_legacy_volume db "${DATA_DIR:-/opt/vulnagent/data}/db" db
-protect_or_migrate_legacy_volume minio "${DATA_DIR:-/opt/vulnagent/data}/minio" minio
+migrate_container_data vulnhunter-db /var/lib/postgresql/data "${DATA_DIR:-/opt/vulnhunter/data}/db" db
+migrate_container_data vulnhunter-minio /data "${DATA_DIR:-/opt/vulnhunter/data}/minio" minio
+protect_or_migrate_legacy_volume db "${DATA_DIR:-/opt/vulnhunter/data}/db" db
+protect_or_migrate_legacy_volume minio "${DATA_DIR:-/opt/vulnhunter/data}/minio" minio
 prepare_data_dirs
-docker rm -f vulnagent-web vulnagent-service vulnagent-db vulnagent-minio >/dev/null 2>&1 || true
+docker rm -f vulnhunter-web vulnhunter-service vulnhunter-db vulnhunter-minio >/dev/null 2>&1 || true
 compose_up_detached
 "$ROOT/doctor.sh"
 write_install_manifest

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://vulnagent.local/schemas/source-manifest-v1.schema.json",
-  "title": "VulnAgent deterministic source manifest v1",
+  "$id": "https://vulnhunter.local/schemas/source-manifest-v1.schema.json",
+  "title": "VulnHunter deterministic source manifest v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "source", "root_candidates", "tree", "statistics", "markers", "signals", "limits", "truncation", "warnings"],

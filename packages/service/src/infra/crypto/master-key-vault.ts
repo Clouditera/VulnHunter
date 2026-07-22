@@ -63,7 +63,7 @@ export class MasterKeyVault {
 
   private loadKeyFile(keyPath: string): Buffer {
     if (!keyPath) {
-      throw new Error("VULNAGENT_MASTER_KEY_FILE is required");
+      throw new Error("VULNHUNTER_MASTER_KEY_FILE is required");
     }
     if (!existsSync(keyPath)) {
       throw new Error(`Master key file not found: ${keyPath}`);

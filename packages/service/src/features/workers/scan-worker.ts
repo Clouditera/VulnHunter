@@ -89,7 +89,7 @@ export async function spawnScanWorker(
   // container here: reconciliation alone decides whether an exited container
   // is eligible for owner-bound cleanup.
   try {
-    const old = getDocker().getContainer(`va-scan-${task.id}`);
+    const old = getDocker().getContainer(`vh-scan-${task.id}`);
     const info = await old.inspect();
     const existingToken = info.Config?.Labels?.[LABEL_SCHEDULER_CLAIM];
     throw new Error(`Scan worker name conflict for task ${task.id} (state=${info.State?.Status ?? "unknown"}, claim=${existingToken ?? "legacy"})`);

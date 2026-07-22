@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { appendEvent, getEventTotal, clearTaskBuffer } from "../../src/features/events/event-store.js";
-import type { LiveLogEvent } from "@vulnagent/shared";
+import type { LiveLogEvent } from "@vulnhunter/shared";
 
 const ev = (i: number): LiveLogEvent => ({ type: "log", source: "scan", message: `e${i}` } as unknown as LiveLogEvent);
 

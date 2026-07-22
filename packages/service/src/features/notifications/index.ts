@@ -11,7 +11,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { logger } from "../../infra/logger.js";
 import { getDb } from "../../infra/db/client.js";
-import type { TaskState, FindingReviewStatus } from "@vulnagent/shared";
+import type { TaskState, FindingReviewStatus } from "@vulnhunter/shared";
 
 // ─── Event types ───
 

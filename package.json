@@ -1,5 +1,5 @@
 {
-  "name": "vulnagent",
+  "name": "vulnhunter",
   "version": "2.3.0",
   "private": true,
   "scripts": {

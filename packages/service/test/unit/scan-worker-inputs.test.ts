@@ -109,7 +109,7 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
   it("A01 emits defaults/static gate in deterministic order", () => {
     const { argv } = captureArgv();
     expect(argv).toEqual([
-      "/opt/vulnagent/flows/vulnforge/flow.audit.yaml",
+      "/opt/vulnhunter/flows/vulnforge/flow.audit.yaml",
       "--work-dir", "/workspace/src",
       "--output-dir", "/workspace/out",
       "--json-log",
@@ -178,14 +178,14 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
       VULNFORGE_ENABLE_POC: "true",
       VULNFORGE_ENABLE_EXP: "true",
       VULNFORGE_ENABLE_CHAIN: "true",
-      VULNFORGE_SANDBOX_CFG: "/run/vulnagent/sandbox.md",
+      VULNFORGE_SANDBOX_CFG: "/run/vulnhunter/sandbox.md",
     });
     expect(argv).not.toContain(STATIC_ONLY_SCHED_INSTR);
     expect(argv).not.toContain("--sched-instr");
     expect(valueAfter(argv, "--enable-poc")).toBe("true");
     expect(valueAfter(argv, "--enable-exp")).toBe("true");
     expect(valueAfter(argv, "--enable-chain")).toBe("true");
-    expect(valueAfter(argv, "--sandbox-cfg")).toBe("/run/vulnagent/sandbox.md");
+    expect(valueAfter(argv, "--sandbox-cfg")).toBe("/run/vulnhunter/sandbox.md");
   });
 
   it("H1 dynamic argv: task sched_instr passes through; chain defaults off; missing sandbox_cfg omitted", () => {
@@ -194,7 +194,7 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
       VULNFORGE_ENABLE_POC: "true",
       VULNFORGE_ENABLE_EXP: "true",
       VULNFORGE_SCHED_INSTR: "prioritize poc-verify",
-      VULNFORGE_SANDBOX_CFG: "/run/vulnagent/sandbox.md",
+      VULNFORGE_SANDBOX_CFG: "/run/vulnhunter/sandbox.md",
     });
     expect(valueAfter(withInstr.argv, "--sched-instr")).toBe("prioritize poc-verify");
     expect(valueAfter(withInstr.argv, "--enable-chain")).toBe("false");
@@ -251,6 +251,6 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
     expect(result.stderr).toContain("TASK_ID is required");
 
     const { argv } = captureArgv({ FLOW_DIR: "/tmp/untrusted-flow" });
-    expect(argv[0]).toBe("/opt/vulnagent/flows/vulnforge/flow.audit.yaml");
+    expect(argv[0]).toBe("/opt/vulnhunter/flows/vulnforge/flow.audit.yaml");
   });
 });

@@ -27,7 +27,7 @@ vi.mock("../../src/infra/minio/client.js", () => ({
   getMinio: vi.fn(),
 }));
 vi.mock("../../src/infra/config.js", () => ({
-  loadConfig: vi.fn(() => ({ minio: { bucket: "vulnagent" } })),
+  loadConfig: vi.fn(() => ({ minio: { bucket: "artifact-store" } })),
 }));
 vi.mock("../../src/infra/logger.js", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },

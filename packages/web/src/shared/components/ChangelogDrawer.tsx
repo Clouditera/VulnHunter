@@ -11,7 +11,7 @@ interface ChangelogDrawerProps {
   onClose: () => void;
 }
 
-export function ChangelogDrawer({ open, runtimeVersion, productName = "VulnAgent", onClose }: ChangelogDrawerProps) {
+export function ChangelogDrawer({ open, runtimeVersion, productName = "VulnHunter", onClose }: ChangelogDrawerProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {

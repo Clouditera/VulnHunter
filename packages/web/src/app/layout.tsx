@@ -342,7 +342,7 @@ export function AppLayout() {
       <ChangelogDrawer
         open={showChangelogDrawer}
         runtimeVersion={systemStatus?.version?.version}
-        productName="VulnAgent"
+        productName="VulnHunter"
         onClose={() => setShowChangelogDrawer(false)}
       />
     </div>
@@ -350,7 +350,7 @@ export function AppLayout() {
 }
 
 function VersionEntry({ collapsed, version, onClick }: { collapsed: boolean; version?: string; onClick: () => void }) {
-  const label = version ? `VulnAgent v${version}` : "VulnAgent";
+  const label = version ? `VulnHunter v${version}` : "VulnHunter";
   const compact = version ? `v${version}` : "V";
   return (
     <button
@@ -370,7 +370,7 @@ function SidebarHeader({ collapsed, onToggle }: { collapsed: boolean; onToggle: 
   return (
     <div style={collapsed ? HEADER_COLLAPSED : HEADER_EXPANDED}>
       <div style={LOGO_MARK}>V</div>
-      {!collapsed ? <div style={BRAND_TEXT}>VulnAgent</div> : null}
+      {!collapsed ? <div style={BRAND_TEXT}>VulnHunter</div> : null}
       <button
         type="button"
         data-testid="sidebar-collapse-toggle"

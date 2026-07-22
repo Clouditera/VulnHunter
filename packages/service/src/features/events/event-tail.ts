@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { logger } from "../../infra/logger.js";
 import { appendEvent } from "./event-store.js";
 import { broadcastEvent } from "./ws-live-log.js";
-import type { LiveLogEvent } from "@vulnagent/shared";
+import type { LiveLogEvent } from "@vulnhunter/shared";
 
 const POLL_INTERVAL_MS = 500;
 

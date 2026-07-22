@@ -1,4 +1,4 @@
-import type { FindingDynamicMeta, SystemStatus, TaskMetadata as SharedTaskMetadata } from "@vulnagent/shared";
+import type { FindingDynamicMeta, SystemStatus, TaskMetadata as SharedTaskMetadata } from "@vulnhunter/shared";
 
 const BASE = "";
 

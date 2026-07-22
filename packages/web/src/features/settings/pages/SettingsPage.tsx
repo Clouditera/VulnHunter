@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { CSSProperties } from "react";
-import type { SystemStatus } from "@vulnagent/shared";
+import type { SystemStatus } from "@vulnhunter/shared";
 import { i18n } from "../../../shared/i18n/index.js";
 import { theme as themeStore } from "../../../shared/theme/index.js";
 import { Icon, type IconName } from "../../../shared/components/Icon.js";
@@ -1693,7 +1693,7 @@ export function SettingsPage() {
                   </div>
                   {(c.credential_health === "decrypt_failed" || c.credential_health === "key_unavailable") && (
                     <span
-                      title={c.credential_health === "key_unavailable" ? "凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE。" : "凭证无法用当前 master key 解密，请重新输入 API Key 并保存。"}
+                      title={c.credential_health === "key_unavailable" ? "凭证加密 key 未配置。请管理员设置 VULNHUNTER_MASTER_KEY_FILE。" : "凭证无法用当前 master key 解密，请重新输入 API Key 并保存。"}
                       style={{
                         fontSize: "11px",
                         color: "#b45309",

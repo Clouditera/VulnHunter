@@ -64,10 +64,10 @@ describe("resolveWorkerSshHost", () => {
 describe("renderSshConfig / renderSandboxMd", () => {
   it("ssh config pins identity, TOFU accept-new, alias and coordinates", () => {
     const cfg = renderSshConfig({ host: "host.docker.internal", port: 32771, user: "sandbox" });
-    expect(cfg).toContain("Host vulnagent-sandbox");
+    expect(cfg).toContain("Host vulnhunter-sandbox");
     expect(cfg).toContain("HostName host.docker.internal");
     expect(cfg).toContain("Port 32771");
-    expect(cfg).toContain("IdentityFile /run/vulnagent/ssh/id_ed25519");
+    expect(cfg).toContain("IdentityFile /run/vulnhunter/ssh/id_ed25519");
     expect(cfg).toContain("IdentitiesOnly yes");
     expect(cfg).toContain("StrictHostKeyChecking accept-new");
   });
@@ -87,10 +87,10 @@ describe("renderInjectionFiles + buildInjectionTar", () => {
   it("renders four files with exact paths and modes", () => {
     const files = renderInjectionFiles(task, mapping, "PRIVATE", null);
     expect(files.map((f) => [f.containerPath, f.mode])).toEqual([
-      ["/run/vulnagent/ssh/id_ed25519", 0o400],
-      ["/run/vulnagent/ssh/known_hosts", 0o444],
-      ["/run/vulnagent/ssh/config", 0o444],
-      ["/run/vulnagent/sandbox.md", 0o444],
+      ["/run/vulnhunter/ssh/id_ed25519", 0o400],
+      ["/run/vulnhunter/ssh/known_hosts", 0o444],
+      ["/run/vulnhunter/ssh/config", 0o444],
+      ["/run/vulnhunter/sandbox.md", 0o444],
     ]);
     expect(files[0]!.content).toBe("PRIVATE");
     expect(files[2]!.content).toContain("HostName host.docker.internal");
@@ -103,7 +103,7 @@ describe("renderInjectionFiles + buildInjectionTar", () => {
       const tarPath = join(dir, "inj.tar");
       writeFileSync(tarPath, tar);
       const listing = execFileSync("tar", ["-tvf", tarPath]).toString();
-      expect(listing).toContain("run/vulnagent/ssh/id_ed25519");
+      expect(listing).toContain("run/vulnhunter/ssh/id_ed25519");
       expect(listing).toMatch(/-r--------.*id_ed25519/);
       expect(listing).toMatch(/-r--r--r--.*sandbox\.md/);
       // tar extracts cleanly

@@ -1,5 +1,5 @@
 /**
- * VulnAgent Worker Bridge — Chat + Report Modes
+ * VulnHunter Worker Bridge — Chat + Report Modes
  * Runs inside the worker container.
  * Spawns pi CLI in rpc mode, bridges stdio JSONL ↔ HTTP/WS.
  */
@@ -23,11 +23,11 @@ const SKILL_PATH = process.env.SKILL_PATH ?? "";
 const REPORT_SYSTEM_PROMPT = process.env.REPORT_SYSTEM_PROMPT ?? "";
 
 const CHAT_SYSTEM_PROMPT = [
-  "你是 VulnAgent 代码安全审计平台的 AI 助手。用户通过聊天窗口与你交流，你帮他们完成安全扫描、查看结果、生成报告等操作。",
+  "你是 VulnHunter 代码安全审计平台的 AI 助手。用户通过聊天窗口与你交流，你帮他们完成安全扫描、查看结果、生成报告等操作。",
   "",
   "你的沟通方式：用简洁自然的中文，像安全顾问一样和用户对话。用项目名称指代任务，用通俗语言解释安全概念。",
   "",
-  "VulnAgent 平台的核心能力：",
+  "VulnHunter 平台的核心能力：",
   "- 用户提供 Git 仓库地址或上传项目压缩包，平台会自动进行深度代码安全审计",
   "- 审计产出两类结果：漏洞（已确认可利用的安全问题）和风险（存在隐患但难以直接利用）",
   "- 每个结果包含 CVSS 标准评分和 EV（Exploit Value，从攻击者视角评估漏洞的实际利用价值和优先级）评估，帮助用户判断优先级",
@@ -78,7 +78,7 @@ const PROTO_API_MAP: Record<string, string> = {
 // Credential ID → provider key mapping for set_model
 const credProviderMap = new Map<string, { providerKey: string; modelId: string }>();
 const noAuthProxyTargets = new Map<string, string>();
-const NO_AUTH_DUMMY_KEY = "vulnagent-no-auth";
+const NO_AUTH_DUMMY_KEY = "vulnhunter-no-auth";
 
 function getPiDir(): string {
   return join(process.env.HOME ?? "/root", ".pi", "agent");
@@ -110,7 +110,7 @@ function setupPiConfig(): void {
       console.error(`[bridge] Unknown MODEL_PROTO_TYPE: "${MODEL_PROTO}". Valid: ${Object.keys(PROTO_API_MAP).join(", ")}`);
       process.exit(1);
     }
-    const providerKey = "vulnagent";
+    const providerKey = "vulnhunter";
     const providerConfig: Record<string, unknown> = {
       baseUrl: API_KEY ? BASE_URL : noAuthProxyBaseUrl("primary"),
       api,
@@ -171,7 +171,7 @@ function setupPiConfig(): void {
   if (SERVICE_URL && MCP_TOKEN) {
     const mcpConfig = {
       mcpServers: {
-        vulnagent: {
+        vulnhunter: {
           url: `${SERVICE_URL}/mcp`,
           headers: { Authorization: `Bearer ${MCP_TOKEN}` },
           directTools: true,
@@ -188,7 +188,7 @@ function spawnPi(): ChildProcess {
   const sessionFile = join(SESSION_DIR, "session.jsonl");
 
   const modelStr = BASE_URL
-    ? `vulnagent/${MODEL_NAME}`
+    ? `vulnhunter/${MODEL_NAME}`
     : `${MODEL_PROTO}/${MODEL_NAME}`;
 
   const args = [
@@ -345,7 +345,7 @@ function generateTitle(messages: Array<{ role: string; content: string }>, crede
     const modelStr = mapping
       ? `${mapping.providerKey}/${mapping.modelId}`
       : BASE_URL
-        ? `vulnagent/${MODEL_NAME}`
+        ? `vulnhunter/${MODEL_NAME}`
         : `${MODEL_PROTO}/${MODEL_NAME}`;
     const piDir = getPiDir();
     const tmpSession = join(mkdtempSync(join(tmpdir(), "va-chat-title-")), "session.jsonl");

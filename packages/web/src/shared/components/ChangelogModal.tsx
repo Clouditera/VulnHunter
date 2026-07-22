@@ -17,7 +17,7 @@ export function ChangelogModal({ onClose }: { onClose: () => void }) {
     <div data-testid="changelog-modal" style={BACKDROP}>
       <div style={MODAL} role="dialog" aria-modal="true" aria-label="Version changelog">
         <div style={HEADER}>
-          <span style={TITLE}>🎉 {entry?.title ?? `VulnAgent v${entry?.version ?? ""} 更新`}</span>
+          <span style={TITLE}>🎉 {entry?.title ?? `VulnHunter v${entry?.version ?? ""} 更新`}</span>
         </div>
         <div className="va-changelog-scroll" style={BODY}>
           <ChangelogContent markdown={entry?.markdown ?? ""} />

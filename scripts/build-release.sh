@@ -3,7 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 VERSION="${VERSION:-$(node -p "require('./package.json').version")}" 
-OUT="${OUT:-$ROOT/release/vulnagent-release-$VERSION}"
+OUT="${OUT:-$ROOT/release/vulnhunter-release-$VERSION}"
 MINIO_IMAGE="${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:16-alpine}"
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -24,7 +24,7 @@ mkdir -p "$OUT/images" "$OUT/docs" "$OUT/.secrets"
 
 cat > "$OUT/VERSION.json" << JSON
 {
-  "product": "vulnagent",
+  "product": "vulnhunter",
   "version": "$VERSION",
   "buildTime": "$BUILD_TIME",
   "gitCommit": "$GIT_COMMIT",
@@ -33,18 +33,18 @@ cat > "$OUT/VERSION.json" << JSON
   "vulnforgeCommit": "$VULNFORGE_COMMIT",
   "licenseSchema": "v1",
   "images": {
-    "service": "vulnagent-service:$VERSION",
-    "web": "vulnagent-web:$VERSION",
-    "worker": "vulnagent-worker:$VERSION",
-    "evalWorker": "vulnagent-eval-worker:$VERSION",
+    "service": "vulnhunter-service:$VERSION",
+    "web": "vulnhunter-web:$VERSION",
+    "worker": "vulnhunter-worker:$VERSION",
+    "evalWorker": "vulnhunter-eval-worker:$VERSION",
     "postgres": "$POSTGRES_IMAGE",
     "minio": "$MINIO_IMAGE"
   }
 }
 JSON
 
-pnpm turbo run build --filter=@vulnagent/service --filter=@vulnagent/web
-pnpm --filter @vulnagent/worker-bridge build
+pnpm turbo run build --filter=@vulnhunter/service --filter=@vulnhunter/web
+pnpm --filter @vulnhunter/worker-bridge build
 if [[ ! -f flows/vulnforge/flow.audit.yaml ]]; then
   echo "missing flows/vulnforge/flow.audit.yaml; run git submodule update --init --recursive" >&2
   exit 1
@@ -54,16 +54,16 @@ if [[ ! -f flows/vulnforge/extensions/output-contract/package.json ]]; then
   exit 1
 fi
 docker build -f deploy/dockerfiles/service.Dockerfile \
-  --build-arg VULNAGENT_VERSION="$VERSION" \
-  --build-arg VULNAGENT_BUILD_TIME="$BUILD_TIME" \
-  --build-arg VULNAGENT_GIT_COMMIT="$GIT_COMMIT" \
+  --build-arg VULNHUNTER_VERSION="$VERSION" \
+  --build-arg VULNHUNTER_BUILD_TIME="$BUILD_TIME" \
+  --build-arg VULNHUNTER_GIT_COMMIT="$GIT_COMMIT" \
   --build-arg YOUNGFLOW_VERSION="$YOUNGFLOW_VERSION" \
-  -t "vulnagent-service:$VERSION" -t vulnagent-service:latest .
-docker build -f deploy/dockerfiles/web.Dockerfile -t "vulnagent-web:$VERSION" -t vulnagent-web:latest .
+  -t "vulnhunter-service:$VERSION" -t vulnhunter-service:latest .
+docker build -f deploy/dockerfiles/web.Dockerfile -t "vulnhunter-web:$VERSION" -t vulnhunter-web:latest .
 VULNFORGE_VERSION="$VULNFORGE_VERSION" VULNFORGE_COMMIT="$VULNFORGE_COMMIT" \
-  scripts/build-worker-image.sh "vulnagent-worker:$VERSION"
-docker tag "vulnagent-worker:$VERSION" vulnagent-worker:latest
-docker build -f deploy/dockerfiles/eval-worker.Dockerfile -t "vulnagent-eval-worker:$VERSION" -t vulnagent-eval-worker:latest .
+  scripts/build-worker-image.sh "vulnhunter-worker:$VERSION"
+docker tag "vulnhunter-worker:$VERSION" vulnhunter-worker:latest
+docker build -f deploy/dockerfiles/eval-worker.Dockerfile -t "vulnhunter-eval-worker:$VERSION" -t vulnhunter-eval-worker:latest .
 docker pull "$POSTGRES_IMAGE"
 docker pull "$MINIO_IMAGE"
 
@@ -82,13 +82,13 @@ validate_no_runtime_sourcemaps() {
     fi
   "
 }
-validate_no_runtime_sourcemaps "vulnagent-service:$VERSION" "/app/packages /app/public"
-validate_no_runtime_sourcemaps "vulnagent-web:$VERSION" "/usr/share/nginx/html"
+validate_no_runtime_sourcemaps "vulnhunter-service:$VERSION" "/app/packages /app/public"
+validate_no_runtime_sourcemaps "vulnhunter-web:$VERSION" "/usr/share/nginx/html"
 
-docker save "vulnagent-service:$VERSION" -o "$OUT/images/vulnagent-service.tar"
-docker save "vulnagent-web:$VERSION" -o "$OUT/images/vulnagent-web.tar"
-docker save "vulnagent-worker:$VERSION" -o "$OUT/images/vulnagent-worker.tar"
-docker save "vulnagent-eval-worker:$VERSION" -o "$OUT/images/vulnagent-eval-worker.tar"
+docker save "vulnhunter-service:$VERSION" -o "$OUT/images/vulnhunter-service.tar"
+docker save "vulnhunter-web:$VERSION" -o "$OUT/images/vulnhunter-web.tar"
+docker save "vulnhunter-worker:$VERSION" -o "$OUT/images/vulnhunter-worker.tar"
+docker save "vulnhunter-eval-worker:$VERSION" -o "$OUT/images/vulnhunter-eval-worker.tar"
 docker save "$POSTGRES_IMAGE" -o "$OUT/images/postgres-16-alpine.tar"
 docker save "$MINIO_IMAGE" -o "$OUT/images/minio.tar"
 
@@ -100,10 +100,10 @@ if [[ ! -f "$LICENSE_PUBLIC_KEY_SOURCE" ]]; then
   exit 1
 fi
 cp "$LICENSE_PUBLIC_KEY_SOURCE" "$OUT/.secrets/license-public.pem"
-sed -i "s|^SERVICE_IMAGE=.*|SERVICE_IMAGE=vulnagent-service:$VERSION|" "$OUT/.env.example"
-sed -i "s|^WEB_IMAGE=.*|WEB_IMAGE=vulnagent-web:$VERSION|" "$OUT/.env.example"
-sed -i "s|^WORKER_IMAGE=.*|WORKER_IMAGE=vulnagent-worker:$VERSION|" "$OUT/.env.example"
-sed -i "s|^EVAL_WORKER_IMAGE=.*|EVAL_WORKER_IMAGE=vulnagent-eval-worker:$VERSION|" "$OUT/.env.example"
+sed -i "s|^SERVICE_IMAGE=.*|SERVICE_IMAGE=vulnhunter-service:$VERSION|" "$OUT/.env.example"
+sed -i "s|^WEB_IMAGE=.*|WEB_IMAGE=vulnhunter-web:$VERSION|" "$OUT/.env.example"
+sed -i "s|^WORKER_IMAGE=.*|WORKER_IMAGE=vulnhunter-worker:$VERSION|" "$OUT/.env.example"
+sed -i "s|^EVAL_WORKER_IMAGE=.*|EVAL_WORKER_IMAGE=vulnhunter-eval-worker:$VERSION|" "$OUT/.env.example"
 if grep -q "^EDITION=" "$OUT/.env.example"; then
   sed -i "s|^EDITION=.*|EDITION=enterprise|" "$OUT/.env.example"
 else
@@ -114,13 +114,13 @@ fi
 # license routes/UI enabled and must never ship private issuer material.
 grep -qx "EDITION=enterprise" "$OUT/.env.example" || { echo "release validation failed: .env.example must set EDITION=enterprise" >&2; exit 1; }
 [[ -s "$OUT/.secrets/license-public.pem" ]] || { echo "release validation failed: missing .secrets/license-public.pem" >&2; exit 1; }
-grep -q "VULNAGENT_LICENSE_PUBLIC_KEY_FILE:.*run/secrets/license-public.pem" "$OUT/docker-compose.yml" || { echo "release validation failed: compose missing VULNAGENT_LICENSE_PUBLIC_KEY_FILE" >&2; exit 1; }
+grep -q "VULNHUNTER_LICENSE_PUBLIC_KEY_FILE:.*run/secrets/license-public.pem" "$OUT/docker-compose.yml" || { echo "release validation failed: compose missing VULNHUNTER_LICENSE_PUBLIC_KEY_FILE" >&2; exit 1; }
 grep -q "LICENSE_PUBLIC_KEY_FILE.*run/secrets/license-public.pem:ro" "$OUT/docker-compose.yml" || { echo "release validation failed: compose missing license public key mount" >&2; exit 1; }
 if find "$OUT" -type f ! -path "$OUT/images/*" ! -path "$OUT/.secrets/license-public.pem" -print0 | xargs -0 grep -Il "BEGIN .*PRIVATE KEY" | grep -q .; then
   echo "release validation failed: private key material detected in release files" >&2
   exit 1
 fi
-cp -r docs/vulnagent-srv/releases/. "$OUT/docs/"
+cp -r docs/vulnhunter-srv/releases/. "$OUT/docs/"
 cp deploy/README.md "$OUT/docs/install.md" 2>/dev/null || true
 chmod +x "$OUT"/*.sh
 if find "$OUT" -type f ! -path "$OUT/images/*" \( -name "*.map" -o -name "*.d.ts" -o -name "*.d.ts.map" \) | grep -q .; then

@@ -13,7 +13,7 @@ const policy = buildSourceArchivePolicy({ source_archive_upload_max_mb: 500 });
 describe("source archive policy", () => {
   beforeEach(() => {
     delete process.env.UPLOAD_GATEWAY_LIMIT_MB;
-    delete process.env.VULNAGENT_UPLOAD_GATEWAY_LIMIT_MB;
+    delete process.env.VULNHUNTER_UPLOAD_GATEWAY_LIMIT_MB;
   });
 
   it("derives admin/user upload ceiling from deployment env", () => {

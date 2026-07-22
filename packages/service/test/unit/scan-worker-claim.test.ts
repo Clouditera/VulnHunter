@@ -14,9 +14,9 @@ const mocks = vi.hoisted(() => {
 const { start, inspect, remove, listContainers, createWorkerContainer, getContainer } = mocks;
 
 vi.mock("../../src/features/workers/docker-client.js", () => ({
-  LABEL_TASK_ID: "vulnagent.task_id",
-  LABEL_TASK_TYPE: "vulnagent.task_type",
-  LABEL_SCHEDULER_CLAIM: "vulnagent.scheduler_claim",
+  LABEL_TASK_ID: "vulnhunter.task_id",
+  LABEL_TASK_TYPE: "vulnhunter.task_type",
+  LABEL_SCHEDULER_CLAIM: "vulnhunter.scheduler_claim",
   createWorkerContainer: mocks.createWorkerContainer,
   ensureWorkDir: vi.fn(),
   removeWorkDir: vi.fn(),
@@ -53,13 +53,13 @@ describe("claim-owned scan worker", () => {
   it("creates and starts once with the scheduler claim label", async () => {
     await expect(spawnScanWorker(task, config, {}, token)).resolves.toBe("container-1");
     expect(createWorkerContainer).toHaveBeenCalledTimes(1);
-    expect(createWorkerContainer.mock.calls[0][0]).toMatchObject({ labels: { "vulnagent.scheduler_claim": token } });
+    expect(createWorkerContainer.mock.calls[0][0]).toMatchObject({ labels: { "vulnhunter.scheduler_claim": token } });
     expect(start).toHaveBeenCalledTimes(1);
     expect(remove).not.toHaveBeenCalled();
   });
 
   it("fails closed instead of force-removing a same-name live worker", async () => {
-    inspect.mockResolvedValue({ State: { Status: "running" }, Config: { Labels: { "vulnagent.scheduler_claim": "other" } } });
+    inspect.mockResolvedValue({ State: { Status: "running" }, Config: { Labels: { "vulnhunter.scheduler_claim": "other" } } });
     await expect(spawnScanWorker(task, config, {}, token)).rejects.toThrow("name conflict");
     expect(createWorkerContainer).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
@@ -69,9 +69,9 @@ describe("claim-owned scan worker", () => {
     await stopScanWorkerByClaim("task-1", token);
     const filters = JSON.parse(listContainers.mock.calls[0][0].filters);
     expect(filters.label).toEqual([
-      "vulnagent.task_id=task-1",
-      "vulnagent.task_type=scan",
-      `vulnagent.scheduler_claim=${token}`,
+      "vulnhunter.task_id=task-1",
+      "vulnhunter.task_type=scan",
+      `vulnhunter.scheduler_claim=${token}`,
     ]);
   });
 });

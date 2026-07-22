@@ -5,7 +5,7 @@
  *   list_sandbox_types() — current available sandbox types, minimal shape.
  *   get_sandbox_type(profile_id) — availability + capability flags for one type.
  *
- * Both call VulnAgent's own internal read-only SandboxPlane proxy
+ * Both call VulnHunter's own internal read-only SandboxPlane proxy
  * (packages/service/src/features/sandbox-plane/routes.ts), never SandboxPlane
  * directly. The proxy holds the real SandboxPlane base URL/token server-side;
  * this extension (running inside the worker container, reachable by pi/bash)
@@ -13,7 +13,7 @@
  * SandboxPlane address, service token, SSH coordinate, or host detail.
  *
  * Environment (set by the scan worker container launch):
- *   SERVICE_URL - VulnAgent service base URL (e.g. http://service:28080)
+ *   SERVICE_URL - VulnHunter service base URL (e.g. http://service:28080)
  *   TASK_ID     - this task's id; doubles as the internal proxy bearer token
  *   PREPARE_SANDBOX_TYPES_FILE - optional; if set, the extension writes the
  *     full list_sandbox_types() result here on every call, so the platform's

@@ -1,6 +1,6 @@
 FROM node:22-slim AS base
 ENV HOME=/root
-WORKDIR /opt/vulnagent
+WORKDIR /opt/vulnhunter
 
 # System dependencies (python3 + pyyaml needed by feature-aggregator, project-profiler)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -25,47 +25,47 @@ ARG VULNFORGE_VERSION=2.0-5-g1782ef6
 ARG VULNFORGE_COMMIT=1782ef6d99db58fda74c8e1524b9237ca39cad2c
 LABEL org.opencontainers.image.vulnforge.version=$VULNFORGE_VERSION \
       org.opencontainers.image.vulnforge.revision=$VULNFORGE_COMMIT
-COPY flows/vulnforge /opt/vulnagent/flows/vulnforge
-COPY flows/vulnforge-timeout /opt/vulnagent/flows/vulnforge-timeout
+COPY flows/vulnforge /opt/vulnhunter/flows/vulnforge
+COPY flows/vulnforge-timeout /opt/vulnhunter/flows/vulnforge-timeout
 RUN printf '{\n  "version": "%s",\n  "commit": "%s"\n}\n' \
       "$VULNFORGE_VERSION" "$VULNFORGE_COMMIT" \
-      > /opt/vulnagent/VULNFORGE_VERSION.json
-RUN cd /opt/vulnagent/flows/vulnforge/extensions/output-contract \
+      > /opt/vulnhunter/VULNFORGE_VERSION.json
+RUN cd /opt/vulnhunter/flows/vulnforge/extensions/output-contract \
     && npm install --omit=dev --no-audit --no-fund \
     && npm install --omit=dev --no-audit --no-fund @earendil-works/pi-coding-agent@0.79.6
-RUN cd /opt/vulnagent/flows/vulnforge/extensions/code-coverage-viewer \
+RUN cd /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-viewer \
     && npm init -y >/dev/null \
     && npm install --omit=dev --no-audit --no-fund \
       @mariozechner/pi-coding-agent@npm:@earendil-works/pi-coding-agent@0.79.6 \
       @mariozechner/pi-ai@npm:@earendil-works/pi-ai@0.79.6
-RUN cd /opt/vulnagent/flows/vulnforge/extensions/workspace-diff \
+RUN cd /opt/vulnhunter/flows/vulnforge/extensions/workspace-diff \
     && npm init -y >/dev/null \
     && npm install --omit=dev --no-audit --no-fund \
       @earendil-works/pi-coding-agent@0.79.6 \
       @earendil-works/pi-ai@0.79.6
-COPY flows/prepare /opt/vulnagent/flows/prepare
-COPY packages/service/src/features/prepare/schemas/source-manifest-v1.schema.json /opt/vulnagent/flows/prepare/schemas/source-manifest-v1.schema.json
-RUN youngflow /opt/vulnagent/flows/prepare/flow.prepare.yaml --list-stages >/tmp/prepare-stages.txt \
+COPY flows/prepare /opt/vulnhunter/flows/prepare
+COPY packages/service/src/features/prepare/schemas/source-manifest-v1.schema.json /opt/vulnhunter/flows/prepare/schemas/source-manifest-v1.schema.json
+RUN youngflow /opt/vulnhunter/flows/prepare/flow.prepare.yaml --list-stages >/tmp/prepare-stages.txt \
     && grep -qE '^  prepare[[:space:]]' /tmp/prepare-stages.txt
-RUN test -f /opt/vulnagent/flows/vulnforge/extensions/code-coverage-tracker/index.ts \
-    && test -f /opt/vulnagent/flows/vulnforge/extensions/code-coverage-viewer/index.ts \
-    && test -f /opt/vulnagent/flows/vulnforge/extensions/output-contract/contracts.json \
-    && test -f /opt/vulnagent/flows/vulnforge/extensions/workspace-diff/index.ts \
-    && test -L /opt/vulnagent/flows/vulnforge-timeout/schemas \
-    && test "$(readlink /opt/vulnagent/flows/vulnforge-timeout/schemas)" = ../vulnforge/schemas \
-    && test "$(realpath /opt/vulnagent/flows/vulnforge-timeout/schemas)" = /opt/vulnagent/flows/vulnforge/schemas \
-    && test "$(sha256sum /opt/vulnagent/flows/vulnforge-timeout/schemas/audit-completion.schema.yaml | awk '{print $1}')" = "$(sha256sum /opt/vulnagent/flows/vulnforge/schemas/audit-completion.schema.yaml | awk '{print $1}')" \
-    && test "$(sha256sum /opt/vulnagent/flows/vulnforge-timeout/schemas/audit-report.schema.yaml | awk '{print $1}')" = "$(sha256sum /opt/vulnagent/flows/vulnforge/schemas/audit-report.schema.yaml | awk '{print $1}')" \
-    && printf '{"providers":{}}\n' > /opt/vulnagent/flows/vulnforge/models.json \
-    && youngflow /opt/vulnagent/flows/vulnforge/flow.audit.yaml --list-stages >/tmp/vulnforge-stages.txt \
-    && youngflow /opt/vulnagent/flows/vulnforge-timeout/flow.timeout-finalize.yaml --list-stages >/tmp/vulnforge-timeout-stages.txt \
-    && rm -f /opt/vulnagent/flows/vulnforge/models.json \
+RUN test -f /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-tracker/index.ts \
+    && test -f /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-viewer/index.ts \
+    && test -f /opt/vulnhunter/flows/vulnforge/extensions/output-contract/contracts.json \
+    && test -f /opt/vulnhunter/flows/vulnforge/extensions/workspace-diff/index.ts \
+    && test -L /opt/vulnhunter/flows/vulnforge-timeout/schemas \
+    && test "$(readlink /opt/vulnhunter/flows/vulnforge-timeout/schemas)" = ../vulnforge/schemas \
+    && test "$(realpath /opt/vulnhunter/flows/vulnforge-timeout/schemas)" = /opt/vulnhunter/flows/vulnforge/schemas \
+    && test "$(sha256sum /opt/vulnhunter/flows/vulnforge-timeout/schemas/audit-completion.schema.yaml | awk '{print $1}')" = "$(sha256sum /opt/vulnhunter/flows/vulnforge/schemas/audit-completion.schema.yaml | awk '{print $1}')" \
+    && test "$(sha256sum /opt/vulnhunter/flows/vulnforge-timeout/schemas/audit-report.schema.yaml | awk '{print $1}')" = "$(sha256sum /opt/vulnhunter/flows/vulnforge/schemas/audit-report.schema.yaml | awk '{print $1}')" \
+    && printf '{"providers":{}}\n' > /opt/vulnhunter/flows/vulnforge/models.json \
+    && youngflow /opt/vulnhunter/flows/vulnforge/flow.audit.yaml --list-stages >/tmp/vulnforge-stages.txt \
+    && youngflow /opt/vulnhunter/flows/vulnforge-timeout/flow.timeout-finalize.yaml --list-stages >/tmp/vulnforge-timeout-stages.txt \
+    && rm -f /opt/vulnhunter/flows/vulnforge/models.json \
     && grep -qE '^  complete[[:space:]]' /tmp/vulnforge-stages.txt \
     && grep -qE '^  report[[:space:]]' /tmp/vulnforge-timeout-stages.txt \
-    && youngflow /opt/vulnagent/flows/vulnforge/flow.audit.yaml --help >/tmp/vulnforge-help.txt \
+    && youngflow /opt/vulnhunter/flows/vulnforge/flow.audit.yaml --help >/tmp/vulnforge-help.txt \
     && grep -q -- '--user-instr <value>' /tmp/vulnforge-help.txt \
     && grep -q -- '--sandbox-cfg <value>' /tmp/vulnforge-help.txt
-COPY flows/vulnagent-report /opt/vulnagent/flows/vulnagent-report
+COPY flows/vulnhunter-report /opt/vulnhunter/flows/vulnhunter-report
 
 # Worker bridge (for chat/report modes)
 COPY packages/worker-bridge/dist/bundle.js /opt/bridge/bundle.js

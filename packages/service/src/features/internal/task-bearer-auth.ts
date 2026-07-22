@@ -13,7 +13,7 @@
  */
 import type { Context, Next } from "hono";
 import { getTaskById, type DbTask } from "../tasks/storage.js";
-import type { TaskState } from "@vulnagent/shared";
+import type { TaskState } from "@vulnhunter/shared";
 
 export const TASK_BEARER_KEY = "internalTask";
 

@@ -7,7 +7,7 @@ import { translateYoungflowEvent } from "./event-tail.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { loadConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
-import type { LiveLogEvent } from "@vulnagent/shared";
+import type { LiveLogEvent } from "@vulnhunter/shared";
 
 export interface EventEntry {
   seq: number;

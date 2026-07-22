@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
 /**
- * VulnAgent icon set — inline SVG, stroke-based.
+ * VulnHunter icon set — inline SVG, stroke-based.
  * All icons use `currentColor` for stroke so they inherit from parent.
  * Size defaults to 20px. Override via size prop or style.
  */

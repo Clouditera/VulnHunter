@@ -36,10 +36,10 @@ describe("removeWorkDir", () => {
   });
 
   it("uses the configured cleanup image for Docker fallback", async () => {
-    await removeWorkDir("/data/workspaces/task-1", "vulnagent-worker:1.0.3");
+    await removeWorkDir("/data/workspaces/task-1", "vulnhunter-worker:1.0.3");
 
     expect(createContainer).toHaveBeenCalledWith(
-      expect.objectContaining({ Image: "vulnagent-worker:1.0.3" }),
+      expect.objectContaining({ Image: "vulnhunter-worker:1.0.3" }),
     );
   });
 });
@@ -59,15 +59,15 @@ describe("worker instance scoping (2026-07-18 near-miss fix)", () => {
     await createWorkerContainer({
       taskId: "task-1",
       taskType: "scan",
-      image: "vulnagent-worker:latest",
+      image: "vulnhunter-worker:latest",
       env: {},
     });
 
     expect(createContainer).toHaveBeenCalledWith(
       expect.objectContaining({
         Labels: expect.objectContaining({
-          "vulnagent.managed": "true",
-          "vulnagent.instance": "test-instance-id",
+          "vulnhunter.managed": "true",
+          "vulnhunter.instance": "test-instance-id",
         }),
       }),
     );
@@ -78,14 +78,14 @@ describe("worker instance scoping (2026-07-18 near-miss fix)", () => {
 
     const call = listContainers.mock.calls[0][0] as { filters: string };
     const filters = JSON.parse(call.filters);
-    expect(filters.label).toEqual(["vulnagent.managed=true", "vulnagent.instance=test-instance-id"]);
+    expect(filters.label).toEqual(["vulnhunter.managed=true", "vulnhunter.instance=test-instance-id"]);
   });
 
   it("scopes the docker event subscription to this instance's label", () => {
     const unsubscribe = subscribeToDockerEvents(() => {});
     const call = getEvents.mock.calls[0][0] as { filters: string };
     const filters = JSON.parse(call.filters);
-    expect(filters.label).toEqual(["vulnagent.managed=true", "vulnagent.instance=test-instance-id"]);
+    expect(filters.label).toEqual(["vulnhunter.managed=true", "vulnhunter.instance=test-instance-id"]);
     unsubscribe();
   });
 });

@@ -67,7 +67,7 @@ import {
   mergeExecutionWarnings,
   needsTerminalStateReconciliation,
 } from "./audit-completion.js";
-import type { LiveLogEvent, TaskAuditCompletion, TaskEngineRun } from "@vulnagent/shared";
+import type { LiveLogEvent, TaskAuditCompletion, TaskEngineRun } from "@vulnhunter/shared";
 
 export function summarizeExecutionEvents(lines: string[]): {
   inputTokens: number;
@@ -488,7 +488,7 @@ export class TaskScheduler {
         cred = credId ? await getCredentialById(credId) : await getDefaultCredential();
       } catch (err) {
         if (err instanceof CredentialKeyUnavailableError) {
-          throw new Error("凭证加密 key 未配置。请管理员设置 VULNAGENT_MASTER_KEY_FILE并重启服务，或挂载正确的 master key 文件。");
+          throw new Error("凭证加密 key 未配置。请管理员设置 VULNHUNTER_MASTER_KEY_FILE并重启服务，或挂载正确的 master key 文件。");
         }
         if (err instanceof CredentialDecryptError) {
           throw new Error("LLM credential cannot be decrypted with current master key. Re-save the credential in Settings or restore the original master key.");
@@ -843,7 +843,7 @@ export class TaskScheduler {
       ? (execution as Record<string, unknown>).warning
       : undefined;
     const warning = mergeExecutionWarnings(existingWarning, completion);
-    const patch: import("@vulnagent/shared").TaskMetadata = {
+    const patch: import("@vulnhunter/shared").TaskMetadata = {
       audit_completion: completion,
       execution: { warning: warning ?? null },
     };

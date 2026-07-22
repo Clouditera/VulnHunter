@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, utimesSync, 
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TaskEngineRun } from "@vulnagent/shared";
+import type { TaskEngineRun } from "@vulnhunter/shared";
 import {
   AUDIT_COMPLETION_CONTRACT,
   createAuditCompletionEngineRun,

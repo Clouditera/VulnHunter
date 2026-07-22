@@ -1,8 +1,8 @@
 ---
-title: VulnAgent v2.3.0 更新
+title: VulnHunter v2.3.0 更新
 ---
 
-# VulnAgent v2.3.0 更新
+# VulnHunter v2.3.0 更新
 
 **2026-07**
 

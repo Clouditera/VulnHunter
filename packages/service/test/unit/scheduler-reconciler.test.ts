@@ -5,7 +5,7 @@ const m = vi.hoisted(() => ({
   mark: vi.fn(async () => true), release: vi.fn(async () => true), stop: vi.fn(async () => undefined), cleanup: vi.fn(async () => undefined), tail: vi.fn(), remove: vi.fn(),
 }));
 vi.mock("../../src/features/workers/docker-client.js", () => ({
-  LABEL_TASK_ID: "vulnagent.task_id", LABEL_TASK_TYPE: "vulnagent.task_type", LABEL_SCHEDULER_CLAIM: "vulnagent.scheduler_claim",
+  LABEL_TASK_ID: "vulnhunter.task_id", LABEL_TASK_TYPE: "vulnhunter.task_type", LABEL_SCHEDULER_CLAIM: "vulnhunter.scheduler_claim",
   listManagedContainers: vi.fn(async () => m.containers),
   getDocker: () => ({ getContainer: () => ({ remove: m.remove, stop: vi.fn() }) }),
 }));
@@ -25,7 +25,7 @@ vi.mock("../../src/infra/db/client.js", () => ({ getDb: vi.fn() }));
 import { reconcileSchedulerClaims } from "../../src/features/workers/reconciler.js";
 
 const token = "11111111-1111-4111-8111-111111111111";
-const labels = { "vulnagent.task_id": "task-1", "vulnagent.task_type": "scan", "vulnagent.scheduler_claim": token };
+const labels = { "vulnhunter.task_id": "task-1", "vulnhunter.task_type": "scan", "vulnhunter.scheduler_claim": token };
 const claim = { token, lease_expires_at: new Date(Date.now() + 90000).toISOString(), deadline_at: new Date(Date.now() + 900000).toISOString() };
 
 describe("scheduler claim reconciler", () => {

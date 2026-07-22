@@ -167,12 +167,12 @@ describe("task control service", () => {
     state.task = makeTask({ state: "completed" });
     const result = await restartTask("task-1", {
       dataDir: "/tmp/vh",
-      minio: { bucket: "vulnagent" },
-      docker: { workerImage: "vulnagent-worker:1.0.3" },
+      minio: { bucket: "artifact-store" },
+      docker: { workerImage: "vulnhunter-worker:1.0.3" },
     } as any);
     expect(result.state).toBe("queued");
     expect(state.reset).toEqual(["task-1"]);
-    expect(state.cleaned).toEqual(["/tmp/vh:task-1:vulnagent-worker:1.0.3"]);
+    expect(state.cleaned).toEqual(["/tmp/vh:task-1:vulnhunter-worker:1.0.3"]);
   });
 
   it("continues a completed task without clearing findings", async () => {
@@ -227,7 +227,7 @@ describe("task control service", () => {
     await expect(pauseTask("task-1")).rejects.toMatchObject({ code: "ERR_TASK_BUSY" });
 
     state.task = makeTask({ state: "completed" });
-    await expect(restartTask("task-1", { dataDir: "/tmp/vh", minio: { bucket: "vulnagent" } } as any))
+    await expect(restartTask("task-1", { dataDir: "/tmp/vh", minio: { bucket: "artifact-store" } } as any))
       .rejects.toMatchObject({ code: "ERR_TASK_BUSY" });
     await expect(continueTask("task-1")).rejects.toMatchObject({ code: "ERR_TASK_BUSY" });
 

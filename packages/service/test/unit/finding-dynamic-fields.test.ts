@@ -8,7 +8,7 @@ import {
   isFindingClass,
   isPocStatus,
   type FindingDynamicMeta,
-} from "@vulnagent/shared";
+} from "@vulnhunter/shared";
 
 const migration = readFileSync(
   new URL("../../src/infra/db/migrations/026_finding_dynamic_fields.sql", import.meta.url),

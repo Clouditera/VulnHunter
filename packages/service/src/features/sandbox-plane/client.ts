@@ -3,7 +3,7 @@
  * `GET /profiles` and `GET /profiles/:id` endpoints.
  *
  * Holds the real SandboxPlane service token (loaded from server-side config).
- * This module never runs inside a worker container; only the VulnAgent
+ * This module never runs inside a worker container; only the VulnHunter
  * service process calls it, from the internal proxy routes.
  */
 import { loadConfig } from "../../infra/config.js";
@@ -173,7 +173,7 @@ export interface CreateSandboxInput {
 /** POST /sandboxes — idempotent on (consumer, request_id): a replay returns the existing record. */
 export async function createSandboxPlaneSandbox(input: CreateSandboxInput): Promise<SandboxPlaneSandbox> {
   const body = await writeRequest("POST", "/sandboxes", {
-    consumer: "vulnagent",
+    consumer: "vulnhunter",
     request_id: input.request_id,
     profile_id: input.profile_id,
     ssh_public_key: input.ssh_public_key,

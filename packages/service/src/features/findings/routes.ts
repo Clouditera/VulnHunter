@@ -16,7 +16,7 @@ import { indexFindings } from "./indexer.js";
 import { loadConfig } from "../../infra/config.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { notify } from "../notifications/index.js";
-import type { Severity, FindingReviewStatus } from "@vulnagent/shared";
+import type { Severity, FindingReviewStatus } from "@vulnhunter/shared";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import { getAccessibleTask } from "../tasks/access.js";
 

@@ -1,12 +1,12 @@
 ---
-title: VulnAgent 2.2.1 Release Notes
+title: VulnHunter 2.2.1 Release Notes
 ---
 
-# VulnAgent 2.2.1 Release Notes
+# VulnHunter 2.2.1 Release Notes
 
 ## 版本信息
 
-- Product: VulnAgent
+- Product: VulnHunter
 - Version: 2.2.1
 - Build commit: c277a21
 - YoungFlow: 0.3.8
@@ -25,9 +25,9 @@ title: VulnAgent 2.2.1 Release Notes
 ## 安装
 
 ```bash
-sha256sum -c vulnagent-release-2.2.1-c277a21.tar.gz.sha256
-tar -xzf vulnagent-release-2.2.1-c277a21.tar.gz
-cd vulnagent-release-2.2.1-c277a21
+sha256sum -c vulnhunter-release-2.2.1-c277a21.tar.gz.sha256
+tar -xzf vulnhunter-release-2.2.1-c277a21.tar.gz
+cd vulnhunter-release-2.2.1-c277a21
 ./install.sh
 ./doctor.sh
 ```
@@ -45,4 +45,4 @@ docker compose logs -f web
 
 - 部署环境需配置有效 License。
 - 扫描和报告生成依赖可用模型服务；模型不可达或限流会影响任务完成。
-- 需备份 `DATA_DIR`、`$DATA_DIR/.secrets/vulnagent-master.key` 和安装目录 `.env`。
+- 需备份 `DATA_DIR`、`$DATA_DIR/.secrets/vulnhunter-master.key` 和安装目录 `.env`。

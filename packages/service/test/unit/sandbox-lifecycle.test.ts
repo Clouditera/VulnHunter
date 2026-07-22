@@ -58,7 +58,7 @@ const TASK_ID = "11111111-1111-1111-1111-111111111111";
 const runningInstance = (over: Record<string, unknown> = {}) => ({
   sandbox_id: "sb-1",
   request_id: `task-${TASK_ID}-main`,
-  consumer: "vulnagent",
+  consumer: "vulnhunter",
   profile_id: "linux-docker",
   status: "running",
   ssh: { host: "10.0.0.5", port: 22, user: "sandbox" },

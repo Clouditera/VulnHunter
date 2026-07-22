@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="packages/web/public/favicon.svg" width="80" height="80" alt="VulnAgent Logo">
+  <img src="packages/web/public/favicon.svg" width="80" height="80" alt="VulnHunter Logo">
 </p>
 
-<h1 align="center">VulnAgent</h1>
+<h1 align="center">VulnHunter</h1>
 
 <p align="center">
   <strong>AI 驱动的自动化漏洞发现 Agent 平台</strong>
@@ -23,7 +23,7 @@
 
 ---
 
-VulnAgent 是一个开源的 AI 漏洞挖掘工作台，集成了自动化目标分析、AI 辅助漏洞发现、对话式调查、POC/EXP 生成验证、审核工作流和报告交付，支持自部署运行。
+VulnHunter 是一个开源的 AI 漏洞挖掘工作台，集成了自动化目标分析、AI 辅助漏洞发现、对话式调查、POC/EXP 生成验证、审核工作流和报告交付，支持自部署运行。
 
 ---
 
@@ -56,9 +56,9 @@ _专业报告输出，支持 Markdown 导出_
 
 ---
 
-## ⚡ 为什么选择 VulnAgent？
+## ⚡ 为什么选择 VulnHunter？
 
-| 😫 传统方式 | 💡 VulnAgent 方案 |
+| 😫 传统方式 | 💡 VulnHunter 方案 |
 |---|---|
 | **人工代码审计效率低** — 跟不上代码迭代速度 | **🤖 AI Agent 自动审计** — YoungFlow 编排多 Agent 协作，全自动执行 |
 | **工具误报多** — 传统 SAST 缺乏语义理解 | **🧠 上下文感知** — AI 结合代码语义和业务逻辑，精准定位真实漏洞 |
@@ -102,7 +102,7 @@ _专业报告输出，支持 Markdown 导出_
 └──────────────────────┬──────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────┐
-│         VulnAgent Service (Hono + WebSocket + MCP)   │
+│         VulnHunter Service (Hono + WebSocket + MCP)   │
 │                                                      │
 │  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
 │  │ Tasks    │  │ Chat     │  │ Reports/POC      │  │
@@ -147,8 +147,8 @@ packages/
 
 ```bash
 # 克隆项目
-git clone https://github.com/user/VulnAgent.git
-cd VulnAgent
+git clone https://github.com/user/VulnHunter.git
+cd VulnHunter
 
 # 配置环境
 cp deploy/.env.example .env
@@ -185,10 +185,10 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env.example up -d
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `WEB_PORT` | Web 端口 | `23000` |
-| `DATA_DIR` | 数据持久化目录 | `/opt/vulnagent/data` |
+| `DATA_DIR` | 数据持久化目录 | `/opt/vulnhunter/data` |
 | `DOCKER_SUBNET` | Docker 网络子网 | `10.177.0.0/24` |
-| `VULNAGENT_MASTER_KEY_FILE` | 凭证加密主密钥路径 | — |
-| `WORKER_IMAGE` | 扫描 Worker 镜像 | `vulnagent-worker:latest` |
+| `VULNHUNTER_MASTER_KEY_FILE` | 凭证加密主密钥路径 | — |
+| `WORKER_IMAGE` | 扫描 Worker 镜像 | `vulnhunter-worker:latest` |
 | `EDITION` | 版本模式 | `community` |
 
 ---
@@ -217,7 +217,7 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env.example up -d
 
 ## ⚠️ 安全声明
 
-VulnAgent 是安全研究工具。请仅对您拥有或获得明确授权的系统、代码库和服务进行扫描测试。
+VulnHunter 是安全研究工具。请仅对您拥有或获得明确授权的系统、代码库和服务进行扫描测试。
 
 ---
 

@@ -1,4 +1,4 @@
-# VulnAgent Report Flow — 安全审计报告生成流水线
+# VulnHunter Report Flow — 安全审计报告生成流水线
 version: "1.0"
 
 artifacts:
