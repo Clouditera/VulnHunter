@@ -64,6 +64,7 @@ function errMessage(err: unknown, fallback: string): string {
   if (code === "attempts_exceeded") return i18n.t("auth.err.attemptsExceeded");
   if (code === "weak_password") return i18n.t("auth.err.weakPassword");
   if (code === "email_exists" || code === "ERR_EMAIL_EXISTS") return i18n.t("auth.err.emailExists");
+  if (code === "agreements_required") return i18n.t("auth.err.agreementsRequired");
   if (code === "account_suspended" || code === "ERR_ACCOUNT_SUSPENDED") return i18n.t("auth.err.suspended");
   if (code === "ERR_AUTH_LOCKED") return i18n.t("login.errorLocked");
   if (code === "invalid_email") return i18n.t("auth.err.invalidEmail");
@@ -197,6 +198,102 @@ function useDataDown() {
   return { seconds, start, active: seconds > 0 };
 }
 
+type AgreementMeta = {
+  id: string;
+  title: string;
+  version: string;
+  effective_date: string;
+  required_on_register: boolean;
+  html_url: string;
+};
+
+function AgreementModal({
+  title,
+  html,
+  onClose,
+}: {
+  title: string;
+  html: string;
+  onClose: () => void;
+}) {
+  // Extract body inner HTML so we don't nest full documents.
+  const bodyHtml = (() => {
+    const m = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    return m ? m[1] : html;
+  })();
+  return (
+    <div
+      data-testid="agreement-modal"
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 80,
+        background: "rgba(15,23,42,0.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "24px",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: "min(720px, 100%)",
+          maxHeight: "min(80vh, 840px)",
+          background: "var(--bg-card)",
+          borderRadius: "12px",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "14px 18px",
+            borderBottom: "1px solid var(--divider)",
+          }}
+        >
+          <div style={{ fontSize: "15px", fontWeight: 700 }}>{title}</div>
+          <button
+            type="button"
+            data-testid="agreement-modal-close"
+            onClick={onClose}
+            style={{
+              border: "none",
+              background: "transparent",
+              fontSize: "20px",
+              cursor: "pointer",
+              color: "var(--text-secondary)",
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <div
+          data-testid="agreement-modal-body"
+          style={{
+            padding: "18px 22px",
+            overflow: "auto",
+            fontSize: "13.5px",
+            lineHeight: 1.7,
+            color: "var(--text-primary)",
+          }}
+          // Content is first-party legal HTML shipped with the product.
+          dangerouslySetInnerHTML={{ __html: bodyHtml }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function RegisterPanel({ onBack }: { onBack: () => void }) {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -206,9 +303,57 @@ function RegisterPanel({ onBack }: { onBack: () => void }) {
   const [okMsg, setOkMsg] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [accepted, setAccepted] = useState(false);
+  const [agreements, setAgreements] = useState<AgreementMeta[]>([]);
+  const [viewing, setViewing] = useState<{ title: string; html: string } | null>(null);
   const cd = useDataDown();
   const navigate = useNavigate();
   const qc = useQueryClient();
+
+  useEffect(() => {
+    let cancelled = false;
+    api.auth
+      .listAgreements()
+      .then((res) => {
+        if (!cancelled) setAgreements(res.agreements ?? []);
+      })
+      .catch(() => {
+        // Fallback labels if catalog endpoint not yet upgraded
+        if (!cancelled) {
+          setAgreements([
+            {
+              id: "user-service",
+              title: "VulHunter 平台用户服务协议",
+              version: "1.0",
+              effective_date: "2026-07-21",
+              required_on_register: true,
+              html_url: "/api/auth/agreements/user-service",
+            },
+            {
+              id: "privacy-policy",
+              title: "VulHunter 平台隐私政策",
+              version: "1.0",
+              effective_date: "2026-07-21",
+              required_on_register: true,
+              html_url: "/api/auth/agreements/privacy-policy",
+            },
+          ]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function openAgreement(id: string, title: string) {
+    try {
+      const res = await api.auth.getAgreement(id);
+      setViewing({ title: res.title || title, html: res.html });
+    } catch {
+      // Fallback: open raw HTML endpoint in a new tab
+      window.open(`/api/auth/agreements/${encodeURIComponent(id)}`, "_blank", "noopener,noreferrer");
+    }
+  }
 
   async function sendCode() {
     setError("");
@@ -232,6 +377,10 @@ function RegisterPanel({ onBack }: { onBack: () => void }) {
   async function handleRegister(e: FormEvent) {
     e.preventDefault();
     setError("");
+    if (!accepted) {
+      setError(i18n.t("auth.err.agreementsRequired"));
+      return;
+    }
     if (password !== confirm) {
       setError(i18n.t("auth.err.passwordMismatch"));
       return;
@@ -242,7 +391,12 @@ function RegisterPanel({ onBack }: { onBack: () => void }) {
     }
     setLoading(true);
     try {
-      await api.auth.registerVerify({ email: email.trim(), code: code.trim(), password });
+      await api.auth.registerVerify({
+        email: email.trim(),
+        code: code.trim(),
+        password,
+        accept_agreements: true,
+      });
       qc.clear();
       navigate("/dashboard");
     } catch (err) {
@@ -251,6 +405,9 @@ function RegisterPanel({ onBack }: { onBack: () => void }) {
       setLoading(false);
     }
   }
+
+  const service = agreements.find((a) => a.id === "user-service") ?? agreements[0];
+  const privacy = agreements.find((a) => a.id === "privacy-policy") ?? agreements[1];
 
   return (
     <div data-testid="auth-panel-register">
@@ -290,7 +447,84 @@ function RegisterPanel({ onBack }: { onBack: () => void }) {
         <Field label={i18n.t("auth.code")} value={code} onChange={setCode} testid="register-code" placeholder={i18n.t("auth.codePlaceholder")} maxLength={6} hint={i18n.t("auth.codeHint")} />
         <Field label={i18n.t("auth.setPassword")} value={password} onChange={setPassword} type="password" testid="register-password" placeholder={i18n.t("auth.passwordPlaceholder")} autoComplete="new-password" hint={i18n.t("auth.passwordHint")} />
         <Field label={i18n.t("auth.confirmPassword")} value={confirm} onChange={setConfirm} type="password" testid="register-confirm" placeholder={i18n.t("auth.confirmPlaceholder")} autoComplete="new-password" />
-        <button data-testid="register-submit" type="submit" disabled={loading} style={PRIMARY_BTN(loading)}>
+
+        <label
+          data-testid="register-agreements"
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "8px",
+            marginTop: "18px",
+            fontSize: "12.5px",
+            color: "var(--text-secondary)",
+            lineHeight: 1.55,
+            cursor: "pointer",
+            userSelect: "none",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={accepted}
+            onChange={(e) => setAccepted(e.target.checked)}
+            data-testid="register-agreements-check"
+            style={{ marginTop: "3px" }}
+          />
+          <span>
+            {i18n.t("auth.agreePrefix")}
+            <button
+              type="button"
+              data-testid="open-agreement-user-service"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (service) void openAgreement(service.id, service.title);
+              }}
+              style={{
+                border: "none",
+                background: "none",
+                padding: 0,
+                color: "var(--brand)",
+                fontWeight: 600,
+                cursor: "pointer",
+                fontSize: "inherit",
+              }}
+            >
+              《{service?.title ?? i18n.t("auth.userServiceTitle")}》
+            </button>
+            {i18n.t("auth.agreeAnd")}
+            <button
+              type="button"
+              data-testid="open-agreement-privacy"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (privacy) void openAgreement(privacy.id, privacy.title);
+              }}
+              style={{
+                border: "none",
+                background: "none",
+                padding: 0,
+                color: "var(--brand)",
+                fontWeight: 600,
+                cursor: "pointer",
+                fontSize: "inherit",
+              }}
+            >
+              《{privacy?.title ?? i18n.t("auth.privacyTitle")}》
+            </button>
+          </span>
+        </label>
+
+        <button
+          data-testid="register-submit"
+          type="submit"
+          disabled={loading || !accepted}
+          style={{
+            ...PRIMARY_BTN(loading || !accepted),
+            opacity: !accepted ? 0.55 : 1,
+          }}
+          title={!accepted ? i18n.t("auth.err.agreementsRequired") : undefined}
+        >
           {loading ? i18n.t("auth.registering") : i18n.t("auth.registerSubmit")}
         </button>
       </form>
@@ -299,6 +533,9 @@ function RegisterPanel({ onBack }: { onBack: () => void }) {
           {i18n.t("auth.backToLogin")}
         </button>
       </div>
+      {viewing ? (
+        <AgreementModal title={viewing.title} html={viewing.html} onClose={() => setViewing(null)} />
+      ) : null}
     </div>
   );
 }
