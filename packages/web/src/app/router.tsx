@@ -24,14 +24,16 @@ function RootGuard() {
 
   if (isLoading) return <LoadingScreen />;
 
-  if (error || !status) return <Navigate to="/login" replace />;
+  // Marketing home for unauthenticated visitors (online commercial edition).
+  // Prefer home over login even if status briefly fails — login remains at /login.
+  if (error || !status) return <HomePage />;
   if (status.edition !== "community") {
     if (status.license.status === "expired") return <Navigate to="/expired" replace />;
     if (status.license.status !== "active") return <Navigate to="/activate" replace />;
   }
   if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
-  if (!status.is_authenticated) return <Navigate to="/login" replace />;
-  return <Navigate to="/chat" replace />;
+  if (status.is_authenticated) return <Navigate to="/chat" replace />;
+  return <HomePage />;
 }
 
 function LoadingScreen() {
