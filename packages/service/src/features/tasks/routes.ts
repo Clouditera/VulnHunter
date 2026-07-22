@@ -16,8 +16,13 @@ import { listUsersByIds } from "../auth/storage.js";
 import { attachCreatorSummaries, uniqueCreatorIds } from "../auth/creator-summary.js";
 import { originalArchiveDownloadSpec } from "./original-archive.js";
 import { getSourceArchivePolicy } from "../source-archives/policy.js";
+import { projectSandboxQueue } from "../sandboxes/capacity.js";
 
 export const tasksRouter = new Hono();
+
+function withSandboxQueue<T extends { metadata?: unknown }>(task: T): T & { sandbox_queue: ReturnType<typeof projectSandboxQueue> } {
+  return { ...task, sandbox_queue: projectSandboxQueue(task.metadata) };
+}
 
 function controlErrorResponse(c: any, err: unknown) {
   if (err instanceof TaskControlError) {
@@ -54,7 +59,7 @@ tasksRouter.get("/", async (c) => {
     ? await taskStorage.getFindingsSeverityCounts(taskIds)
     : new Map<string, Record<string, number>>();
 
-  const rows = tasks.map((t) => ({
+  const rows = tasks.map((t) => withSandboxQueue({
     ...t,
     severity_counts: severityCounts.get(t.id) ?? { high: 0, medium: 0, low: 0, info: 0 },
   }));
@@ -113,7 +118,7 @@ tasksRouter.get("/:id", async (c) => {
     credential_label = cred ? `${cred.label || cred.provider} — ${cred.model_id}` : null;
   }
 
-  return c.json({ task: { ...task, credential_label } });
+  return c.json({ task: withSandboxQueue({ ...task, credential_label }) });
 });
 
 // POST /api/tasks/:id/cancel

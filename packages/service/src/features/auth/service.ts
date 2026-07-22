@@ -41,7 +41,10 @@ export async function login(params: {
   password: string;
   ip?: string;
   userAgent?: string;
-}): Promise<{ sessionId: string; user: storage.DbUser } | { error: "locked" | "invalid_credentials" }> {
+}): Promise<
+  | { sessionId: string; user: storage.DbUser }
+  | { error: "locked" | "invalid_credentials" | "account_suspended" }
+> {
   const ip = params.ip ?? "unknown";
 
   if (checkLockout(ip, params.email)) {
@@ -49,7 +52,14 @@ export async function login(params: {
   }
 
   const user = await storage.findUserByEmail(params.email);
-  if (!user || user.status !== "active") {
+  if (!user) {
+    recordFailedAttempt(ip, params.email);
+    return { error: "invalid_credentials" };
+  }
+  if (user.status === "suspended") {
+    return { error: "account_suspended" };
+  }
+  if (user.status !== "active") {
     recordFailedAttempt(ip, params.email);
     return { error: "invalid_credentials" };
   }
@@ -124,6 +134,7 @@ export async function createUserAccount(params: {
   sandboxMaxCpuCores?: number;
   sandboxMaxMemoryGb?: number;
   adminRemark?: string | null;
+  source?: "admin" | "registered";
 }): Promise<storage.DbUser> {
   const passwordHash = await bcrypt.hash(params.password, BCRYPT_COST);
   return storage.createUser({
@@ -137,7 +148,40 @@ export async function createUserAccount(params: {
     sandboxMaxCpuCores: params.sandboxMaxCpuCores ?? 0,
     sandboxMaxMemoryGb: params.sandboxMaxMemoryGb ?? 0,
     adminRemark: params.adminRemark ?? null,
+    source: params.source ?? "admin",
   });
+}
+
+export async function registerWithCode(params: {
+  email: string;
+  password: string;
+  displayName?: string;
+  ip?: string;
+  userAgent?: string;
+}): Promise<{ sessionId: string; user: storage.DbUser }> {
+  const user = await createUserAccount({
+    email: params.email.toLowerCase(),
+    password: params.password,
+    displayName: params.displayName,
+    role: "member",
+    mustChangePassword: false,
+    source: "registered",
+  });
+  const sessionId = await storage.createSession({
+    userId: user.id,
+    ip: params.ip,
+    userAgent: params.userAgent,
+  });
+  await storage.updateLastLogin(user.id);
+  logger.info({ userId: user.id, email: user.email }, "User registered");
+  return { sessionId, user };
+}
+
+export async function resetPasswordWithCode(userId: string, newPassword: string): Promise<void> {
+  const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
+  await storage.updateUser(userId, { passwordHash, mustChangePassword: false });
+  await storage.deleteAllSessionsForUser(userId);
+  logger.info({ userId }, "Password reset via email code; sessions invalidated");
 }
 
 export async function changePassword(

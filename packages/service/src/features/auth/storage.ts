@@ -9,6 +9,7 @@ export interface DbUser {
   password_hash: string;
   role: string;
   status: string;
+  source: string;
   display_name: string;
   admin_remark: string | null;
   must_change_password: boolean;
@@ -50,10 +51,11 @@ export async function createUser(params: {
   sandboxMaxRunning?: number;
   sandboxMaxCpuCores?: number;
   sandboxMaxMemoryGb?: number;
+  source?: "admin" | "registered";
 }): Promise<DbUser> {
   const db = getDb();
   const rows = await db<DbUser[]>`
-    INSERT INTO users (tenant_id, email, password_hash, role, display_name, admin_remark, must_change_password, task_limit, sandbox_max_running, sandbox_max_cpu_cores, sandbox_max_memory_gb)
+    INSERT INTO users (tenant_id, email, password_hash, role, display_name, admin_remark, must_change_password, task_limit, sandbox_max_running, sandbox_max_cpu_cores, sandbox_max_memory_gb, source)
     VALUES (
       ${DEFAULT_TENANT_ID},
       ${params.email},
@@ -65,7 +67,8 @@ export async function createUser(params: {
       ${params.taskLimit ?? 0},
       ${params.sandboxMaxRunning ?? 0},
       ${params.sandboxMaxCpuCores ?? 0},
-      ${params.sandboxMaxMemoryGb ?? 0}
+      ${params.sandboxMaxMemoryGb ?? 0},
+      ${params.source ?? "admin"}
     )
     RETURNING *
   `;
@@ -182,9 +185,15 @@ export async function updateUser(
 
 export async function deleteUser(id: string): Promise<void> {
   const db = getDb();
-  // Delete sessions first
+  // Keep tasks; clear creator pointer so UI can show "已删除用户"
+  await db`UPDATE tasks SET created_by = NULL WHERE created_by = ${id}`;
   await db`DELETE FROM sessions WHERE user_id = ${id}`;
   await db`DELETE FROM users WHERE id = ${id}`;
+}
+
+export async function deleteAllSessionsForUser(userId: string): Promise<void> {
+  const db = getDb();
+  await db`DELETE FROM sessions WHERE user_id = ${userId}`;
 }
 
 export async function countAdmins(): Promise<number> {

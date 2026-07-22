@@ -162,7 +162,8 @@ const INCREMENTAL_INDEX_INTERVAL_MS = 90_000;
 /** Only sync lightweight business artifacts mid-scan (skip GB-scale session logs). */
 const INCREMENTAL_SYNC_DIRS = ["findings", "risks", "knowledge"];
 /** H2 §3: sandbox allocation retry budget (6 × 5min) before the O1-visible error. */
-const SANDBOX_ALLOC_MAX_ATTEMPTS = 6;
+// Permanent queue until capacity/quota frees or user cancels (contract B2).
+// Retained for log context only — no longer a terminal cutoff.
 const SANDBOX_ALLOC_RETRY_MS = 5 * 60_000;
 /** H2 §5: incremental sandbox reconcile cadence (startup does the full pass). */
 const SANDBOX_RECONCILE_INTERVAL_MS = 60_000;
@@ -708,27 +709,12 @@ export class TaskScheduler {
       if (error instanceof SandboxQuotaError || error instanceof SandboxPlaneCapacityError) {
         const attempts = (alloc.attempts ?? 0) + 1;
         const kind = error instanceof SandboxQuotaError ? "quota" : "capacity";
-        if (attempts >= SANDBOX_ALLOC_MAX_ATTEMPTS) {
-          const remediation = error instanceof SandboxQuotaError
-            ? "等待运行中的任务结束释放额度，或联系管理员提升沙箱额度"
-            : "稍后重试，或联系管理员检查沙箱宿主机的资源水位";
-          appendAndBroadcastCompletionEvent(task.id, {
-            type: "sandbox_alloc_failed",
-            source: "scan",
-            seq: 0,
-            ts: new Date().toISOString(),
-            reason: kind,
-            attempts,
-            remediation,
-          });
-          throw new Error(`${error.message}（已重试 ${attempts - 1} 次）处理办法：${remediation}。`);
-        }
+        // B2: permanent FIFO queue — never terminal-fail on quota/capacity.
         const nextAttemptAt = new Date(Date.now() + SANDBOX_ALLOC_RETRY_MS).toISOString();
         await mergeTaskMetadata(task.id, {
           sandbox_alloc: { attempts, next_attempt_at: nextAttemptAt, last_error: kind },
         }).catch((err) => logger.warn({ err, taskId: task.id }, "Failed to record sandbox_alloc retry"));
-        logger.info({ taskId: task.id, token, kind, attempts, nextAttemptAt }, "Sandbox allocation blocked; requeued with backoff");
-        // Signal the caller to requeue (not fail) this claim.
+        logger.info({ taskId: task.id, token, kind, attempts, nextAttemptAt }, "Sandbox allocation blocked; permanent queue with backoff");
         throw Object.assign(new Error("sandbox allocation backoff"), { code: "ERR_SANDBOX_ALLOC_REQUEUE" });
       }
       throw error;

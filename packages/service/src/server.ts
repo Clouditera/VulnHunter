@@ -3,6 +3,8 @@ import type { Server } from "node:http";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authRouter } from "./features/auth/index.js";
+import { adminUsersRouter } from "./features/auth/admin-users.js";
+import { sandboxCapacityRouter } from "./features/sandboxes/capacity-routes.js";
 import { systemRouter } from "./features/system/index.js";
 import { tasksRouter } from "./features/tasks/index.js";
 import { filesRouter } from "./features/files/index.js";
@@ -38,6 +40,8 @@ export function createApp(): Hono {
   // Public routes (no license, no auth)
   app.route("/api/system", systemRouter);
   app.route("/api/auth", authRouter);
+  app.route("/api/admin/users", adminUsersRouter);
+  app.route("/api/sandbox", sandboxCapacityRouter);
 
   // Health check
   app.get("/health", (c) => c.json({ ok: true }));

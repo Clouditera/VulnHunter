@@ -40,6 +40,11 @@ function getVault(): MasterKeyVault {
   return _vault;
 }
 
+/** Optional vault accessor for features that degrade when master key is missing. */
+export function getVaultOptional(): MasterKeyVault | null {
+  return _vault;
+}
+
 export function getCredentialCryptoStatus():
   | { state: "available"; currentKeyFingerprint: string }
   | { state: "key_unavailable"; reason: string | null } {
