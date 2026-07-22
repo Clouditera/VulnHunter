@@ -127,28 +127,27 @@ rename_package_targets_new_product() {
 }
 
 # True when the live install still carries old naming.
+# Detection is intentionally narrow (architect 2026-07-22): ONLY .env old keys
+# and leftover old-named containers. Do NOT treat retained old network / old
+# install manifest / leftover old MinIO bucket as "still old" — those are kept
+# on purpose after a successful rename and would false-trigger re-entry
+# (QA: second upgrade on 31.102 wiped/mismatched the new bucket).
 rename_install_has_old_naming() {
-  # .env markers
+  # .env markers: old product tokens in key names or critical values.
   if [[ -f .env ]]; then
-    if grep -qE '^(DATA_DIR|SERVICE_IMAGE|WEB_IMAGE|WORKER_IMAGE|MINIO_BUCKET|DOCKER_NETWORK|VULNAGENT_|MASTER_KEY_FILE)=.*vulnagent' .env \
+    if grep -qE '^(DATA_DIR|SERVICE_IMAGE|WEB_IMAGE|WORKER_IMAGE|MINIO_BUCKET|DOCKER_NETWORK|MASTER_KEY_FILE)=.*vulnagent' .env \
       || grep -qE '^MINIO_BUCKET=vulnagent$' .env \
       || grep -qE '^VULNAGENT_' .env; then
       return 0
     fi
   fi
-  # running/stopped old containers
+  # running/stopped old containers only
   local c
   for c in "${RENAME_OLD_CONTAINERS[@]}"; do
     if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$c"; then
       return 0
     fi
   done
-  # old network
-  if docker network ls --format '{{.Name}}' 2>/dev/null | grep -qx "$RENAME_OLD_NETWORK"; then
-    return 0
-  fi
-  # old install manifest
-  [[ -f "$RENAME_OLD_INSTALL_MANIFEST" ]] && return 0
   return 1
 }
 
@@ -545,20 +544,12 @@ rename_count_files() {
 # Prints one of: skip | meta_only | full_copy | create_empty | fail:mismatch
 rename_minio_plan() {
   local old_b="$1" new_b="$2" old_m="$3" new_m="$4"
-  local old_count new_count
-  old_count="$(rename_count_files "$old_b")"
-  new_count="$(rename_count_files "$new_b")"
 
-  if [[ ! -d "$old_b" && ! -d "$new_b" ]]; then
-    printf 'create_empty'
-    return 0
-  fi
-  if [[ -d "$new_b" && -d "$old_b" && "$old_count" != "$new_count" ]]; then
-    printf 'fail:mismatch'
-    return 0
-  fi
-  if [[ -d "$new_b" && ( ! -d "$old_b" || "$old_count" == "$new_count" ) ]]; then
-    # Content ok — metadata may still be missing (the 31.102 half-migrate case).
+  # New bucket already present → NEVER delete/re-copy it (post-rename installs
+  # accumulate new objects there; count mismatch vs leftover old bucket is normal).
+  if [[ -d "$new_b" ]]; then
+    # Optional meta backfill only when new bucket has zero files? No — even then
+    # leave content alone. Only copy metadata if missing and old meta exists.
     if [[ -d "$old_m" && ! -d "$new_m" ]]; then
       printf 'meta_only'
       return 0
@@ -566,7 +557,11 @@ rename_minio_plan() {
     printf 'skip'
     return 0
   fi
-  # new missing (old present) → full copy
+  if [[ ! -d "$old_b" ]]; then
+    printf 'create_empty'
+    return 0
+  fi
+  # new missing, old present → first-time full copy
   printf 'full_copy'
 }
 
@@ -603,7 +598,7 @@ rename_minio_root_sh() {
 #   meta_only  — content ok, only copy .minio.sys/buckets/<new> (31.102 resume)
 #   full_copy  — content missing → cp -a bucket + metadata
 #   create_empty — neither side present
-#   fail       — content counts disagree
+#   (fail:mismatch removed — post-rename new bucket may legitimately diverge)
 rename_migrate_minio_bucket() {
   local dir="${DATA_DIR:-}/minio"
   [[ -d "$dir" ]] || { rename_warn "no minio dir — skip bucket migrate"; return 0; }
@@ -651,29 +646,29 @@ rename_migrate_minio_bucket() {
         "mkdir -p /data/${new_bucket} /data/.minio.sys/buckets/${new_bucket}" \
         || return 1
       ;;
-    fail:mismatch)
-      rename_die "bucket file count mismatch (old=$(rename_count_files "$old_bucket_dir") new=$(rename_count_files "$new_bucket_dir")) — refusing to continue"
-      return 1
-      ;;
     *)
       rename_die "unknown minio plan: $plan"
       return 1
       ;;
   esac
 
-  # Final count check when old side still exists.
-  if [[ -d "$old_bucket_dir" ]]; then
+  # Count check ONLY after first-time full_copy (never after skip — new bucket
+  # may have grown past the leftover old bucket).
+  if [[ "$plan" == "full_copy" && -d "$old_bucket_dir" ]]; then
     local old_count new_count
     old_count="$(rename_count_files "$old_bucket_dir")"
     new_count="$(rename_count_files "$new_bucket_dir")"
-    rename_log "object file count old=$old_count new=$new_count"
+    rename_log "object file count after full_copy old=$old_count new=$new_count"
     if [[ "$old_count" != "$new_count" ]]; then
-      rename_die "bucket file count mismatch after copy (old=$old_count new=$new_count)"
+      rename_die "bucket file count mismatch after full_copy (old=$old_count new=$new_count)"
       return 1
     fi
   fi
 
-  rename_log "bucket migration complete; old bucket '$old_bucket' retained as rollback"
+  rename_log "bucket migration step done (plan=$plan); old bucket '$old_bucket' retained as rollback"
+  if [[ "$plan" == "skip" ]]; then
+    return 0
+  fi
   mkdir -p backups
   cat > "backups/minio-bucket-rollback.txt" <<EOF
 Old MinIO bucket retained on disk: ${dir}/${old_bucket}

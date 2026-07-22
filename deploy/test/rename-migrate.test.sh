@@ -99,9 +99,10 @@ assert_eq "meta_only when content ok meta missing" "meta_only" \
 mkdir -p "$minio_fx/newm"
 assert_eq "skip when content+meta ok" "skip" \
   "$(rename_minio_plan "$minio_fx/oldb" "$minio_fx/newb" "$minio_fx/oldm" "$minio_fx/newm")"
-# count mismatch → fail
+# count mismatch with new present → still skip (post-rename growth is normal;
+# never delete/re-copy the live new bucket)
 printf c > "$minio_fx/newb/extra"
-assert_eq "fail on count mismatch" "fail:mismatch" \
+assert_eq "skip when new present even if counts differ" "skip" \
   "$(rename_minio_plan "$minio_fx/oldb" "$minio_fx/newb" "$minio_fx/oldm" "$minio_fx/newm")"
 # neither side → create_empty
 rm -rf "$minio_fx"
@@ -123,5 +124,50 @@ assert_rc "VERSION product vulnhunter → new product" 0 rename_package_targets_
 popd >/dev/null
 
 echo
+echo "== rename_install_has_old_naming (second-upgrade no-op) =="
+fx="$(mktemp -d)"
+pushd "$fx" >/dev/null
+# Already-renamed .env: new images, artifact-store, no VULNAGENT_ keys
+cat > .env <<'E'
+WEB_PORT=23000
+DATA_DIR=/home/clouditera/vulnhunter-data
+SERVICE_IMAGE=vulnhunter-service:2.3.0
+WEB_IMAGE=vulnhunter-web:2.3.0
+WORKER_IMAGE=vulnhunter-worker:2.3.0
+MINIO_BUCKET=artifact-store
+DOCKER_NETWORK=vulnhunter-internal
+MASTER_KEY_FILE=/home/clouditera/vulnhunter-data/.secrets/vulnhunter-master.key
+E
+# Leftover old network / old manifest must NOT trip detection
+touch .vulnagent-install.json
+# Simulate docker network list by not calling real docker for network —
+# rename_install_has_old_naming no longer checks network/manifest.
+assert_rc "renamed .env → not old naming" 1 rename_install_has_old_naming
+
+# Old .env keys still present → old naming
+cat > .env <<'E'
+SERVICE_IMAGE=vulnagent-service:2.2.0
+MINIO_BUCKET=vulnagent
+E
+assert_rc "old image+bucket in .env → old naming" 0 rename_install_has_old_naming
+
+# Package targets new + install already new → migration not needed
+printf 'container_name: vulnhunter-service\n' > docker-compose.yml
+cat > .env <<'E'
+SERVICE_IMAGE=vulnhunter-service:2.3.0
+MINIO_BUCKET=artifact-store
+E
+assert_rc "second upgrade migration_needed=false" 1 rename_migration_needed
+
+# Package new + install old → migration needed
+cat > .env <<'E'
+SERVICE_IMAGE=vulnagent-service:2.2.0
+MINIO_BUCKET=vulnagent
+VULNAGENT_MASTER_KEY_FILE=/x
+E
+assert_rc "first upgrade migration_needed=true" 0 rename_migration_needed
+popd >/dev/null
+rm -rf "$fx"
+
 echo "Results: $pass passed, $fail failed"
 [[ "$fail" -eq 0 ]]
