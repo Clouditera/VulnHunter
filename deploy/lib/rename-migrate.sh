@@ -346,62 +346,102 @@ rename_backup_database() {
   docker rm -f "$cname" >/dev/null 2>&1 || true
 }
 
+# Run psql inside the temp postgres container as a given role.
+# When password is non-empty, force TCP (127.0.0.1) + PGPASSWORD so we do not
+# depend on local/peer/trust lines in a pre-existing pg_hba.conf (31.102 P0).
+rename_psql() {
+  local cname="$1" role="$2" password="$3"
+  shift 3
+  # -i is mandatory: callers feed SQL via stdin heredoc; without it docker
+  # discards stdin and psql quietly runs zero statements (31.102 silent no-op).
+  if [[ -n "$password" ]]; then
+    docker exec -i -e "PGPASSWORD=$password" "$cname" \
+      psql -h 127.0.0.1 -U "$role" -d postgres -v ON_ERROR_STOP=1 "$@"
+  else
+    docker exec -i "$cname" \
+      psql -U "$role" -d postgres -v ON_ERROR_STOP=1 "$@"
+  fi
+}
+
 # ALTER DATABASE / ROLE from old names to new names against DATA_DIR/db.
-# Critical: PostgreSQL refuses `ALTER ROLE <session_user> RENAME` — so we
-# create a temporary SUPERUSER, rename via that session, then drop it.
-# Ends with \l/\du-style assertions; non-zero if names did not land.
+# Critical:
+# 1) PG refuses `ALTER ROLE <session_user> RENAME` — use a temporary SUPERUSER.
+# 2) Existing data dirs keep their original pg_hba.conf; POSTGRES_HOST_AUTH_METHOD
+#    on container start does NOT rewrite it. A passwordless new role often cannot
+#    log in (31.102: "role vh_rename_admin does not exist" / auth fail).
+#    → create admin WITH PASSWORD and always connect via TCP+password.
+# Ends with pg_database/pg_roles assertions; non-zero if names did not land.
 rename_database_identifiers() {
   local dir="${DATA_DIR:-}/db"
   [[ -d "$dir" ]] || { rename_warn "no DB dir — skip ALTER RENAME"; return 0; }
   local pg_image="${POSTGRES_IMAGE:-postgres:16-alpine}"
   local cname="vh-rename-pg-$$"
-  local admin_role="vh_rename_admin_$$"
-  # Sanitize role name (postgres identifiers: letters/digits/underscore)
-  admin_role="vh_rename_admin"
+  local admin_role="vh_rename_admin"
+  # Random password for the throwaway admin (never logged).
+  local admin_pass
+  admin_pass="$(openssl rand -hex 16 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  # Owner password from install .env (used for bootstrap TCP auth on scram hba).
+  local owner_pass="${DB_PASSWORD:-vulnagent}"
+
   rename_log "renaming DB identifiers: $RENAME_OLD_DB_NAME/$RENAME_OLD_DB_ROLE → $RENAME_NEW_DB_NAME/$RENAME_NEW_DB_ROLE"
   docker run -d --name "$cname" \
     -v "$dir:/var/lib/postgresql/data" \
     -e POSTGRES_HOST_AUTH_METHOD=trust \
     -e POSTGRES_USER="$RENAME_OLD_DB_ROLE" \
     "$pg_image" >/dev/null
-  local i ready=0 bootstrap_role=""
+
+  local i ready=0 bootstrap_role="" bootstrap_pass=""
   for i in $(seq 1 40); do
-    if docker exec "$cname" pg_isready -U "$RENAME_OLD_DB_ROLE" >/dev/null 2>&1; then
-      ready=1; bootstrap_role="$RENAME_OLD_DB_ROLE"; break
+    # Prefer TCP+password (works with scram-sha-256 host lines on existing clusters).
+    if docker exec -e "PGPASSWORD=$owner_pass" "$cname" \
+        pg_isready -h 127.0.0.1 -U "$RENAME_OLD_DB_ROLE" >/dev/null 2>&1 \
+      && docker exec -e "PGPASSWORD=$owner_pass" "$cname" \
+        psql -h 127.0.0.1 -U "$RENAME_OLD_DB_ROLE" -d postgres -tAc 'SELECT 1' >/dev/null 2>&1; then
+      ready=1; bootstrap_role="$RENAME_OLD_DB_ROLE"; bootstrap_pass="$owner_pass"; break
     fi
-    if docker exec "$cname" pg_isready -U "$RENAME_NEW_DB_ROLE" >/dev/null 2>&1; then
-      ready=1; bootstrap_role="$RENAME_NEW_DB_ROLE"; break
+    if docker exec -e "PGPASSWORD=$owner_pass" "$cname" \
+        pg_isready -h 127.0.0.1 -U "$RENAME_NEW_DB_ROLE" >/dev/null 2>&1 \
+      && docker exec -e "PGPASSWORD=$owner_pass" "$cname" \
+        psql -h 127.0.0.1 -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc 'SELECT 1' >/dev/null 2>&1; then
+      ready=1; bootstrap_role="$RENAME_NEW_DB_ROLE"; bootstrap_pass="$owner_pass"; break
+    fi
+    # Fallback: socket/trust (fresh clusters / trust hba)
+    if docker exec "$cname" psql -U "$RENAME_OLD_DB_ROLE" -d postgres -tAc 'SELECT 1' >/dev/null 2>&1; then
+      ready=1; bootstrap_role="$RENAME_OLD_DB_ROLE"; bootstrap_pass=""; break
+    fi
+    if docker exec "$cname" psql -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc 'SELECT 1' >/dev/null 2>&1; then
+      ready=1; bootstrap_role="$RENAME_NEW_DB_ROLE"; bootstrap_pass=""; break
     fi
     sleep 1
   done
   if [[ "$ready" != 1 || -z "$bootstrap_role" ]]; then
     docker rm -f "$cname" >/dev/null 2>&1 || true
-    rename_die "temp postgres failed to become ready for DB rename"
+    rename_die "temp postgres failed to become ready for DB rename (could not auth as owner)"
     return 1
   fi
+  rename_log "bootstrap auth ok as role=$bootstrap_role via $([ -n "$bootstrap_pass" ] && echo tcp+password || echo socket)"
 
-  # Already fully renamed? Assert both db + role, then done.
-  if docker exec "$cname" psql -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
+  # Already fully renamed?
+  if rename_psql "$cname" "$bootstrap_role" "$bootstrap_pass" -tAc \
         "SELECT 1 FROM pg_database WHERE datname='${RENAME_NEW_DB_NAME}'" 2>/dev/null | grep -q 1 \
-     && docker exec "$cname" psql -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
+     && rename_psql "$cname" "$bootstrap_role" "$bootstrap_pass" -tAc \
         "SELECT 1 FROM pg_roles WHERE rolname='${RENAME_NEW_DB_ROLE}'" 2>/dev/null | grep -q 1 \
-     && ! docker exec "$cname" psql -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
+     && ! rename_psql "$cname" "$bootstrap_role" "$bootstrap_pass" -tAc \
         "SELECT 1 FROM pg_roles WHERE rolname='${RENAME_OLD_DB_ROLE}'" 2>/dev/null | grep -q 1; then
     rename_log "database already renamed (db+role=$RENAME_NEW_DB_NAME) — skip"
     docker rm -f "$cname" >/dev/null 2>&1 || true
     return 0
   fi
 
-  # Create a throwaway SUPERUSER so we are not the session user being renamed.
-  # (session user cannot be renamed — the 31.102 silent-failure root cause.)
-  if ! docker exec "$cname" psql -U "$bootstrap_role" -d postgres -v ON_ERROR_STOP=1 <<SQL
-DO \$\$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${admin_role}') THEN
-    CREATE ROLE ${admin_role} WITH SUPERUSER LOGIN;
-  END IF;
-END
-\$\$;
+  # Create throwaway SUPERUSER WITH PASSWORD (must not be the session user we rename).
+  # Escape single quotes in password for SQL literal.
+  local admin_pass_sql="${admin_pass//\'/\'\'}"
+  if ! rename_psql "$cname" "$bootstrap_role" "$bootstrap_pass" <<SQL
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+  WHERE datname IN ('${RENAME_OLD_DB_NAME}', '${RENAME_NEW_DB_NAME}')
+    AND pid <> pg_backend_pid();
+DROP ROLE IF EXISTS ${admin_role};
+CREATE ROLE ${admin_role} WITH SUPERUSER LOGIN PASSWORD '${admin_pass_sql}';
 SQL
   then
     docker rm -f "$cname" >/dev/null 2>&1 || true
@@ -409,12 +449,21 @@ SQL
     return 1
   fi
 
-  # Rename via the temporary admin (not the role being renamed).
-  if ! docker exec "$cname" psql -U "$admin_role" -d postgres -v ON_ERROR_STOP=1 <<SQL
+  # Probe admin via TCP+password immediately — fail closed if hba rejects.
+  if ! docker exec -e "PGPASSWORD=$admin_pass" "$cname" \
+      psql -h 127.0.0.1 -U "$admin_role" -d postgres -tAc 'SELECT 1' >/dev/null 2>&1; then
+    rename_psql "$cname" "$bootstrap_role" "$bootstrap_pass" -c "DROP ROLE IF EXISTS ${admin_role};" >/dev/null 2>&1 || true
+    docker rm -f "$cname" >/dev/null 2>&1 || true
+    rename_die "temporary SUPERUSER ${admin_role} created but TCP+password login failed (pg_hba?)"
+    return 1
+  fi
+  rename_log "temporary SUPERUSER ${admin_role} TCP+password probe ok"
+
+  # Rename via admin (not the role being renamed).
+  if ! rename_psql "$cname" "$admin_role" "$admin_pass" <<SQL
 SELECT pg_terminate_backend(pid) FROM pg_stat_activity
   WHERE datname IN ('${RENAME_OLD_DB_NAME}', '${RENAME_NEW_DB_NAME}')
     AND pid <> pg_backend_pid();
--- Database rename (idempotent)
 DO \$\$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_database WHERE datname = '${RENAME_OLD_DB_NAME}')
@@ -423,7 +472,6 @@ BEGIN
   END IF;
 END
 \$\$;
--- Role rename (idempotent); MUST NOT run as the role being renamed
 DO \$\$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${RENAME_OLD_DB_ROLE}')
@@ -434,30 +482,29 @@ END
 \$\$;
 SQL
   then
-    docker exec "$cname" psql -U "$admin_role" -d postgres -c "DROP ROLE IF EXISTS ${admin_role};" >/dev/null 2>&1 || true
+    rename_psql "$cname" "$admin_role" "$admin_pass" -c "DROP ROLE IF EXISTS ${admin_role};" >/dev/null 2>&1 || true
     docker rm -f "$cname" >/dev/null 2>&1 || true
     rename_die "ALTER DATABASE/ROLE via temporary SUPERUSER failed"
     return 1
   fi
 
-  # Drop temporary admin (connect as the new role if rename succeeded).
-  local cleanup_role="$RENAME_NEW_DB_ROLE"
-  if ! docker exec "$cname" pg_isready -U "$cleanup_role" >/dev/null 2>&1; then
-    cleanup_role="$admin_role"
-  fi
-  docker exec "$cname" psql -U "$cleanup_role" -d postgres -c "DROP ROLE IF EXISTS ${admin_role};" >/dev/null 2>&1 || true
+  # Drop admin using itself (still exists) then assert via new owner role.
+  rename_psql "$cname" "$admin_role" "$admin_pass" -c "DROP ROLE IF EXISTS ${admin_role};" >/dev/null 2>&1 || true
 
-  # Hard assertions — refuse to claim success without on-disk proof.
+  # Hard assertions via new role + owner password (role rename keeps password).
   local db_ok=0 role_ok=0 old_role_gone=0
-  if docker exec "$cname" psql -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
+  if docker exec -e "PGPASSWORD=$owner_pass" "$cname" \
+      psql -h 127.0.0.1 -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
       "SELECT 1 FROM pg_database WHERE datname='${RENAME_NEW_DB_NAME}'" 2>/dev/null | grep -q 1; then
     db_ok=1
   fi
-  if docker exec "$cname" psql -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
+  if docker exec -e "PGPASSWORD=$owner_pass" "$cname" \
+      psql -h 127.0.0.1 -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
       "SELECT 1 FROM pg_roles WHERE rolname='${RENAME_NEW_DB_ROLE}'" 2>/dev/null | grep -q 1; then
     role_ok=1
   fi
-  if ! docker exec "$cname" psql -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
+  if ! docker exec -e "PGPASSWORD=$owner_pass" "$cname" \
+      psql -h 127.0.0.1 -U "$RENAME_NEW_DB_ROLE" -d postgres -tAc \
       "SELECT 1 FROM pg_roles WHERE rolname='${RENAME_OLD_DB_ROLE}'" 2>/dev/null | grep -q 1; then
     old_role_gone=1
   fi
