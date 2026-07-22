@@ -11,6 +11,8 @@ import { ChangelogDrawer } from "../shared/components/ChangelogDrawer.js";
 import { shouldShowChangelog, markChangelogSeen } from "../shared/changelog.js";
 import { useNotifications } from "../shared/hooks/useNotifications.js";
 import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
+import { SessionSearchModal } from "../features/chat/components/SessionSearchModal.js";
+import { FeedbackModal } from "../features/feedback/components/FeedbackModal.js";
 
 const NAV_ITEMS: Array<{ to: string; icon: IconName; labelKey: string; testid: string }> = [
   { to: "/chat", icon: "chat", labelKey: "nav.chat", testid: "nav-chat" },
@@ -44,6 +46,12 @@ export function AppLayout() {
   const [sessionRefreshToken, setSessionRefreshToken] = useState(0);
   const [showChangelog, setShowChangelog] = useState(() => shouldShowChangelog());
   const [showChangelogDrawer, setShowChangelogDrawer] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [listError, setListError] = useState(false);
+  const [reachedEnd, setReachedEnd] = useState(false);
 
   useNotifications();
   const { data: systemStatus } = useSystemStatus();
@@ -83,21 +91,68 @@ export function AppLayout() {
 
   useEffect(() => {
     let mounted = true;
+    setListError(false);
+    setReachedEnd(false);
     api.chat.sessions
-      .list()
+      .list({ limit: 20, offset: 0 })
       .then((res) => {
         if (!mounted) return;
-        setRecentSessions(
-          res.sessions.filter(hasPersistedContent).slice(0, 20).map(toRecentSession),
-        );
+        const sessions = res.sessions ?? [];
+        setRecentSessions(sessions.filter(hasPersistedContent).map(toRecentSession));
+        const next = res.next_offset ?? null;
+        setNextOffset(next);
+        setReachedEnd(next == null);
       })
       .catch(() => {
-        if (mounted) setRecentSessions([]);
+        if (mounted) {
+          setRecentSessions([]);
+          setListError(true);
+          setNextOffset(null);
+        }
       });
     return () => {
       mounted = false;
     };
   }, [location.pathname, location.key, sessionRefreshToken]);
+
+  async function loadMoreSessions() {
+    if (loadingMore || nextOffset == null) return;
+    setLoadingMore(true);
+    setListError(false);
+    try {
+      const res = await api.chat.sessions.list({ limit: 20, offset: nextOffset });
+      const sessions = (res.sessions ?? []).filter(hasPersistedContent).map(toRecentSession);
+      setRecentSessions((prev) => {
+        const seen = new Set(prev.map((s) => s.id));
+        return [...prev, ...sessions.filter((s) => !seen.has(s.id))];
+      });
+      const next = res.next_offset ?? null;
+      setNextOffset(next);
+      setReachedEnd(next == null);
+    } catch {
+      setListError(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  function onRecentsScroll(e: React.UIEvent<HTMLUListElement>) {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) {
+      void loadMoreSessions();
+    }
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     const onChanged = () => setSessionRefreshToken((n) => n + 1);
@@ -199,9 +254,10 @@ export function AppLayout() {
           {!collapsed ? (
             <button
               type="button"
+              data-testid="sidebar-search-chats"
               className="va-sidebar-search"
               style={SEARCH_BUTTON}
-              aria-disabled="true"
+              onClick={() => setSearchOpen(true)}
             >
               <Icon name="search" size={13} strokeWidth={1.75} />
               <span>{i18n.t("nav.searchChats")}</span>
@@ -232,6 +288,7 @@ export function AppLayout() {
               role="list"
               className="va-sidebar-scroll"
               style={RECENTS_LIST}
+              onScroll={onRecentsScroll}
             >
               {recentSessions.length === 0 ? (
                 <li style={RECENTS_EMPTY}>{i18n.t("chat.noSession")}</li>
@@ -295,6 +352,19 @@ export function AppLayout() {
                   );
                 })
               )}
+              {loadingMore ? (
+                <li style={RECENTS_EMPTY} data-testid="sidebar-loading-more">{i18n.t("sidebar.loadingMore")}</li>
+              ) : null}
+              {listError ? (
+                <li style={RECENTS_EMPTY}>
+                  <button type="button" data-testid="sidebar-load-retry" onClick={() => void loadMoreSessions()} style={{ background: "none", border: "none", color: "var(--brand)", cursor: "pointer", fontSize: 11 }}>
+                    {i18n.t("sidebar.loadFailed")}
+                  </button>
+                </li>
+              ) : null}
+              {reachedEnd && recentSessions.length > 20 ? (
+                <li style={RECENTS_EMPTY} data-testid="sidebar-no-more">{i18n.t("sidebar.noMore")}</li>
+              ) : null}
             </ul>
           </section>
         ) : (
@@ -302,6 +372,47 @@ export function AppLayout() {
         )}
 
         <div data-testid="nav-bottom" style={collapsed ? FOOTER_COLLAPSED : FOOTER_EXPANDED}>
+          {!collapsed ? (
+            <button
+              type="button"
+              data-testid="sidebar-feedback"
+              className="va-sidebar-button"
+              onClick={() => setFeedbackOpen(true)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                width: "100%",
+                padding: "8px 10px",
+                border: "none",
+                borderRadius: 8,
+                background: "transparent",
+                color: "rgba(255,255,255,0.7)",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                marginBottom: 4,
+              }}
+            >
+              <Icon name="send" size={14} />
+              <span>{i18n.t("nav.feedback")}</span>
+              <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 800, color: "var(--brand)", background: "rgba(239,43,45,0.15)", padding: "1px 6px", borderRadius: 999 }}>NEW</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              data-testid="sidebar-feedback"
+              className="va-sidebar-button"
+              title={i18n.t("nav.feedback")}
+              onClick={() => setFeedbackOpen(true)}
+              style={{
+                width: 40, height: 40, border: "none", borderRadius: 10, background: "transparent",
+                color: "rgba(255,255,255,0.7)", cursor: "pointer", display: "grid", placeItems: "center", margin: "0 auto 6px",
+              }}
+            >
+              <Icon name="send" size={15} />
+            </button>
+          )}
           <VersionEntry
             collapsed={collapsed}
             version={systemStatus?.version?.version}
@@ -345,6 +456,14 @@ export function AppLayout() {
         productName="VulnHunter"
         onClose={() => setShowChangelogDrawer(false)}
       />
+      <SessionSearchModal
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        activeSessionId={activeRecentId}
+        onSelect={handleSelectSession}
+        onNewChat={handleNewChat}
+      />
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </div>
   );
 }

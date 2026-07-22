@@ -3,6 +3,7 @@ import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
 import { ActivatePage } from "../features/auth/pages/ActivatePage.js";
 import { BootstrapPage } from "../features/auth/pages/BootstrapPage.js";
 import { LoginPage } from "../features/auth/pages/LoginPage.js";
+import { HomePage } from "../features/home/pages/HomePage.js";
 import { ExpiredPage } from "../features/auth/pages/ExpiredPage.js";
 import { ChangePasswordPage } from "../features/auth/pages/ChangePasswordPage.js";
 import { AppLayout } from "./layout.js";
@@ -90,8 +91,10 @@ function BootstrapGuard() {
   if (error || !status) return <Navigate to="/login" replace />;
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
-  if (status.has_admin)
-    return <Navigate to={status.is_authenticated ? "/chat" : "/login"} replace />;
+  if (status.has_admin) {
+    if (status.is_authenticated) return <Navigate to="/chat" replace />;
+    return <HomePage />;
+  }
   return <BootstrapPage />;
 }
 
@@ -127,6 +130,7 @@ export const router = createBrowserRouter([
   },
   { path: "/bootstrap", element: <BootstrapGuard /> },
   { path: "/login", element: <LoginGuard /> },
+  { path: "/home", element: <HomePage /> },
   {
     element: <AuthGuard />,
     children: [

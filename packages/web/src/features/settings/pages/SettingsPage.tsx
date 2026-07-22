@@ -9,6 +9,7 @@ import { SkillsSection } from "../components/SkillsSection.js";
 import { UsersSection } from "../components/UsersSection.js";
 import { ProfileSection } from "../components/ProfileSection.js";
 import { SmtpSection } from "../components/SmtpSection.js";
+import { FeedbackSection } from "../components/FeedbackSection.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 
 /* -------------------------------------------------------------------------- */
@@ -767,6 +768,7 @@ export function SettingsPage() {
         { id: "credentials", labelKey: "settings.nav.credentials" },
         ...(isEnterprise ? [{ id: "users", labelKey: "settings.nav.users" }] : []),
         ...(isEnterprise ? [{ id: "smtp", labelKey: "settings.nav.smtp" }] : []),
+        ...(isEnterprise ? [{ id: "feedback", labelKey: "settings.nav.feedback" }] : []),
         { id: "skills", labelKey: "settings.nav.skills" },
         { id: "appearance", labelKey: "settings.nav.appearance" },
         { id: "engine", labelKey: "settings.nav.engine" },
@@ -1773,6 +1775,8 @@ export function SettingsPage() {
                   <UsersSection />
                   <div id="smtp" style={{ scrollMarginTop: "20px" }} />
                   <SmtpSection />
+                  <div id="feedback" style={{ scrollMarginTop: "20px" }} />
+                  <FeedbackSection />
                 </>
               ) : null}
 
