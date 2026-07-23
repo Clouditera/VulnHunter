@@ -205,7 +205,18 @@ export async function ensureSandboxForTask(
       const ready = (await getSandboxPlaneSandbox(existing.sandbox_id)) ?? resumed;
       await updateTaskSandboxState(task.id, "ready");
       logger.info({ taskId: task.id, sandboxId: existing.sandbox_id }, "Sandbox resumed for task");
-      return { mapping: { ...existing, state: "ready", ssh_host: ready.ssh?.host ?? existing.ssh_host, ssh_port: ready.ssh?.port ?? existing.ssh_port, ssh_user: ready.ssh?.user ?? existing.ssh_user }, reused: true };
+      return {
+        mapping: {
+          ...existing,
+          state: "ready",
+          ssh_host: ready.ssh?.host ?? existing.ssh_host,
+          ssh_port: ready.ssh?.port ?? existing.ssh_port,
+          ssh_user: ready.ssh?.user ?? existing.ssh_user,
+          ssh_internal_host: ready.ssh_internal_host ?? existing.ssh_internal_host,
+          ssh_host_public_key: ready.ssh_host_public_key ?? existing.ssh_host_public_key,
+        },
+        reused: true,
+      };
     }
     return { mapping: existing, reused: true };
   }
@@ -257,6 +268,8 @@ export async function ensureSandboxForTask(
     ssh_host: sandbox.ssh?.host ?? null,
     ssh_port: sandbox.ssh?.port ?? null,
     ssh_user: sandbox.ssh?.user ?? null,
+    ssh_internal_host: sandbox.ssh_internal_host ?? null,
+    ssh_host_public_key: sandbox.ssh_host_public_key ?? null,
     state: "ready",
   });
   const mapping = (await getTaskSandbox(task.id))!;

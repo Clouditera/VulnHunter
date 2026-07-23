@@ -47,6 +47,10 @@ services:
       SANDBOXPLANE_BASE_URL: "${SANDBOXPLANE_BASE_URL:-}"
       SANDBOXPLANE_TOKEN: "${SANDBOXPLANE_TOKEN:-}"
       SANDBOX_SSH_HOST_OVERRIDE: "${SANDBOX_SSH_HOST_OVERRIDE:-}"
+      # Bastion jump (empty = direct port-mapping). Host key pins bastion hop.
+      SANDBOX_SSH_BASTION: "${SANDBOX_SSH_BASTION:-}"
+      SANDBOX_SSH_BASTION_HOST_KEY: "${SANDBOX_SSH_BASTION_HOST_KEY:-}"
+      SANDBOX_SSH_BASTION_IDENTITY: "${SANDBOX_SSH_BASTION_IDENTITY:-}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
     group_add:
       - "${DOCKER_GID:-0}"

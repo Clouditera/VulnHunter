@@ -20,6 +20,10 @@ export interface TaskSandbox {
   ssh_host: string | null;
   ssh_port: number | null;
   ssh_user: string | null;
+  /** Docker-internal IP for bastion ProxyJump (SandboxPlane v0.3.2). */
+  ssh_internal_host: string | null;
+  /** Instance host public key for StrictHostKeyChecking pin (#7). */
+  ssh_host_public_key: string | null;
   host_key: string | null;
   state: TaskSandboxState;
   failure_reason: string | null;
@@ -51,6 +55,8 @@ export async function upsertTaskSandbox(input: {
   ssh_host?: string | null;
   ssh_port?: number | null;
   ssh_user?: string | null;
+  ssh_internal_host?: string | null;
+  ssh_host_public_key?: string | null;
   state: TaskSandboxState;
   failure_reason?: string | null;
 }): Promise<void> {
@@ -58,12 +64,15 @@ export async function upsertTaskSandbox(input: {
   await db`
     INSERT INTO task_sandboxes (
       task_id, sandbox_id, request_id, profile_id, arch, os,
-      cpu_cores, memory_mb, ssh_host, ssh_port, ssh_user, state, failure_reason
+      cpu_cores, memory_mb, ssh_host, ssh_port, ssh_user,
+      ssh_internal_host, ssh_host_public_key,
+      state, failure_reason
     ) VALUES (
       ${input.task_id}, ${input.sandbox_id}, ${input.request_id}, ${input.profile_id},
       ${input.arch ?? null}, ${input.os ?? null},
       ${input.cpu_cores ?? null}, ${input.memory_mb ?? null},
       ${input.ssh_host ?? null}, ${input.ssh_port ?? null}, ${input.ssh_user ?? null},
+      ${input.ssh_internal_host ?? null}, ${input.ssh_host_public_key ?? null},
       ${input.state}, ${input.failure_reason ?? null}
     )
     ON CONFLICT (task_id) DO UPDATE SET
@@ -77,6 +86,8 @@ export async function upsertTaskSandbox(input: {
       ssh_host = EXCLUDED.ssh_host,
       ssh_port = EXCLUDED.ssh_port,
       ssh_user = EXCLUDED.ssh_user,
+      ssh_internal_host = EXCLUDED.ssh_internal_host,
+      ssh_host_public_key = EXCLUDED.ssh_host_public_key,
       state = EXCLUDED.state,
       failure_reason = EXCLUDED.failure_reason,
       updated_at = now()

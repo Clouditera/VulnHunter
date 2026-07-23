@@ -25,6 +25,10 @@ export interface SandboxPlaneSandbox {
   profile_id: string;
   status: "requested" | "provisioning" | "running" | "stopped" | "releasing" | "released" | "failed" | "expired";
   ssh: { host: string; port: number; user: string } | null;
+  /** v0.3.2: docker-internal IP for bastion ProxyJump (null on older planes). */
+  ssh_internal_host?: string | null;
+  /** v0.3.2: per-instance host public key for StrictHostKeyChecking pin (null = TOFU fallback). */
+  ssh_host_public_key?: string | null;
   resources?: { cpu?: number; memory_mb?: number; disk_gb?: number };
   external_ref: string | null;
   failure_reason: string | null;
