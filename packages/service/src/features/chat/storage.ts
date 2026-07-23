@@ -4,6 +4,24 @@ import { shouldFilterByUser } from "../../infra/query-context.js";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
+/** Empty sessions older than this are deleted on list/search (architect GC). */
+const EMPTY_SESSION_GRACE_MS = 60 * 60 * 1000;
+
+/** Inline GC: zero-message sessions past grace window. Bounded, no daemon. */
+export async function purgeStaleEmptySessions(tenantId = DEFAULT_TENANT_ID): Promise<number> {
+  const db = getDb();
+  const cutoff = new Date(Date.now() - EMPTY_SESSION_GRACE_MS);
+  const rows = await db<{ id: string }[]>`
+    DELETE FROM chat_sessions s
+    WHERE s.tenant_id = ${tenantId}
+      AND s.created_at < ${cutoff}
+      AND NOT EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = s.id)
+    RETURNING s.id
+  `;
+  return rows.length;
+}
+
+
 export interface DbChatSession {
   id: string;
   tenant_id: string;
@@ -45,14 +63,17 @@ export async function listSessions(ctxOrUserId: QueryContext | string): Promise<
     return db<DbChatSession[]>`
       SELECT * FROM chat_sessions
       WHERE user_id = ${ctxOrUserId}
+        AND EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = chat_sessions.id)
       ORDER BY updated_at DESC
       LIMIT 50
     `;
   }
+  await purgeStaleEmptySessions(ctxOrUserId.tenantId);
   if (shouldFilterByUser(ctxOrUserId)) {
     return db<DbChatSession[]>`
       SELECT * FROM chat_sessions
       WHERE tenant_id = ${ctxOrUserId.tenantId} AND user_id = ${ctxOrUserId.userId}
+        AND EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = chat_sessions.id)
       ORDER BY updated_at DESC
       LIMIT 50
     `;
@@ -60,6 +81,7 @@ export async function listSessions(ctxOrUserId: QueryContext | string): Promise<
   return db<DbChatSession[]>`
     SELECT * FROM chat_sessions
     WHERE tenant_id = ${ctxOrUserId.tenantId}
+      AND EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = chat_sessions.id)
     ORDER BY updated_at DESC
     LIMIT 50
   `;
@@ -187,15 +209,18 @@ export async function listSessionsPage(
   const db = getDb();
   const limit = Math.min(Math.max(opts?.limit ?? 20, 1), 100);
   const offset = Math.max(opts?.offset ?? 0, 0);
+  await purgeStaleEmptySessions(ctx.tenantId);
 
   const totalRows = shouldFilterByUser(ctx)
     ? await db<{ count: string }[]>`
         SELECT COUNT(*)::text AS count FROM chat_sessions
         WHERE tenant_id = ${ctx.tenantId} AND user_id = ${ctx.userId}
+          AND EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = chat_sessions.id)
       `
     : await db<{ count: string }[]>`
         SELECT COUNT(*)::text AS count FROM chat_sessions
         WHERE tenant_id = ${ctx.tenantId}
+          AND EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = chat_sessions.id)
       `;
   const total = Number(totalRows[0]?.count ?? 0);
 
@@ -203,12 +228,14 @@ export async function listSessionsPage(
     ? await db<DbChatSession[]>`
         SELECT * FROM chat_sessions
         WHERE tenant_id = ${ctx.tenantId} AND user_id = ${ctx.userId}
+          AND EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = chat_sessions.id)
         ORDER BY updated_at DESC
         LIMIT ${limit} OFFSET ${offset}
       `
     : await db<DbChatSession[]>`
         SELECT * FROM chat_sessions
         WHERE tenant_id = ${ctx.tenantId}
+          AND EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = chat_sessions.id)
         ORDER BY updated_at DESC
         LIMIT ${limit} OFFSET ${offset}
       `;
@@ -231,6 +258,7 @@ export async function searchSessions(
   const q = query.trim();
   if (!q) return [];
   const db = getDb();
+  await purgeStaleEmptySessions(ctx.tenantId);
   const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100);
   const pattern = `%${q.replace(/[%_\\]/g, "\\$&")}%`;
 
@@ -250,6 +278,7 @@ export async function searchSessions(
         FROM chat_sessions s
         WHERE s.tenant_id = ${ctx.tenantId}
           AND s.user_id = ${ctx.userId}
+          AND EXISTS (SELECT 1 FROM chat_messages m0 WHERE m0.session_id = s.id)
           AND (
             s.title ILIKE ${pattern}
             OR EXISTS (
@@ -273,6 +302,7 @@ export async function searchSessions(
           ) AS snippet
         FROM chat_sessions s
         WHERE s.tenant_id = ${ctx.tenantId}
+          AND EXISTS (SELECT 1 FROM chat_messages m0 WHERE m0.session_id = s.id)
           AND (
             s.title ILIKE ${pattern}
             OR EXISTS (
