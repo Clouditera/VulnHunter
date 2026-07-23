@@ -31,9 +31,9 @@ load_tars() {
   shopt -u nullglob
 }
 
-log "loading images..."
+log "loading all sandbox images..."
 load_tars "$SANDBOX_DIR/images"
-[[ "$WITH_QEMU" == "1" ]] && load_tars "$SANDBOX_DIR/images-optional"
+load_tars "$SANDBOX_DIR/images-optional"
 
 # secrets must already exist (install created them)
 TOKEN_FILE="$SANDBOX_DIR/secrets/sandbox-plane-service-token.json"

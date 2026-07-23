@@ -17,12 +17,13 @@ for arg in "$@"; do
     --with-qemu) WITH_QEMU=1 ;;
     -h|--help)
       cat <<'EOF'
-Usage: ./install.sh [--remote] [--with-qemu]
+Usage: ./install.sh [--remote]
 
-  (default)  Same-host: load images, start plane, join vulnhunter-internal,
+  (default)  Same-host: load ALL profile images (incl. qemu), start plane, join network,
              write SANDBOXPLANE_* into platform .env, recreate service, self-check.
+             Without /dev/kvm, qemu profiles stay unavailable (not an install failure).
   --remote   Remote host: load images, start plane, print token+URL for .env backfill.
-  --with-qemu  Also load images-optional/ (requires /dev/kvm).
+  --with-qemu  Accepted for compatibility; full pack is always loaded.
 EOF
       exit 0
       ;;
@@ -36,8 +37,9 @@ die() { printf '[sandbox-install] ERROR: %s\n' "$*" >&2; exit 1; }
 command -v docker >/dev/null 2>&1 || die "docker not found"
 docker info >/dev/null 2>&1 || die "docker daemon not reachable"
 
-if [[ "$WITH_QEMU" == "1" ]]; then
-  [[ -e /dev/kvm ]] || die "/dev/kvm missing (required for --with-qemu)"
+# /dev/kvm optional: without it qemu profiles stay unavailable (plane reports truthfully)
+if [[ ! -e /dev/kvm ]]; then
+  log "note: /dev/kvm not present — qemu profiles will be unavailable"
 fi
 
 [[ -f "$SANDBOX_DIR/docker-compose.yml" ]] || die "missing $SANDBOX_DIR/docker-compose.yml"
@@ -56,23 +58,16 @@ load_tars() {
   shopt -u nullglob
 }
 
-log "loading required images..."
+log "loading all sandbox images (full pack)..."
 load_tars "$SANDBOX_DIR/images"
-if [[ "$WITH_QEMU" == "1" ]]; then
-  log "loading optional QEMU images..."
-  load_tars "$SANDBOX_DIR/images-optional"
-fi
+load_tars "$SANDBOX_DIR/images-optional"
 
-# Assert profile images exist locally (skip qemu unless --with-qemu)
+# Assert every profile image exists (qemu image must be present; runtime needs /dev/kvm for available=true)
 assert_profile_images() {
   local missing=0
   local img
   while IFS= read -r img; do
     [[ -n "$img" ]] || continue
-    if [[ "$img" == *qemu* && "$WITH_QEMU" != "1" ]]; then
-      log "skip assert optional qemu image: $img"
-      continue
-    fi
     if ! docker image inspect "$img" >/dev/null 2>&1; then
       log "MISSING image referenced by profiles.yaml: $img"
       missing=1

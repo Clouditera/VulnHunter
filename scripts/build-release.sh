@@ -155,7 +155,7 @@ done | sed "s|  $OUT/|  |" > "$OUT/checksums.sha256"
 # Set SANDBOX_PLANE_REF (tag/commit) to embed sandbox/. Unset → platform-only package.
 SANDBOX_PLANE_REPO="${SANDBOX_PLANE_REPO:-$ROOT/../sandbox-center}"
 SANDBOX_PLANE_REF="${SANDBOX_PLANE_REF:-}"
-WITH_QEMU="${WITH_QEMU:-0}"
+WITH_QEMU="${WITH_QEMU:-1}"  # legacy flag ignored; full pack is default
 if [[ -n "$SANDBOX_PLANE_REF" ]]; then
   echo "packing sandbox substack from $SANDBOX_PLANE_REPO @ $SANDBOX_PLANE_REF"
   [[ -d "$SANDBOX_PLANE_REPO" ]] || { echo "SANDBOX_PLANE_REPO not found: $SANDBOX_PLANE_REPO" >&2; exit 1; }
@@ -187,30 +187,17 @@ if [[ -n "$SANDBOX_PLANE_REF" ]]; then
 
   save_if_present "$PLANE_SERVICE_IMAGE" "$OUT/sandbox/images/sandbox-plane-service.tar"
   # profile images
+  # Default full pack: every profile image (including qemu) into sandbox/images/ — fail if missing
   while IFS= read -r img; do
     [[ -n "$img" ]] || continue
     base="$(echo "$img" | tr '/:' '__')"
-    if [[ "$img" == *qemu* ]]; then
-      if [[ "$WITH_QEMU" == "1" ]]; then
-        save_if_present "$img" "$OUT/sandbox/images-optional/${base}.tar"
-      else
-        echo "skip optional qemu image $img (WITH_QEMU!=1)"
-      fi
-    else
-      save_if_present "$img" "$OUT/sandbox/images/${base}.tar"
-    fi
+    save_if_present "$img" "$OUT/sandbox/images/${base}.tar"
   done < <(grep -E '^\s+image:\s+' "$OUT/sandbox/profiles.yaml" | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
 
-  # Assert every non-qemu profile image was saved
   while IFS= read -r img; do
     [[ -n "$img" ]] || continue
-    [[ "$img" == *qemu* && "$WITH_QEMU" != "1" ]] && continue
     base="$(echo "$img" | tr '/:' '__')"
-    if [[ "$img" == *qemu* ]]; then
-      [[ -f "$OUT/sandbox/images-optional/${base}.tar" ]] || { echo "assert fail: missing $img tar" >&2; exit 1; }
-    else
-      [[ -f "$OUT/sandbox/images/${base}.tar" ]] || { echo "assert fail: missing $img tar" >&2; exit 1; }
-    fi
+    [[ -f "$OUT/sandbox/images/${base}.tar" ]] || { echo "assert fail: missing $img tar" >&2; exit 1; }
   done < <(grep -E '^\s+image:\s+' "$OUT/sandbox/profiles.yaml" | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
 
   # Patch VERSION.json with sandbox_plane block (rewrite via node)
