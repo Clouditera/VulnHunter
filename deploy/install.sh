@@ -364,3 +364,7 @@ echo "URL: http://$(hostname -I 2>/dev/null | awk '{print $1}'):${WEB_PORT}/"
 echo "Local URL: http://127.0.0.1:${WEB_PORT}/"
 [[ -n "$machine_code" ]] && echo "Machine code: $machine_code"
 echo "Next: open /activate, import license, bootstrap admin, configure model credential."
+if [[ -x "./sandbox/install.sh" ]]; then
+  echo "Optional dynamic sandboxes: ./sandbox/install.sh   # same-host wiring"
+  echo "  (remote host: ./sandbox/install.sh --remote)"
+fi

@@ -1,0 +1,39 @@
+services:
+  sandbox-plane:
+    image: sandbox-plane/service:0.3.2
+    container_name: sandbox-plane
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:28090:28090"
+    environment:
+      SANDBOX_PLANE_CONFIG: /app/config/config.yaml
+      SANDBOX_PLANE_PROFILES: /app/config/profiles.yaml
+    secrets:
+      - source: sandbox_plane_service_token
+        target: sandbox-plane-service-token.json
+      - source: sandbox_plane_admin_credential
+        target: sandbox-plane-admin-credential.json
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /dev/kvm:/dev/kvm
+      - ./data:/data
+      - ./config.yaml:/app/config/config.yaml:ro
+      - ./profiles.yaml:/app/config/profiles.yaml:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:28090/livez').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  default:
+    name: sandbox-plane-control
+    ipam:
+      config:
+        - subnet: 172.31.253.0/29
+
+secrets:
+  sandbox_plane_service_token:
+    file: ./secrets/sandbox-plane-service-token.json
+  sandbox_plane_admin_credential:
+    file: ./secrets/sandbox-plane-admin-credential.json

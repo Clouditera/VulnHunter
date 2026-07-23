@@ -1,0 +1,63 @@
+profiles:
+  - profile_id: base-linux
+    display_name: Base Linux Sandbox
+    description: Linux + SSH + basic compiler/toolchain for library and CLI reproduction.
+    backend_type: docker
+    image: sandbox-plane/base-linux:0.1.1
+    isolation_level: container
+    capabilities: [ssh, shell, compiler, root_access]
+    supported_arch: [x86_64]
+    supported_os: [debian-12]
+    default_resources:
+      cpu: 2
+      memory_mb: 2048
+      disk_gb: 20
+    max_resources:
+      cpu: 4
+      memory_mb: 8192
+      disk_gb: 80
+    status: available
+
+  - profile_id: linux-docker
+    display_name: Linux Docker Sandbox
+    description: Sysbox-isolated Linux sandbox with internal dockerd, Docker CLI, Compose, and SSH.
+    backend_type: docker+sysbox
+    image: sandbox-plane/linux-docker:0.1.2
+    isolation_level: sysbox
+    capabilities: [ssh, shell, compiler, docker, compose, root_access]
+    supported_arch: [x86_64]
+    supported_os: [debian-12]
+    default_resources:
+      cpu: 4
+      memory_mb: 8192
+      disk_gb: 80
+    max_resources:
+      cpu: 8
+      memory_mb: 16384
+      disk_gb: 160
+    status: available
+    prerequisites:
+      - Host Docker daemon must register sysbox-runc runtime.
+      - Verify with docker info and docker run --runtime=sysbox-runc.
+
+  - profile_id: linux-qemu-system
+    display_name: Linux QEMU System Sandbox
+    description: Linux SSH sandbox with qemu-system tooling and optional KVM for full-system target reproduction. It is not a FreeBSD sandbox; agents start guest VMs themselves.
+    backend_type: qemu
+    image: sandbox-plane/linux-qemu-system:0.1.1
+    isolation_level: qemu-capable-linux
+    capabilities: [ssh, shell, qemu_system, qemu_img, kvm, sftp, root_access]
+    supported_arch: [x86_64]
+    supported_os: [debian-12]
+    default_resources:
+      cpu: 4
+      memory_mb: 8192
+      disk_gb: 120
+    max_resources:
+      cpu: 8
+      memory_mb: 16384
+      disk_gb: 240
+    status: available
+    prerequisites:
+      - Host must provide /dev/kvm.
+      - Build sandbox-plane/linux-qemu-system:0.1.1 before requesting this profile.

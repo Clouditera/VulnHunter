@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Platform upgrade only. Does NOT manage sandbox/ (SandboxPlane substack):
+# use ./sandbox/upgrade.sh for plane lifecycle. Keys SANDBOXPLANE_* are left intact.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"

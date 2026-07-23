@@ -143,9 +143,98 @@ fi
   printf '%s\n' docker-compose.yml .env.example install.sh doctor.sh upgrade.sh uninstall.sh VERSION.json .secrets/license-public.pem
   find lib -type f -name '*.sh' -print | sort
   find docs -type f -print | sort
+  if [[ -d "$OUT/sandbox" ]]; then
+    find sandbox -type f ! -path 'sandbox/secrets/*' -print | sort
+  fi
 ) | while IFS= read -r file; do
   [[ -f "$OUT/$file" ]] && sha256sum "$OUT/$file"
 done | sed "s|  $OUT/|  |" > "$OUT/checksums.sha256"
+
+
+# ── SandboxPlane optional substack ─────────────────────────────────────
+# Set SANDBOX_PLANE_REF (tag/commit) to embed sandbox/. Unset → platform-only package.
+SANDBOX_PLANE_REPO="${SANDBOX_PLANE_REPO:-$ROOT/../sandbox-center}"
+SANDBOX_PLANE_REF="${SANDBOX_PLANE_REF:-}"
+WITH_QEMU="${WITH_QEMU:-0}"
+if [[ -n "$SANDBOX_PLANE_REF" ]]; then
+  echo "packing sandbox substack from $SANDBOX_PLANE_REPO @ $SANDBOX_PLANE_REF"
+  [[ -d "$SANDBOX_PLANE_REPO" ]] || { echo "SANDBOX_PLANE_REPO not found: $SANDBOX_PLANE_REPO" >&2; exit 1; }
+  PLANE_HEAD="$(git -C "$SANDBOX_PLANE_REPO" rev-parse HEAD)"
+  PLANE_SHORT="$(git -C "$SANDBOX_PLANE_REPO" rev-parse --short HEAD)"
+  # soft check: warn if dirty; hard check ref if tag exists
+  if [[ -n "$(git -C "$SANDBOX_PLANE_REPO" status --porcelain)" ]]; then
+    echo "warning: sandbox plane repo is dirty" >&2
+  fi
+  mkdir -p "$OUT/sandbox/images" "$OUT/sandbox/images-optional" "$OUT/sandbox/secrets"
+  cp deploy/sandbox/install.sh deploy/sandbox/upgrade.sh "$OUT/sandbox/"
+  cp deploy/sandbox/docker-compose.yml deploy/sandbox/config.yaml deploy/sandbox/profiles.yaml "$OUT/sandbox/"
+  chmod +x "$OUT/sandbox/install.sh" "$OUT/sandbox/upgrade.sh"
+
+  # Resolve image tags from profiles + compose
+  PLANE_SERVICE_IMAGE="$(grep -E 'image:[[:space:]]*sandbox-plane/service' "$OUT/sandbox/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '\"' | tr -d "'")"
+  [[ -n "$PLANE_SERVICE_IMAGE" ]] || { echo "cannot parse plane service image" >&2; exit 1; }
+
+  save_if_present() {
+    local image="$1" dest="$2"
+    if docker image inspect "$image" >/dev/null 2>&1; then
+      echo "docker save $image -> $dest"
+      docker save "$image" -o "$dest"
+    else
+      echo "missing required sandbox image: $image (build/pull it first)" >&2
+      exit 1
+    fi
+  }
+
+  save_if_present "$PLANE_SERVICE_IMAGE" "$OUT/sandbox/images/sandbox-plane-service.tar"
+  # profile images
+  while IFS= read -r img; do
+    [[ -n "$img" ]] || continue
+    base="$(echo "$img" | tr '/:' '__')"
+    if [[ "$img" == *qemu* ]]; then
+      if [[ "$WITH_QEMU" == "1" ]]; then
+        save_if_present "$img" "$OUT/sandbox/images-optional/${base}.tar"
+      else
+        echo "skip optional qemu image $img (WITH_QEMU!=1)"
+      fi
+    else
+      save_if_present "$img" "$OUT/sandbox/images/${base}.tar"
+    fi
+  done < <(grep -E '^\s+image:\s+' "$OUT/sandbox/profiles.yaml" | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
+
+  # Assert every non-qemu profile image was saved
+  while IFS= read -r img; do
+    [[ -n "$img" ]] || continue
+    [[ "$img" == *qemu* && "$WITH_QEMU" != "1" ]] && continue
+    base="$(echo "$img" | tr '/:' '__')"
+    if [[ "$img" == *qemu* ]]; then
+      [[ -f "$OUT/sandbox/images-optional/${base}.tar" ]] || { echo "assert fail: missing $img tar" >&2; exit 1; }
+    else
+      [[ -f "$OUT/sandbox/images/${base}.tar" ]] || { echo "assert fail: missing $img tar" >&2; exit 1; }
+    fi
+  done < <(grep -E '^\s+image:\s+' "$OUT/sandbox/profiles.yaml" | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
+
+  # Patch VERSION.json with sandbox_plane block (rewrite via node)
+  node -e '
+    const fs=require("fs");
+    const p=process.argv[1];
+    const j=JSON.parse(fs.readFileSync(p,"utf8"));
+    j.sandbox_plane={
+      version: process.argv[2],
+      commit: process.argv[3],
+      images: {
+        service: process.argv[4],
+        profiles: fs.readFileSync(process.argv[5],"utf8").match(/image:\s*(\S+)/g)||[]
+      }
+    };
+    fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n");
+  ' "$OUT/VERSION.json" "$SANDBOX_PLANE_REF" "$PLANE_SHORT" "$PLANE_SERVICE_IMAGE" "$OUT/sandbox/profiles.yaml"
+
+  cp docs/vulnhunter-srv/releases/sandbox-install.md "$OUT/docs/sandbox-install.md" 2>/dev/null || true
+  echo "sandbox substack packed"
+else
+  echo "SANDBOX_PLANE_REF unset — platform-only package (no sandbox/)"
+fi
+
 
 tar -C "$(dirname "$OUT")" -czf "$OUT.tar.gz" "$(basename "$OUT")"
 (
