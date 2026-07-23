@@ -36,16 +36,18 @@ load_tars "$SANDBOX_DIR/images"
 [[ "$WITH_QEMU" == "1" ]] && load_tars "$SANDBOX_DIR/images-optional"
 
 # secrets must already exist (install created them)
-[[ -f "$SANDBOX_DIR/secrets/sandbox-plane-service-token.json" ]] \
-  || die "missing secrets/ — run install.sh first (upgrade never regenerates tokens)"
+TOKEN_FILE="$SANDBOX_DIR/secrets/sandbox-plane-service-token.json"
+[[ -f "$TOKEN_FILE" ]] || die "missing secrets/ — run install.sh first (upgrade never regenerates tokens)"
 
-TOKEN=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["token"])' \
-  "$SANDBOX_DIR/secrets/sandbox-plane-service-token.json")
+PLANE_SERVICE_IMAGE=$(grep -E '^\s+image:\s+sandbox-plane/service' "$SANDBOX_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
+TOKEN=$(docker run --rm -v "$TOKEN_FILE:/token.json:ro" --entrypoint node "$PLANE_SERVICE_IMAGE" -e 'console.log(JSON.parse(require("fs").readFileSync("/token.json","utf8")).token)')
 
 log "recreating plane only..."
 (
   cd "$SANDBOX_DIR"
-  docker compose up -d
+  unset COMPOSE_PROJECT_NAME || true
+  export COMPOSE_PROJECT_NAME=sandbox-plane
+  docker compose -p sandbox-plane up -d
 )
 
 ok=0
