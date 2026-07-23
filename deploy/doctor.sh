@@ -70,6 +70,21 @@ check_shell "worker image present" docker image inspect "${WORKER_IMAGE:-vulnhun
 check_shell "eval worker image present" docker image inspect "${EVAL_WORKER_IMAGE:-vulnhunter-eval-worker:latest}"
 check_shell "service docker socket access" check_service_socket
 
+# Optional SandboxPlane reachability (WARN only — remote plane may be in maintenance)
+if [[ -f .env ]] && grep -qE '^SANDBOXPLANE_BASE_URL=.+' .env; then
+  plane_url="$(grep -E '^SANDBOXPLANE_BASE_URL=' .env | tail -n1 | cut -d= -f2-)"
+  if [[ -n "$plane_url" ]]; then
+    livez="${plane_url%/}/livez"
+    # rewrite internal hostname for host-side probe when possible
+    livez_host="${livez//sandbox-plane/127.0.0.1}"
+    if curl -fsS --max-time 3 "$livez_host" >/dev/null 2>&1 || curl -fsS --max-time 3 "$livez" >/dev/null 2>&1; then
+      echo "[ok] sandbox-plane livez ($plane_url)"
+    else
+      echo "[warn] sandbox-plane not reachable at $plane_url (dynamic may fail)"
+    fi
+  fi
+fi
+
 echo "-- system status --"
 curl -fsS "http://127.0.0.1:${WEB_PORT}/api/system/status" || true
 echo ""

@@ -1,0 +1,30 @@
+server:
+  host: 0.0.0.0
+  port: 28090
+  # Set to your real https:// origin in production; secure admin cookies are
+  # derived automatically from the scheme. http:// is only accepted for
+  # localhost/127.0.0.1 development origins.
+  public_origin: http://127.0.0.1:28090
+
+database:
+  path: /data/sandbox-plane.db
+
+docker:
+  socket_path: /var/run/docker.sock
+  ssh_bind_host: 0.0.0.0
+  ssh_host: 127.0.0.1
+
+auth:
+  token_file: /run/secrets/sandbox-plane-service-token.json
+
+admin_auth:
+  username: admin
+  credential_file: /run/secrets/sandbox-plane-admin-credential.json
+
+network:
+  sandbox_subnet_pool: 10.252.0.0/16
+
+admission:
+  disk_min_free_fraction: 0.10
+  mem_min_available_mb: 2048
+  fuse_max_running: 64
