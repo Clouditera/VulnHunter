@@ -116,22 +116,9 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* Real product screenshot */}
-      <section style={{ maxWidth: 1120, margin: "24px auto 0", padding: "0 32px" }} data-testid="home-preview">
-        <div style={{
-          borderRadius: 14, border: "1px solid #e5e7eb", background: "#fff",
-          boxShadow: "0 24px 60px rgba(15,23,42,0.08)", overflow: "hidden",
-        }}>
-          <div style={{ height: 36, background: "#f3f4f6", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: 6, padding: "0 12px" }}>
-            <Dot c="#ff5f57" /><Dot c="#febc2e" /><Dot c="#28c840" />
-            <span style={{ marginLeft: 10, fontSize: 11, color: "#9ca3af" }}>vulnhunter.cn/dashboard</span>
-          </div>
-          <img
-            src="/home/dashboard-preview.png"
-            alt="VulnHunter 产品仪表板截图"
-            style={{ display: "block", width: "100%", height: "auto" }}
-          />
-        </div>
+      {/* Prototype mini-dashboard (fish: use prototype product mock, not real screenshot) */}
+      <section style={{ maxWidth: 1120, margin: "40px auto 0", padding: "0 32px" }} data-testid="home-preview">
+        <PrototypeDashboardPreview />
       </section>
 
       {/* Six features */}
@@ -234,6 +221,169 @@ export function HomePage() {
           © {new Date().getFullYear()} VulnHunter · 云起无垠 · vulnhunter.cn · 备案号：京ICP备2024xxxxxxxx号-1
         </div>
       </footer>
+    </div>
+  );
+}
+
+/** Mini product UI mock from prototype v20 hero-preview (not a real screenshot). */
+function PrototypeDashboardPreview() {
+  return (
+    <div style={{
+      background: "linear-gradient(135deg,#1a1d23,#0b0d10)", borderRadius: 16, padding: 8,
+      boxShadow: "0 30px 80px rgba(17,24,39,.25), 0 0 0 1px rgba(255,255,255,.05)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px" }}>
+        <Dot c="#ff5f57" /><Dot c="#febc2e" /><Dot c="#28c840" />
+      </div>
+      <div style={{
+        background: "#f6f7f9", borderRadius: 10, overflow: "hidden", aspectRatio: "16/9",
+        display: "flex", minHeight: 0,
+      }}>
+        {/* Sidebar mock */}
+        <div style={{
+          width: 200, background: "#0b0d10", color: "#e8ebef", padding: "12px 10px",
+          fontSize: 11, display: "flex", flexDirection: "column", flexShrink: 0,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#fff", fontSize: 13, fontWeight: 700, marginBottom: 10 }}>
+            <span style={{ width: 22, height: 22, borderRadius: 6, background: RED, display: "grid", placeItems: "center", color: "#fff", fontSize: 12, fontWeight: 900 }}>V</span>
+            VulnHunter
+          </div>
+          <div style={{ background: RED, color: "#fff", padding: 7, borderRadius: 6, textAlign: "center", marginBottom: 6, fontWeight: 600, fontSize: 10 }}>+ 新对话</div>
+          <div style={{ background: "rgba(255,255,255,.05)", borderRadius: 6, padding: "5px 8px", color: "#a5adb8", fontSize: 9, marginBottom: 10 }}>搜索对话</div>
+          {[
+            { t: "仪表板", on: true },
+            { t: "对话", on: false },
+            { t: "任务", on: false },
+            { t: "设置", on: false },
+          ].map((n) => (
+            <div key={n.t} style={{
+              padding: "5px 8px", borderRadius: 6, marginBottom: 1, fontSize: 10,
+              background: n.on ? "#161a20" : "transparent", color: n.on ? "#fff" : "#a5adb8",
+            }}>{n.t}</div>
+          ))}
+          <div style={{ color: "#7d8593", fontSize: 9, padding: "10px 8px 4px", marginTop: 6 }}>最近对话</div>
+          {[
+            ["扫描测试 Git 仓库安全", "7d ago"],
+            ["漏洞报告生成请求", "15d ago"],
+            ["查看任务调度信息", "16d ago"],
+          ].map(([t, m]) => (
+            <div key={t} style={{ padding: "4px 8px", borderRadius: 5, marginBottom: 1 }}>
+              <div style={{ color: "#e8ebef", fontSize: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t}</div>
+              <div style={{ color: "#7d8593", fontSize: 7.5, marginTop: 1 }}>{m}</div>
+            </div>
+          ))}
+          <div style={{ marginTop: "auto", paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#fff" }}>
+            <span style={{ width: 20, height: 20, background: "#c73629", borderRadius: "50%", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 10 }}>A</span>
+            <span style={{ flex: 1 }}>admin</span>
+          </div>
+        </div>
+
+        {/* Main mock */}
+        <div style={{ flex: 1, padding: "14px 16px", overflow: "hidden", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, margin: "0 0 2px" }}>仪表板</div>
+              <div style={{ fontSize: 10, color: "#6b7280" }}>安全审计总览与统计</div>
+            </div>
+            <div style={{ fontSize: 9, color: "#6b7280", display: "flex", alignItems: "center", gap: 6 }}>
+              用户
+              <span style={{ background: "#fff", border: "1px solid #e5e7eb", padding: "3px 10px", borderRadius: 5, color: "#111827", fontWeight: 600 }}>全部用户 ▾</span>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+            {[
+              { lb: "总扫描数", vl: "14", ml: "↑ 300% vs 上周", mc: "#16a34a" },
+              { lb: "漏洞", vl: "419", ml: "327H · 91M · 1L", mc: "#dc2626", vc: "#dc2626" },
+              { lb: "平均耗时", vl: "294", unit: "min", ml: "每次扫描" },
+              { lb: "Token 用量", vl: "3664", unit: ".86M", ml: "累计" },
+            ].map((c) => (
+              <div key={c.lb} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}>
+                <div style={{ fontSize: 9, color: "#6b7280" }}>{c.lb}</div>
+                <div style={{ fontSize: 17, fontWeight: 700, marginTop: 2, lineHeight: 1.1, color: c.vc ?? "#111827" }}>
+                  {c.vl}{c.unit ? <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>{c.unit}</span> : null}
+                </div>
+                <div style={{ fontSize: 8, color: c.mc ?? "#6b7280", marginTop: 3, fontWeight: c.mc ? 600 : 400 }}>{c.ml}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
+                严重性分布 <span style={{ fontWeight: 500, color: "#6b7280", fontSize: 9 }}>共 419</span>
+              </div>
+              {[
+                ["高危", 82, "#f97316", "327"],
+                ["中危", 23, "#eab308", "91"],
+                ["低危", 5, "#3b82f6", "1"],
+                ["信息", 0, "#6b7280", "0"],
+              ].map(([lb, w, c, v]) => (
+                <div key={String(lb)} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, marginBottom: 5 }}>
+                  <span style={{ width: 36, color: "#4b5563", flexShrink: 0 }}>{lb}</span>
+                  <div style={{ flex: 1, height: 9, background: "#f3f4f6", borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ width: `${w}%`, height: "100%", background: String(c), borderRadius: 3 }} />
+                  </div>
+                  <span style={{ width: 28, textAlign: "right", fontWeight: 700 }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
+                漏洞类型 TOP 5 <span style={{ fontWeight: 500, color: "#6b7280", fontSize: 9 }}>近 30 天</span>
+              </div>
+              {[
+                ["SQL Injection", 90, "#3b82f6", "13"],
+                ["OS Cmd Injection", 50, "#8b5cf6", "7"],
+                ["Stored XSS", 42, "#22c55e", "6"],
+                ["Missing Auth", 35, "#f97316", "5"],
+                ["File Upload", 28, "#14b8a6", "4"],
+              ].map(([lb, w, c, v]) => (
+                <div key={String(lb)} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, marginBottom: 5 }}>
+                  <span style={{ width: 90, color: "#4b5563", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lb}</span>
+                  <div style={{ flex: 1, height: 9, background: "#f3f4f6", borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ width: `${w}%`, height: "100%", background: String(c), borderRadius: 3 }} />
+                  </div>
+                  <span style={{ width: 20, textAlign: "right", fontWeight: 700 }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px", flex: 1, minHeight: 0 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
+              近期扫描 <span style={{ fontWeight: 500, color: "#6b7280", fontSize: 9 }}>共 21 条 →</span>
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 9 }}>
+              <thead>
+                <tr>
+                  {["项目", "状态", "漏洞", "耗时", "时间"].map((h) => (
+                    <th key={h} style={{ textAlign: "left", color: "#6b7280", fontWeight: 500, padding: "4px 6px", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ["cache-service-dev", "失败", "—", "7 min", "2 小时前", "#fee2e2", "#dc2626"],
+                  ["order-api", "失败", "7H 1M", "344 min", "6 小时前", "#fee2e2", "#dc2626"],
+                  ["admin-portal-v4", "已完成", "9H 3M", "180 min", "4 天前", "#dcfce7", "#16a34a"],
+                  ["edge-gateway-web", "已完成", "15H 3M", "180 min", "2026-07-01", "#dcfce7", "#16a34a"],
+                ].map((r) => (
+                  <tr key={String(r[0])}>
+                    <td style={{ padding: "5px 6px", borderBottom: "1px solid #f3f4f6" }}>{r[0]}</td>
+                    <td style={{ padding: "5px 6px", borderBottom: "1px solid #f3f4f6" }}>
+                      <span style={{ padding: "2px 7px", borderRadius: 8, fontSize: 8, fontWeight: 600, background: String(r[5]), color: String(r[6]) }}>{r[1]}</span>
+                    </td>
+                    <td style={{ padding: "5px 6px", borderBottom: "1px solid #f3f4f6" }}>{r[2]}</td>
+                    <td style={{ padding: "5px 6px", borderBottom: "1px solid #f3f4f6" }}>{r[3]}</td>
+                    <td style={{ padding: "5px 6px", borderBottom: "1px solid #f3f4f6" }}>{r[4]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
