@@ -6,14 +6,13 @@
 
 - Docker 可用
 - 同机模式：平台已 `install.sh` 完成并存在 `vulnhunter-internal` 网络
-- QEMU 类型（可选）：主机有 `/dev/kvm`，安装时加 `--with-qemu`
+- QEMU 类型：包内默认全装；主机有 `/dev/kvm` 则 available，否则 plane 报 unavailable
 
 ## 同机安装（默认）
 
 ```bash
 # 在解压后的平台安装包根目录
 ./sandbox/install.sh
-# 可选：./sandbox/install.sh --with-qemu
 ```
 
 脚本会：载入镜像 → 生成/复用令牌 → 启动 plane → 接入 `vulnhunter-internal`（alias `sandbox-plane`）→ 回写平台 `.env` 的 `SANDBOXPLANE_BASE_URL` / `SANDBOXPLANE_TOKEN` → 仅重建 `service` → 自检至少一种 profile `available=true`。
