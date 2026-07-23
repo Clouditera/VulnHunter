@@ -103,7 +103,11 @@ gen_token_json() {
 
 # Admin credential: {version:1, password_hash: $scrypt$...} via plane-compatible scrypt
 gen_admin_json() {
-  node -e '
+  # Host may lack node/python — run scrypt inside the plane service image we just loaded.
+  local svc_img
+  svc_img=$(grep -E '^\s+image:\s+sandbox-plane/service' "$SANDBOX_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
+  [[ -n "$svc_img" ]] || die "cannot parse plane service image for admin credential generation"
+  docker run --rm --entrypoint node "$svc_img" -e '
 const { randomBytes, scrypt } = require("node:crypto");
 const { promisify } = require("node:util");
 const scryptAsync = promisify(scrypt);
