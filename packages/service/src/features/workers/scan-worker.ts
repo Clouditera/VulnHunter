@@ -168,7 +168,12 @@ export async function spawnScanWorker(
     // exists once the container is running (putArchive before start lands in
     // the image layer and gets mounted over). The agent only touches these
     // files when it begins dynamic work, long after the ms-scale injection.
-    const files = renderInjectionFiles(task, sandbox.mapping, sandbox.privateKey, config.sandboxSshHostOverride ?? null);
+    const files = renderInjectionFiles(task, sandbox.mapping, sandbox.privateKey, {
+      sshHostOverride: config.sandboxSshHostOverride ?? null,
+      bastionSpec: config.sandboxSshBastion ?? null,
+      bastionHostKey: config.sandboxSshBastionHostKey ?? null,
+      bastionIdentityOpenSsh: config.sandboxSshBastionIdentity ?? null,
+    });
     await container.start();
     await injectSandboxFiles(container, files);
     logger.info({ taskId: task.id, sandboxId: sandbox.mapping.sandbox_id }, "Sandbox SSH files injected into worker tmpfs");

@@ -39,6 +39,12 @@ export interface ServiceConfig {
   };
   /** H1: override the worker-facing ssh host when SandboxPlane is not on this host. */
   sandboxSshHostOverride: string | null;
+  /** H1 bastion: user@host[:port] for ProxyJump (empty = direct port-mapping mode). */
+  sandboxSshBastion: string | null;
+  /** Bastion host public key line for StrictHostKeyChecking pin. */
+  sandboxSshBastionHostKey: string | null;
+  /** Optional OpenSSH private key content authenticating to the bastion. */
+  sandboxSshBastionIdentity: string | null;
   log: {
     level: string;
   };
@@ -82,6 +88,9 @@ export function loadConfig(): ServiceConfig {
     // Worker-facing ssh host for sandbox instances. Default: the plane's
     // reported host, with loopback translated to host.docker.internal.
     sandboxSshHostOverride: process.env.SANDBOX_SSH_HOST_OVERRIDE || null,
+    sandboxSshBastion: process.env.SANDBOX_SSH_BASTION || null,
+    sandboxSshBastionHostKey: process.env.SANDBOX_SSH_BASTION_HOST_KEY || null,
+    sandboxSshBastionIdentity: process.env.SANDBOX_SSH_BASTION_IDENTITY || null,
     log: {
       level: optionalEnv("LOG_LEVEL", "info"),
     },

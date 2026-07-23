@@ -21,6 +21,28 @@ export interface SandboxConnection {
   user: string;
 }
 
+/** Optional bastion jump (SANDBOX_SSH_BASTION=user@host[:port]). */
+export interface BastionJump {
+  user: string;
+  host: string;
+  port: number;
+  /** OpenSSH host public key line for bastion pin (required when bastion set). */
+  hostPublicKey?: string | null;
+  /** When true, inject IdentityFile for bastion_id private key. */
+  hasIdentityFile?: boolean;
+}
+
+export interface RenderSshConfigOptions {
+  conn: SandboxConnection;
+  /** Instance host public key from plane (v0.3.2). Null → TOFU accept-new. */
+  hostPublicKey?: string | null;
+  /** Bastion jump config; null/undefined = direct port-mapping mode. */
+  bastion?: BastionJump | null;
+  /** When bastion is set, HostName for the sandbox target (usually internal IP). */
+  targetHost?: string | null;
+  targetPort?: number | null;
+}
+
 /** Loopback coordinates are the plane's own perspective — unreachable from a
  * worker container. Translate to the host-gateway alias (ExtraHosts maps it).
  * A deployment with a remote plane should set SANDBOX_SSH_HOST_OVERRIDE. */
@@ -32,7 +54,93 @@ export function resolveWorkerSshHost(reportedHost: string, override?: string | n
   return reportedHost;
 }
 
-export function renderSshConfig(conn: SandboxConnection): string {
+/** Parse SANDBOX_SSH_BASTION=user@host[:port] → BastionJump fields (no keys). */
+export function parseBastionSpec(spec: string | null | undefined): Omit<BastionJump, "hostPublicKey" | "hasIdentityFile"> | null {
+  if (!spec || !spec.trim()) return null;
+  const raw = spec.trim();
+  const at = raw.lastIndexOf("@");
+  if (at <= 0 || at === raw.length - 1) return null;
+  const user = raw.slice(0, at);
+  const hostPort = raw.slice(at + 1);
+  // [ipv6]:port or host:port or host
+  let host = hostPort;
+  let port = 22;
+  const bracket = /^\[([^\]]+)\](?::(\d+))?$/.exec(hostPort);
+  if (bracket) {
+    host = bracket[1]!;
+    if (bracket[2]) port = Number(bracket[2]);
+  } else {
+    const colon = hostPort.lastIndexOf(":");
+    if (colon > 0 && /^\d+$/.test(hostPort.slice(colon + 1))) {
+      host = hostPort.slice(0, colon);
+      port = Number(hostPort.slice(colon + 1));
+    }
+  }
+  if (!user || !host) return null;
+  return { user, host, port };
+}
+
+/** Format one known_hosts line. Public key may be "type base64 [comment]" or bare base64 (assume ssh-ed25519). */
+export function formatKnownHostsEntry(host: string, port: number, publicKey: string): string {
+  const key = publicKey.trim();
+  const keyPart = key.startsWith("ssh-") || key.startsWith("ecdsa-") || key.startsWith("rsa-")
+    ? key.split(/\s+/).slice(0, 2).join(" ")
+    : `ssh-ed25519 ${key}`;
+  const hostPart = port === 22 ? host : `[${host}]:${port}`;
+  return `${hostPart} ${keyPart}`;
+}
+
+export function renderKnownHosts(entries: Array<{ host: string; port: number; publicKey: string }>): string {
+  if (entries.length === 0) return "";
+  return entries.map((e) => formatKnownHostsEntry(e.host, e.port, e.publicKey)).join("\n") + "\n";
+}
+
+/**
+ * Render OpenSSH client config.
+ * - bastion mode: ProxyJump + full pin on both hops when keys present
+ * - direct mode: pin when hostPublicKey present, else TOFU accept-new
+ */
+export function renderSshConfig(connOrOpts: SandboxConnection | RenderSshConfigOptions): string {
+  const opts: RenderSshConfigOptions = "conn" in connOrOpts && connOrOpts.conn
+    ? connOrOpts as RenderSshConfigOptions
+    : { conn: connOrOpts as SandboxConnection };
+  const conn = opts.conn;
+  const bastion = opts.bastion ?? null;
+  const pinTarget = Boolean(opts.hostPublicKey && opts.hostPublicKey.trim());
+  const targetHost = (opts.targetHost && opts.targetHost.trim()) || conn.host;
+  const targetPort = opts.targetPort ?? conn.port;
+
+  if (bastion) {
+    const pinBastion = Boolean(bastion.hostPublicKey && bastion.hostPublicKey.trim());
+    const bastionIdentity = bastion.hasIdentityFile
+      ? `  IdentityFile ${SSH_DIR}/bastion_id\n  IdentitiesOnly yes\n`
+      : "";
+    const bastionCheck = pinBastion ? "yes" : "accept-new";
+    const targetCheck = pinTarget ? "yes" : "accept-new";
+    return `Host vulnhunter-bastion
+  HostName ${bastion.host}
+  Port ${bastion.port}
+  User ${bastion.user}
+${bastionIdentity}  UserKnownHostsFile ${SSH_DIR}/known_hosts
+  StrictHostKeyChecking ${bastionCheck}
+  ServerAliveInterval 30
+  ServerAliveCountMax 10
+
+Host vulnhunter-sandbox
+  HostName ${targetHost}
+  Port ${targetPort}
+  User ${conn.user}
+  IdentityFile ${SSH_DIR}/id_ed25519
+  IdentitiesOnly yes
+  ProxyJump vulnhunter-bastion
+  UserKnownHostsFile ${SSH_DIR}/known_hosts
+  StrictHostKeyChecking ${targetCheck}
+  ServerAliveInterval 30
+  ServerAliveCountMax 10
+`;
+  }
+
+  const check = pinTarget ? "yes" : "accept-new";
   return `Host vulnhunter-sandbox
   HostName ${conn.host}
   Port ${conn.port}
@@ -40,7 +148,7 @@ export function renderSshConfig(conn: SandboxConnection): string {
   IdentityFile ${SSH_DIR}/id_ed25519
   IdentitiesOnly yes
   UserKnownHostsFile ${SSH_DIR}/known_hosts
-  StrictHostKeyChecking accept-new
+  StrictHostKeyChecking ${check}
   ServerAliveInterval 30
   ServerAliveCountMax 10
 `;
@@ -66,20 +174,79 @@ export interface InjectionFile {
   mode: number;
 }
 
-export function renderInjectionFiles(task: DbTask, mapping: TaskSandbox, privateKeyOpenSsh: string, sshHostOverride?: string | null): InjectionFile[] {
+export interface RenderInjectionOptions {
+  sshHostOverride?: string | null;
+  bastionSpec?: string | null;
+  bastionHostKey?: string | null;
+  bastionIdentityOpenSsh?: string | null;
+}
+
+export function renderInjectionFiles(
+  task: DbTask,
+  mapping: TaskSandbox,
+  privateKeyOpenSsh: string,
+  sshHostOverrideOrOpts?: string | null | RenderInjectionOptions,
+): InjectionFile[] {
+  const opts: RenderInjectionOptions =
+    sshHostOverrideOrOpts && typeof sshHostOverrideOrOpts === "object"
+      ? sshHostOverrideOrOpts
+      : { sshHostOverride: sshHostOverrideOrOpts as string | null | undefined };
+
+  const publishedHost = resolveWorkerSshHost(mapping.ssh_host ?? "", opts.sshHostOverride);
   const conn: SandboxConnection = {
-    host: resolveWorkerSshHost(mapping.ssh_host ?? "", sshHostOverride),
+    host: publishedHost,
     port: mapping.ssh_port ?? 22,
     user: mapping.ssh_user ?? "sandbox",
   };
+  const hostPublicKey = mapping.ssh_host_public_key ?? mapping.host_key ?? null;
+  const bastionParsed = parseBastionSpec(opts.bastionSpec);
+  const bastion: BastionJump | null = bastionParsed
+    ? {
+        ...bastionParsed,
+        hostPublicKey: opts.bastionHostKey ?? null,
+        hasIdentityFile: Boolean(opts.bastionIdentityOpenSsh?.trim()),
+      }
+    : null;
+
+  // Bastion mode: jump to internal host on port 22; direct mode: published host:port.
+  const targetHost = bastion
+    ? (mapping.ssh_internal_host?.trim() || publishedHost)
+    : publishedHost;
+  const targetPort = bastion ? 22 : conn.port;
+
+  const knownEntries: Array<{ host: string; port: number; publicKey: string }> = [];
+  if (bastion?.hostPublicKey?.trim()) {
+    knownEntries.push({ host: bastion.host, port: bastion.port, publicKey: bastion.hostPublicKey });
+  }
+  if (hostPublicKey?.trim()) {
+    knownEntries.push({ host: targetHost, port: targetPort, publicKey: hostPublicKey });
+  }
+
   const capabilities = ((task.metadata as Record<string, unknown> | undefined)?.prepare as { sandbox_capabilities?: string[] } | undefined)?.sandbox_capabilities ?? [];
-  return [
+  const files: InjectionFile[] = [
     { containerPath: `${SSH_DIR}/id_ed25519`, content: privateKeyOpenSsh, mode: 0o400 },
-    // Empty until SandboxPlane #7 (create returns the instance host key); TOFU accept-new meanwhile.
-    { containerPath: `${SSH_DIR}/known_hosts`, content: "", mode: 0o444 },
-    { containerPath: `${SSH_DIR}/config`, content: renderSshConfig(conn), mode: 0o444 },
+    { containerPath: `${SSH_DIR}/known_hosts`, content: renderKnownHosts(knownEntries), mode: 0o444 },
+    {
+      containerPath: `${SSH_DIR}/config`,
+      content: renderSshConfig({
+        conn,
+        hostPublicKey,
+        bastion,
+        targetHost,
+        targetPort,
+      }),
+      mode: 0o444,
+    },
     { containerPath: SANDBOX_CFG_CONTAINER_PATH, content: renderSandboxMd(capabilities), mode: 0o444 },
   ];
+  if (opts.bastionIdentityOpenSsh?.trim()) {
+    files.splice(1, 0, {
+      containerPath: `${SSH_DIR}/bastion_id`,
+      content: opts.bastionIdentityOpenSsh,
+      mode: 0o400,
+    });
+  }
+  return files;
 }
 
 /** Build a tar stream with the injection files and push it into the container. */
