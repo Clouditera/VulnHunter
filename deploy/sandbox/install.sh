@@ -103,7 +103,11 @@ gen_token_json() {
 
 # Admin credential: {version:1, password_hash: $scrypt$...} via plane-compatible scrypt
 gen_admin_json() {
-  node -e '
+  # Host may lack node/python — run scrypt inside the plane service image we just loaded.
+  local svc_img
+  svc_img=$(grep -E '^\s+image:\s+sandbox-plane/service' "$SANDBOX_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
+  [[ -n "$svc_img" ]] || die "cannot parse plane service image for admin credential generation"
+  docker run --rm --entrypoint node "$svc_img" -e '
 const { randomBytes, scrypt } = require("node:crypto");
 const { promisify } = require("node:util");
 const scryptAsync = promisify(scrypt);
@@ -122,10 +126,11 @@ if [[ ! -f "$TOKEN_FILE" ]]; then
   gen_token_json >"$TOKEN_FILE"
   chmod 600 "$TOKEN_FILE"
 else
-  # migrate legacy {token only} files in place
-  if ! python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d.get("version")==1 and d.get("service_id") and len(d.get("token",""))>=32' "$TOKEN_FILE" 2>/dev/null; then
+  # migrate legacy token files via plane image node (no host python/node)
+  local_svc=$(grep -E '^\s+image:\s+sandbox-plane/service' "$SANDBOX_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
+  if ! docker run --rm -v "$TOKEN_FILE:/token.json:ro" --entrypoint node "$local_svc" -e 'const d=JSON.parse(require("fs").readFileSync("/token.json","utf8")); if(!(d.version===1&&d.service_id&&String(d.token||"").length>=32)) process.exit(2)' 2>/dev/null; then
     log "upgrading legacy token file schema"
-    tok=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("token") or "")' "$TOKEN_FILE")
+    tok=$(docker run --rm -v "$TOKEN_FILE:/token.json:ro" --entrypoint node "$local_svc" -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFileSync("/token.json","utf8")).token||""))}catch{process.stdout.write("")}' 2>/dev/null || true)
     if [[ ${#tok} -lt 32 ]]; then tok=$(openssl rand -hex 32); fi
     printf '{"version":1,"service_id":"vulnhunter","token":"%s"}\n' "$tok" >"$TOKEN_FILE"
     chmod 600 "$TOKEN_FILE"
@@ -133,12 +138,14 @@ else
     log "reusing existing service token"
   fi
 fi
+
 if [[ ! -f "$ADMIN_FILE" ]]; then
   log "generating admin credential (scrypt password_hash)"
   gen_admin_json >"$ADMIN_FILE"
   chmod 600 "$ADMIN_FILE"
 else
-  if ! python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d.get("version")==1 and d.get("password_hash")' "$ADMIN_FILE" 2>/dev/null; then
+  PLANE_SERVICE_IMAGE=${PLANE_SERVICE_IMAGE:-$(grep -E '^\s+image:\s+sandbox-plane/service' "$SANDBOX_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")}
+  if ! docker run --rm -v "$ADMIN_FILE:/admin.json:ro" --entrypoint node "$PLANE_SERVICE_IMAGE" -e 'const d=JSON.parse(require("fs").readFileSync("/admin.json","utf8")); if(!(d.version===1&&d.password_hash)) process.exit(2)' 2>/dev/null; then
     log "upgrading legacy admin credential file"
     gen_admin_json >"$ADMIN_FILE"
     chmod 600 "$ADMIN_FILE"
@@ -147,7 +154,8 @@ else
   fi
 fi
 
-TOKEN=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["token"])' "$TOKEN_FILE")
+PLANE_SERVICE_IMAGE=$(grep -E '^\s+image:\s+sandbox-plane/service' "$SANDBOX_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
+TOKEN=$(docker run --rm -v "$TOKEN_FILE:/token.json:ro" --entrypoint node "$PLANE_SERVICE_IMAGE" -e 'console.log(JSON.parse(require("fs").readFileSync("/token.json","utf8")).token)')
 
 # Ensure config copies next to compose for volume mounts
 cp -f "$SANDBOX_DIR/config.yaml" "$SANDBOX_DIR/config.yaml.bak" 2>/dev/null || true
@@ -159,7 +167,9 @@ mkdir -p "$SANDBOX_DIR/data"
 log "starting sandbox-plane stack..."
 (
   cd "$SANDBOX_DIR"
-  docker compose up -d
+  unset COMPOSE_PROJECT_NAME || true
+  export COMPOSE_PROJECT_NAME=sandbox-plane
+  docker compose -p sandbox-plane up -d
 )
 
 # Wait health
