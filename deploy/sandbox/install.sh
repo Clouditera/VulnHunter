@@ -63,18 +63,21 @@ if [[ "$WITH_QEMU" == "1" ]]; then
   load_tars "$SANDBOX_DIR/images-optional"
 fi
 
-# Assert profile images exist locally
+# Assert profile images exist locally (skip qemu unless --with-qemu)
 assert_profile_images() {
   local missing=0
   local img
   while IFS= read -r img; do
     [[ -n "$img" ]] || continue
+    if [[ "$img" == *qemu* && "$WITH_QEMU" != "1" ]]; then
+      log "skip assert optional qemu image: $img"
+      continue
+    fi
     if ! docker image inspect "$img" >/dev/null 2>&1; then
       log "MISSING image referenced by profiles.yaml: $img"
       missing=1
     fi
   done < <(grep -E '^\s+image:\s+' "$SANDBOX_DIR/profiles.yaml" | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
-  # service image from compose
   local svc
   svc=$(grep -E '^\s+image:\s+sandbox-plane/service' "$SANDBOX_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
   if [[ -n "$svc" ]] && ! docker image inspect "$svc" >/dev/null 2>&1; then
@@ -85,7 +88,7 @@ assert_profile_images() {
 }
 assert_profile_images
 
-# Secrets (idempotent)
+# Secrets (idempotent) — plane TokenFileProvider schema: version+service_id+token
 SECRETS="$SANDBOX_DIR/secrets"
 mkdir -p "$SECRETS"
 chmod 700 "$SECRETS"
@@ -95,22 +98,53 @@ ADMIN_FILE="$SECRETS/sandbox-plane-admin-credential.json"
 gen_token_json() {
   local token
   token=$(openssl rand -hex 32)
-  printf '{"token":"%s"}\n' "$token"
+  printf '{"version":1,"service_id":"vulnhunter","token":"%s"}\n' "$token"
+}
+
+# Admin credential: {version:1, password_hash: $scrypt$...} via plane-compatible scrypt
+gen_admin_json() {
+  node -e '
+const { randomBytes, scrypt } = require("node:crypto");
+const { promisify } = require("node:util");
+const scryptAsync = promisify(scrypt);
+(async () => {
+  const password = randomBytes(16).toString("hex");
+  const salt = randomBytes(16);
+  const digest = await scryptAsync(password, salt, 32, { N: 2**15, r: 8, p: 1, maxmem: 128*1024*1024 });
+  const hash = `$scrypt$ln=15,r=8,p=1$${salt.toString("base64url")}$${digest.toString("base64url")}`;
+  process.stdout.write(JSON.stringify({ version: 1, password_hash: hash }) + "\n");
+})().catch((e) => { console.error(e); process.exit(1); });
+'
 }
 
 if [[ ! -f "$TOKEN_FILE" ]]; then
-  log "generating service token"
+  log "generating service token (version/service_id/token)"
   gen_token_json >"$TOKEN_FILE"
   chmod 600 "$TOKEN_FILE"
 else
-  log "reusing existing service token"
+  # migrate legacy {token only} files in place
+  if ! python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d.get("version")==1 and d.get("service_id") and len(d.get("token",""))>=32' "$TOKEN_FILE" 2>/dev/null; then
+    log "upgrading legacy token file schema"
+    tok=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("token") or "")' "$TOKEN_FILE")
+    if [[ ${#tok} -lt 32 ]]; then tok=$(openssl rand -hex 32); fi
+    printf '{"version":1,"service_id":"vulnhunter","token":"%s"}\n' "$tok" >"$TOKEN_FILE"
+    chmod 600 "$TOKEN_FILE"
+  else
+    log "reusing existing service token"
+  fi
 fi
 if [[ ! -f "$ADMIN_FILE" ]]; then
-  log "generating admin credential placeholder"
-  printf '{"username":"admin","password":"%s"}\n' "$(openssl rand -hex 16)" >"$ADMIN_FILE"
+  log "generating admin credential (scrypt password_hash)"
+  gen_admin_json >"$ADMIN_FILE"
   chmod 600 "$ADMIN_FILE"
 else
-  log "reusing existing admin credential"
+  if ! python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d.get("version")==1 and d.get("password_hash")' "$ADMIN_FILE" 2>/dev/null; then
+    log "upgrading legacy admin credential file"
+    gen_admin_json >"$ADMIN_FILE"
+    chmod 600 "$ADMIN_FILE"
+  else
+    log "reusing existing admin credential"
+  fi
 fi
 
 TOKEN=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["token"])' "$TOKEN_FILE")
@@ -205,10 +239,21 @@ upsert_env() {
 upsert_env SANDBOXPLANE_BASE_URL "http://sandbox-plane:28090" "$PLATFORM_ENV"
 upsert_env SANDBOXPLANE_TOKEN "$TOKEN" "$PLATFORM_ENV"
 
-log "recreating platform service only (env pickup)..."
+log "recreating platform service only (env pickup, --no-deps)..."
+# Detect compose project from running service container to avoid name collisions.
+PROJECT_NAME="${COMPOSE_PROJECT_NAME:-}"
+if [[ -z "$PROJECT_NAME" ]]; then
+  PROJECT_NAME=$(docker inspect vulnhunter-service --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)
+fi
+if [[ -z "$PROJECT_NAME" ]]; then
+  PROJECT_NAME=$(basename "$PLATFORM_DIR" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')
+  log "compose project not labeled; fallback name=$PROJECT_NAME"
+fi
 (
   cd "$PLATFORM_DIR"
-  docker compose up -d service
+  export COMPOSE_PROJECT_NAME="$PROJECT_NAME"
+  # --no-deps: never recreate db/minio/web when only service env changed
+  docker compose up -d --no-deps --force-recreate service
 )
 
 # Self-check list types
