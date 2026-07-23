@@ -5,7 +5,6 @@
  */
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { api, type HomePublicStats } from "../../../shared/api/client.js";
 
 const RED = "#e5342d";
 
@@ -53,19 +52,12 @@ const STEPS = [
 
 export function HomePage() {
   const [scrolled, setScrolled] = useState(false);
-  const [stats, setStats] = useState<HomePublicStats | null>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-
-  useEffect(() => {
-    api.home.stats().then((r) => setStats(r.stats)).catch(() => setStats(null));
-  }, []);
-
-  const showStats = stats != null && (stats.findings_total > 0 || stats.findings_high > 0 || stats.tasks_completed > 0);
 
   return (
     <div data-testid="home-page" style={{ minHeight: "100vh", background: "#f6f7f9", color: "#111827" }}>
@@ -115,13 +107,12 @@ export function HomePage() {
             </a>
           </div>
 
-          {showStats ? (
-            <div style={{ display: "flex", gap: 56, justifyContent: "center", marginTop: 52, flexWrap: "wrap" }} data-testid="home-stats">
-              <Stat value={fmt(stats!.findings_total)} label="已挖掘漏洞" />
-              <Stat value={fmt(stats!.findings_high)} label="高危漏洞" />
-              <Stat value={fmt(stats!.tasks_completed)} label="已完成扫描" />
-            </div>
-          ) : null}
+          {/* Marketing stats from prototype (fish 2026-07-23: use prototype numbers).
+              No avg scan time / language count per earlier product rules. */}
+          <div style={{ display: "flex", gap: 56, justifyContent: "center", marginTop: 52, flexWrap: "wrap" }} data-testid="home-stats">
+            <Stat value="1000+" label="已挖掘漏洞" />
+            <Stat value="94%" label="高危漏洞识别率" />
+          </div>
         </div>
       </section>
 
@@ -258,11 +249,6 @@ function Stat({ value, label }: { value: string; label: string }) {
 function Dot({ c }: { c: string }) {
   return <span style={{ width: 10, height: 10, borderRadius: "50%", background: c, display: "inline-block" }} />;
 }
-function fmt(n: number): string {
-  if (n >= 10000) return `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k+`;
-  return n.toLocaleString();
-}
-
 function Ic({ path, size = 18 }: { path: string; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
