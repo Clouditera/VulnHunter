@@ -396,7 +396,6 @@ export function AppLayout() {
             >
               <Icon name="send" size={14} />
               <span>{i18n.t("nav.feedback")}</span>
-              <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 800, color: "var(--brand)", background: "rgba(239,43,45,0.15)", padding: "1px 6px", borderRadius: 999 }}>NEW</span>
             </button>
           ) : (
             <button
@@ -652,7 +651,12 @@ function navItemStyle(isActive: boolean, collapsed: boolean): CSSProperties {
 }
 
 function hasPersistedContent(session: ChatSessionApi): boolean {
-  return Boolean(session.preview?.trim()) || session.title?.trim() !== "Untitled";
+  // Empty chats (no messages) must not appear in history — fish 2026-07-23.
+  // Prefer message preview; fall back to non-default titles only when preview
+  // field is absent from older API responses.
+  if (session.preview != null) return Boolean(session.preview.trim());
+  const title = session.title?.trim() ?? "";
+  return title.length > 0 && title !== "Untitled" && title !== "未命名对话";
 }
 
 function toRecentSession(session: ChatSessionApi): RecentSession {
