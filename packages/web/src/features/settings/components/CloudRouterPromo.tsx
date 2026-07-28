@@ -12,6 +12,28 @@ import { theme } from "../../../shared/theme/index.js";
 
 const CR_URL = "https://cloudrouter.online";
 
+export function isCloudrouterBaseUrl(baseUrl: string | null | undefined): boolean {
+  if (!baseUrl) return false;
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === "cloudrouter.online" || host.endsWith(".cloudrouter.online");
+  } catch {
+    return /cloudrouter\.online/i.test(baseUrl);
+  }
+}
+
+export function formatBalanceAmount(remaining: number | null | undefined, unit?: string | null): string {
+  if (remaining == null || !Number.isFinite(remaining)) return "—";
+  const formatted = remaining.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  const u = (unit ?? "USD").toUpperCase();
+  if (u === "USD") return `$${formatted}`;
+  return `${formatted} ${u}`;
+}
+
+
 export function CloudRouterPromo() {
   const qc = useQueryClient();
   const [, tick] = useState(0);
@@ -98,7 +120,7 @@ export function CloudRouterPromo() {
               fontWeight: 600,
               padding: "2px 6px",
               borderRadius: 4,
-              border: dark ? "1px solid rgba(165,180,252,0.5)" : "1px solid rgba(99,102,241,0.45)",
+              border: dark ? "1px solid rgba(165,180,252,0.5)" : "1px solid var(--partner-border)",
               color: dark ? "var(--partner-accent)" : "var(--brand-hover)",
             }}
           >
@@ -123,15 +145,12 @@ export function CloudRouterPromo() {
 
       <div style={{ flexShrink: 0, minWidth: 160, display: "flex", flexDirection: "column", gap: 8, alignItems: "stretch" }}>
         {myCode ? (
-          <>
           <ClaimedPanel
             code={myCode}
             copied={copied}
             onCopy={() => void copyCode(myCode)}
             dark={dark}
           />
-          <BalanceStrip />
-          </>
         ) : poolEmpty ? (
           <>
             <GoButton />
@@ -262,7 +281,7 @@ function ClaimedPanel({
         padding: 12,
         borderRadius: 10,
         background: dark ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.72)",
-        border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(99,102,241,0.2)",
+        border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid var(--partner-border)",
       }}
     >
       <div style={{ fontSize: 11, fontWeight: 600, color: dark ? "var(--partner-accent)" : "var(--brand-hover)", marginBottom: 6 }}>
@@ -319,89 +338,6 @@ function ClaimedPanel({
   );
 }
 
-
-/** CloudRouter balance — expanded strip under claimed code. */
-function BalanceStrip() {
-  const qc = useQueryClient();
-  const { data, isFetching, refetch, isError } = useQuery({
-    queryKey: ["promo-cloudrouter-balance"],
-    queryFn: () => api.promo.cloudrouter.balance(),
-    staleTime: 60_000,
-    retry: false,
-  });
-  const [, tick] = useState(0);
-  useEffect(() => i18n.onChange(() => tick((n) => n + 1)), []);
-
-  const unavailable = !data || data.available === false;
-  const amount =
-    data && data.available && data.remaining != null
-      ? `${data.remaining} ${data.unit ?? "USD"}`
-      : null;
-  const updated =
-    data && data.available && data.updated_at
-      ? new Date(data.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      : null;
-
-  return (
-    <div
-      data-testid="cloudrouter-balance"
-      style={{
-        marginTop: 8,
-        padding: "10px 12px",
-        borderRadius: 8,
-        background: "var(--bg-card)",
-        border: "1px solid var(--border)",
-        fontSize: 12,
-        color: "var(--text-secondary)",
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        flexWrap: "wrap",
-        minWidth: 250,
-      }}
-    >
-      <Icon name="activity" size={14} style={{ color: "var(--brand)", flexShrink: 0 }} />
-      {unavailable || isError ? (
-        <span style={{ flex: 1 }} data-testid="cloudrouter-balance-unavailable">
-          {i18n.t("settings.creds.cloudRouter.balanceUnavailable")}
-        </span>
-      ) : (
-        <span style={{ flex: 1 }} data-testid="cloudrouter-balance-value">
-          {i18n.t("settings.creds.cloudRouter.balanceLabel")}{" "}
-          <strong style={{ color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
-            {amount ?? "—"}
-          </strong>
-          {updated ? (
-            <span style={{ marginLeft: 6, fontSize: 11 }}>
-              · {i18n.t("settings.creds.cloudRouter.balanceUpdated").replace("{t}", updated)}
-            </span>
-          ) : null}
-        </span>
-      )}
-      <button
-        type="button"
-        data-testid="cloudrouter-balance-refresh"
-        disabled={isFetching}
-        onClick={() => {
-          void qc.invalidateQueries({ queryKey: ["promo-cloudrouter-balance"] });
-          void refetch();
-        }}
-        style={{
-          border: "1px solid var(--border)",
-          background: "transparent",
-          borderRadius: 6,
-          padding: "4px 8px",
-          fontSize: 11,
-          fontWeight: 600,
-          color: "var(--brand)",
-          cursor: isFetching ? "wait" : "pointer",
-        }}
-      >
-        {isFetching ? "…" : i18n.t("settings.creds.cloudRouter.balanceRefresh")}
-      </button>
-    </div>
-  );
-}
 
 /** Info bar when user has zero credentials — above promo block. */
 export function CredentialsEmptyNotice({ onAdd }: { onAdd: () => void }) {

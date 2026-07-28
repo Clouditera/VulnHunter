@@ -8,6 +8,7 @@ import { api, type LlmCredential } from "../../../shared/api/client.js";
 import { SkillsSection } from "../components/SkillsSection.js";
 import { ProfileSection } from "../components/ProfileSection.js";
 import { CloudRouterPromo, CredentialsEmptyNotice } from "../components/CloudRouterPromo.js";
+import { CloudRouterBalanceGlance, CloudRouterBalanceStrip } from "../components/CloudRouterBalance.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 
 /* -------------------------------------------------------------------------- */
@@ -1371,6 +1372,7 @@ export function SettingsPage() {
                         borderTop: "1px solid var(--divider)",
                       }}
                     >
+                      {!isDraft && c ? <CloudRouterBalanceStrip baseUrl={c.base_url} /> : null}
                       {FORM_BODY}
                       <div
                         style={{
@@ -1400,8 +1402,8 @@ export function SettingsPage() {
                             onClick={() => handleDeleteCredential(c)}
                             style={{
                               ...CRED_ROW_BTN,
-                              color: "var(--brand)",
-                              borderColor: "rgba(194,40,40,0.3)",
+                              color: "var(--danger)",
+                              borderColor: "var(--danger-border)",
                             }}
                           >
                             {i18n.t("settings.credentials.delete")}
@@ -1537,6 +1539,7 @@ export function SettingsPage() {
                       {c.credential_health === "key_unavailable" ? "⚠ key 未配置" : "⚠ 无法解密"}
                     </span>
                   )}
+                  <CloudRouterBalanceGlance baseUrl={c.base_url} />
                   <Icon
                     name="chevron-down"
                     size={14}

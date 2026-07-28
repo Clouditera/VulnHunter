@@ -326,7 +326,7 @@ function SkillRow({
           border: "1px solid rgba(194,40,40,0.3)",
           borderRadius: "5px",
           background: "var(--bg-card)",
-          color: "var(--brand)",
+          color: "var(--danger)",
           fontSize: "11px",
           fontWeight: 500,
           cursor: "pointer",

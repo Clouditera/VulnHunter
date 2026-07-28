@@ -124,7 +124,7 @@ export function FeedbackModal({ open, onClose }: Props) {
             </div>
 
             {error ? (
-              <div data-testid="feedback-error" style={{ color: "var(--brand)", fontSize: 12.5, marginBottom: 10 }}>{error}</div>
+              <div data-testid="feedback-error" style={{ color: "var(--danger)", fontSize: 12.5, marginBottom: 10 }}>{error}</div>
             ) : null}
 
             <button data-testid="feedback-submit" type="submit" disabled={loading} style={SUBMIT}>

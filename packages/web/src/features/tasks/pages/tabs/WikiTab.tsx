@@ -1292,7 +1292,7 @@ function riskColors(level: WikiRiskLevel | null | undefined): {
 } {
   switch ((level ?? "").toLowerCase()) {
     case "critical":
-      return { bg: "var(--danger-border)", fg: "#991b1b" };
+      return { bg: "var(--danger-border)", fg: "var(--danger)" };
     case "high":
       return { bg: "var(--bg-error)", fg: "var(--brand)" };
     case "medium":

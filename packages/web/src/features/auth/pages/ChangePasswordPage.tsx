@@ -79,7 +79,7 @@ export function ChangePasswordPage() {
           <PwdField label={i18n.t("profile.confirmPassword")} value={confirmPwd} onChange={setConfirmPwd} show={showConfirm} onToggle={() => setShowConfirm(!showConfirm)} />
         </div>
 
-        {error && <div style={{ color: "var(--brand)", fontSize: "12px", marginTop: "8px" }}>{error}</div>}
+        {error && <div style={{ color: "var(--danger)", fontSize: "12px", marginTop: "8px" }}>{error}</div>}
 
         <button
           type="submit"
