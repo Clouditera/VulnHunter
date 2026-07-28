@@ -71,6 +71,7 @@ function userPayload(user: authStorage.DbUser) {
     role: user.role,
     mustChangePassword: user.must_change_password,
     source: user.source ?? "admin",
+    onboarding_dismissed: user.onboarding_dismissed_at != null,
   };
 }
 
@@ -319,12 +320,16 @@ authRouter.post("/force-change-password", licenseGuard, requireAuth, async (c) =
   return c.json({ ok: true });
 });
 
-// PATCH /api/auth/me — self-update display_name
+// PATCH /api/auth/me — self-update display_name + onboarding dismiss
 authRouter.patch("/me", licenseGuard, requireAuth, async (c) => {
   const user = c.get("user");
-  const body = await c.req.json<{ display_name?: string }>();
+  const body = await c.req.json<{ display_name?: string; onboarding_dismissed?: boolean }>();
   if (body.display_name !== undefined) {
     await authStorage.updateUser(user.userId, { displayName: body.display_name });
+  }
+  // Only accept true (one-way); ignore false/other values
+  if (body.onboarding_dismissed === true) {
+    await authStorage.dismissOnboarding(user.userId);
   }
   return c.json({ ok: true });
 });
@@ -428,9 +433,12 @@ adminAuthRouter.post("/force-change-password", licenseGuard, requireAuth, async 
 
 adminAuthRouter.patch("/me", licenseGuard, requireAuth, async (c) => {
   const user = c.get("user");
-  const body = await c.req.json<{ display_name?: string }>();
+  const body = await c.req.json<{ display_name?: string; onboarding_dismissed?: boolean }>();
   if (body.display_name !== undefined) {
     await authStorage.updateUser(user.userId, { displayName: body.display_name });
+  }
+  if (body.onboarding_dismissed === true) {
+    await authStorage.dismissOnboarding(user.userId);
   }
   return c.json({ ok: true });
 });

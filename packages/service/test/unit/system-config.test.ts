@@ -82,4 +82,17 @@ describe("system config validation", () => {
     config = JSON.stringify({ max_parallel_scan: 2, youngflow_max_parallel: 4 }) as any;
     await expect(getSystemConfig()).resolves.toMatchObject({ max_parallel_scan: 2, youngflow_max_parallel: 4 });
   });
+
+  it("accepts boolean cloudrouter_promo_enabled", async () => {
+    await updateSystemConfig({ cloudrouter_promo_enabled: false });
+    await expect(getSystemConfig()).resolves.toMatchObject({ cloudrouter_promo_enabled: false });
+    await updateSystemConfig({ cloudrouter_promo_enabled: true });
+    await expect(getSystemConfig()).resolves.toMatchObject({ cloudrouter_promo_enabled: true });
+  });
+
+  it("rejects non-boolean cloudrouter_promo_enabled", async () => {
+    await expect(updateSystemConfig({ cloudrouter_promo_enabled: "yes" })).rejects.toThrow(
+      "cloudrouter_promo_enabled must be a boolean",
+    );
+  });
 });
