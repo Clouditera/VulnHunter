@@ -173,7 +173,8 @@ export function CloudRouterPromo() {
                 gap: 6,
               }}
             >
-              🎁 {claimMut.isPending ? "…" : i18n.t("settings.creds.cloudRouter.claim")}
+              <Icon name="gift" size={14} />
+              {claimMut.isPending ? "…" : i18n.t("settings.creds.cloudRouter.claim")}
             </button>
             {claimMut.isError ? (
               <span style={{ fontSize: 11, color: "var(--brand)" }}>
