@@ -4,10 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && vite build --config vite.admin.config.ts && node -e \"const fs=require('fs');const a='dist-admin/index-admin.html';const b='dist-admin/index.html';if(fs.existsSync(a))fs.renameSync(a,b);\"",
+    "build:business": "vite build",
+    "build:admin": "vite build --config vite.admin.config.ts",
     "dev": "vite",
+    "dev:admin": "vite --config vite.admin.config.ts",
     "preview": "vite preview",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist dist-business dist-admin"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.7",

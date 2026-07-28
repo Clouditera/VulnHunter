@@ -3,40 +3,16 @@ import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
 import { ActivatePage } from "../features/auth/pages/ActivatePage.js";
 import { BootstrapPage } from "../features/auth/pages/BootstrapPage.js";
 import { LoginPage } from "../features/auth/pages/LoginPage.js";
-import { HomePage } from "../features/home/pages/HomePage.js";
 import { ExpiredPage } from "../features/auth/pages/ExpiredPage.js";
 import { ChangePasswordPage } from "../features/auth/pages/ChangePasswordPage.js";
-import { AppLayout } from "./layout.js";
-import { DashboardPage } from "../features/dashboard/pages/DashboardPage.js";
-import { TasksListPage } from "../features/tasks/pages/TasksListPage.js";
-import { TaskDetailPage } from "../features/tasks/pages/TaskDetailPage.js";
-import { OverviewTab } from "../features/tasks/pages/tabs/OverviewTab.js";
-import { FindingsTab } from "../features/tasks/pages/tabs/FindingsTab.js";
-import { ReportsTab } from "../features/tasks/pages/tabs/ReportsTab.js";
-import { WorkspaceTab } from "../features/tasks/pages/tabs/WorkspaceTab.js";
-import { ExploitsTab } from "../features/tasks/pages/tabs/ExploitsTab.js";
-import { WikiTab } from "../features/tasks/pages/tabs/WikiTab.js";
-import { ChatPage } from "../features/chat/pages/ChatPage.js";
-import { SettingsPage } from "../features/settings/pages/SettingsPage.js";
-import { SessionInvalidPage } from "../features/auth/pages/SessionInvalidPage.js";
-
-function RootGuard() {
-  const { data: status, isLoading, error } = useSystemStatus();
-
-  if (isLoading) return <LoadingScreen />;
-
-  if (error || !status) return <HomePage />;
-  if (status.edition !== "community") {
-    if (status.license.status === "expired") return <Navigate to="/expired" replace />;
-    if (status.license.status !== "active") return <Navigate to="/activate" replace />;
-  }
-  if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
-  if (status.is_authenticated) {
-    if (status.user?.role === "admin") return <SessionInvalidPage />;
-    return <Navigate to="/chat" replace />;
-  }
-  return <HomePage />;
-}
+import { AdminLayout } from "../features/admin/layout.js";
+import { UsersPage } from "../features/admin/pages/UsersPage.js";
+import { SmtpPage } from "../features/admin/pages/SmtpPage.js";
+import { FeedbackPage } from "../features/admin/pages/FeedbackPage.js";
+import { SystemPage } from "../features/admin/pages/SystemPage.js";
+import { LicensePage } from "../features/admin/pages/LicensePage.js";
+import { CreditsPage } from "../features/admin/pages/CreditsPage.js";
+import { ForbiddenPage } from "../features/admin/pages/ForbiddenPage.js";
 
 function LoadingScreen() {
   return (
@@ -65,15 +41,25 @@ function licenseTarget(status: ReturnType<typeof useSystemStatus>["data"]): stri
   return null;
 }
 
-function postAuthHome(status: NonNullable<ReturnType<typeof useSystemStatus>["data"]>): string {
-  // Business bundle: admin sessions are invalid here (SessionInvalidPage via BusinessGuard)
-  return "/chat";
+function RootGuard() {
+  const { data: status, isLoading, error } = useSystemStatus();
+  if (isLoading) return <LoadingScreen />;
+  if (error || !status) return <Navigate to="/login" replace />;
+  const target = licenseTarget(status);
+  if (target) return <Navigate to={target} replace />;
+  if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
+  if (status.is_authenticated) {
+    if (status.user?.role === "admin") return <Navigate to="/admin" replace />;
+    return <ForbiddenPage />;
+  }
+  return <Navigate to="/login" replace />;
 }
 
 function ActivateGuard() {
   const { data: status, isLoading } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
-  if (status?.edition === "community" || status?.license.status === "active") return <Navigate to="/" replace />;
+  if (status?.edition === "community" || status?.license.status === "active")
+    return <Navigate to="/" replace />;
   if (
     status?.license.status === "expired" ||
     (status?.license.status === "invalid" && status.license.invalid_reason === "version_mismatch")
@@ -85,7 +71,8 @@ function ActivateGuard() {
 function ExpiredGuard() {
   const { data: status, isLoading } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
-  if (status?.edition === "community" || status?.license.status === "active") return <Navigate to="/" replace />;
+  if (status?.edition === "community" || status?.license.status === "active")
+    return <Navigate to="/" replace />;
   if (
     status?.license.status !== "expired" &&
     !(status?.license.status === "invalid" && status.license.invalid_reason === "version_mismatch")
@@ -101,8 +88,9 @@ function BootstrapGuard() {
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
   if (status.has_admin) {
-    if (status.is_authenticated) return <Navigate to={postAuthHome(status)} replace />;
-    return <HomePage />;
+    if (status.is_authenticated && status.user?.role === "admin")
+      return <Navigate to="/admin" replace />;
+    return <Navigate to="/login" replace />;
   }
   return <BootstrapPage />;
 }
@@ -114,7 +102,10 @@ function LoginGuard() {
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
   if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
-  if (status.is_authenticated) return <Navigate to={postAuthHome(status)} replace />;
+  if (status.is_authenticated) {
+    if (status.user?.role === "admin") return <Navigate to="/admin" replace />;
+    return <ForbiddenPage />;
+  }
   return <LoginPage />;
 }
 
@@ -129,11 +120,10 @@ function AuthGuard() {
   return <Outlet />;
 }
 
-/** Business routes: admin sessions are not valid on the business site. */
-function BusinessGuard() {
+function AdminRoleGuard() {
   const { data: status, isLoading } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
-  if (status?.user?.role === "admin") return <SessionInvalidPage />;
+  if (status?.user?.role !== "admin") return <ForbiddenPage />;
   return <Outlet />;
 }
 
@@ -147,36 +137,29 @@ export const router = createBrowserRouter([
   },
   { path: "/bootstrap", element: <BootstrapGuard /> },
   { path: "/login", element: <LoginGuard /> },
-  { path: "/home", element: <HomePage /> },
   {
     element: <AuthGuard />,
     children: [
       {
-        element: <BusinessGuard />,
+        element: <AdminRoleGuard />,
         children: [
           {
-            element: <AppLayout />,
+            path: "/admin",
+            element: <AdminLayout />,
             children: [
-              { path: "/dashboard", element: <DashboardPage /> },
-              { path: "/tasks", element: <TasksListPage /> },
-              {
-                path: "/tasks/:taskId",
-                element: <TaskDetailPage />,
-                children: [
-                  { index: true, element: <OverviewTab /> },
-                  { path: "findings", element: <FindingsTab /> },
-                  { path: "wiki", element: <WikiTab /> },
-                  { path: "reports", element: <ReportsTab /> },
-                  { path: "exploits", element: <ExploitsTab /> },
-                  { path: "workspace", element: <WorkspaceTab /> },
-                ],
-              },
-              { path: "/chat", element: <ChatPage /> },
-              { path: "/settings", element: <SettingsPage /> },
+              { index: true, element: <Navigate to="users" replace /> },
+              { path: "users", element: <UsersPage /> },
+              { path: "smtp", element: <SmtpPage /> },
+              { path: "feedback", element: <FeedbackPage /> },
+              { path: "system", element: <SystemPage /> },
+              { path: "license", element: <LicensePage /> },
+              { path: "credits", element: <CreditsPage /> },
             ],
           },
         ],
       },
     ],
   },
+  // Catch-all → admin home (or login)
+  { path: "*", element: <Navigate to="/" replace /> },
 ]);

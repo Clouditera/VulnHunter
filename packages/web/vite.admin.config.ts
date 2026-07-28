@@ -3,28 +3,26 @@ import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 
 const API_TARGET = process.env.VITE_API_TARGET ?? "http://localhost:28080";
-const WS_TARGET = API_TARGET.replace(/^http/, "ws");
 
-// Business bundle (default)
+// Admin bundle — independent build, no shared chunk directory with business
 export default defineConfig({
   plugins: [react()],
   define: {
-    "import.meta.env.VITE_APP_DOMAIN": JSON.stringify("business"),
+    "import.meta.env.VITE_APP_DOMAIN": JSON.stringify("admin"),
   },
   server: {
-    port: 23000,
+    port: 23001,
     host: "0.0.0.0",
     proxy: {
       "/api": API_TARGET,
-      "/ws": { target: WS_TARGET, ws: true },
     },
   },
   build: {
-    outDir: "dist-business",
+    outDir: "dist-admin",
     emptyOutDir: true,
     sourcemap: false,
     rollupOptions: {
-      input: resolve(__dirname, "index.html"),
+      input: resolve(__dirname, "index-admin.html"),
     },
   },
 });

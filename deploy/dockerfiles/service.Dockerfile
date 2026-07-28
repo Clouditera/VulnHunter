@@ -38,7 +38,7 @@ COPY --from=builder --chown=vulnhunter:nodejs /prod/service/dist ./packages/serv
 COPY --from=builder --chown=vulnhunter:nodejs /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder --chown=vulnhunter:nodejs /app/packages/enterprise/package.json ./packages/enterprise/package.json
 COPY --from=builder --chown=vulnhunter:nodejs /app/packages/enterprise/dist ./packages/enterprise/dist
-COPY --from=builder --chown=vulnhunter:nodejs /app/packages/web/dist ./public
+COPY --from=builder --chown=vulnhunter:nodejs /app/packages/web/dist-business ./public
 COPY --chown=vulnhunter:nodejs scripts/ops/vulnforge-schema-migration.mjs ./vulnforge-schema-migration.mjs
 RUN mkdir -p /app/node_modules/@vulnhunter && \
     ln -sf /app/packages/service /app/node_modules/@vulnhunter/service && \

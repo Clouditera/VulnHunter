@@ -21,3 +21,5 @@ test-results/
 
 # Local dev-main runtime logs/pids
 .dev/
+packages/web/dist-business
+packages/web/dist-admin
