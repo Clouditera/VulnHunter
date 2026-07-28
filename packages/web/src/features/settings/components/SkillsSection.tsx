@@ -71,46 +71,36 @@ export function SkillsSection() {
         marginBottom: "16px",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: "12px",
-          marginBottom: "18px",
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h3
-            style={{
-              fontSize: "15px",
-              fontWeight: 600,
-              margin: "0 0 4px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              color: "var(--text-primary)",
-            }}
-          >
-            <Icon
-              name="file-text"
-              size={18}
-              style={{ color: "var(--text-secondary)" }}
-            />
-            <span>{i18n.t("skills.title")}</span>
-          </h3>
-          <p
-            style={{
-              fontSize: "13px",
-              color: "var(--text-secondary)",
-              opacity: 0.85,
-              margin: 0,
-            }}
-          >
-            {i18n.t("skills.desc")}
-          </p>
-        </div>
-        <div style={{ flexShrink: 0 }}>
+      <div style={{ marginBottom: "18px" }}>
+        <h3
+          style={{
+            fontSize: "15px",
+            fontWeight: 600,
+            margin: "0 0 4px",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            color: "var(--text-primary)",
+          }}
+        >
+          <Icon
+            name="file-text"
+            size={18}
+            style={{ color: "var(--text-secondary)" }}
+          />
+          <span>{i18n.t("skills.title")}</span>
+        </h3>
+        <p
+          style={{
+            fontSize: "13px",
+            color: "var(--text-secondary)",
+            opacity: 0.85,
+            margin: "0 0 12px",
+          }}
+        >
+          {i18n.t("skills.desc")}
+        </p>
+        <div>
           <input
             ref={fileRef}
             type="file"

@@ -572,19 +572,31 @@ export function useChat() {
       } catch {
         /* ignore; UI removal is what the user sees */
       }
+      const wasActive = activeId === id || draftSession?.id === id;
       setSessions((prev) => prev.filter((s) => s.id !== id));
       setMessagesBySession((prev) => {
         const next = { ...prev };
         delete next[id];
         return next;
       });
-      setActiveId((prev) => {
-        if (prev !== id) return prev;
-        const rest = sessions.filter((s) => s.id !== id);
-        return rest[0]?.id ?? null;
-      });
+      if (draftSession?.id === id) setDraftSession(null);
+      if (wasActive) {
+        // Clear chat pane → empty draft so leftover messages don't stick (VULNHUN-152).
+        const draft: ChatSession = {
+          id: "draft",
+          title: "New Chat",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          worker_state: "idle",
+          credential_id: null,
+        };
+        setDraftSession(draft);
+        setMessagesBySession((prev) => ({ ...prev, [draft.id]: [] }));
+        setActiveId(draft.id);
+        setStreaming(false);
+      }
     },
-    [sessions],
+    [activeId, draftSession],
   );
 
   const sendPrompt = useCallback(
@@ -624,6 +636,8 @@ export function useChat() {
         // plain text; `images` here is local-only metadata for thumbnail
         // rendering in MessageBubble.
         await api.chat.sessions.prompt(sid, text);
+        // Sidebar filters empty sessions; refresh after first message so new chat appears (VULNHUN-152).
+        window.dispatchEvent(new CustomEvent("vh:sessions-changed"));
       } catch (err) {
         // Keep the user's message on screen. Append a visible error card
         // so the retry affordance is obvious.
