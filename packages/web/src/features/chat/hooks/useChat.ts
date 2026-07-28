@@ -627,7 +627,8 @@ export function useChat() {
       } catch (err) {
         // Keep the user's message on screen. Append a visible error card
         // so the retry affordance is obvious.
-        const code = (err as Error)?.message ?? "ERR_INTERNAL";
+        const e = err as Error & { code?: string };
+        const code = e.code ? `${e.code}: ${e.message}` : (e.message ?? "ERR_INTERNAL");
         const userMessage = formatChatSendError(code);
         const errMsg: ChatMessage = {
           id: `e-${Date.now()}`,
@@ -761,6 +762,9 @@ function toDomainMessage(m: ChatMessageApi): ChatMessage {
 
 /** Build a ws:// or wss:// URL from a path. */
 function formatChatSendError(raw: string): string {
+  if (raw.includes("ERR_NO_LLM_CREDENTIAL") || raw.includes("没有可用模型凭证") || raw.includes("请先在设置中配置模型凭证") || raw.includes("请先配置")) {
+    return "请先在「设置 → 模型凭证」配置可用的模型凭证后再发送消息。";
+  }
   if (raw.includes("VULNHUNTER_MASTER_KEY_FILE") || raw.includes("凭证加密 key 未配置")) {
     return "Chat 暂时无法响应：模型凭证加密 key 未配置。请管理员检查服务端 master key 配置后重试。";
   }

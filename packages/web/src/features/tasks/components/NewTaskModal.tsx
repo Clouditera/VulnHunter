@@ -202,6 +202,8 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         setError(i18n.t("newTask.invalidArchive"));
       } else if (e.code === "ERR_UPLOAD_GATEWAY_LIMIT" || e.message.includes("HTTP 413")) {
         setError(i18n.t("newTask.uploadGatewayLimit"));
+      } else if (e.code === "ERR_NO_LLM_CREDENTIAL" || e.message.includes("ERR_NO_LLM_CREDENTIAL") || e.message.includes("模型凭证")) {
+        setError(e.message || i18n.t("newTask.needCredential"));
       } else {
         setError(e.message || String(err));
       }

@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { loadConfig } from "../../infra/config.js";
-import { uploadFile, getMinio } from "../../infra/minio/client.js";
+import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import { getAccessibleTask } from "../tasks/access.js";
@@ -23,75 +23,7 @@ reportsRouter.use("*", async (c, next) => {
   return requireAuth(c, next);
 });
 
-// ─── Skills CRUD (user-owned) ───
-
-// GET /api/settings/skills
-reportsRouter.get("/settings/skills", async (c) => {
-  const user = c.get("user");
-  const skills = await reportStorage.listSkills(user.userId);
-  return c.json({ skills });
-});
-
-// POST /api/settings/skills — upload skill zip
-reportsRouter.post("/settings/skills", async (c) => {
-  const user = c.get("user");
-  const formData = await c.req.formData();
-  const file = formData.get("file") as File | null;
-  if (!file) return c.json({ error: { code: "ERR_INTERNAL", detail: "file required" } }, 400);
-
-  const maxBytes = 50 * 1024 * 1024; // 50MB
-  if (file.size > maxBytes) {
-    return c.json({ error: { code: "ERR_UPLOAD_TOO_LARGE" } }, 413);
-  }
-
-  const config = loadConfig();
-  const name = formData.get("name") as string | null || file.name.replace(/\.zip$/i, "");
-  const description = formData.get("description") as string | null || "";
-
-  // Upload to MinIO
-  const minioKey = `report-skills/${crypto.randomUUID()}.zip`;
-  const buf = Buffer.from(await file.arrayBuffer());
-  await uploadFile(config.minio.bucket, minioKey, buf, buf.length);
-
-  // Count attachments (rudimentary: count entries in zip)
-  let attachmentCount = 0;
-  try {
-    const { execSync } = await import("node:child_process");
-    const output = execSync(`unzip -l /dev/stdin <<< "" 2>/dev/null | tail -1 || echo "0"`, {
-      timeout: 5000, stdio: "pipe",
-    }).toString();
-    attachmentCount = parseInt(output) || 0;
-  } catch { /* ok */ }
-
-  const skill = await reportStorage.createSkill({
-    name,
-    description,
-    minioKey,
-    sizeBytes: file.size,
-    attachmentCount,
-    uploadedBy: user.userId,
-    ownerUserId: user.userId,
-  });
-
-  return c.json({ skill }, 201);
-});
-
-// DELETE /api/settings/skills/:id
-reportsRouter.delete("/settings/skills/:id", async (c) => {
-  const user = c.get("user");
-  const id = c.req.param("id");
-  const skill = await reportStorage.deleteOwnedSkill(id, user.userId);
-  if (!skill) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
-
-  // Delete from MinIO
-  const config = loadConfig();
-  try {
-    const minio = getMinio();
-    await minio.removeObject(config.minio.bucket, skill.minio_key);
-  } catch { /* best effort */ }
-
-  return c.json({ ok: true });
-});
+// Skills CRUD moved to settings/routes.ts (Hono mount order)
 
 // ─── Reports per task ───
 

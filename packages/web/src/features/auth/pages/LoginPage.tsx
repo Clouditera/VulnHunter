@@ -54,6 +54,10 @@ function errMessage(err: unknown, fallback: string): string {
   const e = err as ClientErr;
   const code = e?.code ?? "";
   const detail = e?.message ?? "";
+  // Admin must use console entry (business login rejection)
+  if (code === "ERR_ADMIN_USE_CONSOLE" || /管理后台/.test(detail)) {
+    return detail || i18n.t("login.errorAdminConsole");
+  }
   // Prefer backend detail for smtp_not_configured and rate limits when present.
   if (code === "smtp_not_configured" || /smtp_not_configured/i.test(code) || /未配置邮件/.test(detail)) {
     return i18n.t("auth.err.smtpNotConfigured");
