@@ -20,6 +20,8 @@ export function parseCreditCodeImport(text: string): {
   codes: string[];
   invalid: number;
   invalid_samples: string[];
+  /** In-batch duplicate lines dropped before DB insert */
+  skipped_duplicates: number;
 } {
   if (Buffer.byteLength(text, "utf8") > MAX_IMPORT_BYTES) {
     throw new Error("import_too_large");
@@ -32,6 +34,7 @@ export function parseCreditCodeImport(text: string): {
   const seen = new Set<string>();
   const codes: string[] = [];
   let invalid = 0;
+  let skipped_duplicates = 0;
   const invalid_samples: string[] = [];
 
   for (const raw of lines) {
@@ -42,12 +45,15 @@ export function parseCreditCodeImport(text: string): {
       if (invalid_samples.length < 5) invalid_samples.push(raw.slice(0, 200));
       continue;
     }
-    if (seen.has(code)) continue;
+    if (seen.has(code)) {
+      skipped_duplicates += 1;
+      continue;
+    }
     seen.add(code);
     codes.push(code);
   }
 
-  return { codes, invalid, invalid_samples };
+  return { codes, invalid, invalid_samples, skipped_duplicates };
 }
 
 export async function importCreditCodes(codes: string[]): Promise<{ inserted: number; skipped_duplicates: number }> {
