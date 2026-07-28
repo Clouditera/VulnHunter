@@ -183,13 +183,11 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
     if (!selected) return;
     const ok = window.confirm(i18n.t("search.deleteConfirm").replace("{title}", selected.session.title || ""));
     if (!ok) return;
-    try {
-      await api.chat.sessions.delete(selected.session.id);
-      setItems((prev) => prev.filter((it) => it.session.id !== selected.session.id));
-      window.dispatchEvent(new CustomEvent("vh:sessions-changed"));
-    } catch {
-      /* ignore */
-    }
+    const id = selected.session.id;
+    setItems((prev) => prev.filter((it) => it.session.id !== id));
+    // Route through chat host so active pane clears (VULNHUN-152).
+    window.dispatchEvent(new CustomEvent("vh:delete-session", { detail: { id } }));
+    window.dispatchEvent(new CustomEvent("vh:sessions-changed"));
   }
 
   function onInputKey(e: KeyboardEvent<HTMLInputElement>) {

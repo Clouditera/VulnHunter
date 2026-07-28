@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { useChat } from "./hooks/useChat.js";
 
@@ -8,21 +8,23 @@ const ChatContext = createContext<ChatContextValue | null>(null);
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const chat = useChat();
+  const chatRef = useRef(chat);
+  chatRef.current = chat;
 
   useEffect(() => {
     const onSelect = (event: Event) => {
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
-      if (id) chat.selectSession(id);
+      if (id) chatRef.current.selectSession(id);
     };
     const onNew = () => {
-      chat.startDraftSession();
+      chatRef.current.startDraftSession();
     };
     const onDelete = (event: Event) => {
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
-      if (id)
-        void chat
-          .deleteSession(id)
-          .then(() => window.dispatchEvent(new CustomEvent("vh:sessions-changed")));
+      if (!id) return;
+      void chatRef.current.deleteSession(id).then(() => {
+        window.dispatchEvent(new CustomEvent("vh:sessions-changed"));
+      });
     };
 
     window.addEventListener("vh:select-session", onSelect);
@@ -33,7 +35,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("vh:new-chat", onNew);
       window.removeEventListener("vh:delete-session", onDelete);
     };
-  }, [chat.selectSession, chat.startDraftSession, chat.deleteSession]);
+  }, []);
 
   return <ChatContext.Provider value={chat}>{children}</ChatContext.Provider>;
 }
