@@ -26,6 +26,16 @@ export const filesRouter = new Hono();
  * tasks/UI that omit them stay unaffected. scan_timeout / max_items_per_recon
  * are coerced to positive integers; invalid values are dropped.
  */
+/** Parse optional agent_max_parallel: omit → undefined (default 3 downstream); invalid → throw. */
+export function parseAgentMaxParallel(raw: unknown): number | undefined {
+  if (raw == null || raw === "") return undefined;
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error("agent_max_parallel must be a positive integer");
+  }
+  return n;
+}
+
 export function scanMetaFromValues(
   auditFocus?: string | null,
   scanTimeout?: string | number | null,
@@ -135,6 +145,12 @@ filesRouter.post("/tasks", async (c) => {
 
     const credentialId = (formData.get("credential_id") as string | null) || undefined;
     const displayName = (formData.get("display_name") as string | null) || undefined;
+    let agentMaxParallel: number | undefined;
+    try {
+      agentMaxParallel = parseAgentMaxParallel(formData.get("agent_max_parallel"));
+    } catch (err) {
+      return c.json({ error: { code: "ERR_VALIDATION", detail: err instanceof Error ? err.message : String(err) } }, 400);
+    }
     const taskId = randomUUID();
     const minioKey = `code-packages/${taskId}${detected.storageExtension}`;
 
@@ -168,6 +184,7 @@ filesRouter.post("/tasks", async (c) => {
       sourceType: "upload",
       sourceMeta: { filename: file.name, minio_key: minioKey, size_bytes: file.size, archive_format: detected.format, ...scanMeta },
       credentialId,
+      agentMaxParallel,
     });
 
     return c.json({ task }, 201);
@@ -187,6 +204,7 @@ filesRouter.post("/tasks", async (c) => {
     max_items_per_recon?: string | number;
     enable_dynamic_verify?: boolean;
     enable_dynamic_exploit?: boolean;
+    agent_max_parallel?: number | string;
   }>();
 
   if (!body.git_url) {
@@ -214,6 +232,13 @@ filesRouter.post("/tasks", async (c) => {
     return c.json({ error: { code: "ERR_INVALID_SCAN_OPTIONS", detail: err instanceof Error ? err.message : String(err) } }, 400);
   }
 
+  let agentMaxParallel: number | undefined;
+  try {
+    agentMaxParallel = parseAgentMaxParallel(body.agent_max_parallel);
+  } catch (err) {
+    return c.json({ error: { code: "ERR_VALIDATION", detail: err instanceof Error ? err.message : String(err) } }, 400);
+  }
+
   const task = await createTask({
     tenantId: ctx.tenantId,
     createdBy: user.userId,
@@ -227,6 +252,7 @@ filesRouter.post("/tasks", async (c) => {
     },
     autoSkillIds: body.auto_skill_ids,
     credentialId: body.credential_id,
+    agentMaxParallel,
   });
 
   // Git tasks start in `preparing` (cloning/zipping/uploading) — distinct from

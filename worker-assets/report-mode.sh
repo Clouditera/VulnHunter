@@ -25,7 +25,7 @@ mkdir -p /workspace/reports /workspace/context/findings /workspace/context/wiki 
 cp -r "$FLOW_DIR" /workspace/flow
 FLOW_DIR="/workspace/flow"
 
-# If uploaded skill exists, copy into flow skills directory
+# If uploaded skill exists, copy into flow skills directory; else fall back to builtin default.
 if [ -d "/workspace/skill" ] && [ -f "/workspace/skill/SKILL.md" ]; then
   echo "[report] Injecting uploaded Report Skill"
   cp -r /workspace/skill "$FLOW_DIR/skills/uploaded-report-skill"
@@ -35,6 +35,16 @@ elif [ -d "/workspace/skill" ]; then
   if [ -n "$SKILL_DIR" ]; then
     echo "[report] Injecting uploaded Report Skill from $SKILL_DIR"
     cp -r "$SKILL_DIR" "$FLOW_DIR/skills/uploaded-report-skill"
+  fi
+fi
+
+if [ ! -d "$FLOW_DIR/skills/uploaded-report-skill" ]; then
+  if [ -d "$FLOW_DIR/skills/default-report-skill" ]; then
+    echo "[report] No uploaded skill — using builtin default-report-skill"
+    cp -r "$FLOW_DIR/skills/default-report-skill" "$FLOW_DIR/skills/uploaded-report-skill"
+  else
+    echo "[report] FATAL: no uploaded skill and default-report-skill missing from image" >&2
+    exit 1
   fi
 fi
 

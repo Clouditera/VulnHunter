@@ -34,6 +34,8 @@ export interface DbTask {
   findings_indexed_at: Date | null;
   metadata: TaskMetadata;
   credential_id: string | null;
+  /** Per-task YoungFlow/pi agent concurrency (min 1, no upper bound). */
+  agent_max_parallel: number;
 }
 
 function tenantIdOf(ctx?: QueryContext): string {
@@ -58,13 +60,16 @@ export async function createTask(params: {
   sourceMeta: Record<string, string | number | boolean | null>;
   autoSkillIds?: string[];
   credentialId?: string;
+  /** Defaults to 3; caller must validate positive integer when provided. */
+  agentMaxParallel?: number;
 }): Promise<DbTask> {
   const db = getDb();
+  const agentMaxParallel = params.agentMaxParallel ?? 3;
   const rows = await db<DbTask[]>`
-    INSERT INTO tasks (tenant_id, created_by, project_name, display_name, source_type, source_meta, auto_skill_ids, credential_id)
+    INSERT INTO tasks (tenant_id, created_by, project_name, display_name, source_type, source_meta, auto_skill_ids, credential_id, agent_max_parallel)
     VALUES (${params.tenantId ?? DEFAULT_TENANT_ID}, ${params.createdBy}, ${params.projectName}, ${normalizeDisplayName(params.displayName)},
             ${params.sourceType}, ${db.json(params.sourceMeta)}::jsonb,
-            ${params.autoSkillIds ?? []}, ${params.credentialId ?? null})
+            ${params.autoSkillIds ?? []}, ${params.credentialId ?? null}, ${agentMaxParallel})
     RETURNING *
   `;
   return rows[0];

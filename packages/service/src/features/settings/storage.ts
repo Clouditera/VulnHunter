@@ -501,7 +501,15 @@ export async function updateSystemConfig(patch: Record<string, unknown>): Promis
   }
   const ceilingMb = deploymentUploadCeilingMb();
   merged.max_parallel_scan = validateBoundedInt("max_parallel_scan", merged.max_parallel_scan, 3, 1, 10);
-  merged.youngflow_max_parallel = validateBoundedInt("youngflow_max_parallel", merged.youngflow_max_parallel, 3, 1, 10);
+  // youngflow_max_parallel removed from schema (task-level agent_max_parallel).
+  // Preserve legacy key in DB if present; do not accept/merge from patch.
+  if ("youngflow_max_parallel" in patch) {
+    if (Object.prototype.hasOwnProperty.call(current, "youngflow_max_parallel")) {
+      merged.youngflow_max_parallel = current.youngflow_max_parallel;
+    } else {
+      delete merged.youngflow_max_parallel;
+    }
+  }
   merged.source_archive_upload_max_mb = validateBoundedInt("source_archive_upload_max_mb", merged.source_archive_upload_max_mb, Math.min(500, ceilingMb), 1, ceilingMb);
   merged.upload_zip_max_mb = merged.source_archive_upload_max_mb;
   await db`

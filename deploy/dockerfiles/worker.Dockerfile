@@ -2,13 +2,17 @@ FROM node:22-slim AS base
 ENV HOME=/root
 WORKDIR /opt/vulnhunter
 
-# System dependencies (python3 + pyyaml needed by feature-aggregator, project-profiler)
+# System dependencies (python3 + pyyaml needed by feature-aggregator, project-profiler;
+# pandoc + openpyxl for report docx/xlsx export — fish 2026-07-27)
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git openssh-client unzip zip curl ca-certificates jq \
-      python3 python3-yaml \
+      python3 python3-yaml python3-pip pandoc \
+    && pip3 install --no-cache-dir --break-system-packages openpyxl \
     && rm -rf /var/lib/apt/lists/* \
     && ssh -V \
-    && command -v scp >/dev/null
+    && command -v scp >/dev/null \
+    && command -v pandoc >/dev/null \
+    && python3 -c "import openpyxl"
 
 # pi CLI (youngflow spawns it for each stage). Pin the fork validated by VulnForge.
 RUN npm install -g @earendil-works/pi-coding-agent@0.79.6 \
