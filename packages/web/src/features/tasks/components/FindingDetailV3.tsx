@@ -358,7 +358,7 @@ function FixPatchSection({ content }: { content: string }) {
               L.kind === "add"
                 ? "#f0fdf4"
                 : L.kind === "del"
-                  ? "#fef2f2"
+                  ? "var(--bg-error)"
                   : L.kind === "hunk"
                     ? "#eff6ff"
                     : "transparent";
@@ -366,9 +366,9 @@ function FixPatchSection({ content }: { content: string }) {
               L.kind === "add"
                 ? "#15803d"
                 : L.kind === "del"
-                  ? "#b91c1c"
+                  ? "var(--danger-hover)"
                   : L.kind === "hunk"
-                    ? "#2563eb"
+                    ? "var(--brand)"
                     : L.kind === "meta"
                       ? "var(--text-secondary)"
                       : "var(--text-primary)";
@@ -417,7 +417,7 @@ function FixPatchSection({ content }: { content: string }) {
                   style={{
                     padding: "0 8px",
                     whiteSpace: "pre",
-                    color: row.kind === "hunk" ? "#2563eb" : "var(--text-secondary)",
+                    color: row.kind === "hunk" ? "var(--brand)" : "var(--text-secondary)",
                     background: row.kind === "hunk" ? "#eff6ff" : "#fafafa",
                     fontWeight: 600,
                   }}
@@ -437,8 +437,8 @@ function FixPatchSection({ content }: { content: string }) {
                   padding: "0 8px",
                   whiteSpace: "pre",
                   overflow: "hidden",
-                  background: tone === "del" ? "#fef2f2" : tone === "add" ? "#f0fdf4" : "transparent",
-                  color: tone === "del" ? "#b91c1c" : tone === "add" ? "#15803d" : "var(--text-primary)",
+                  background: tone === "del" ? "var(--bg-error)" : tone === "add" ? "#f0fdf4" : "transparent",
+                  color: tone === "del" ? "var(--danger-hover)" : tone === "add" ? "#15803d" : "var(--text-primary)",
                 }}
               >
                 <span style={{ width: "30px", flexShrink: 0, color: "#9ca3af", textAlign: "right", paddingRight: "8px", userSelect: "none" }}>
@@ -503,7 +503,7 @@ function AnchorSnippet({ taskId, path, line }: { taskId: string; path: string; l
             key={ln}
             style={{
               display: "flex",
-              background: active ? "rgba(220,38,38,0.08)" : "transparent",
+              background: active ? "rgba(194,40,40,0.08)" : "transparent",
               borderLeft: active ? "3px solid var(--brand)" : "3px solid transparent",
               padding: "0 12px 0 8px",
               whiteSpace: "pre",
@@ -691,7 +691,7 @@ function Chip({
     whiteSpace: "nowrap",
   };
   if (tone === "ok") {
-    base.color = "#16a34a";
+    base.color = "var(--status-completed)";
     base.borderColor = "#bbf7d0";
     base.background = "#f0fdf4";
   }
@@ -1026,7 +1026,7 @@ export function FindingDetailV3({
                 gap: "3px",
                 padding: "1px 6px",
                 borderRadius: "4px",
-                border: isRisk ? "1px solid var(--border)" : "1px solid rgba(220,38,38,.35)",
+                border: isRisk ? "1px solid var(--border)" : "1px solid rgba(194,40,40,.35)",
                 background: isRisk ? "var(--bg-page)" : "var(--bg-error)",
                 color: isRisk ? "var(--text-secondary)" : "var(--brand)",
                 fontSize: "9.5px",

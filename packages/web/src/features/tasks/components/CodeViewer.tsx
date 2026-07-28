@@ -80,7 +80,7 @@ export function CodeViewer({
             style={{
               padding: "1px 8px",
               borderRadius: "3px",
-              background: "rgba(220,38,38,0.15)",
+              background: "rgba(194,40,40,0.15)",
               color: "var(--brand)",
               fontSize: "11px",
               fontWeight: 600,

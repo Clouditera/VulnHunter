@@ -517,9 +517,9 @@ export function ChatInput({
               ...BTN,
               background: "var(--bg-error)",
               color: "var(--brand)",
-              border: "1px solid rgba(220,38,38,0.3)",
+              border: "1px solid rgba(194,40,40,0.3)",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(220,38,38,0.18)")}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(194,40,40,0.18)")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-error)")}
           >
             <Icon name="x" size={16} strokeWidth={2.5} />

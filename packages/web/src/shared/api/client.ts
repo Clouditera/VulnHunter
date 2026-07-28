@@ -633,6 +633,18 @@ export const api = {
           already_claimed?: boolean;
           pool_empty?: boolean;
         }>("/api/promo/cloudrouter/claim", { method: "POST", body: "{}" }),
+      balance: () =>
+        request<
+          | {
+              available: true;
+              remaining: number | null;
+              unit: string | null;
+              planName: string | null;
+              mode: string | null;
+              updated_at: string;
+            }
+          | { available: false }
+        >("/api/promo/cloudrouter/balance"),
     },
   },
     feedback: {

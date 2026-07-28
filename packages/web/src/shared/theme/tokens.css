@@ -1,194 +1,221 @@
-/* VulnHunter Design Tokens — migrated from prototype */
-:root {
-  --brand: #dc2626;
-  --nav-bg: #111111;
-  --bg-page: #fafafa;
-  --bg-card: #ffffff;
-  --text-primary: #171717;
-  --text-secondary: #737373;
-  --border: #e5e5e5;
-  --divider: #f5f5f5;
+/* VulnHunter Design Tokens — brand migration v1 (云起无垠 → #298CFF) */
+/* Spec: brand-migration-spec-v1.0.md */
 
-  --sev-high: #ea580c;
-  --sev-medium: #ca8a04;
-  --sev-low: #2563eb;
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/roboto-400-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/roboto-500-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Han Sans CN";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/source-han-sans-cn-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Han Sans CN";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/source-han-sans-cn-500.woff2") format("woff2");
+}
+
+:root {
+  /* Brand blue */
+  --brand: #298cff;
+  --brand-hover: #1871f5;
+  --brand-active: #145be1;
+  --brand-soft: rgba(41, 140, 255, 0.1);
+  --brand-border: rgba(41, 140, 255, 0.2);
+  --brand-disabled-bg: #eef7ff;
+
+  /* Danger (separated from brand) */
+  --danger: #c22828;
+  --danger-hover: #a61f1f;
+  --danger-soft: rgba(194, 40, 40, 0.1);
+  --danger-border: rgba(194, 40, 40, 0.28);
+
+  /* Special purple (admin badge etc.) */
+  --special: #9285ff;
+  --special-soft: rgba(146, 133, 255, 0.12);
+  --special-border: rgba(146, 133, 255, 0.35);
+
+  /* Neutrals light */
+  --nav-bg: #1b2033;
+  --bg-page: #f8f8f8;
+  --bg-card: #ffffff;
+  --bg-header: #f8fafe;
+  --text-primary: #0a1730;
+  --text-secondary: #616d7e;
+  --text-tertiary: #bbc3cc;
+  --icon-muted: #a5afbc;
+  --border: #e7e8eb;
+  --divider: #e7e8eb;
+
+  /* Severity / functional (dots/borders/soft bg only; text stays neutral) */
+  --sev-critical: #c22828;
+  --sev-high: #f24f4f;
+  --sev-medium: #ff733c;
+  --sev-low: #f7c530;
   --sev-info: #9ca3af;
 
-  /* Audit Progress — green-depth ramp (grey → dark green). Not red: low
-     progress ≠ bad; red is reserved for vulnerabilities. Works light+dark. */
+  /* Audit Progress — green-depth ramp (not brand) */
   --audit-none: #9ca3af;
   --audit-low: #86efac;
   --audit-mid: #22c55e;
   --audit-high: #15803d;
 
-  /* Code viewer: theme-aware (light by default, dark in dark mode) */
-  /* Terminal-bg stays always dark (LiveLog has terminal aesthetic) */
+  /* Code viewer */
   --code-bg: #f8fafc;
   --code-text: #0f172a;
   --code-comment: #94a3b8;
   --code-line-number: #cbd5e1;
-  --code-vuln-bg: #fef2f2;
-  --code-vuln-border: #fca5a5;
+  --code-vuln-bg: rgba(194, 40, 40, 0.08);
+  --code-vuln-border: rgba(194, 40, 40, 0.35);
   --terminal-bg: #0a0a0a;
 
   /* Semantic status */
-  --status-running: #2563eb;
-  --status-completed: #16a34a;
-  --status-failed: #dc2626;
-  --status-cancelled: #737373;
-  --status-queued: #ca8a04;
-  --status-paused: #ea580c;
+  --status-running: #28d1ff;
+  --status-completed: #3ad186;
+  --status-failed: #c22828;
+  --status-cancelled: #616d7e;
+  --status-queued: #f7c530;
+  --status-paused: #ff733c;
 
   /* Backgrounds */
-  --bg-success: #f0fdf4;
-  --bg-success-border: #bbf7d0;
-  --bg-success-text: #166534;
-  --bg-warning: #fff7ed;
-  --bg-error: #fef2f2;
-  --bg-info: #eff6ff;
-  --bg-purple: #faf5ff;
-  --bg-disabled: #e5e5e5;
-  --bg-hover: rgba(0,0,0,0.04);
-  --bg-active-filter: #fef2f220;
+  --bg-success: rgba(58, 209, 134, 0.1);
+  --bg-success-border: rgba(58, 209, 134, 0.28);
+  --bg-success-text: #0a1730;
+  --bg-warning: rgba(247, 197, 48, 0.12);
+  --bg-error: rgba(194, 40, 40, 0.08);
+  --bg-info: rgba(41, 140, 255, 0.08);
+  --bg-purple: rgba(146, 133, 255, 0.1);
+  --bg-disabled: #e7e8eb;
+  --bg-hover: rgba(10, 23, 48, 0.04);
+  --bg-active-filter: rgba(41, 140, 255, 0.12);
 
   /* Button */
   --btn-primary-text: #ffffff;
 
-  /* Live log (terminal context — mostly static) */
+  /* Live log (terminal context) */
   --log-tab-border: #333333;
   --log-tab-active: #ffffff;
   --log-tab-inactive: #737373;
   --log-text-tool: #e5e5e5;
   --log-text-dim: #737373;
   --log-text-timestamp: #555555;
-  --log-stage-start: #ca8a04;
-  --log-stage-end: #16a34a;
+  --log-stage-start: #f7c530;
+  --log-stage-end: #3ad186;
   --log-pill-bg: #333333;
   --log-pill-text: #e5e5e5;
 
   /* Charts */
-  --chart-bar: #6366f1;
+  --chart-bar: #298cff;
 
   /* Review Status */
-  --review-pending: #ca8a04;
-  --review-confirmed: #16a34a;
-  --review-false-positive: #737373;
-  --review-ignored: #a3a3a3;
-  --review-pending-bg: rgba(202,138,4,0.10);
-  --review-confirmed-bg: rgba(22,163,74,0.10);
-  --review-false-positive-bg: rgba(115,115,115,0.10);
-  --review-ignored-bg: rgba(163,163,163,0.08);
+  --review-pending: #f7c530;
+  --review-confirmed: #3ad186;
+  --review-false-positive: #616d7e;
+  --review-ignored: #a5afbc;
+  --review-pending-bg: rgba(247, 197, 48, 0.12);
+  --review-confirmed-bg: rgba(58, 209, 134, 0.12);
+  --review-false-positive-bg: rgba(97, 109, 126, 0.1);
+  --review-ignored-bg: rgba(165, 175, 188, 0.1);
+
+  /* Partner / CloudRouter soft blue */
+  --partner-grad-from: #eef7ff;
+  --partner-grad-to: #f0f7ff;
+  --partner-border: rgba(41, 140, 255, 0.28);
+  --partner-accent: #1871f5;
+
+  /* Font stacks */
+  --font-sans: "Roboto", "Source Han Sans CN", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
 :root[data-theme="dark"] {
-  --bg-page: #1a1a1a;
-  --bg-card: #242424;
-  --text-primary: #e5e5e5;
-  --text-secondary: #a3a3a3;
-  --border: #3a3a3a;
-  --divider: #2d2d2d;
+  --bg-page: #131828;
+  --bg-card: #1b2033;
+  --bg-header: #232a40;
+  --text-primary: #ffffff;
+  --text-secondary: #bbc3cc;
+  --text-tertiary: #616d7e;
+  --icon-muted: #a5afbc;
+  --border: rgba(255, 255, 255, 0.09);
+  --divider: rgba(255, 255, 255, 0.09);
 
-  --bg-success: #052e16;
-  --bg-success-border: #166534;
+  --brand-soft: rgba(41, 140, 255, 0.15);
+  --brand-border: rgba(41, 140, 255, 0.35);
+  --danger-soft: rgba(194, 40, 40, 0.15);
+  --danger-border: rgba(194, 40, 40, 0.4);
+  --special-soft: rgba(146, 133, 255, 0.18);
+  --special-border: rgba(146, 133, 255, 0.4);
+
+  --bg-success: rgba(58, 209, 134, 0.12);
+  --bg-success-border: rgba(58, 209, 134, 0.35);
   --bg-success-text: #86efac;
-  --bg-warning: #431407;
-  --bg-error: #450a0a;
-  --bg-info: #172554;
-  --bg-purple: #2e1065;
+  --bg-warning: rgba(247, 197, 48, 0.12);
+  --bg-error: rgba(194, 40, 40, 0.14);
+  --bg-info: rgba(41, 140, 255, 0.14);
+  --bg-purple: rgba(146, 133, 255, 0.14);
   --bg-disabled: #404040;
-  --bg-hover: rgba(255,255,255,0.06);
-  --bg-active-filter: rgba(220,38,38,0.15);
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active-filter: rgba(41, 140, 255, 0.18);
 
   --btn-primary-text: #ffffff;
 
-  /* Code viewer: dark in dark mode */
   --code-bg: #1e1e1e;
   --code-text: #d4d4d4;
   --code-comment: #6b7280;
   --code-line-number: #525252;
-  --code-vuln-bg: rgba(220,38,38,0.12);
-  --code-vuln-border: rgba(220,38,38,0.4);
-  /* terminal-bg stays the same in dark mode — LiveLog terminal aesthetic */
+  --code-vuln-bg: rgba(194, 40, 40, 0.14);
+  --code-vuln-border: rgba(194, 40, 40, 0.45);
 
-  /* Review Status (dark) */
   --review-pending: #eab308;
-  --review-confirmed: #22c55e;
+  --review-confirmed: #3ad186;
   --review-false-positive: #a3a3a3;
   --review-ignored: #737373;
-  --review-pending-bg: rgba(234,179,8,0.15);
-  --review-confirmed-bg: rgba(34,197,94,0.15);
-  --review-false-positive-bg: rgba(163,163,163,0.10);
-  --review-ignored-bg: rgba(115,115,115,0.10);
+  --review-pending-bg: rgba(234, 179, 8, 0.15);
+  --review-confirmed-bg: rgba(58, 209, 134, 0.15);
+  --review-false-positive-bg: rgba(163, 163, 163, 0.1);
+  --review-ignored-bg: rgba(115, 115, 115, 0.1);
+
+  --partner-grad-from: rgba(41, 140, 255, 0.16);
+  --partner-grad-to: rgba(20, 91, 225, 0.12);
+  --partner-border: rgba(41, 140, 255, 0.35);
+  --partner-accent: #60a5fa;
 }
 
-* {
-  box-sizing: border-box;
-}
-
-/* Selection — only customized inside code/output blocks (translate="no")
-   so dark code+log areas get readable red-tinted selection while normal
-   page text keeps the browser-default blue (avoids LiveLog looking muddy). */
-[translate="no"]::selection,
-[translate="no"] *::selection {
-  background: rgba(220, 38, 38, 0.32);
-  color: inherit;
-}
-
-/* Scrollbars — theme-aware. Default browser scrollbars don't auto-adapt to
-   dark mode (they stay white-grey), which looks broken on dark backgrounds. */
-:root {
-  color-scheme: light;
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-}
-
-/* Webkit/Chromium custom scrollbars — subtle, theme-tinted */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(115, 115, 115, 0.35);
-  border-radius: 5px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(115, 115, 115, 0.55);
-  background-clip: padding-box;
-  border: 2px solid transparent;
-}
-:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: rgba(180, 180, 180, 0.18);
-  background-clip: padding-box;
-  border: 2px solid transparent;
-}
-:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(180, 180, 180, 0.32);
-  background-clip: padding-box;
-  border: 2px solid transparent;
-}
-::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-/* Firefox: thin scrollbar with theme-aware thumb color */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(115, 115, 115, 0.4) transparent;
-}
-:root[data-theme="dark"] * {
-  scrollbar-color: rgba(180, 180, 180, 0.22) transparent;
-}
-
-body {
-  margin: 0;
-  background: var(--bg-page);
+/* Global base */
+html,
+body,
+#root {
+  font-family: var(--font-sans);
   color: var(--text-primary);
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-  -webkit-font-smoothing: antialiased;
+  background: var(--bg-page);
+}
+
+::selection {
+  background: rgba(41, 140, 255, 0.28);
+  color: var(--text-primary);
+}
+
+/* Primary button utility when used via CSS vars */
+button[data-variant="primary"]:hover:not(:disabled),
+.btn-primary:hover:not(:disabled) {
+  background: var(--brand-hover) !important;
+}
+button[data-variant="primary"]:active:not(:disabled),
+.btn-primary:active:not(:disabled) {
+  background: var(--brand-active) !important;
 }

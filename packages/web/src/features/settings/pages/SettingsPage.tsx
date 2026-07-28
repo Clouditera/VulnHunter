@@ -1017,7 +1017,7 @@ export function SettingsPage() {
                     {modelFetchState.msg}
                   </div>
                 ) : null}
-                {fieldErrors.modelId && <div style={{ color: "#dc2626", fontSize: "12px", marginTop: "4px" }}>{fieldErrors.modelId}</div>}
+                {fieldErrors.modelId && <div style={{ color: "var(--danger)", fontSize: "12px", marginTop: "4px" }}>{fieldErrors.modelId}</div>}
               </div>
             </div>
 
@@ -1030,7 +1030,7 @@ export function SettingsPage() {
                 placeholder={i18n.t("settings.model.baseUrlPlaceholder")}
                 style={FIELD_INPUT}
               />
-              {fieldErrors.baseUrl && <div style={{ color: "#dc2626", fontSize: "12px", marginTop: "4px" }}>{fieldErrors.baseUrl}</div>}
+              {fieldErrors.baseUrl && <div style={{ color: "var(--danger)", fontSize: "12px", marginTop: "4px" }}>{fieldErrors.baseUrl}</div>}
             </Field>
 
             <Field
@@ -1191,7 +1191,7 @@ export function SettingsPage() {
                     border: `1px solid ${
                       testState.kind === "ok"
                         ? "var(--bg-success-border)"
-                        : "rgba(220,38,38,0.28)"
+                        : "rgba(194,40,40,0.28)"
                     }`,
                     wordBreak: "break-word",
                   }}
@@ -1401,7 +1401,7 @@ export function SettingsPage() {
                             style={{
                               ...CRED_ROW_BTN,
                               color: "var(--brand)",
-                              borderColor: "rgba(220,38,38,0.3)",
+                              borderColor: "rgba(194,40,40,0.3)",
                             }}
                           >
                             {i18n.t("settings.credentials.delete")}
@@ -1527,7 +1527,7 @@ export function SettingsPage() {
                       title={c.credential_health === "key_unavailable" ? "凭证加密 key 未配置。请管理员设置 VULNHUNTER_MASTER_KEY_FILE。" : "凭证无法用当前 master key 解密，请重新输入 API Key 并保存。"}
                       style={{
                         fontSize: "11px",
-                        color: "#b45309",
+                        color: "var(--sev-medium)",
                         background: "rgba(180,83,9,0.08)",
                         borderRadius: "999px",
                         padding: "2px 8px",

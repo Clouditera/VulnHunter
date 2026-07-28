@@ -227,7 +227,7 @@ export function SmtpSection() {
             width: 8,
             height: 8,
             borderRadius: "50%",
-            background: configured ? "var(--status-completed, #16a34a)" : "var(--text-secondary)",
+            background: configured ? "var(--status-completed, var(--status-completed))" : "var(--text-secondary)",
           }}
         />
         {configured
@@ -244,7 +244,7 @@ export function SmtpSection() {
           style={{
             marginTop: "12px",
             fontSize: "12.5px",
-            color: msg.kind === "ok" ? "var(--status-completed, #16a34a)" : "var(--brand)",
+            color: msg.kind === "ok" ? "var(--status-completed, var(--status-completed))" : "var(--brand)",
           }}
         >
           {msg.text}

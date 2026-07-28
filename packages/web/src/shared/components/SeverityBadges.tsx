@@ -3,16 +3,13 @@ import type { SeverityCounts } from "../api/client.js";
 
 /**
  * Mini severity badges — `2H 5M 3L 2I`.
- * Matches prototype `.sev-badges` + `.sev-mini.{h,m,l,i}`.
- *
- * Badges for zero-count severities are omitted.
- * When all counts are zero, returns null — caller decides the fallback text.
+ * Functional colors for letter; soft tint bg; counts use brand-neutral text via fg color.
  */
 
 const STYLES: Record<keyof SeverityCounts, { bg: string; fg: string; letter: string }> = {
-  high: { bg: "rgba(234,88,12,0.15)", fg: "var(--sev-high)", letter: "H" },
-  medium: { bg: "rgba(202,138,4,0.15)", fg: "var(--sev-medium)", letter: "M" },
-  low: { bg: "rgba(37,99,235,0.15)", fg: "var(--sev-low)", letter: "L" },
+  high: { bg: "rgba(242,79,79,0.12)", fg: "var(--sev-high)", letter: "H" },
+  medium: { bg: "rgba(255,115,60,0.12)", fg: "var(--sev-medium)", letter: "M" },
+  low: { bg: "rgba(247,197,48,0.15)", fg: "var(--text-secondary)", letter: "L" },
   info: { bg: "rgba(156,163,175,0.15)", fg: "var(--sev-info)", letter: "I" },
 };
 
@@ -22,7 +19,7 @@ const BADGE_BASE: CSSProperties = {
   fontSize: "10px",
   fontWeight: 700,
   lineHeight: 1.4,
-  fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+  fontFamily: "var(--font-mono)",
 };
 
 export function SeverityBadges({

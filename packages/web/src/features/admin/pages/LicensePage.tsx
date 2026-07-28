@@ -67,8 +67,8 @@ export function LicensePage() {
                 borderRadius: 999,
                 fontSize: 12,
                 fontWeight: 600,
-                background: license?.status === "active" ? "rgba(22,163,74,0.12)" : "rgba(220,38,38,0.1)",
-                color: license?.status === "active" ? "#16a34a" : "var(--brand)",
+                background: license?.status === "active" ? "rgba(22,163,74,0.12)" : "rgba(194,40,40,0.1)",
+                color: license?.status === "active" ? "var(--status-completed)" : "var(--brand)",
               }}
             >
               {license?.status ?? "—"}
@@ -148,7 +148,7 @@ export function LicensePage() {
             </button>
           </div>
           {error ? <div style={{ color: "var(--brand)", marginTop: 10, fontSize: 13 }}>{error}</div> : null}
-          {ok ? <div style={{ color: "#16a34a", marginTop: 10, fontSize: 13 }}>{i18n.t("activate.success")}</div> : null}
+          {ok ? <div style={{ color: "var(--status-completed)", marginTop: 10, fontSize: 13 }}>{i18n.t("activate.success")}</div> : null}
         </form>
       </section>
     </div>

@@ -72,12 +72,10 @@ export function CloudRouterPromo() {
     padding: "18px 20px",
     borderRadius: 12,
     marginBottom: 16,
-    border: dark
-      ? "1px solid rgba(129,140,248,0.35)"
-      : "1px solid rgba(99,102,241,0.28)",
+    border: "1px solid var(--partner-border)",
     background: dark
-      ? "linear-gradient(120deg, rgba(76,29,149,0.28), rgba(30,58,138,0.24))"
-      : "linear-gradient(120deg, #f5f3ff, #eff6ff)",
+      ? "linear-gradient(120deg, var(--partner-grad-from), var(--partner-grad-to))"
+      : "linear-gradient(120deg, var(--partner-grad-from), var(--partner-grad-to))",
   };
 
   return (
@@ -101,7 +99,7 @@ export function CloudRouterPromo() {
               padding: "2px 6px",
               borderRadius: 4,
               border: dark ? "1px solid rgba(165,180,252,0.5)" : "1px solid rgba(99,102,241,0.45)",
-              color: dark ? "#a5b4fc" : "#4f46e5",
+              color: dark ? "var(--partner-accent)" : "var(--brand-hover)",
             }}
           >
             {i18n.t("settings.creds.cloudRouter.tag")}
@@ -115,7 +113,7 @@ export function CloudRouterPromo() {
             margin: 0,
             fontSize: 12.5,
             fontWeight: 500,
-            color: dark ? "#a5b4fc" : "#4338ca",
+            color: dark ? "var(--partner-accent)" : "var(--brand-active)",
             lineHeight: 1.5,
           }}
         >
@@ -125,12 +123,15 @@ export function CloudRouterPromo() {
 
       <div style={{ flexShrink: 0, minWidth: 160, display: "flex", flexDirection: "column", gap: 8, alignItems: "stretch" }}>
         {myCode ? (
+          <>
           <ClaimedPanel
             code={myCode}
             copied={copied}
             onCopy={() => void copyCode(myCode)}
             dark={dark}
           />
+          <BalanceStrip />
+          </>
         ) : poolEmpty ? (
           <>
             <GoButton />
@@ -161,9 +162,9 @@ export function CloudRouterPromo() {
                 height: 34,
                 padding: "0 14px",
                 borderRadius: 8,
-                border: "1px solid #6366f1",
+                border: "1px solid var(--brand)",
                 background: "var(--bg-card)",
-                color: "#6366f1",
+                color: "var(--brand)",
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: claimMut.isPending ? "wait" : "pointer",
@@ -220,7 +221,7 @@ function GoButton() {
         padding: "0 14px",
         borderRadius: 8,
         border: "none",
-        background: "#6366f1",
+        background: "var(--brand)",
         color: "#fff",
         fontSize: 12,
         fontWeight: 600,
@@ -231,10 +232,10 @@ function GoButton() {
         gap: 6,
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = "#4f46e5";
+        e.currentTarget.style.background = "var(--brand-hover)";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = "#6366f1";
+        e.currentTarget.style.background = "var(--brand)";
       }}
     >
       {i18n.t("settings.creds.cloudRouter.go")} ↗
@@ -264,7 +265,7 @@ function ClaimedPanel({
         border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(99,102,241,0.2)",
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 600, color: dark ? "#a5b4fc" : "#4f46e5", marginBottom: 6 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: dark ? "var(--partner-accent)" : "var(--brand-hover)", marginBottom: 6 }}>
         {i18n.t("settings.creds.cloudRouter.claimedLabel")}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -290,9 +291,9 @@ function ClaimedPanel({
             width: 26,
             height: 26,
             borderRadius: 6,
-            border: "1px solid #6366f1",
+            border: "1px solid var(--brand)",
             background: "transparent",
-            color: "#6366f1",
+            color: "var(--brand)",
             cursor: "pointer",
             display: "grid",
             placeItems: "center",
@@ -308,12 +309,96 @@ function ClaimedPanel({
           href={CR_URL}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: dark ? "#a5b4fc" : "#4f46e5", fontWeight: 700, textDecoration: "none" }}
+          style={{ color: dark ? "var(--partner-accent)" : "var(--brand-hover)", fontWeight: 700, textDecoration: "none" }}
         >
           CloudRouter
         </a>
         {i18n.t("settings.creds.cloudRouter.claimedGuideAfter")}
       </p>
+    </div>
+  );
+}
+
+
+/** CloudRouter balance — expanded strip under claimed code. */
+function BalanceStrip() {
+  const qc = useQueryClient();
+  const { data, isFetching, refetch, isError } = useQuery({
+    queryKey: ["promo-cloudrouter-balance"],
+    queryFn: () => api.promo.cloudrouter.balance(),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const [, tick] = useState(0);
+  useEffect(() => i18n.onChange(() => tick((n) => n + 1)), []);
+
+  const unavailable = !data || data.available === false;
+  const amount =
+    data && data.available && data.remaining != null
+      ? `${data.remaining} ${data.unit ?? "USD"}`
+      : null;
+  const updated =
+    data && data.available && data.updated_at
+      ? new Date(data.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : null;
+
+  return (
+    <div
+      data-testid="cloudrouter-balance"
+      style={{
+        marginTop: 8,
+        padding: "10px 12px",
+        borderRadius: 8,
+        background: "var(--bg-card)",
+        border: "1px solid var(--border)",
+        fontSize: 12,
+        color: "var(--text-secondary)",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        flexWrap: "wrap",
+        minWidth: 250,
+      }}
+    >
+      <Icon name="activity" size={14} style={{ color: "var(--brand)", flexShrink: 0 }} />
+      {unavailable || isError ? (
+        <span style={{ flex: 1 }} data-testid="cloudrouter-balance-unavailable">
+          {i18n.t("settings.creds.cloudRouter.balanceUnavailable")}
+        </span>
+      ) : (
+        <span style={{ flex: 1 }} data-testid="cloudrouter-balance-value">
+          {i18n.t("settings.creds.cloudRouter.balanceLabel")}{" "}
+          <strong style={{ color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
+            {amount ?? "—"}
+          </strong>
+          {updated ? (
+            <span style={{ marginLeft: 6, fontSize: 11 }}>
+              · {i18n.t("settings.creds.cloudRouter.balanceUpdated").replace("{t}", updated)}
+            </span>
+          ) : null}
+        </span>
+      )}
+      <button
+        type="button"
+        data-testid="cloudrouter-balance-refresh"
+        disabled={isFetching}
+        onClick={() => {
+          void qc.invalidateQueries({ queryKey: ["promo-cloudrouter-balance"] });
+          void refetch();
+        }}
+        style={{
+          border: "1px solid var(--border)",
+          background: "transparent",
+          borderRadius: 6,
+          padding: "4px 8px",
+          fontSize: 11,
+          fontWeight: 600,
+          color: "var(--brand)",
+          cursor: isFetching ? "wait" : "pointer",
+        }}
+      >
+        {isFetching ? "…" : i18n.t("settings.creds.cloudRouter.balanceRefresh")}
+      </button>
     </div>
   );
 }
@@ -339,7 +424,7 @@ export function CredentialsEmptyNotice({ onAdd }: { onAdd: () => void }) {
         color: "var(--text-primary)",
       }}
     >
-      <Icon name="info" size={15} style={{ color: "#2563eb", flexShrink: 0 }} />
+      <Icon name="info" size={15} style={{ color: "var(--brand)", flexShrink: 0 }} />
       <span style={{ flex: 1 }}>{i18n.t("settings.creds.emptyNotice")}</span>
       <button
         type="button"

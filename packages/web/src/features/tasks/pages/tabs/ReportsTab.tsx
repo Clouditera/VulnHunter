@@ -430,7 +430,7 @@ function ReportRow({
 function StatusDot({ status }: { status: UserReport["status"] }) {
   const color =
     status === "completed"
-      ? "var(--status-completed, #22c55e)"
+      ? "var(--status-completed, var(--status-completed))"
       : status === "failed"
         ? "var(--brand)"
         : "var(--status-running, #3b82f6)";
@@ -603,7 +603,7 @@ function ReportBody({
             background: "var(--bg-error)",
             padding: "12px",
             borderRadius: "6px",
-            border: "1px solid rgba(220,38,38,0.28)",
+            border: "1px solid rgba(194,40,40,0.28)",
           }}
         >
           {report.failure_reason || "unknown error"}

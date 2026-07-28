@@ -8,14 +8,13 @@ import { i18n } from "../i18n/index.js";
 type State = "running" | "preparing" | "completed" | "failed" | "queued" | "cancelled" | "paused";
 
 const STATE_STYLES: Record<State, { bg: string; fg: string; dot?: boolean }> = {
-  running: { bg: "rgba(37, 99, 235, 0.12)", fg: "#2563eb", dot: true },
-  // preparing: cloning/uploading code — in-progress (blue, pulsing) but pre-scan.
-  preparing: { bg: "rgba(37, 99, 235, 0.10)", fg: "#1d4ed8", dot: true },
-  completed: { bg: "rgba(22, 163, 74, 0.12)", fg: "#166534" },
-  failed: { bg: "rgba(220, 38, 38, 0.12)", fg: "#dc2626" },
-  queued: { bg: "rgba(202, 138, 4, 0.12)", fg: "#92400e" },
-  cancelled: { bg: "rgba(115, 115, 115, 0.14)", fg: "#525252" },
-  paused: { bg: "rgba(234, 88, 12, 0.12)", fg: "#ea580c" },
+  running: { bg: "rgba(40, 209, 255, 0.14)", fg: "var(--text-primary)", dot: true },
+  preparing: { bg: "rgba(41, 140, 255, 0.12)", fg: "var(--brand)", dot: true },
+  completed: { bg: "rgba(58, 209, 134, 0.12)", fg: "var(--text-primary)" },
+  failed: { bg: "var(--danger-soft)", fg: "var(--danger)" },
+  queued: { bg: "rgba(247, 197, 48, 0.14)", fg: "var(--text-primary)" },
+  cancelled: { bg: "rgba(97, 109, 126, 0.14)", fg: "var(--text-secondary)" },
+  paused: { bg: "rgba(255, 115, 60, 0.12)", fg: "var(--sev-high)" },
 };
 
 export function StatusPill({ state, size = "md" }: { state: string; size?: "sm" | "md" }) {
@@ -47,7 +46,7 @@ export function StatusPill({ state, size = "md" }: { state: string; size?: "sm" 
             width: "6px",
             height: "6px",
             borderRadius: "50%",
-            background: style.fg,
+            background: state === "running" ? "var(--status-running)" : style.fg,
             display: "inline-block",
             animation: "va-pulse 1.4s ease-in-out infinite",
           }}

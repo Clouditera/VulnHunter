@@ -156,7 +156,7 @@ export function SkillsSection() {
             marginBottom: "12px",
             background: "var(--bg-error)",
             color: "var(--brand)",
-            border: "1px solid rgba(220,38,38,0.28)",
+            border: "1px solid rgba(194,40,40,0.28)",
             borderRadius: "6px",
             fontSize: "12px",
           }}
@@ -323,7 +323,7 @@ function SkillRow({
         onClick={onDelete}
         style={{
           padding: "4px 10px",
-          border: "1px solid rgba(220,38,38,0.3)",
+          border: "1px solid rgba(194,40,40,0.3)",
           borderRadius: "5px",
           background: "var(--bg-card)",
           color: "var(--brand)",

@@ -485,7 +485,7 @@ const ACTION_BTN: CSSProperties = {
   padding: "6px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: "var(--text-primary)",
 };
 const LINK_BTN: CSSProperties = {
-  border: "none", background: "none", color: "var(--link, #2563eb)", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+  border: "none", background: "none", color: "var(--link, var(--brand))", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
 };
 const GROUP_LABEL: CSSProperties = {
   fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", padding: "10px 10px 4px", letterSpacing: "0.02em",
@@ -501,7 +501,7 @@ const OP_BTN: CSSProperties = {
 };
 const CURRENT_BADGE: CSSProperties = {
   fontSize: 9.5, fontWeight: 700, padding: "1px 6px", borderRadius: 999,
-  background: "rgba(22,163,74,0.12)", color: "#16a34a", border: "1px solid rgba(22,163,74,0.28)", flexShrink: 0,
+  background: "rgba(22,163,74,0.12)", color: "var(--status-completed)", border: "1px solid rgba(22,163,74,0.28)", flexShrink: 0,
 };
 const EMPTY: CSSProperties = {
   textAlign: "center", color: "var(--text-secondary)", fontSize: 13, padding: "48px 16px",

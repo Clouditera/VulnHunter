@@ -52,7 +52,7 @@ export function SystemPage() {
         <div style={{ color: "var(--brand)", marginBottom: 12, fontSize: 13 }}>{err}</div>
       ) : null}
       {msg ? (
-        <div style={{ color: "#16a34a", marginBottom: 12, fontSize: 13 }}>{msg}</div>
+        <div style={{ color: "var(--status-completed)", marginBottom: 12, fontSize: 13 }}>{msg}</div>
       ) : null}
 
       <section style={adminCardStyle} data-testid="admin-card-engine">

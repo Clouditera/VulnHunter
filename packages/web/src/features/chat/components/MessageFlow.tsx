@@ -283,7 +283,7 @@ function WelcomeState({ onSuggest }: { onSuggest?: (text: string, submit?: boole
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.borderColor = "var(--brand)";
-              e.currentTarget.style.boxShadow = "0 2px 8px rgba(220,38,38,0.08)";
+              e.currentTarget.style.boxShadow = "0 2px 8px rgba(194,40,40,0.08)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.borderColor = "var(--border)";

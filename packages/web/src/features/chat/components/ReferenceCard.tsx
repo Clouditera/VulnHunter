@@ -7,7 +7,7 @@ const TYPE_STYLE: Record<
   ChatReferenceArtifact["type"],
   { icon: IconName; bg: string; color: string; fallback: string }
 > = {
-  task_ref: { icon: "tasks", bg: "rgba(37,99,235,0.08)", color: "#2563eb", fallback: "Task" },
+  task_ref: { icon: "tasks", bg: "rgba(37,99,235,0.08)", color: "var(--brand)", fallback: "Task" },
   finding_ref: {
     icon: "alert-triangle",
     bg: "rgba(234,88,12,0.08)",
@@ -23,7 +23,7 @@ const TYPE_STYLE: Record<
   report_ref: {
     icon: "file-text",
     bg: "rgba(22,163,74,0.08)",
-    color: "#16a34a",
+    color: "var(--status-completed)",
     fallback: "Report",
   },
 };

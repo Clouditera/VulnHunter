@@ -80,7 +80,7 @@ export function TaskRefDetail({ artifact }: { artifact: ChatReferenceArtifact })
     <div data-testid="ref-detail-task" style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
       <DetailHeader
         icon="tasks"
-        color="#2563eb"
+        color="var(--brand)"
         title={task.display_name || task.project_name}
         to={`/tasks/${task.id}`}
       />

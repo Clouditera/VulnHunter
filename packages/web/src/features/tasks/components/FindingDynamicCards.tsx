@@ -134,7 +134,7 @@ function AccordionArtifactList({
                   display: "grid",
                   placeItems: "center",
                   background: "var(--bg-page)",
-                  color: "#2563eb",
+                  color: "var(--brand)",
                   fontSize: "9px",
                   fontWeight: 800,
                   flexShrink: 0,
@@ -246,7 +246,7 @@ export function StaticStatusCard({ finding }: { finding: FindingMeta }) {
         {i18n.t("finding.cards.static.title")}
       </div>
       <div style={{ marginBottom: "4px" }}>
-        <StateBadge color="#2563eb" icon="check-circle" label={i18n.t("finding.cards.static.confirmed")} />
+        <StateBadge color="var(--brand)" icon="check-circle" label={i18n.t("finding.cards.static.confirmed")} />
       </div>
       <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
         {isRisk ? i18n.t("finding.cards.static.helperRisk") : i18n.t("finding.cards.static.helper")}
@@ -302,7 +302,7 @@ function StageStatusCard({
       <div style={{ marginBottom: "4px" }}>
         {derived ? (
           <StateBadge
-            color={derived === "env_lost" ? "#dc2626" : "#737373"}
+            color={derived === "env_lost" ? "var(--danger)" : "#737373"}
             icon="clock"
             label={i18n.t(`finding.cards.${derivedLabelKey}`)}
           />
@@ -318,7 +318,7 @@ function StageStatusCard({
         <div
           style={{
             fontSize: "12px",
-            color: "#ca8a04",
+            color: "var(--sev-medium)",
             background: "rgba(202,138,4,0.08)",
             border: "1px solid rgba(202,138,4,0.3)",
             borderRadius: "6px",
@@ -440,11 +440,11 @@ export type TabStatusPill = {
   border: string;
 };
 
-const PILL_GREEN = { background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0" };
-const PILL_RED = { background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" };
+const PILL_GREEN = { background: "#f0fdf4", color: "var(--status-completed)", border: "1px solid #bbf7d0" };
+const PILL_RED = { background: "var(--bg-error)", color: "var(--danger)", border: "1px solid var(--danger-border)" };
 const PILL_AMBER = { background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a" };
 const PILL_GRAY = { background: "var(--bg-page)", color: "var(--text-secondary)", border: "1px solid var(--border)" };
-const PILL_BLUE = { background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe" };
+const PILL_BLUE = { background: "#eff6ff", color: "var(--brand)", border: "1px solid #bfdbfe" };
 const PILL_CYAN = { background: "#ecfeff", color: "#0891b2", border: "1px solid #a5f3fc" };
 
 /** Compact status pill for sub-tab labels (动态验证 / 可利用性评估). */

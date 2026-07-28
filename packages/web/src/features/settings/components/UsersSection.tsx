@@ -89,7 +89,7 @@ export function UsersSection() {
             <div style={{ width: "24px", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <span style={{
                 width: "8px", height: "8px", borderRadius: "50%",
-                background: u.status === "active" ? "var(--status-completed, #16a34a)" : "transparent",
+                background: u.status === "active" ? "var(--status-completed, var(--status-completed))" : "transparent",
                 border: u.status === "active" ? "none" : "1.5px solid var(--text-secondary)",
               }} />
             </div>
@@ -156,7 +156,7 @@ function SourceBadge({ source }: { source?: string }) {
         padding: "2px 7px",
         borderRadius: "999px",
         background: registered ? "rgba(37,99,235,0.1)" : "var(--bg-page)",
-        color: registered ? "#2563eb" : "var(--text-secondary)",
+        color: registered ? "var(--brand)" : "var(--text-secondary)",
         border: `1px solid ${registered ? "rgba(37,99,235,0.25)" : "var(--border)"}`,
       }}
     >
@@ -390,7 +390,7 @@ function RadioBtn({ active, onClick, label }: { active: boolean; onClick: () => 
   return (
     <button onClick={onClick} style={{
       flex: 1, padding: "8px 12px", border: `1px solid ${active ? "var(--brand)" : "var(--border)"}`,
-      borderRadius: "6px", background: active ? "rgba(220,38,38,0.05)" : "transparent",
+      borderRadius: "6px", background: active ? "rgba(194,40,40,0.05)" : "transparent",
       color: active ? "var(--brand)" : "var(--text-primary)", fontSize: "12px", fontWeight: active ? 600 : 400, cursor: "pointer", textAlign: "left",
     }}>
       {label}

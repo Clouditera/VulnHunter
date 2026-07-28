@@ -18,7 +18,7 @@ const SEV_COLORS = {
 };
 
 // Distinct palette for vulnerability type bars — rotates through 5 hues.
-const VULN_TYPE_BAR_COLORS = ["#2563eb", "#7c3aed", "#dc2626", "#ea580c", "#0891b2"];
+const VULN_TYPE_BAR_COLORS = ["var(--brand)", "#7c3aed", "var(--danger)", "var(--sev-high)", "#0891b2"];
 
 /** Compact token count: 1234 → "1,234", 12345 → "12.3K", 1234567 → "1.23M". */
 function formatTokenCount(n: number): string {
@@ -218,7 +218,7 @@ export function DashboardPage() {
           value={stats.total_scans?.value ?? 0}
           sub={stats.total_scans?.delta ?? ""}
           icon="file-text"
-          iconColor="#2563eb"
+          iconColor="var(--brand)"
           iconBg="var(--bg-info)"
         />
         <StatCard
@@ -236,7 +236,7 @@ export function DashboardPage() {
           value={`${stats.avg_duration_min?.value ?? 0} min`}
           sub={i18n.t("dashboard.perScan")}
           icon="clock"
-          iconColor="#16a34a"
+          iconColor="var(--status-completed)"
           iconBg="var(--bg-success)"
         />
         <StatCard
