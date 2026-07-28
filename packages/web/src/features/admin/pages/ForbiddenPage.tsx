@@ -1,4 +1,6 @@
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { api } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 
@@ -33,7 +35,7 @@ export function ForbiddenPage() {
             height: 56,
             borderRadius: 14,
             margin: "0 auto 16px",
-            background: "rgba(194,40,40,0.1)",
+            background: "var(--brand-soft)",
             color: "var(--brand)",
             display: "grid",
             placeItems: "center",
@@ -81,6 +83,12 @@ export function ForbiddenPage() {
 /** Shown when an admin account hits the main business app */
 export function AdminBusinessBlockedPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  async function logout() {
+    try { await api.auth.logout(); } catch { /* ignore */ }
+    qc.clear();
+    navigate("/login");
+  }
   return (
     <div
       data-testid="admin-business-blocked"
@@ -109,7 +117,7 @@ export function AdminBusinessBlockedPage() {
             height: 56,
             borderRadius: 14,
             margin: "0 auto 16px",
-            background: "rgba(194,40,40,0.1)",
+            background: "var(--brand-soft)",
             color: "var(--brand)",
             display: "grid",
             placeItems: "center",
@@ -162,7 +170,7 @@ export function AdminBusinessBlockedPage() {
           </button>
           <button
             type="button"
-            onClick={() => void navigate("/login")}
+            onClick={() => void logout()}
             style={{
               padding: "10px 18px",
               border: "1px solid var(--border)",

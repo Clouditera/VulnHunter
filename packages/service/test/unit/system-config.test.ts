@@ -17,6 +17,15 @@ vi.mock("../../src/infra/db/client.js", () => ({
 const { updateSystemConfig, getSystemConfig } = await import("../../src/features/settings/storage.js");
 
 describe("system config validation", () => {
+  it("allows high max_parallel_scan without upper bound", async () => {
+    await updateSystemConfig({ max_parallel_scan: 50 });
+    const saved = await getSystemConfig();
+    expect(saved).toMatchObject({ max_parallel_scan: 50 });
+  });
+  it("rejects non-positive max_parallel_scan", async () => {
+    await expect(updateSystemConfig({ max_parallel_scan: 0 })).rejects.toThrow(/max_parallel_scan/);
+  });
+
   beforeEach(() => {
     config = { max_parallel_scan: 3, youngflow_max_parallel: 3 };
     delete process.env.UPLOAD_GATEWAY_LIMIT_MB;

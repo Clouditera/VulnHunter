@@ -4,6 +4,7 @@ import { api, type CreditCodeItem } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { AdminPageHeader, adminCardStyle } from "../layout.js";
+import { copyText } from "../../../shared/lib/copy-text.js";
 
 export function CreditsPage() {
   const qc = useQueryClient();
@@ -48,10 +49,10 @@ export function CreditsPage() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   async function copyCode(code: string) {
-    try {
-      await navigator.clipboard.writeText(code);
-    } catch {
-      /* ignore */
+    const ok = await copyText(code);
+    if (!ok) {
+      // silent fail with console for now
+      console.warn("copy failed");
     }
   }
 

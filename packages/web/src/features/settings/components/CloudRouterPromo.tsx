@@ -9,6 +9,7 @@ import { api } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { theme } from "../../../shared/theme/index.js";
+import { copyText } from "../../../shared/lib/copy-text.js";
 
 const CR_URL = "https://cloudrouter.online";
 
@@ -76,13 +77,15 @@ export function CloudRouterPromo() {
 
   async function copyCode(code: string) {
     try {
-      await navigator.clipboard.writeText(code);
+      const ok = await copyText(code);
+      if (!ok) throw new Error("copy_failed");
       setCopied(true);
       setToast(i18n.t("settings.creds.cloudRouter.copied"));
       setTimeout(() => setCopied(false), 1200);
       setTimeout(() => setToast(""), 2200);
     } catch {
-      /* ignore */
+      setToast(i18n.t("copy.failed"));
+      setTimeout(() => setToast(""), 2200);
     }
   }
 

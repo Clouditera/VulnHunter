@@ -11,6 +11,7 @@ import { FindingRefDetail } from "./ref-details/FindingRefDetail.js";
 import { ReportRefDetail } from "./ref-details/ReportRefDetail.js";
 import { TaskRefDetail } from "./ref-details/TaskRefDetail.js";
 import { WikiRefDetail } from "./ref-details/WikiRefDetail.js";
+import { copyText } from "../../../shared/lib/copy-text.js";
 
 const ACTION: CSSProperties = {
   height: "28px",
@@ -286,7 +287,7 @@ function ArtifactDetail({ artifact }: { artifact: ChatArtifactUnion }) {
                   background: "var(--bg-card)",
                   color: "var(--text-primary)",
                 }}
-                onClick={() => navigator.clipboard?.writeText(artifact.preview ?? "")}
+                onClick={() => { void copyText(artifact.preview ?? ""); }}
               >
                 复制
               </button>
