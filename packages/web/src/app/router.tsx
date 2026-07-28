@@ -149,8 +149,8 @@ function AdminRoleGuard() {
   const { data: status, isLoading } = useSystemStatus();
   const { data: serviceRole, isLoading: roleLoading } = useServiceRole();
   if (isLoading || roleLoading) return <LoadingScreen />;
-  // Admin UI APIs only exist on admin-api — never render half-broken admin on business web
-  if (serviceRole !== "admin") return <AdminBusinessBlockedPage />;
+  // business entry (or SPA HTML fallback) → guide only; never half-broken admin UI
+  if (serviceRole === "business" || serviceRole === "unknown") return <AdminBusinessBlockedPage />;
   if (status?.user?.role !== "admin") return <ForbiddenPage />;
   return <Outlet />;
 }
