@@ -79,6 +79,10 @@ export function useChat() {
   // Id of the assistant message currently being streamed (one at a time).
   const currentAssistantId = useRef<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const activeIdRef = useRef<string | null>(null);
+  const draftSessionRef = useRef<ChatSession | null>(null);
+  activeIdRef.current = activeId;
+  draftSessionRef.current = draftSession;
 
   const pushActivity = useCallback((sid: string, draft: ActivityDraft) => {
     const now = Date.now();
@@ -175,7 +179,7 @@ export function useChat() {
   /* --------------------------------------------------------------------- */
 
   useEffect(() => {
-    if (!activeId) return;
+    if (!activeId || activeId === "draft") return;
     let mounted = true;
     // Short-circuit if we already have a populated buffer (switching away +
     // back shouldn't clobber in-flight streams).
@@ -201,7 +205,7 @@ export function useChat() {
   /* --------------------------------------------------------------------- */
 
   useEffect(() => {
-    if (!activeId) return;
+    if (!activeId || activeId === "draft") return;
     let mounted = true;
     refreshArtifacts(activeId)
       .then(() => {
@@ -243,7 +247,7 @@ export function useChat() {
   /* --------------------------------------------------------------------- */
 
   useEffect(() => {
-    if (!activeId) return;
+    if (!activeId || activeId === "draft") return;
     // Reset per-session transient state whenever we switch / reconnect.
     // Without this, a stale `currentAssistantId.current` or `streaming`
     // flag from the previous session can cause replayed bridge-proxy
@@ -565,39 +569,60 @@ export function useChat() {
     return activeId;
   }, [draftSession, activeId, createSession]);
 
-  const deleteSession = useCallback(
-    async (id: string) => {
-      try {
-        await api.chat.sessions.delete(id);
-      } catch {
-        /* ignore; UI removal is what the user sees */
-      }
-      const wasActive = activeId === id || draftSession?.id === id;
-      setSessions((prev) => prev.filter((s) => s.id !== id));
-      setMessagesBySession((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      if (draftSession?.id === id) setDraftSession(null);
-      if (wasActive) {
-        // Clear chat pane → empty draft so leftover messages don't stick (VULNHUN-152).
-        const draft: ChatSession = {
-          id: "draft",
-          title: "New Chat",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          worker_state: "idle",
-          credential_id: null,
-        };
-        setDraftSession(draft);
-        setMessagesBySession((prev) => ({ ...prev, [draft.id]: [] }));
-        setActiveId(draft.id);
-        setStreaming(false);
-      }
-    },
-    [activeId, draftSession],
-  );
+  const deleteSession = useCallback(async (id: string) => {
+    // Close WS immediately so in-flight events cannot repopulate the pane.
+    try {
+      wsRef.current?.close();
+    } catch {
+      /* ignore */
+    }
+    wsRef.current = null;
+    currentAssistantId.current = null;
+
+    const wasActive = activeIdRef.current === id || draftSessionRef.current?.id === id;
+
+    // Optimistic UI clear first (don't wait for network).
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    setMessagesBySession((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      if (wasActive) next.draft = [];
+      return next;
+    });
+    setArtifactsBySession((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setActivitiesBySession((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setStreaming(false);
+    setLastError(null);
+
+    if (wasActive || draftSessionRef.current?.id === id) {
+      const draft: ChatSession = {
+        id: "draft",
+        title: "New Chat",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        worker_state: "idle",
+        credential_id: null,
+      };
+      setDraftSession(draft);
+      setActiveId(draft.id);
+      activeIdRef.current = draft.id;
+      draftSessionRef.current = draft;
+    }
+
+    try {
+      await api.chat.sessions.delete(id);
+    } catch {
+      /* ignore; UI already cleared */
+    }
+  }, []);
 
   const sendPrompt = useCallback(
     async (text: string, images?: ChatImageAttachment[]) => {

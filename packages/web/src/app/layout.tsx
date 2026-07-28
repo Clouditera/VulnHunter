@@ -201,13 +201,14 @@ export function AppLayout() {
   async function handleDeleteSession(session: RecentSession) {
     const ok = window.confirm(`Delete chat “${session.title}”?`);
     if (!ok) return;
-    if (location.pathname === "/chat") {
-      window.dispatchEvent(new CustomEvent("vh:delete-session", { detail: { id: session.id } }));
-    } else {
+    // Always notify chat host first so the open pane clears even if delete races.
+    window.dispatchEvent(new CustomEvent("vh:delete-session", { detail: { id: session.id } }));
+    if (location.pathname !== "/chat") {
+      // ChatProvider unmounted off /chat — host won't run API delete.
       try {
         await api.chat.sessions.delete(session.id);
       } catch {
-        // Keep UI optimistic, matching legacy SessionList behavior.
+        /* optimistic */
       }
       window.dispatchEvent(new CustomEvent("vh:sessions-changed"));
     }
