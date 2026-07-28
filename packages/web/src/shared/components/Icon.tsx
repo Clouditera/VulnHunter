@@ -61,7 +61,9 @@ export type IconName =
   | "trending-down"
   | "minus-circle"
   | "gift"
-  | "mail";
+  | "mail"
+  | "help-circle"
+  | "target";
 
 interface IconProps {
   name: IconName;
@@ -380,6 +382,20 @@ const PATHS: Record<IconName, JSX.Element> = {
     <>
       <rect x="3" y="5" width="18" height="14" rx="2" />
       <path d="M3 7l9 6 9-6" />
+    </>
+  ),
+  "help-circle": (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.5a2.5 2.5 0 1 1 3.2 2.4c-.7.3-1.2.9-1.2 1.6V14" />
+      <circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="none" />
+    </>
+  ),
+  target: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
     </>
   ),
 };

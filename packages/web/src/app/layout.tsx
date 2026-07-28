@@ -13,6 +13,7 @@ import { useNotifications } from "../shared/hooks/useNotifications.js";
 import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
 import { SessionSearchModal } from "../features/chat/components/SessionSearchModal.js";
 import { FeedbackModal } from "../features/feedback/components/FeedbackModal.js";
+import { OnboardingHost } from "../features/onboarding/OnboardingModal.js";
 
 const NAV_ITEMS: Array<{ to: string; icon: IconName; labelKey: string; testid: string }> = [
   { to: "/chat", icon: "chat", labelKey: "nav.chat", testid: "nav-chat" },
@@ -373,6 +374,7 @@ export function AppLayout() {
 
         <div data-testid="nav-bottom" style={collapsed ? FOOTER_COLLAPSED : FOOTER_EXPANDED}>
           {!collapsed ? (
+            <>
             <button
               type="button"
               data-testid="sidebar-feedback"
@@ -397,7 +399,33 @@ export function AppLayout() {
               <Icon name="send" size={14} />
               <span>{i18n.t("nav.feedback")}</span>
             </button>
+            <button
+              type="button"
+              data-testid="sidebar-onboarding"
+              className="va-sidebar-button"
+              onClick={() => window.dispatchEvent(new CustomEvent("vh:open-onboarding"))}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                width: "100%",
+                padding: "8px 10px",
+                border: "none",
+                borderRadius: 8,
+                background: "transparent",
+                color: "rgba(255,255,255,0.7)",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                marginBottom: 4,
+              }}
+            >
+              <Icon name="help-circle" size={14} />
+              <span>{i18n.t("nav.onboarding")}</span>
+            </button>
+            </>
           ) : (
+            <>
             <button
               type="button"
               data-testid="sidebar-feedback"
@@ -411,6 +439,20 @@ export function AppLayout() {
             >
               <Icon name="send" size={15} />
             </button>
+            <button
+              type="button"
+              data-testid="sidebar-onboarding"
+              className="va-sidebar-button"
+              title={i18n.t("nav.onboarding")}
+              onClick={() => window.dispatchEvent(new CustomEvent("vh:open-onboarding"))}
+              style={{
+                width: 40, height: 40, border: "none", borderRadius: 10, background: "transparent",
+                color: "rgba(255,255,255,0.7)", cursor: "pointer", display: "grid", placeItems: "center", margin: "0 auto 6px",
+              }}
+            >
+              <Icon name="help-circle" size={15} />
+            </button>
+            </>
           )}
           <VersionEntry
             collapsed={collapsed}
@@ -463,6 +505,7 @@ export function AppLayout() {
         onNewChat={handleNewChat}
       />
       <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+      {!isAdmin ? <OnboardingHost /> : null}
     </div>
   );
 }

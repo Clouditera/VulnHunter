@@ -1,0 +1,28 @@
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Central hub -->
+  <circle cx="12" cy="12" r="3.5" fill="#2563eb"/>
+
+  <!-- Left endpoint nodes -->
+  <circle cx="3" cy="4" r="1.5" fill="#2563eb"/>
+  <circle cx="3" cy="9" r="1.5" fill="#2563eb"/>
+  <circle cx="3" cy="15" r="1.5" fill="#2563eb"/>
+  <circle cx="3" cy="20" r="1.5" fill="#2563eb"/>
+
+  <!-- Right endpoint nodes -->
+  <circle cx="21" cy="4" r="1.5" fill="#2563eb"/>
+  <circle cx="21" cy="9" r="1.5" fill="#2563eb"/>
+  <circle cx="21" cy="15" r="1.5" fill="#2563eb"/>
+  <circle cx="21" cy="20" r="1.5" fill="#2563eb"/>
+
+  <!-- Left connection lines -->
+  <path d="M4.5 4L8.5 9" stroke="#2563eb" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M4.5 9L8.5 11" stroke="#2563eb" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M4.5 15L8.5 13" stroke="#2563eb" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M4.5 20L8.5 15" stroke="#2563eb" stroke-width="1.2" stroke-linecap="round"/>
+
+  <!-- Right connection lines -->
+  <path d="M19.5 4L15.5 9" stroke="#2563eb" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M19.5 9L15.5 11" stroke="#2563eb" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M19.5 15L15.5 13" stroke="#2563eb" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M19.5 20L15.5 15" stroke="#2563eb" stroke-width="1.2" stroke-linecap="round"/>
+</svg>

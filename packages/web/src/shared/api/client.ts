@@ -550,7 +550,7 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ new_password }),
       }),
-    updateMe: (data: { display_name?: string }) =>
+    updateMe: (data: { display_name?: string; onboarding_dismissed?: boolean }) =>
       request<{ ok: boolean }>("/api/auth/me", {
         method: "PATCH",
         body: JSON.stringify(data),
@@ -620,7 +620,22 @@ export const api = {
   sandbox: {
     capacity: () => request<SandboxCapacity>("/api/sandbox/capacity"),
   },
-  feedback: {
+  promo: {
+    cloudrouter: {
+      get: () =>
+        request<{ enabled: boolean; my_code: string | null; available: boolean }>(
+          "/api/promo/cloudrouter",
+        ),
+      claim: () =>
+        request<{
+          ok: boolean;
+          code: string | null;
+          already_claimed?: boolean;
+          pool_empty?: boolean;
+        }>("/api/promo/cloudrouter/claim", { method: "POST", body: "{}" }),
+    },
+  },
+    feedback: {
     submit: (data: { satisfaction: number; content: string; contact_email?: string | null }) =>
       request<{ ok: boolean; feedback: FeedbackItem }>("/api/feedback", {
         method: "POST",

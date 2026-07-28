@@ -7,6 +7,7 @@ import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential } from "../../../shared/api/client.js";
 import { SkillsSection } from "../components/SkillsSection.js";
 import { ProfileSection } from "../components/ProfileSection.js";
+import { CloudRouterPromo, CredentialsEmptyNotice } from "../components/CloudRouterPromo.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 
 /* -------------------------------------------------------------------------- */
@@ -827,6 +828,10 @@ export function SettingsPage() {
               </button>
             }
           >
+            {credentials.length === 0 && !isNewDraft ? (
+              <CredentialsEmptyNotice onAdd={newCredential} />
+            ) : null}
+            <CloudRouterPromo />
             {(() => {
               // Form body JSX — captured once; rendered inside draft row + editing rows.
               const FORM_BODY = (

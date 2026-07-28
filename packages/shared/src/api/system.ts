@@ -30,5 +30,6 @@ export interface SystemStatus {
     displayName: string;
     task_limit?: number;
     task_count?: number;
+    onboarding_dismissed?: boolean;
   } | null;
 }
