@@ -49,7 +49,7 @@ export function ReportRefDetail({ artifact }: { artifact: ChatReferenceArtifact 
     >
       <DetailHeader
         icon="file-text"
-        color="#16a34a"
+        color="var(--status-completed)"
         title={title}
         action={
           <a

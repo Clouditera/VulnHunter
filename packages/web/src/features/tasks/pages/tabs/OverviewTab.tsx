@@ -668,7 +668,7 @@ function FactStat({
   value: number | string;
   tone: "confirmed" | "neutral" | "poc";
 }) {
-  const toneColor = tone === "confirmed" ? "#16a34a" : tone === "poc" ? "#7c3aed" : "var(--text-secondary)";
+  const toneColor = tone === "confirmed" ? "var(--status-completed)" : tone === "poc" ? "#7c3aed" : "var(--text-secondary)";
   return (
     <div
       style={{

@@ -254,7 +254,7 @@ export function TaskDetailPage() {
                       alignItems: "center",
                       gap: "4px",
                       fontSize: "12px",
-                      color: "#b45309",
+                      color: "var(--sev-medium)",
                       backgroundColor: "rgba(180,83,9,0.08)",
                       padding: "2px 8px",
                       borderRadius: "10px",
@@ -338,7 +338,7 @@ export function TaskDetailPage() {
                 data-testid="task-resume-btn"
                 onClick={() => resumeMut.mutate()}
                 disabled={resumeMut.isPending}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#b91c1c")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--danger-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "var(--brand)")}
                 style={{
                   padding: "7px 14px",
@@ -380,7 +380,7 @@ export function TaskDetailPage() {
               <button
                 data-testid="task-restart-btn"
                 onClick={() => restartMut.mutate()}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#b91c1c")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--danger-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "var(--brand)")}
                 style={{
                   padding: "7px 14px",
@@ -592,7 +592,7 @@ function FailureBanner({ task }: { task: Task }) {
         alignItems: "flex-start",
         padding: "12px 14px",
         background: "var(--bg-error)",
-        border: "1px solid rgba(220,38,38,0.28)",
+        border: "1px solid rgba(194,40,40,0.28)",
         borderLeft: "3px solid var(--brand)",
         borderRadius: "8px",
       }}

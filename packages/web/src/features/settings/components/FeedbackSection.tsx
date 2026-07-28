@@ -109,4 +109,4 @@ const PAGE_BTN: CSSProperties = {
   height: 30, padding: "0 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-card)",
   fontSize: 12, cursor: "pointer",
 };
-const LINK: CSSProperties = { border: "none", background: "none", color: "var(--link, #2563eb)", cursor: "pointer", fontSize: 12.5, marginTop: 6 };
+const LINK: CSSProperties = { border: "none", background: "none", color: "var(--link, var(--brand))", cursor: "pointer", fontSize: 12.5, marginTop: 6 };

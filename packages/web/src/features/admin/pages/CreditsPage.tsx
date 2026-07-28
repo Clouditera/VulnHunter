@@ -143,7 +143,7 @@ export function CreditsPage() {
             {importMut.isPending ? i18n.t("admin.credits.importing") : i18n.t("admin.credits.import")}
           </button>
           {importResult ? (
-            <span data-testid="credits-import-result" style={{ color: "#16a34a", fontSize: 13 }}>
+            <span data-testid="credits-import-result" style={{ color: "var(--status-completed)", fontSize: 13 }}>
               {importResult}
             </span>
           ) : null}
@@ -219,7 +219,7 @@ export function CreditsPage() {
                           fontSize: 11,
                           fontWeight: 600,
                           background: row.status === "available" ? "rgba(37,99,235,0.1)" : "rgba(22,163,74,0.12)",
-                          color: row.status === "available" ? "#2563eb" : "#16a34a",
+                          color: row.status === "available" ? "var(--brand)" : "var(--status-completed)",
                         }}
                       >
                         {row.status === "available"
@@ -239,10 +239,10 @@ export function CreditsPage() {
                           onClick={() => setDeleteTarget(row)}
                           style={{
                             padding: "4px 10px",
-                            border: "1px solid rgba(220,38,38,0.35)",
+                            border: "1px solid rgba(194,40,40,0.35)",
                             borderRadius: 5,
                             background: "transparent",
-                            color: "var(--brand)",
+                            color: "var(--danger)",
                             fontSize: 11,
                             fontWeight: 600,
                             cursor: "pointer",
@@ -331,7 +331,7 @@ export function CreditsPage() {
                   padding: "7px 14px",
                   border: "none",
                   borderRadius: 6,
-                  background: "var(--brand)",
+                  background: "var(--danger)",
                   color: "#fff",
                   fontSize: 12,
                   fontWeight: 600,
@@ -366,7 +366,7 @@ function StatCard({
   value: number;
   tone: "blue" | "green";
 }) {
-  const color = tone === "blue" ? "#2563eb" : "#16a34a";
+  const color = tone === "blue" ? "var(--brand)" : "var(--status-completed)";
   return (
     <div
       data-testid={testid}

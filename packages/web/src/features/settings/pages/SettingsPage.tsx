@@ -8,6 +8,7 @@ import { api, type LlmCredential } from "../../../shared/api/client.js";
 import { SkillsSection } from "../components/SkillsSection.js";
 import { ProfileSection } from "../components/ProfileSection.js";
 import { CloudRouterPromo, CredentialsEmptyNotice } from "../components/CloudRouterPromo.js";
+import { CloudRouterBalanceGlance, CloudRouterBalanceStrip } from "../components/CloudRouterBalance.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 
 /* -------------------------------------------------------------------------- */
@@ -1017,7 +1018,7 @@ export function SettingsPage() {
                     {modelFetchState.msg}
                   </div>
                 ) : null}
-                {fieldErrors.modelId && <div style={{ color: "#dc2626", fontSize: "12px", marginTop: "4px" }}>{fieldErrors.modelId}</div>}
+                {fieldErrors.modelId && <div style={{ color: "var(--danger)", fontSize: "12px", marginTop: "4px" }}>{fieldErrors.modelId}</div>}
               </div>
             </div>
 
@@ -1030,7 +1031,7 @@ export function SettingsPage() {
                 placeholder={i18n.t("settings.model.baseUrlPlaceholder")}
                 style={FIELD_INPUT}
               />
-              {fieldErrors.baseUrl && <div style={{ color: "#dc2626", fontSize: "12px", marginTop: "4px" }}>{fieldErrors.baseUrl}</div>}
+              {fieldErrors.baseUrl && <div style={{ color: "var(--danger)", fontSize: "12px", marginTop: "4px" }}>{fieldErrors.baseUrl}</div>}
             </Field>
 
             <Field
@@ -1191,7 +1192,7 @@ export function SettingsPage() {
                     border: `1px solid ${
                       testState.kind === "ok"
                         ? "var(--bg-success-border)"
-                        : "rgba(220,38,38,0.28)"
+                        : "rgba(194,40,40,0.28)"
                     }`,
                     wordBreak: "break-word",
                   }}
@@ -1371,6 +1372,7 @@ export function SettingsPage() {
                         borderTop: "1px solid var(--divider)",
                       }}
                     >
+                      {!isDraft && c ? <CloudRouterBalanceStrip baseUrl={c.base_url} /> : null}
                       {FORM_BODY}
                       <div
                         style={{
@@ -1400,8 +1402,8 @@ export function SettingsPage() {
                             onClick={() => handleDeleteCredential(c)}
                             style={{
                               ...CRED_ROW_BTN,
-                              color: "var(--brand)",
-                              borderColor: "rgba(220,38,38,0.3)",
+                              color: "var(--danger)",
+                              borderColor: "var(--danger-border)",
                             }}
                           >
                             {i18n.t("settings.credentials.delete")}
@@ -1527,7 +1529,7 @@ export function SettingsPage() {
                       title={c.credential_health === "key_unavailable" ? "凭证加密 key 未配置。请管理员设置 VULNHUNTER_MASTER_KEY_FILE。" : "凭证无法用当前 master key 解密，请重新输入 API Key 并保存。"}
                       style={{
                         fontSize: "11px",
-                        color: "#b45309",
+                        color: "var(--sev-medium)",
                         background: "rgba(180,83,9,0.08)",
                         borderRadius: "999px",
                         padding: "2px 8px",
@@ -1537,6 +1539,7 @@ export function SettingsPage() {
                       {c.credential_health === "key_unavailable" ? "⚠ key 未配置" : "⚠ 无法解密"}
                     </span>
                   )}
+                  <CloudRouterBalanceGlance baseUrl={c.base_url} />
                   <Icon
                     name="chevron-down"
                     size={14}

@@ -293,8 +293,8 @@ function PrototypeDashboardPreview() {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
             {[
-              { lb: "总扫描数", vl: "14", ml: "↑ 300% vs 上周", mc: "#16a34a" },
-              { lb: "漏洞", vl: "419", ml: "327H · 91M · 1L", mc: "#dc2626", vc: "#dc2626" },
+              { lb: "总扫描数", vl: "14", ml: "↑ 300% vs 上周", mc: "var(--status-completed)" },
+              { lb: "漏洞", vl: "419", ml: "327H · 91M · 1L", mc: "var(--danger)", vc: "var(--danger)" },
               { lb: "平均耗时", vl: "294", unit: "min", ml: "每次扫描" },
               { lb: "Token 用量", vl: "3664", unit: ".86M", ml: "累计" },
             ].map((c) => (
@@ -335,7 +335,7 @@ function PrototypeDashboardPreview() {
               {[
                 ["SQL Injection", 90, "#3b82f6", "13"],
                 ["OS Cmd Injection", 50, "#8b5cf6", "7"],
-                ["Stored XSS", 42, "#22c55e", "6"],
+                ["Stored XSS", 42, "var(--status-completed)", "6"],
                 ["Missing Auth", 35, "#f97316", "5"],
                 ["File Upload", 28, "#14b8a6", "4"],
               ].map(([lb, w, c, v]) => (
@@ -364,10 +364,10 @@ function PrototypeDashboardPreview() {
               </thead>
               <tbody>
                 {[
-                  ["cache-service-dev", "失败", "—", "7 min", "2 小时前", "#fee2e2", "#dc2626"],
-                  ["order-api", "失败", "7H 1M", "344 min", "6 小时前", "#fee2e2", "#dc2626"],
-                  ["admin-portal-v4", "已完成", "9H 3M", "180 min", "4 天前", "#dcfce7", "#16a34a"],
-                  ["edge-gateway-web", "已完成", "15H 3M", "180 min", "2026-07-01", "#dcfce7", "#16a34a"],
+                  ["cache-service-dev", "失败", "—", "7 min", "2 小时前", "var(--danger-soft)", "var(--danger)"],
+                  ["order-api", "失败", "7H 1M", "344 min", "6 小时前", "var(--danger-soft)", "var(--danger)"],
+                  ["admin-portal-v4", "已完成", "9H 3M", "180 min", "4 天前", "#dcfce7", "var(--status-completed)"],
+                  ["edge-gateway-web", "已完成", "15H 3M", "180 min", "2026-07-01", "#dcfce7", "var(--status-completed)"],
                 ].map((r) => (
                   <tr key={String(r[0])}>
                     <td style={{ padding: "5px 6px", borderBottom: "1px solid #f3f4f6" }}>{r[0]}</td>

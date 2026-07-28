@@ -150,7 +150,7 @@ export function ToolCallBlock({ call }: { call: ChatToolCall }) {
               <div style={{ ...LABEL, color: "var(--brand)" }}>
                 {i18n.t("chat.tool.error")}
               </div>
-              <pre style={{ ...PRE, color: "#f87171" }}>
+              <pre style={{ ...PRE, color: "var(--danger)" }}>
                 {call.error ?? "Unknown error"}
               </pre>
             </>

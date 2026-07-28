@@ -12,6 +12,28 @@ import { theme } from "../../../shared/theme/index.js";
 
 const CR_URL = "https://cloudrouter.online";
 
+export function isCloudrouterBaseUrl(baseUrl: string | null | undefined): boolean {
+  if (!baseUrl) return false;
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === "cloudrouter.online" || host.endsWith(".cloudrouter.online");
+  } catch {
+    return /cloudrouter\.online/i.test(baseUrl);
+  }
+}
+
+export function formatBalanceAmount(remaining: number | null | undefined, unit?: string | null): string {
+  if (remaining == null || !Number.isFinite(remaining)) return "—";
+  const formatted = remaining.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  const u = (unit ?? "USD").toUpperCase();
+  if (u === "USD") return `$${formatted}`;
+  return `${formatted} ${u}`;
+}
+
+
 export function CloudRouterPromo() {
   const qc = useQueryClient();
   const [, tick] = useState(0);
@@ -72,12 +94,10 @@ export function CloudRouterPromo() {
     padding: "18px 20px",
     borderRadius: 12,
     marginBottom: 16,
-    border: dark
-      ? "1px solid rgba(129,140,248,0.35)"
-      : "1px solid rgba(99,102,241,0.28)",
+    border: "1px solid var(--partner-border)",
     background: dark
-      ? "linear-gradient(120deg, rgba(76,29,149,0.28), rgba(30,58,138,0.24))"
-      : "linear-gradient(120deg, #f5f3ff, #eff6ff)",
+      ? "linear-gradient(120deg, var(--partner-grad-from), var(--partner-grad-to))"
+      : "linear-gradient(120deg, var(--partner-grad-from), var(--partner-grad-to))",
   };
 
   return (
@@ -100,8 +120,8 @@ export function CloudRouterPromo() {
               fontWeight: 600,
               padding: "2px 6px",
               borderRadius: 4,
-              border: dark ? "1px solid rgba(165,180,252,0.5)" : "1px solid rgba(99,102,241,0.45)",
-              color: dark ? "#a5b4fc" : "#4f46e5",
+              border: "1px solid var(--partner-border)",
+              color: dark ? "var(--partner-accent)" : "var(--brand-hover)",
             }}
           >
             {i18n.t("settings.creds.cloudRouter.tag")}
@@ -115,7 +135,7 @@ export function CloudRouterPromo() {
             margin: 0,
             fontSize: 12.5,
             fontWeight: 500,
-            color: dark ? "#a5b4fc" : "#4338ca",
+            color: dark ? "var(--partner-accent)" : "var(--brand-active)",
             lineHeight: 1.5,
           }}
         >
@@ -161,9 +181,9 @@ export function CloudRouterPromo() {
                 height: 34,
                 padding: "0 14px",
                 borderRadius: 8,
-                border: "1px solid #6366f1",
+                border: "1px solid var(--brand)",
                 background: "var(--bg-card)",
-                color: "#6366f1",
+                color: "var(--brand)",
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: claimMut.isPending ? "wait" : "pointer",
@@ -220,7 +240,7 @@ function GoButton() {
         padding: "0 14px",
         borderRadius: 8,
         border: "none",
-        background: "#6366f1",
+        background: "var(--brand)",
         color: "#fff",
         fontSize: 12,
         fontWeight: 600,
@@ -231,10 +251,10 @@ function GoButton() {
         gap: 6,
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = "#4f46e5";
+        e.currentTarget.style.background = "var(--brand-hover)";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = "#6366f1";
+        e.currentTarget.style.background = "var(--brand)";
       }}
     >
       {i18n.t("settings.creds.cloudRouter.go")} ↗
@@ -261,10 +281,10 @@ function ClaimedPanel({
         padding: 12,
         borderRadius: 10,
         background: dark ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.72)",
-        border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(99,102,241,0.2)",
+        border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid var(--partner-border)",
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 600, color: dark ? "#a5b4fc" : "#4f46e5", marginBottom: 6 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: dark ? "var(--partner-accent)" : "var(--brand-hover)", marginBottom: 6 }}>
         {i18n.t("settings.creds.cloudRouter.claimedLabel")}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -290,9 +310,9 @@ function ClaimedPanel({
             width: 26,
             height: 26,
             borderRadius: 6,
-            border: "1px solid #6366f1",
+            border: "1px solid var(--brand)",
             background: "transparent",
-            color: "#6366f1",
+            color: "var(--brand)",
             cursor: "pointer",
             display: "grid",
             placeItems: "center",
@@ -308,7 +328,7 @@ function ClaimedPanel({
           href={CR_URL}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: dark ? "#a5b4fc" : "#4f46e5", fontWeight: 700, textDecoration: "none" }}
+          style={{ color: dark ? "var(--partner-accent)" : "var(--brand-hover)", fontWeight: 700, textDecoration: "none" }}
         >
           CloudRouter
         </a>
@@ -317,6 +337,7 @@ function ClaimedPanel({
     </div>
   );
 }
+
 
 /** Info bar when user has zero credentials — above promo block. */
 export function CredentialsEmptyNotice({ onAdd }: { onAdd: () => void }) {
@@ -339,7 +360,7 @@ export function CredentialsEmptyNotice({ onAdd }: { onAdd: () => void }) {
         color: "var(--text-primary)",
       }}
     >
-      <Icon name="info" size={15} style={{ color: "#2563eb", flexShrink: 0 }} />
+      <Icon name="info" size={15} style={{ color: "var(--brand)", flexShrink: 0 }} />
       <span style={{ flex: 1 }}>{i18n.t("settings.creds.emptyNotice")}</span>
       <button
         type="button"

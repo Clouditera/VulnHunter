@@ -597,35 +597,35 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
   // Subtle full-row background tint for error/stage so attention-worthy
   // events pop without looking like a dark terminal.
   let rowBg: string | undefined;
-  let toolColor = "var(--sev-low)"; // #2563eb blue
+  let toolColor = "var(--sev-low)"; // var(--brand) blue
 
   if (ev.type === "tool_call") {
     icon =
       ev.status === "error"
-        ? { char: "✕", color: "#dc2626" }
+        ? { char: "✕", color: "var(--danger)" }
         : ev.status === "success"
-          ? { char: "✓", color: "#16a34a" }
-          : { char: "⋯", color: "#b45309", pulse: true };
+          ? { char: "✓", color: "var(--status-completed)" }
+          : { char: "⋯", color: "var(--sev-medium)", pulse: true };
     tool = ev.tool ?? "";
     let a = ev.args_summary ?? "";
     if (tool && a.startsWith(`${tool}: `)) a = a.slice(tool.length + 2);
     param = a;
-    toolColor = "#2563eb";
+    toolColor = "var(--brand)";
     if (ev.status === "error") {
-      rowBg = "rgba(220,38,38,0.03)";
-      toolColor = "#dc2626";
+      rowBg = "rgba(194,40,40,0.03)";
+      toolColor = "var(--danger)";
     }
   } else if (ev.type === "stage_start") {
-    icon = { char: "▸", color: "#b45309" };
+    icon = { char: "▸", color: "var(--sev-medium)" };
     tool = "stage";
     param = `${ev.stage ?? ""} starting`;
-    toolColor = "#b45309";
+    toolColor = "var(--sev-medium)";
     rowBg = "rgba(180,83,9,0.025)";
   } else if (ev.type === "stage_end") {
-    icon = { char: "✓", color: "#16a34a" };
+    icon = { char: "✓", color: "var(--status-completed)" };
     tool = "stage";
     param = `${ev.stage ?? ""} done`;
-    toolColor = "#16a34a";
+    toolColor = "var(--status-completed)";
   } else if (ev.type === "task_status" || ev.type === "task") {
     const severity = (ev as LiveLogEvent & { severity?: string }).severity;
     const stagesFailed = (ev as LiveLogEvent & { stages_failed?: number }).stages_failed;
@@ -634,21 +634,21 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
     const state = (ev as LiveLogEvent & { state?: string }).state;
     const isError = severity === "error" || status === "error" || status === "failed" || state === "failed";
     const isWarning = !isError && (severity === "warning" || (stagesFailed != null && stagesFailed > 0));
-    icon = isError ? { char: "✕", color: "#dc2626" } : isWarning ? { char: "⚠", color: "#b45309" } : { char: "●", color: "#16a34a" };
+    icon = isError ? { char: "✕", color: "var(--danger)" } : isWarning ? { char: "⚠", color: "var(--sev-medium)" } : { char: "●", color: "var(--status-completed)" };
     tool = "task";
     param = reason ?? ev.state ?? status ?? "";
-    toolColor = isError ? "#dc2626" : isWarning ? "#b45309" : "#16a34a";
-    if (isError) rowBg = "rgba(220,38,38,0.03)";
+    toolColor = isError ? "var(--danger)" : isWarning ? "var(--sev-medium)" : "var(--status-completed)";
+    if (isError) rowBg = "rgba(194,40,40,0.03)";
     else if (isWarning) rowBg = "rgba(180,83,9,0.025)";
   } else if (ev.type === "error") {
-    icon = { char: "✕", color: "#dc2626" };
+    icon = { char: "✕", color: "var(--danger)" };
     tool = "error";
     param =
       (ev as LiveLogEvent & { summary?: string; message?: string }).summary ??
       (ev as LiveLogEvent & { message?: string }).message ??
       "unknown";
-    toolColor = "#dc2626";
-    rowBg = "rgba(220,38,38,0.03)";
+    toolColor = "var(--danger)";
+    rowBg = "rgba(194,40,40,0.03)";
   } else if (ev.type === "poc_output") {
     const pocEv = ev as LiveLogEvent & { stream?: string; message?: string };
     const isStderr = pocEv.stream === "stderr";
@@ -660,11 +660,11 @@ function LogLine({ ev }: { ev: LiveLogEvent }) {
   } else if (ev.type === "poc_exit") {
     const exitEv = ev as LiveLogEvent & { exit_code?: number; duration_ms?: number };
     const ok = exitEv.exit_code === 0;
-    icon = ok ? { char: "✓", color: "#16a34a" } : { char: "✕", color: "#dc2626" };
+    icon = ok ? { char: "✓", color: "var(--status-completed)" } : { char: "✕", color: "var(--danger)" };
     tool = "poc";
     param = ok ? `completed` : `failed (exit ${exitEv.exit_code})`;
-    toolColor = ok ? "#16a34a" : "#dc2626";
-    if (!ok) rowBg = "rgba(220,38,38,0.03)";
+    toolColor = ok ? "var(--status-completed)" : "var(--danger)";
+    if (!ok) rowBg = "rgba(194,40,40,0.03)";
   } else {
     icon = { char: "·", color: "var(--text-secondary)" };
     tool = ev.type;

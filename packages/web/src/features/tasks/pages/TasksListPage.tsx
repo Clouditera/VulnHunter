@@ -156,7 +156,7 @@ export function TasksListPage() {
             fontSize: "13px",
             fontWeight: 600,
             cursor: "pointer",
-            boxShadow: "0 1px 2px rgba(220,38,38,0.2)",
+            boxShadow: "0 1px 2px rgba(194,40,40,0.2)",
           }}
         >
           <Icon name="plus" size={15} strokeWidth={2.5} />
@@ -430,7 +430,7 @@ export function TasksListPage() {
                               padding: "2px 7px",
                               borderRadius: "999px",
                               background: "rgba(180,83,9,0.12)",
-                              color: "#b45309",
+                              color: "var(--sev-medium)",
                               border: "1px solid rgba(180,83,9,0.3)",
                               whiteSpace: "nowrap",
                             }}

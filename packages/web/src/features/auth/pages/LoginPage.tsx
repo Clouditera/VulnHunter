@@ -112,7 +112,7 @@ function Banner({ kind, children }: { kind: "ok" | "err"; children: string }) {
         fontSize: "12.5px",
         lineHeight: 1.5,
         background: ok ? "rgba(22,163,74,0.08)" : "rgba(185,28,28,0.08)",
-        color: ok ? "var(--status-completed, #16a34a)" : "var(--brand)",
+        color: ok ? "var(--status-completed, var(--status-completed))" : "var(--brand)",
         border: `1px solid ${ok ? "rgba(22,163,74,0.25)" : "rgba(185,28,28,0.25)"}`,
       }}
     >
@@ -496,7 +496,7 @@ function RegisterPanel({ onBack }: { onBack: () => void }) {
                     background: "none",
                     padding: 0,
                     /* Regular link color — not brand red (fish 2026-07-22) */
-                    color: "var(--link, #2563eb)",
+                    color: "var(--link, var(--brand))",
                     fontWeight: 500,
                     textDecoration: "underline",
                     textUnderlineOffset: "2px",

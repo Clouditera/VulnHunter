@@ -674,9 +674,9 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
             {/* Dynamic capability (Beta) */}
             <div style={{ marginTop: "16px", border: "1px solid var(--border)", borderRadius: "10px", background: "var(--bg-page)", padding: "12px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
-                <span style={{ padding: "2px 6px", borderRadius: "5px", background: "var(--bg-error)", color: "var(--brand)", fontSize: "10px", fontWeight: 750, textTransform: "uppercase" }}>Beta</span>
+                <span style={{ padding: "2px 6px", borderRadius: "5px", background: "var(--brand-soft)", color: "var(--brand)", fontSize: "10px", fontWeight: 750, textTransform: "uppercase" }}>Beta</span>
                 <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>{i18n.t("newTask.dynamicTitle")}</span>
-                <span style={{ marginLeft: "auto", fontSize: "11px", fontWeight: 650, color: enableDynamicVerify ? "#16a34a" : "var(--text-secondary)" }}>
+                <span style={{ marginLeft: "auto", fontSize: "11px", fontWeight: 650, color: enableDynamicVerify ? "var(--status-completed)" : "var(--text-secondary)" }}>
                   {i18n.t(enableDynamicVerify ? "newTask.sandboxEnabled" : "newTask.optional")}
                 </span>
               </div>
@@ -703,7 +703,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                     <span style={{ display: "block", marginTop: "3px", fontSize: "11px", lineHeight: 1.45, color: "var(--text-secondary)" }}>{i18n.t("newTask.dynamicExploitDesc")}</span>
                   </span>
                 </label>
-                <div style={{ fontSize: "11px", color: "var(--brand, #b45309)", background: "var(--bg-warning, rgba(180,83,9,0.08))", border: "1px solid var(--border-warning, rgba(180,83,9,0.3))", borderRadius: "7px", padding: "8px 10px", lineHeight: 1.5 }}>
+                <div style={{ fontSize: "11px", color: "var(--brand, var(--sev-medium))", background: "var(--bg-warning, rgba(180,83,9,0.08))", border: "1px solid var(--border-warning, rgba(180,83,9,0.3))", borderRadius: "7px", padding: "8px 10px", lineHeight: 1.5 }}>
                   {i18n.t("newTask.dynamicHint")}
                 </div>
                 {enableDynamicVerify && sandboxCapacity && sandboxCapacity.available_now === false ? (
@@ -711,7 +711,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                     data-testid="sandbox-queue-hint"
                     style={{
                       fontSize: "12px",
-                      color: "#b45309",
+                      color: "var(--sev-medium)",
                       background: "rgba(180,83,9,0.1)",
                       border: "1px solid rgba(180,83,9,0.35)",
                       borderRadius: "7px",
@@ -729,7 +729,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
             </div>
           </div>
 
-          {error && <p style={{ color: "var(--brand)", fontSize: "13px", margin: "12px 0 0" }}>{error}</p>}
+          {error && <p style={{ color: "var(--danger)", fontSize: "13px", margin: "12px 0 0" }}>{error}</p>}
         </div>
 
         {/* Footer */}

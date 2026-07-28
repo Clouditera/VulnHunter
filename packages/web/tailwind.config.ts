@@ -6,11 +6,16 @@ export default {
   theme: {
     extend: {
       colors: {
-        brand: "#dc2626",
-        "sev-high": "#ea580c",
-        "sev-medium": "#ca8a04",
-        "sev-low": "#2563eb",
-        "sev-info": "#9ca3af",
+        brand: "var(--brand)",
+        danger: "var(--danger)",
+        "sev-high": "var(--sev-high)",
+        "sev-medium": "var(--sev-medium)",
+        "sev-low": "var(--sev-low)",
+        "sev-info": "var(--sev-info)",
+      },
+      fontFamily: {
+        sans: ["var(--font-sans)"],
+        mono: ["var(--font-mono)"],
       },
     },
   },

@@ -17,7 +17,7 @@ export function ChatActivityBar({ activity }: { activity?: ChatActivity | null }
 
 function StatusIcon({ status }: { status: ChatActivity["status"] }) {
   if (status === "running") return <span style={{ ...DOT, background: "var(--brand)", animation: "va-caret-blink 1s infinite" }} />;
-  if (status === "success") return <span style={{ color: "#16a34a", fontSize: 12 }}>✓</span>;
+  if (status === "success") return <span style={{ color: "var(--status-completed)", fontSize: 12 }}>✓</span>;
   if (status === "warning") return <span style={{ color: "#d97706", fontSize: 12 }}>!</span>;
   if (status === "waiting") return <span style={{ ...DOT, background: "#d97706" }} />;
   return <span style={{ ...DOT, background: "var(--text-secondary)" }} />;

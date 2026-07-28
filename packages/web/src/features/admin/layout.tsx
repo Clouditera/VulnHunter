@@ -85,8 +85,8 @@ export function AdminLayout() {
               gap: 5,
               padding: "3px 8px",
               borderRadius: 999,
-              border: "1px solid rgba(220,38,38,0.55)",
-              color: "#f87171",
+              border: "1px solid var(--special-border)",
+              color: "var(--special)",
               fontSize: 11,
               fontWeight: 600,
             }}

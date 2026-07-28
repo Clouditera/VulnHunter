@@ -83,7 +83,7 @@ export function AppLayout() {
       .va-sidebar-session:hover { background: rgba(255,255,255,0.06) !important; }
       .va-sidebar-session:hover .va-sidebar-session-title { color: rgba(255,255,255,0.85) !important; }
       .va-sidebar-session:hover .va-sidebar-session-delete, .va-sidebar-session:focus-within .va-sidebar-session-delete { opacity: 1 !important; }
-      .va-sidebar-session-delete:hover { color: var(--brand) !important; }
+      .va-sidebar-session-delete:hover { color: var(--danger) !important; }
       .va-sidebar-scroll::-webkit-scrollbar { width: 6px; }
       .va-sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 999px; }
     `;
