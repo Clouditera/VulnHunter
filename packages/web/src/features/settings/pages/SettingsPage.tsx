@@ -4,12 +4,9 @@ import type { SystemStatus } from "@vulnhunter/shared";
 import { i18n } from "../../../shared/i18n/index.js";
 import { theme as themeStore } from "../../../shared/theme/index.js";
 import { Icon, type IconName } from "../../../shared/components/Icon.js";
-import { api, type LlmCredential, type SystemConfig } from "../../../shared/api/client.js";
+import { api, type LlmCredential } from "../../../shared/api/client.js";
 import { SkillsSection } from "../components/SkillsSection.js";
-import { UsersSection } from "../components/UsersSection.js";
 import { ProfileSection } from "../components/ProfileSection.js";
-import { SmtpSection } from "../components/SmtpSection.js";
-import { FeedbackSection } from "../components/FeedbackSection.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 
 /* -------------------------------------------------------------------------- */
@@ -280,23 +277,6 @@ function formatContextWindow(tokens?: number | null): string {
 const THINKING_VALUES = ["off", "minimal", "low", "medium", "high"] as const;
 type ThinkingValue = (typeof THINKING_VALUES)[number];
 
-function licenseStatusLabel(s: string | undefined): string {
-  if (!s) return i18n.t("common.noData");
-  return i18n.t(`settings.license.status.${s}`);
-}
-
-function licenseStatusColor(s: string | undefined): { bg: string; fg: string; dot: string } {
-  switch (s) {
-    case "active":
-      return { bg: "var(--bg-success)", fg: "var(--bg-success-text)", dot: "#16a34a" };
-    case "expired":
-      return { bg: "var(--bg-error)", fg: "#991b1b", dot: "#dc2626" };
-    case "invalid":
-      return { bg: "var(--bg-error)", fg: "#991b1b", dot: "#dc2626" };
-    default:
-      return { bg: "var(--bg-warning)", fg: "#9a3412", dot: "#ea580c" };
-  }
-}
 
 // Inject once: a simple keyframe animation the fetch/test buttons use
 // while a network call is in flight. Scoped by a fixed id so hot-reload
@@ -319,11 +299,8 @@ export function SettingsPage() {
 
   // Must be declared before any useEffect that references sysStatus
   const { data: sysStatus } = useSystemStatus();
-  const isAdmin = sysStatus?.user?.role === "admin";
-
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [cred, setCred] = useState<LlmCredential | null>(null);
-  const [config, setConfig] = useState<SystemConfig | null>(null);
   const [loading, setLoading] = useState(true);
   // Multi-credential support
   const [credentials, setCredentials] = useState<LlmCredential[]>([]);
@@ -340,9 +317,6 @@ export function SettingsPage() {
   const [apiKey, setApiKey] = useState<string>("");
   const [showKey, setShowKey] = useState(false);
 
-  const [maxParallel, setMaxParallel] = useState<number>(3);
-  const [youngflowMaxParallel, setYoungflowMaxParallel] = useState<number>(3);
-  const [sourceArchiveUploadMax, setSourceArchiveUploadMax] = useState<number>(500);
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
@@ -361,14 +335,12 @@ export function SettingsPage() {
 
   useEffect(() => {
     let mounted = true;
-    const adminRole = sysStatus?.user?.role === "admin";
     const fetches: Promise<unknown>[] = [
       api.system.status().catch(() => null),
       api.settings.getCredential().catch(() => ({ credential: null as LlmCredential | null })),
-      adminRole ? api.settings.getSystemConfig().catch(() => null as { config: SystemConfig } | null) : Promise.resolve(null),
       api.settings.listCredentials().catch(() => ({ credentials: [] as LlmCredential[] })),
     ];
-    Promise.all(fetches).then(([s, credResp, cfg, credList]) => {
+    Promise.all(fetches).then(([s, credResp, credList]) => {
       if (!mounted) return;
       if (s) setStatus(s as typeof status);
       const cr = credResp as { credential: LlmCredential | null } | undefined;
@@ -378,15 +350,6 @@ export function SettingsPage() {
       }
       // Start with no credential expanded
       setEditingCredentialId(null);
-      if (adminRole) {
-        const cfgResp = cfg as { config: SystemConfig } | null | undefined;
-        if (cfgResp?.config) {
-          setConfig(cfgResp.config);
-          setMaxParallel(cfgResp.config.max_parallel_scan);
-          setYoungflowMaxParallel(cfgResp.config.youngflow_max_parallel ?? 3);
-          setSourceArchiveUploadMax(cfgResp.config.source_archive_upload_max_mb ?? cfgResp.config.upload_zip_max_mb ?? 500);
-        }
-      }
       const cl = credList as { credentials: LlmCredential[] } | undefined;
       if (cl?.credentials) {
         setCredentials(cl.credentials);
@@ -492,8 +455,7 @@ export function SettingsPage() {
     setTimeout(() => el?.focus(), 0);
   }
 
-  // Save the LLM credential only (engine concurrency now saves instantly via
-  // saveEngineConfig). Triggered by the credential card's own "save" button.
+  // Save the LLM credential. Triggered by the credential card's own "save" button.
   async function saveCredential() {
     if (saving) return;
     setSaving(true);
@@ -609,54 +571,8 @@ export function SettingsPage() {
     }
   }
 
-  function sourceArchiveUploadCeilingMb(): number {
-    return config?.source_archive_upload_ceiling_mb ?? config?.upload_gateway_limit_mb ?? 2048;
-  }
-
-  async function saveSourceArchiveUploadLimit(nextValue: number) {
-    if (!config) return;
-    const ceiling = sourceArchiveUploadCeilingMb();
-    const next = Math.max(1, Math.trunc(nextValue || 500));
-    if (next > ceiling) {
-      setToast({ kind: "err", msg: i18n.t("settings.upload.exceedsCeiling").replace("{max}", String(ceiling)) });
-      setTimeout(() => setToast(null), 2800);
-      return;
-    }
-    if ((config.source_archive_upload_max_mb ?? config.upload_zip_max_mb ?? 500) === next) return;
-    try {
-      await api.settings.updateSystemConfig({ source_archive_upload_max_mb: next });
-      setConfig({ ...config, source_archive_upload_max_mb: next, upload_zip_max_mb: next });
-      setSourceArchiveUploadMax(next);
-      setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
-      setTimeout(() => setToast(null), 2200);
-    } catch (err) {
-      setToast({ kind: "err", msg: (err as Error)?.message || i18n.t("settings.saveError") });
-      setTimeout(() => setToast(null), 2800);
-      setSourceArchiveUploadMax(config.source_archive_upload_max_mb ?? config.upload_zip_max_mb ?? 500);
-    }
-  }
-
-  /** Persist engine concurrency instantly (called on slider release). */
-  async function saveEngineConfig(next: { max_parallel_scan: number; youngflow_max_parallel: number }) {
-    if (!config) return;
-    if (config.max_parallel_scan === next.max_parallel_scan && (config.youngflow_max_parallel ?? 3) === next.youngflow_max_parallel) return;
-    try {
-      await api.settings.updateSystemConfig(next);
-      setConfig({ ...config, max_parallel_scan: next.max_parallel_scan, youngflow_max_parallel: next.youngflow_max_parallel });
-      setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
-      setTimeout(() => setToast(null), 2200);
-    } catch {
-      setToast({ kind: "err", msg: i18n.t("settings.saveError") });
-      setTimeout(() => setToast(null), 2800);
-      // Revert local slider state to last-known-good config on failure.
-      setMaxParallel(config.max_parallel_scan);
-      setYoungflowMaxParallel(config.youngflow_max_parallel ?? 3);
-    }
-  }
 
   const isDark = themeStore.current() === "dark";
-  const isEnterprise = (status?.edition ?? sysStatus?.edition) === "enterprise";
-  const licColor = licenseStatusColor(status?.license?.status);
 
   /** Pull `/v1/models` using current form values (or saved credential as fallback). */
   async function fetchModels() {
@@ -760,22 +676,10 @@ export function SettingsPage() {
     }
   }
 
-  // Role-aware sub-nav (sysStatus/isAdmin declared at top of component)
-
-  const SUB_NAV_SECTIONS: Array<{ id: string; labelKey: string }> = isAdmin
-    ? [
-        ...(isEnterprise ? [{ id: "license", labelKey: "settings.nav.license" }] : []),
-        { id: "credentials", labelKey: "settings.nav.credentials" },
-        ...(isEnterprise ? [{ id: "users", labelKey: "settings.nav.users" }] : []),
-        ...(isEnterprise ? [{ id: "smtp", labelKey: "settings.nav.smtp" }] : []),
-        ...(isEnterprise ? [{ id: "feedback", labelKey: "settings.nav.feedback" }] : []),
-        { id: "skills", labelKey: "settings.nav.skills" },
-        { id: "appearance", labelKey: "settings.nav.appearance" },
-        { id: "engine", labelKey: "settings.nav.engine" },
-      ]
-    : [
+  const SUB_NAV_SECTIONS: Array<{ id: string; labelKey: string }> = [
         { id: "profile", labelKey: "settings.nav.profile" },
         { id: "credentials", labelKey: "settings.nav.credentials" },
+        { id: "skills", labelKey: "settings.nav.skills" },
         { id: "appearance", labelKey: "settings.nav.appearance" },
       ];
 
@@ -884,95 +788,13 @@ export function SettingsPage() {
         </div>
       ) : (
         <>
-          {/* Profile section (non-admin) */}
-          {!isAdmin && (
-            <>
-              <div id="profile" style={{ scrollMarginTop: "20px" }} />
-              <ProfileSection />
-            </>
-          )}
+          {/* Profile */}
+          <div id="profile" style={{ scrollMarginTop: "20px" }} />
+          <ProfileSection />
 
           {/* ============================================================= */}
           {/*  License Information (admin only)                              */}
           {/* ============================================================= */}
-          {isAdmin && isEnterprise && <>
-          <div id="license" style={{ scrollMarginTop: "20px" }} />
-          <SettingsCard
-            icon="key"
-            title={i18n.t("settings.license.title")}
-            desc={i18n.t("settings.license.desc")}
-            testid="settings-card-license"
-          >
-            <InfoRow label={i18n.t("settings.license.status")}>
-              <span
-                data-testid="settings-license-status-pill"
-                data-status={status?.license?.status ?? "unknown"}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  padding: "3px 10px",
-                  borderRadius: "6px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  background: licColor.bg,
-                  color: licColor.fg,
-                  lineHeight: 1.4,
-                }}
-              >
-                <span
-                  style={{
-                    width: "6px",
-                    height: "6px",
-                    borderRadius: "50%",
-                    background: licColor.dot,
-                  }}
-                />
-                {licenseStatusLabel(status?.license?.status)}
-              </span>
-            </InfoRow>
-            {status?.version?.version ? (
-              <InfoRow label={i18n.t("settings.license.currentVersion")}>
-                <span data-testid="settings-current-version" style={{ fontSize: 13, fontWeight: 600 }}>{status.version.version}</span>
-              </InfoRow>
-            ) : null}
-            {status?.license?.licensed_version ? (
-              <InfoRow label={i18n.t("settings.license.licensedVersion")}>
-                <span data-testid="settings-licensed-version" style={{ fontSize: 13, fontWeight: 600 }}>{status.license.licensed_version}</span>
-              </InfoRow>
-            ) : null}
-            {status?.license?.expires_at ? (
-              <InfoRow label={i18n.t("settings.license.expires")}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>
-                  {status.license.expires_at.slice(0, 10)}
-                </span>
-              </InfoRow>
-            ) : null}
-            {typeof status?.license?.days_remaining === "number" ? (
-              <InfoRow label={i18n.t("settings.license.remaining")}>
-                <span
-                  data-testid="settings-license-remaining"
-                  style={{ fontSize: 13, fontWeight: 600 }}
-                >
-                  {status.license.days_remaining} {i18n.t("settings.license.days")}
-                </span>
-              </InfoRow>
-            ) : null}
-            {status?.installation_id ? (
-              <InfoRow label={i18n.t("settings.license.installId")}>
-                <span
-                  style={{
-                    fontSize: 12,
-                    fontFamily: "'SF Mono', Menlo, monospace",
-                    color: "var(--text-secondary)",
-                  }}
-                >
-                  {status.installation_id}
-                </span>
-              </InfoRow>
-            ) : null}
-          </SettingsCard>
-          </>}
 
           {/* ============================================================= */}
           {/*  Credentials — unified list + inline editor (Phase 9)         */}
@@ -1767,23 +1589,8 @@ export function SettingsPage() {
           {/* ============================================================= */}
           {/*  Language & Appearance                                          */}
           {/* ============================================================= */}
-          {isAdmin && (
-            <>
-              {isEnterprise ? (
-                <>
-                  <div id="users" style={{ scrollMarginTop: "20px" }} />
-                  <UsersSection />
-                  <div id="smtp" style={{ scrollMarginTop: "20px" }} />
-                  <SmtpSection />
-                  <div id="feedback" style={{ scrollMarginTop: "20px" }} />
-                  <FeedbackSection />
-                </>
-              ) : null}
-
-              <div id="skills" style={{ scrollMarginTop: "20px" }} />
-              <SkillsSection />
-            </>
-          )}
+          <div id="skills" style={{ scrollMarginTop: "20px" }} />
+          <SkillsSection />
 
           <div id="appearance" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
@@ -1836,119 +1643,6 @@ export function SettingsPage() {
             </Field>
           </SettingsCard>
 
-          {isAdmin && <>
-          {/* ============================================================= */}
-          {/*  Engine Settings                                                */}
-          {/* ============================================================= */}
-          <div id="engine" style={{ scrollMarginTop: "20px" }} />
-          <SettingsCard
-            icon="sliders"
-            title={i18n.t("settings.engine.title")}
-            desc={i18n.t("settings.engine.desc")}
-            testid="settings-card-engine"
-          >
-            <Field
-              label={i18n.t("settings.engine.maxParallel")}
-              hint={i18n.t("settings.engine.maxParallel.hint")}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                <input
-                  type="range"
-                  data-testid="settings-max-parallel-slider"
-                  min={1}
-                  max={10}
-                  value={maxParallel}
-                  onChange={(e) => setMaxParallel(Number(e.target.value))}
-                  onPointerUp={(e) => saveEngineConfig({ max_parallel_scan: Number((e.target as HTMLInputElement).value), youngflow_max_parallel: youngflowMaxParallel })}
-                  style={{ flex: 1, height: "6px", accentColor: "var(--brand)" }}
-                />
-                <span
-                  data-testid="settings-max-parallel-value"
-                  style={{
-                    fontSize: "20px",
-                    fontWeight: 600,
-                    minWidth: "24px",
-                    textAlign: "center",
-                    color: "var(--text-primary)",
-                    lineHeight: 1,
-                  }}
-                >
-                  {maxParallel}
-                </span>
-              </div>
-            </Field>
-            <Field
-              label={<span style={{ textTransform: "none" }}>{i18n.t("settings.engine.agentParallel")}</span>}
-              hint={i18n.t("settings.engine.agentParallel.hint")}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                <input
-                  type="range"
-                  data-testid="settings-youngflow-max-parallel-slider"
-                  min={1}
-                  max={10}
-                  value={youngflowMaxParallel}
-                  onChange={(e) => setYoungflowMaxParallel(Number(e.target.value))}
-                  onPointerUp={(e) => saveEngineConfig({ max_parallel_scan: maxParallel, youngflow_max_parallel: Number((e.target as HTMLInputElement).value) })}
-                  style={{ flex: 1, height: "6px", accentColor: "var(--brand)" }}
-                />
-                <span
-                  data-testid="settings-youngflow-max-parallel-value"
-                  style={{ fontSize: "20px", fontWeight: 600, minWidth: "24px", textAlign: "center", color: "var(--text-primary)", lineHeight: 1 }}
-                >
-                  {youngflowMaxParallel}
-                </span>
-              </div>
-            </Field>
-            <div style={{ color: "var(--text-muted)", fontSize: "13px" }}>
-              {i18n.t("settings.engine.estimatedModelConcurrency").replace("{scan}", String(maxParallel)).replace("{agent}", String(youngflowMaxParallel)).replace("{total}", String(maxParallel * youngflowMaxParallel))}
-            </div>
-          </SettingsCard>
-
-          {/* ============================================================= */}
-          {/*  Source Archive Upload                                        */}
-          {/* ============================================================= */}
-          <SettingsCard
-            icon="upload"
-            title={i18n.t("settings.upload.sourceArchiveMax")}
-            desc={i18n.t("settings.upload.sourceArchiveDesc")}
-            testid="settings-card-source-archive-upload"
-          >
-            <Field label={i18n.t("settings.upload.currentLimit")}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                <input
-                  type="number"
-                  data-testid="settings-source-archive-upload-max"
-                  min={1}
-                  max={sourceArchiveUploadCeilingMb()}
-                  value={sourceArchiveUploadMax}
-                  onChange={(e) => setSourceArchiveUploadMax(Number(e.target.value))}
-                  onBlur={(e) => saveSourceArchiveUploadLimit(Number(e.target.value))}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      saveSourceArchiveUploadLimit(Number((e.target as HTMLInputElement).value));
-                    }
-                  }}
-                  style={{ width: "120px", height: "36px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 10px", background: "var(--bg-page)", color: "var(--text-primary)" }}
-                />
-                <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>MB</span>
-                <button
-                  type="button"
-                  data-testid="settings-source-archive-upload-save"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => saveSourceArchiveUploadLimit(sourceArchiveUploadMax)}
-                  style={{ height: "32px", border: "1px solid var(--brand)", borderRadius: "6px", background: "var(--brand)", color: "#fff", padding: "0 12px", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}
-                >
-                  {i18n.t("settings.saveBtn")}
-                </button>
-                <span data-testid="settings-source-archive-current-limit" style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                  {i18n.t("settings.upload.currentLimitValue").replace("{max}", String(sourceArchiveUploadCeilingMb()))}
-                </span>
-              </div>
-            </Field>
-          </SettingsCard>
-          </>}
         </>
       )}
       </div>
@@ -1985,22 +1679,6 @@ export function SettingsPage() {
   );
 }
 
-function InfoRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "10px 0",
-        borderTop: "1px solid var(--divider)",
-      }}
-    >
-      <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>{label}</span>
-      {children}
-    </div>
-  );
-}
 
 function Select({
   value,

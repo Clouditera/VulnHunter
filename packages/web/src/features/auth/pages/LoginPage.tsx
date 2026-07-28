@@ -151,7 +151,7 @@ function LoginPanel({ onGoRegister, onGoForgot }: { onGoRegister: () => void; on
       const res = await api.auth.login(email, password);
       qc.clear();
       if (res.user?.mustChangePassword) navigate("/change-password");
-      else navigate("/dashboard");
+      else navigate(res.user?.role === "admin" ? "/admin" : "/chat");
     } catch (err) {
       setError(errMessage(err, i18n.t("login.errorInvalid")));
     } finally {
@@ -406,7 +406,7 @@ function RegisterPanel({ onBack }: { onBack: () => void }) {
         accept_agreements: true,
       });
       qc.clear();
-      navigate("/dashboard");
+      navigate("/chat");
     } catch (err) {
       setError(errMessage(err, i18n.t("auth.err.registerFailed")));
     } finally {

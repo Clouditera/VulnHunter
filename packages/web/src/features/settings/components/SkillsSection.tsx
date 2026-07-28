@@ -177,13 +177,44 @@ export function SkillsSection() {
         </div>
       ) : skills.length === 0 ? (
         <div
+          data-testid="skills-empty"
           style={{
-            padding: "20px 4px",
+            border: "1px dashed var(--border)",
+            borderRadius: "10px",
+            padding: "28px 16px",
+            textAlign: "center",
             color: "var(--text-secondary)",
             fontSize: "13px",
           }}
         >
-          {i18n.t("skills.empty")}
+          <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: 6 }}>
+            {i18n.t("skills.emptyTitle")}
+          </div>
+          <p style={{ margin: "0 0 14px", lineHeight: 1.55 }}>
+            {i18n.t("skills.emptyBody")}
+          </p>
+          <button
+            type="button"
+            data-testid="skills-empty-upload"
+            disabled={uploadMut.isPending}
+            onClick={() => fileRef.current?.click()}
+            style={{
+              padding: "7px 14px",
+              border: "none",
+              borderRadius: "6px",
+              background: "var(--brand)",
+              color: "var(--btn-primary-text)",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <Icon name="upload" size={13} />
+            {i18n.t("skills.upload")}
+          </button>
         </div>
       ) : (
         <div

@@ -292,7 +292,7 @@ export const api = {
             timeout_mode?: "custom" | "auto";
             max_items_per_recon?: number;
             enable_dynamic_verify?: boolean;
-            enable_dynamic_exploit?: boolean;
+            enable_dynamic_exploit?: boolean; agent_max_parallel?: number;
           },
     ) =>
       body instanceof FormData
@@ -486,9 +486,9 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(meta),
       }),
-    getSystemConfig: () => request<{ config: SystemConfig }>("/api/settings/system"),
+    getSystemConfig: () => request<{ config: SystemConfig }>("/api/admin/system-config"),
     updateSystemConfig: (patch: Partial<SystemConfig>) =>
-      request<{ ok: boolean }>("/api/settings/system", {
+      request<{ ok: boolean }>("/api/admin/system-config", {
         method: "PATCH",
         body: JSON.stringify(patch),
       }),
@@ -523,27 +523,15 @@ export const api = {
         body: JSON.stringify(params),
       }),
     getModelTestRun: (id: string) => request<ModelDiagnosticResult & { id: string; status: "running" | "done" | "failed" }>(`/api/settings/credential/test-runs/${id}`),
-    getPocSettings: () =>
-      request<{ settings: PocSettingsApi }>("/api/settings/poc"),
-    updatePocSettings: (body: Partial<PocSettingsApi>) =>
-      request<{ settings: PocSettingsApi }>("/api/settings/poc", {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      }),
-    testPocConnection: (body?: { server_url?: string; token?: string }) =>
-      request<{ ok: boolean; server_version?: string; error?: string }>(
-        "/api/settings/poc/test",
-        { method: "POST", body: JSON.stringify(body ?? {}) },
-      ),
   },
   users: {
-    list: () => request<{ users: UserApi[] }>("/api/users"),
+    list: () => request<{ users: UserApi[] }>("/api/admin/users"),
     create: (data: { email: string; password: string; display_name?: string; role?: string; must_change_password?: boolean; task_limit?: number; admin_remark?: string | null }) =>
-      request<{ user: UserApi }>("/api/users", { method: "POST", body: JSON.stringify(data) }),
+      request<{ user: UserApi }>("/api/admin/users", { method: "POST", body: JSON.stringify(data) }),
     update: (id: string, data: { display_name?: string; role?: string; status?: string; reset_password?: string; task_limit?: number; admin_remark?: string | null }) =>
-      request<{ ok: boolean }>(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+      request<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     delete: (id: string) =>
-      request<{ ok: boolean }>(`/api/users/${id}`, { method: "DELETE" }),
+      request<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "DELETE" }),
   },
   auth: {
     login: (email: string, password: string) =>
@@ -614,7 +602,7 @@ export const api = {
       }),
   },
   settingsSmtp: {
-    get: () => request<SmtpConfigView>("/api/settings/smtp"),
+    get: () => request<SmtpConfigView>("/api/admin/smtp"),
     put: (data: {
       host: string;
       port: number;
@@ -622,9 +610,9 @@ export const api = {
       password?: string;
       from_address: string;
       encryption: "none" | "ssl" | "starttls";
-    }) => request<{ ok: boolean }>("/api/settings/smtp", { method: "PUT", body: JSON.stringify(data) }),
+    }) => request<{ ok: boolean }>("/api/admin/smtp", { method: "PUT", body: JSON.stringify(data) }),
     test: (to: string) =>
-      request<{ ok: boolean; detail?: string }>("/api/settings/smtp/test", {
+      request<{ ok: boolean; detail?: string }>("/api/admin/smtp/test", {
         method: "POST",
         body: JSON.stringify({ to }),
       }),
@@ -643,7 +631,7 @@ export const api = {
       if (opts?.limit != null) params.set("limit", String(opts.limit));
       if (opts?.offset != null) params.set("offset", String(opts.offset));
       const qs = params.toString();
-      return request<{ total: number; feedback: FeedbackItem[] }>(`/api/feedback${qs ? `?${qs}` : ""}`);
+      return request<{ total: number; feedback: FeedbackItem[] }>(`/api/admin/feedback${qs ? `?${qs}` : ""}`);
     },
   },
   home: {
@@ -754,7 +742,36 @@ export const api = {
         }),
     },
   },
-  skills: {
+  creditCodes: {
+    list: (opts?: { status?: "available" | "assigned"; page?: number; page_size?: number }) => {
+      const params = new URLSearchParams();
+      if (opts?.status) params.set("status", opts.status);
+      if (opts?.page != null) params.set("page", String(opts.page));
+      if (opts?.page_size != null) params.set("page_size", String(opts.page_size));
+      const qs = params.toString();
+      return request<{
+        items: CreditCodeItem[];
+        page: number;
+        page_size: number;
+        total: number;
+        counts: { available: number; assigned: number };
+      }>(`/api/admin/credit-codes${qs ? `?${qs}` : ""}`);
+    },
+    import: (text: string) =>
+      request<{
+        ok: boolean;
+        inserted: number;
+        skipped_duplicates: number;
+        invalid: number;
+        invalid_samples: string[];
+      }>("/api/admin/credit-codes/import", {
+        method: "POST",
+        body: JSON.stringify({ text }),
+      }),
+    delete: (id: string) =>
+      request<{ ok: boolean }>(`/api/admin/credit-codes/${id}`, { method: "DELETE" }),
+  },
+    skills: {
     list: () => request<{ skills: ReportSkill[] }>("/api/settings/skills"),
     /** Upload a skill .zip via multipart/form-data. Field name must be `file`. */
     upload: (file: File) => {
@@ -781,7 +798,7 @@ export const api = {
       ),
     generate: (
       taskId: string,
-      body: { skill_id: string; credential_id?: string; finding_keys?: string[] },
+      body: { skill_id?: string | null; credential_id?: string; finding_keys?: string[] },
     ) =>
       request<{ report: UserReport }>(
         `/api/tasks/${taskId}/reports/generate`,
@@ -890,9 +907,20 @@ export interface SourceArchivePolicy {
   accept: string;
 }
 
+export interface CreditCodeItem {
+  id: string;
+  code: string;
+  status: "available" | "assigned";
+  assigned_user_email: string | null;
+  assigned_at: string | null;
+  created_at: string;
+}
+
 export interface SystemConfig {
+
   max_parallel_scan: number;
-  youngflow_max_parallel: number;
+  /** @deprecated task-level agent_max_parallel; may still exist in legacy DB */
+  youngflow_max_parallel?: number;
   max_parallel_chat: number;
   max_parallel_report: number;
   scan_cpu_limit: number;

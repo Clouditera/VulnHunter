@@ -31,11 +31,11 @@ export function ReportGenerateModal({
 }: {
   taskId: string;
   skills: ReportSkill[];
-  onGenerate: (skillId: string, findingKeys: string[]) => void;
+  onGenerate: (skillId: string | undefined, findingKeys: string[]) => void;
   onClose: () => void;
   pending: boolean;
 }) {
-  const [selectedSkillId, setSelectedSkillId] = useState<string>(skills[0]?.id ?? "");
+  const [selectedSkillId, setSelectedSkillId] = useState<string>(skills[0]?.id ?? ""); // empty => builtin
 
   // Fetch all findings for this task
   const { data: findingsData } = useQuery({
@@ -97,21 +97,38 @@ export function ReportGenerateModal({
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>{i18n.t("reports.template")}</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {skills.map((sk) => (
-                <button
-                  key={sk.id}
-                  onClick={() => setSelectedSkillId(sk.id)}
+              {skills.length === 0 ? (
+                <span
+                  data-testid="report-builtin-template-chip"
                   style={{
-                    padding: "6px 14px", borderRadius: 6, fontSize: 12, fontFamily: "inherit", cursor: "pointer",
-                    border: selectedSkillId === sk.id ? "1px solid var(--brand)" : "1px solid var(--border)",
-                    background: selectedSkillId === sk.id ? "var(--bg-active-filter)" : "transparent",
-                    color: selectedSkillId === sk.id ? "var(--brand)" : "var(--text-secondary)",
-                    fontWeight: selectedSkillId === sk.id ? 600 : 400,
+                    padding: "6px 14px",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    border: "1px solid var(--brand)",
+                    background: "var(--bg-active-filter)",
+                    color: "var(--brand)",
+                    fontWeight: 600,
                   }}
                 >
-                  {sk.name}
-                </button>
-              ))}
+                  {i18n.t("reports.builtinTemplate")}
+                </span>
+              ) : (
+                skills.map((sk) => (
+                  <button
+                    key={sk.id}
+                    onClick={() => setSelectedSkillId(sk.id)}
+                    style={{
+                      padding: "6px 14px", borderRadius: 6, fontSize: 12, fontFamily: "inherit", cursor: "pointer",
+                      border: selectedSkillId === sk.id ? "1px solid var(--brand)" : "1px solid var(--border)",
+                      background: selectedSkillId === sk.id ? "var(--bg-active-filter)" : "transparent",
+                      color: selectedSkillId === sk.id ? "var(--brand)" : "var(--text-secondary)",
+                      fontWeight: selectedSkillId === sk.id ? 600 : 400,
+                    }}
+                  >
+                    {sk.name}
+                  </button>
+                ))
+              )}
             </div>
           </div>
 
@@ -204,13 +221,13 @@ export function ReportGenerateModal({
             {i18n.t("review.action.cancel")}
           </button>
           <button
-            onClick={() => onGenerate(selectedSkillId, Array.from(effectiveSelected))}
-            disabled={effectiveSelected.size === 0 || !selectedSkillId || pending}
+            onClick={() => onGenerate(selectedSkillId || undefined, Array.from(effectiveSelected))}
+            disabled={effectiveSelected.size === 0 || pending}
             style={{
               padding: "7px 16px", borderRadius: 6, border: "none", fontSize: 12, fontFamily: "inherit", fontWeight: 500,
-              background: effectiveSelected.size > 0 && selectedSkillId ? "var(--brand)" : "var(--bg-disabled)",
-              color: effectiveSelected.size > 0 && selectedSkillId ? "#fff" : "var(--text-secondary)",
-              cursor: effectiveSelected.size > 0 && selectedSkillId && !pending ? "pointer" : "not-allowed",
+              background: effectiveSelected.size > 0 ? "var(--brand)" : "var(--bg-disabled)",
+              color: effectiveSelected.size > 0 ? "#fff" : "var(--text-secondary)",
+              cursor: effectiveSelected.size > 0 && !pending ? "pointer" : "not-allowed",
               opacity: pending ? 0.6 : 1,
             }}
           >
