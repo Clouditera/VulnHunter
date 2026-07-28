@@ -413,7 +413,7 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
       <style>{`
         .vh-search-row .vh-search-ops { opacity: 0; transition: opacity .12s; }
         .vh-search-row:hover .vh-search-ops { opacity: 1; }
-        .vh-search-hl { background: rgba(229,52,45,0.12); color: #e5342d; padding: 0 1px; border-radius: 2px; }
+        .vh-search-hl { background: rgba(41,140,255,0.12); color: var(--brand); padding: 0 1px; border-radius: 2px; }
       `}</style>
     </div>
   );
