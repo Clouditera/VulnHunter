@@ -437,7 +437,7 @@ const GRID2: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(aut
 const GRID4: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12 };
 const CARD: CSSProperties = { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 18 };
 const ICON_LIGHT: CSSProperties = {
-  width: 36, height: 36, borderRadius: 8, background: "#fdeceb", color: RED,
+  width: 36, height: 36, borderRadius: 8, background: "var(--brand-soft)", color: RED,
   display: "grid", placeItems: "center", marginBottom: 12,
 };
 const ICON_DARK: CSSProperties = {
