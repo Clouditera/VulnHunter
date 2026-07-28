@@ -2,11 +2,13 @@
  * CloudRouter user-facing promo endpoints.
  * GET  /api/promo/cloudrouter
  * POST /api/promo/cloudrouter/claim
+ * GET  /api/promo/cloudrouter/balance
  */
 
 import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
+import { queryContextFromUser } from "../../infra/query-context.js";
 import * as promoStorage from "./storage.js";
 
 export const promoRouter = new Hono();
@@ -45,6 +47,14 @@ promoRouter.get("/cloudrouter", async (c) => {
     promoStorage.hasAvailableCreditCode(),
   ]);
   return c.json({ enabled, my_code, available });
+});
+
+// GET /api/promo/cloudrouter/balance — proxy /v1/usage via user's CloudRouter credential
+promoRouter.get("/cloudrouter/balance", async (c) => {
+  const user = c.get("user");
+  const ctx = queryContextFromUser(user);
+  const result = await promoStorage.getCloudrouterBalance(ctx);
+  return c.json(result);
 });
 
 // POST /api/promo/cloudrouter/claim
