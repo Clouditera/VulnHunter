@@ -37,3 +37,12 @@ export const requireAdmin: MiddlewareHandler = async (c, next) => {
   }
   return next();
 };
+
+/** Block admin accounts from business APIs (admin console only). */
+export const forbidAdmin: MiddlewareHandler = async (c, next) => {
+  const user = c.get("user");
+  if (user?.role === "admin") {
+    return c.json({ error: { code: "ERR_ADMIN_BUSINESS_FORBIDDEN" } }, 403);
+  }
+  return next();
+};

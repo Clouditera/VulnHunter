@@ -36,6 +36,16 @@ export const ERROR_CATALOG = {
     summary: { zh: "需要管理员权限", en: "Admin required" },
     detail: { zh: "此操作需要管理员权限", en: "This action requires admin privileges" },
   },
+  ERR_ADMIN_BUSINESS_FORBIDDEN: {
+    httpStatus: 403,
+    summary: { zh: "管理员账号仅用于后台管理", en: "Admin accounts are for console only" },
+    detail: { zh: "请使用普通账号使用业务功能", en: "Use a regular account for business features" },
+  },
+  ERR_CREDIT_CODE_ASSIGNED: {
+    httpStatus: 409,
+    summary: { zh: "积分码已被领取", en: "Credit code already assigned" },
+    detail: { zh: "已领取的积分码不可删除", en: "Assigned credit codes cannot be deleted" },
+  },
   // Task
   ERR_TASK_NOT_FOUND: {
     httpStatus: 404,

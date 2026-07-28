@@ -25,6 +25,7 @@ services:
     environment:
       NODE_ENV: "production"
       EDITION: "${EDITION:-community}"
+      SERVICE_ROLE: "business"
       PORT: "28080"
       DATABASE_URL: "postgresql://vulnhunter:${DB_PASSWORD:-vulnhunter}@db:5432/vulnhunter"
       MINIO_ENDPOINT: "minio"
@@ -51,6 +52,9 @@ services:
       SANDBOX_SSH_BASTION: "${SANDBOX_SSH_BASTION:-}"
       SANDBOX_SSH_BASTION_HOST_KEY: "${SANDBOX_SSH_BASTION_HOST_KEY:-}"
       SANDBOX_SSH_BASTION_IDENTITY: "${SANDBOX_SSH_BASTION_IDENTITY:-}"
+      # Former POC settings live fields (UI offline)
+      POC_RUN_TIMEOUT_S: "${POC_RUN_TIMEOUT_S:-1800}"
+      EVAL_CONTAINER_NETWORK: "${EVAL_CONTAINER_NETWORK:-bridge}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
     group_add:
       - "${DOCKER_GID:-0}"
@@ -66,6 +70,50 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+
+  # Admin console API — same image, SERVICE_ROLE=admin; no docker.sock, no public ports
+  admin-api:
+    image: ${SERVICE_IMAGE:-vulnhunter-service:latest}
+    container_name: vulnhunter-admin-api
+    restart: unless-stopped
+    user: "${SERVICE_UID:-1001}:${SERVICE_GID:-1001}"
+    environment:
+      NODE_ENV: "production"
+      EDITION: "${EDITION:-community}"
+      SERVICE_ROLE: "admin"
+      PORT: "28080"
+      DATABASE_URL: "postgresql://vulnhunter:${DB_PASSWORD:-vulnhunter}@db:5432/vulnhunter"
+      DATA_DIR: "${DATA_DIR:-/opt/vulnhunter/data}"
+      VULNHUNTER_MASTER_KEY_FILE: "${VULNHUNTER_MASTER_KEY_FILE:-/run/secrets/vulnhunter-master.key}"
+      VULNHUNTER_LICENSE_PUBLIC_KEY_FILE: "${VULNHUNTER_LICENSE_PUBLIC_KEY_FILE:-/run/secrets/license-public.pem}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+    volumes:
+      - "${DATA_DIR:-/opt/vulnhunter/data}:${DATA_DIR:-/opt/vulnhunter/data}"
+      - "${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}:/run/secrets/vulnhunter-master.key:ro"
+      - "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}:/run/secrets/license-public.pem:ro"
+    networks:
+      - vulnhunter-internal
+    depends_on:
+      db:
+        condition: service_healthy
+      service:
+        condition: service_started
+
+  # Admin console web — default bind 127.0.0.1:23001 (localhost only)
+  admin-web:
+    image: ${WEB_IMAGE:-vulnhunter-web:latest}
+    container_name: vulnhunter-admin-web
+    restart: unless-stopped
+    ports:
+      - "${ADMIN_LISTEN_ADDR:-127.0.0.1}:${ADMIN_PORT:-23001}:80"
+    environment:
+      UPLOAD_GATEWAY_LIMIT_MB: "${UPLOAD_GATEWAY_LIMIT_MB:-2048}"
+      NGINX_ROLE: "admin"
+    networks:
+      - vulnhunter-internal
+    depends_on:
+      admin-api:
+        condition: service_started
 
   db:
     image: ${POSTGRES_IMAGE:-postgres:16-alpine}

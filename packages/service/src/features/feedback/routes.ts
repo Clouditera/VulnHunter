@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import * as storage from "./storage.js";
@@ -8,7 +8,7 @@ export const feedbackRouter = new Hono();
 feedbackRouter.use("*", licenseGuard);
 feedbackRouter.use("*", requireAuth);
 
-// POST /api/feedback — any authenticated user
+// POST /api/feedback — any authenticated user (admin list → /api/admin/feedback)
 feedbackRouter.post("/", async (c) => {
   const user = c.get("user");
   const ctx = queryContextFromUser(user);
@@ -47,29 +47,4 @@ feedbackRouter.post("/", async (c) => {
       created_at: row.created_at,
     },
   }, 201);
-});
-
-// GET /api/feedback — admin list
-feedbackRouter.get("/", requireAdmin, async (c) => {
-  const ctx = queryContextFromUser(c.get("user"));
-  const limit = Number(c.req.query("limit") ?? 50);
-  const offset = Number(c.req.query("offset") ?? 0);
-  const { items, total } = await storage.listFeedback({
-    limit,
-    offset,
-    tenantId: ctx.tenantId,
-  });
-  return c.json({
-    total,
-    feedback: items.map((f) => ({
-      id: f.id,
-      satisfaction: f.satisfaction,
-      content: f.content,
-      contact_email: f.contact_email,
-      created_at: f.created_at,
-      user: f.user_id
-        ? { id: f.user_id, email: f.user_email ?? null, display_name: f.user_display_name ?? null }
-        : null,
-    })),
-  });
 });

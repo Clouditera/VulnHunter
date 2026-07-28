@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { requireAdmin, requireAuth } from "../../middleware/auth.js";
+import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import {
   getDefaultCredential,
@@ -7,8 +7,6 @@ import {
   deleteCredential,
   setDefaultCredential,
   upsertCredential,
-  getSystemConfig,
-  updateSystemConfig,
 } from "./storage.js";
 import { logger } from "../../infra/logger.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
@@ -16,7 +14,6 @@ import { diagnoseModelRuntimeCredential } from "./runtime-diagnostics.js";
 import { getDiagnosticRun, startDiagnosticRun } from "./diagnostic-runs.js";
 import { loadConfig } from "../../infra/config.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
-import { getSmtpPublic, saveSmtp, sendMail, type SmtpEncryption } from "./smtp.js";
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
 const VALID_PROTO_TYPES = new Set(["openai-completions", "openai-responses", "anthropic", "openai"]);
@@ -356,88 +353,4 @@ settingsRouter.post("/models", async (c) => {
   }
 });
 
-// GET /api/settings/system — system config
-settingsRouter.get("/system", requireAdmin, async (c) => {
-  const config = await getSystemConfig();
-  return c.json({ config });
-});
-
-// PATCH /api/settings/system — update system config
-settingsRouter.patch("/system", requireAdmin, async (c) => {
-  const body = await c.req.json<Record<string, unknown>>();
-  try {
-    await updateSystemConfig(body);
-  } catch (err) {
-    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: err instanceof Error ? err.message : "invalid system config" } }, 400);
-  }
-  return c.json({ ok: true });
-});
-
-// ── SMTP admin configuration ──────────────────────────────────────────
-settingsRouter.get("/smtp", requireAdmin, async (c) => {
-  const smtp = await getSmtpPublic();
-  return c.json({
-    host: smtp.host,
-    port: smtp.port,
-    username: smtp.username,
-    from_address: smtp.from_address,
-    encryption: smtp.encryption,
-    configured: smtp.configured,
-    password_configured: smtp.password_configured,
-  });
-});
-
-settingsRouter.put("/smtp", requireAdmin, async (c) => {
-  const body = await c.req.json<{
-    host?: string;
-    port?: number;
-    username?: string;
-    password?: string;
-    from_address?: string;
-    encryption?: SmtpEncryption;
-  }>();
-  const host = (body.host ?? "").trim();
-  const encryption = body.encryption ?? "starttls";
-  if (!(["none", "ssl", "starttls"] as const).includes(encryption)) {
-    return c.json({ error: { code: "ERR_VALIDATION", message: "invalid encryption" } }, 400);
-  }
-  try {
-    const smtp = await saveSmtp({
-      host,
-      port: Number(body.port ?? 587),
-      username: body.username ?? "",
-      password: body.password,
-      from_address: (body.from_address ?? "").trim(),
-      encryption,
-    });
-    return c.json({ ok: true, smtp });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg === "master_key_unavailable") {
-      return c.json({ error: { code: "ERR_MASTER_KEY", message: "Master key unavailable; cannot encrypt SMTP password" } }, 503);
-    }
-    throw err;
-  }
-});
-
-settingsRouter.post("/smtp/test", requireAdmin, async (c) => {
-  const body = await c.req.json<{ to?: string }>();
-  const to = (body.to ?? "").trim();
-  if (!to) return c.json({ error: { code: "ERR_VALIDATION", message: "to required" } }, 400);
-  const pub = await getSmtpPublic();
-  if (!pub.configured) {
-    return c.json({
-      ok: false,
-      error: { code: "smtp_not_configured", message: "平台未配置邮件服务，请联系管理员" },
-    }, 501);
-  }
-  const result = await sendMail({
-    to,
-    subject: "VulnHunter SMTP 测试邮件",
-    text: "这是一封来自 VulnHunter 的测试邮件。若您收到此邮件，说明 SMTP 配置正常。",
-  });
-  if (!result.ok) {
-    return c.json({ ok: false, error: { code: "smtp_send_failed", message: result.error } }, 502);
-  }
-  return c.json({ ok: true });
-});
+// system-config + smtp admin endpoints moved to /api/admin/* (admin-api only)

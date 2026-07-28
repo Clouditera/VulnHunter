@@ -1,5 +1,8 @@
 /**
  * VulnHunter Service — entry point
+ *
+ * SERVICE_ROLE=business (default): full API + scheduler/workers
+ * SERVICE_ROLE=admin: admin-api subset only (no docker/scheduler/migrations)
  */
 
 import { loadConfig } from "./infra/config.js";
@@ -9,10 +12,15 @@ import { logger } from "./infra/logger.js";
 import { initVault, checkCredentialHealth } from "./features/settings/index.js";
 import { initDocker, TaskScheduler, reconcileWorkers } from "./features/workers/index.js";
 import { initWorkerInstanceId } from "./features/workers/instance-id.js";
-import { createApp, startServer } from "./server.js";
+import { createApp, startServer, type ServiceRole } from "./server.js";
 import { initInstallation } from "./features/system/index.js";
 
 type EnterpriseModule = typeof import("@vulnhunter/enterprise");
+
+function resolveServiceRole(): ServiceRole {
+  const raw = (process.env.SERVICE_ROLE ?? "business").toLowerCase();
+  return raw === "admin" ? "admin" : "business";
+}
 
 async function loadEnterpriseModule(): Promise<EnterpriseModule> {
   try {
@@ -26,35 +34,51 @@ async function loadEnterpriseModule(): Promise<EnterpriseModule> {
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  const role = resolveServiceRole();
 
-  logger.info("VulnHunter Service starting...");
+  logger.info({ role }, "VulnHunter Service starting...");
 
-  // Initialize DB
+  // DB always
   await initDb(config.db.url);
-  await runMigrations();
 
-  // Initialize MinIO
-  await initMinio(config.minio).catch((err) => {
-    logger.warn({ err }, "MinIO not available — continuing (workers will fail)");
-  });
+  if (role === "business") {
+    // Schema migrations: business role is the single writer
+    await runMigrations();
+  }
 
-  // Initialize installation identity (community and enterprise both need it)
+  // Installation identity (both roles)
   initInstallation(config.dataDir);
 
-  const app = createApp();
+  const app = createApp(role);
   let tickEnterpriseLicense: (() => Promise<void>) | null = null;
   if (config.edition === "enterprise") {
     try {
       const enterpriseModule = await loadEnterpriseModule();
-      const enterprise = await enterpriseModule.initEnterprise(app, config);
-      tickEnterpriseLicense = enterprise.tickLicense;
+      const enterprise = await enterpriseModule.initEnterprise(app, config, role);
+      // Only business role runs the license tick timer
+      if (role === "business") {
+        tickEnterpriseLicense = enterprise.tickLicense;
+      }
     } catch (err) {
       logger.warn({ err }, "Enterprise module not found — running community edition");
     }
   }
 
-  // Initialize crypto vault
+  // Vault needed by both (SMTP password decrypt on admin; credentials on business)
   initVault(config.dataDir);
+
+  if (role === "admin") {
+    // admin-api: no minio, no docker, no scheduler, no reconciler
+    process.on("SIGTERM", () => process.exit(0));
+    startServer(config.port, app);
+    return;
+  }
+
+  // ── business-only infra ────────────────────────────────────────
+  await initMinio(config.minio).catch((err) => {
+    logger.warn({ err }, "MinIO not available — continuing (workers will fail)");
+  });
+
   const credentialHealth = await checkCredentialHealth().catch((err) => {
     logger.warn({ err }, "Credential decrypt health check failed");
     return null;
@@ -77,20 +101,12 @@ async function main(): Promise<void> {
     );
   }
 
-  // Initialize Docker
   initDocker(config.docker.socketPath);
-
-  // Resolve this install's stable instance identity — every worker
-  // container is labeled with it so reconciliation on a shared Docker
-  // daemon never touches a sibling install's containers.
   await initWorkerInstanceId();
-
-  // Reconcile workers from previous run
   await reconcileWorkers().catch((err) =>
     logger.warn({ err }, "Reconciler failed — continuing"),
   );
 
-  // Start task scheduler
   const scheduler = new TaskScheduler(config);
   await scheduler.start();
 
@@ -100,13 +116,11 @@ async function main(): Promise<void> {
     }, 60 * 60 * 1000);
   }
 
-  // Graceful shutdown
   process.on("SIGTERM", () => {
     scheduler.stop();
     process.exit(0);
   });
 
-  // Start HTTP server
   startServer(config.port, app);
 }
 

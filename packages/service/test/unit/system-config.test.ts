@@ -39,6 +39,13 @@ describe("system config validation", () => {
     await expect(getSystemConfig()).resolves.toMatchObject({ youngflow_max_parallel: 3 });
   });
 
+  it("preserves legacy youngflow key on unrelated patch (deprecated, leave unread)", async () => {
+    await updateSystemConfig({ max_parallel_scan: 5 });
+    const saved = await getSystemConfig();
+    expect(saved).toMatchObject({ max_parallel_scan: 5 });
+    expect(saved.youngflow_max_parallel).toBe(3);
+  });
+
   it("uses deployment upload ceiling for source archive setting validation", async () => {
     process.env.UPLOAD_GATEWAY_LIMIT_MB = "4096";
     await updateSystemConfig({ source_archive_upload_max_mb: 4096 });
