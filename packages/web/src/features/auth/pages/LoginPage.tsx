@@ -51,13 +51,28 @@ const PRIMARY_BTN = (loading: boolean): CSSProperties => ({
 });
 
 function errMessage(err: unknown, fallback: string): string {
-  const e = err as Error & { code?: string; message?: string };
-  if (e?.code === "ERR_ADMIN_USE_CONSOLE" || (e?.message && e.message.includes("管理后台"))) {
-    return e.message || i18n.t("login.errorAdminConsole");
+  const e = err as ClientErr;
+  const code = e?.code ?? "";
+  const detail = e?.message ?? "";
+  // Admin must use console entry (business login rejection)
+  if (code === "ERR_ADMIN_USE_CONSOLE" || /管理后台/.test(detail)) {
+    return detail || i18n.t("login.errorAdminConsole");
   }
-  if (e?.message && e.message !== "ERR_INTERNAL" && e.message.length > 0 && e.message !== e.code) {
-    return e.message;
+  // Prefer backend detail for smtp_not_configured and rate limits when present.
+  if (code === "smtp_not_configured" || /smtp_not_configured/i.test(code) || /未配置邮件/.test(detail)) {
+    return i18n.t("auth.err.smtpNotConfigured");
   }
+  if (code === "rate_limited" || code === "ERR_RATE_LIMITED") return i18n.t("auth.err.rateLimited");
+  if (code === "invalid_code") return i18n.t("auth.err.invalidCode");
+  if (code === "code_expired") return i18n.t("auth.err.codeExpired");
+  if (code === "attempts_exceeded") return i18n.t("auth.err.attemptsExceeded");
+  if (code === "weak_password") return i18n.t("auth.err.weakPassword");
+  if (code === "email_exists" || code === "ERR_EMAIL_EXISTS") return i18n.t("auth.err.emailExists");
+  if (code === "agreements_required") return i18n.t("auth.err.agreementsRequired");
+  if (code === "account_suspended" || code === "ERR_ACCOUNT_SUSPENDED") return i18n.t("auth.err.suspended");
+  if (code === "ERR_AUTH_LOCKED") return i18n.t("login.errorLocked");
+  if (code === "invalid_email") return i18n.t("auth.err.invalidEmail");
+  if (detail && detail !== code) return detail;
   return fallback;
 }
 
