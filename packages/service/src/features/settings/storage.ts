@@ -510,6 +510,12 @@ export async function updateSystemConfig(patch: Record<string, unknown>): Promis
       delete merged.youngflow_max_parallel;
     }
   }
+  if ("cloudrouter_promo_enabled" in patch) {
+    if (typeof patch.cloudrouter_promo_enabled !== "boolean") {
+      throw new Error("cloudrouter_promo_enabled must be a boolean");
+    }
+    merged.cloudrouter_promo_enabled = patch.cloudrouter_promo_enabled;
+  }
   merged.source_archive_upload_max_mb = validateBoundedInt("source_archive_upload_max_mb", merged.source_archive_upload_max_mb, Math.min(500, ceilingMb), 1, ceilingMb);
   merged.upload_zip_max_mb = merged.source_archive_upload_max_mb;
   await db`

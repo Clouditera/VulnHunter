@@ -18,6 +18,8 @@ export interface DbUser {
   sandbox_max_cpu_cores: number;
   sandbox_max_memory_gb: number;
   last_login_at: Date | null;
+  /** Set when user dismisses first-run onboarding (migration 040). */
+  onboarding_dismissed_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -180,6 +182,17 @@ export async function updateUser(
       admin_remark = CASE WHEN ${updateAdminRemark} THEN ${fields.adminRemark ?? null} ELSE admin_remark END,
       updated_at = now()
     WHERE id = ${id}
+  `;
+}
+
+/** Idempotent: set onboarding_dismissed_at = now() if not already set. */
+export async function dismissOnboarding(userId: string): Promise<void> {
+  const db = getDb();
+  await db`
+    UPDATE users SET
+      onboarding_dismissed_at = COALESCE(onboarding_dismissed_at, now()),
+      updated_at = now()
+    WHERE id = ${userId}
   `;
 }
 

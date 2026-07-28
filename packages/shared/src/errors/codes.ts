@@ -46,6 +46,11 @@ export const ERROR_CATALOG = {
     summary: { zh: "积分码已被领取", en: "Credit code already assigned" },
     detail: { zh: "已领取的积分码不可删除", en: "Assigned credit codes cannot be deleted" },
   },
+  ERR_PROMO_DISABLED: {
+    httpStatus: 403,
+    summary: { zh: "推广活动未开启", en: "Promo disabled" },
+    detail: { zh: "该部署已关闭 CloudRouter 推广位", en: "CloudRouter promo is disabled on this deployment" },
+  },
   // Task
   ERR_TASK_NOT_FOUND: {
     httpStatus: 404,

@@ -22,6 +22,7 @@ import { downloadsRouter } from "./features/downloads/routes.js";
 import { sandboxPlaneInternalRouter } from "./features/sandbox-plane/routes.js";
 import { modelProxyInternalRouter } from "./features/model-proxy/routes.js";
 import { mountAdminRoutes } from "./features/admin/index.js";
+import { promoRouter } from "./features/promo/index.js";
 import { setupWsRouter } from "./ws-router.js";
 import { mcpRouter } from "./mcp/index.js";
 import { injectUser, forbidAdmin } from "./middleware/index.js";
@@ -42,6 +43,7 @@ const ADMIN_FORBIDDEN_PREFIXES = [
   "/api/notifications",
   "/api/downloads",
   "/api/sandbox",
+  "/api/promo",
 ] as const;
 
 function mountForbidAdmin(app: Hono): void {
@@ -91,6 +93,7 @@ export function createApp(role: ServiceRole = "business"): Hono {
   app.route("/api/settings", settingsRouter);
   app.route("/api/chat", chatRouter);
   app.route("/api/feedback", feedbackRouter);
+  app.route("/api/promo", promoRouter);
   app.route("/api", reportsRouter);
   app.route("/api", filesRouter);
 

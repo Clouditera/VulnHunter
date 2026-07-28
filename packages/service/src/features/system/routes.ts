@@ -39,6 +39,7 @@ async function statusHandler(c: any) {
           displayName: sessionUser.displayName,
           task_limit: dbUser?.task_limit ?? 0,
           task_count: taskCount ?? 0,
+          onboarding_dismissed: dbUser?.onboarding_dismissed_at != null,
         }
       : null,
   });
