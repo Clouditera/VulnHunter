@@ -43,9 +43,9 @@ export async function spawnPocRunner(
   for await (const chunk of stream) chunks.push(chunk as Buffer);
   writeFileSync(scriptPath, Buffer.concat(chunks));
 
-  // Get POC settings for timeout
-  const pocSettings = await pocStorage.getPocSettings();
-  const timeout = pocSettings?.poc_timeout_s ?? 300;
+  // Timeout from deploy env (POC settings UI offline; table retained unread)
+  const timeoutRaw = Number(process.env.POC_RUN_TIMEOUT_S ?? 1800);
+  const timeout = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? Math.trunc(timeoutRaw) : 1800;
 
   // Remove stale container
   const containerName = `va-poc-run-${run.id}`;

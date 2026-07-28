@@ -1,3 +1,3 @@
-export { authRouter } from "./routes.js";
+export { authRouter, adminAuthRouter } from "./routes.js";
 export { login, logout, resolveSession, bootstrap, hasAnyAdmin } from "./service.js";
 export type { SessionUser } from "./types.js";

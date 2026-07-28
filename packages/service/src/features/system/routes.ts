@@ -16,8 +16,7 @@ systemRouter.get("/home-stats", async (c) => {
   return c.json({ stats });
 });
 
-// GET /api/system/status  (public, no auth required)
-systemRouter.get("/status", async (c) => {
+async function statusHandler(c: any) {
   const license = await getLicenseStatus();
   const hasAdmin = await authStorage.hasAnyAdmin();
   const isAuthenticated = !!c.get("user");
@@ -43,4 +42,11 @@ systemRouter.get("/status", async (c) => {
         }
       : null,
   });
-});
+}
+
+// GET /api/system/status  (public, no auth required)
+systemRouter.get("/status", statusHandler);
+
+/** admin-api system subset: status only (activate mounted by enterprise or separately). */
+export const adminSystemRouter = new Hono();
+adminSystemRouter.get("/status", statusHandler);

@@ -20,8 +20,9 @@ const COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds
 const ipSendCounts = new Map<string, { day: string; count: number }>();
 
 function clientIp(c: { req: { header: (n: string) => string | undefined } }): string {
-  return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
-    || c.req.header("x-real-ip")
+  // Prefer X-Real-IP (set by our nginx) over XFF leftmost (client-spoofable)
+  return c.req.header("x-real-ip")?.trim()
+    || c.req.header("x-forwarded-for")?.split(",").pop()?.trim()
     || "unknown";
 }
 
@@ -357,5 +358,88 @@ authRouter.post("/bootstrap", licenseGuard, async (c) => {
     );
   }
 
+  return c.json({ ok: true });
+});
+
+/**
+ * admin-api auth subset: login / logout / me / change-password / force-change-password.
+ * No register, request-code, bootstrap, forgot-password.
+ */
+export const adminAuthRouter = new Hono();
+
+adminAuthRouter.post("/login", licenseGuard, async (c) => {
+  const body = await c.req.json<{ email: string; password: string }>();
+  const ip = clientIp(c);
+  const userAgent = c.req.header("user-agent");
+
+  const result = await authService.login({
+    email: body.email,
+    password: body.password,
+    ip,
+    userAgent,
+  });
+
+  if ("error" in result) {
+    if (result.error === "account_suspended") {
+      return c.json({
+        error: {
+          code: "account_suspended",
+          message: "账号已被禁用，请联系管理员",
+        },
+      }, 403);
+    }
+    const code = result.error === "locked" ? "ERR_AUTH_LOCKED" : "ERR_AUTH_INVALID_CREDENTIALS";
+    return c.json({ error: { code } }, result.error === "locked" ? 429 : 401);
+  }
+
+  setSessionCookie(c, result.sessionId);
+  return c.json({
+    ok: true,
+    user: userPayload(result.user),
+  });
+});
+
+adminAuthRouter.post("/change-password", licenseGuard, requireAuth, async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json<{ old_password: string; new_password: string }>();
+
+  if (!body.old_password || !body.new_password || !isStrongPassword(body.new_password)) {
+    return c.json({ error: { code: "weak_password", message: PASSWORD_RULE_MESSAGE } }, 400);
+  }
+
+  const result = await authService.changePassword(user.userId, body.old_password, body.new_password);
+  if ("error" in result) {
+    return c.json({ error: { code: "ERR_AUTH_INVALID_CREDENTIALS", message: result.error } }, 401);
+  }
+  return c.json({ ok: true });
+});
+
+adminAuthRouter.post("/force-change-password", licenseGuard, requireAuth, async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json<{ new_password: string }>();
+
+  if (!body.new_password || !isStrongPassword(body.new_password)) {
+    return c.json({ error: { code: "weak_password", message: PASSWORD_RULE_MESSAGE } }, 400);
+  }
+
+  await authService.forceChangePassword(user.userId, body.new_password);
+  return c.json({ ok: true });
+});
+
+adminAuthRouter.patch("/me", licenseGuard, requireAuth, async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json<{ display_name?: string }>();
+  if (body.display_name !== undefined) {
+    await authStorage.updateUser(user.userId, { displayName: body.display_name });
+  }
+  return c.json({ ok: true });
+});
+
+adminAuthRouter.post("/logout", async (c) => {
+  const sessionId = getCookie(c, SESSION_COOKIE);
+  if (sessionId) {
+    await authService.logout(sessionId);
+  }
+  deleteCookie(c, SESSION_COOKIE, { path: "/" });
   return c.json({ ok: true });
 });

@@ -89,9 +89,6 @@ export async function spawnEvalWorker(
   }
   logger.info({ jobId: job.id, findings: job.finding_keys.length }, "Findings staged to workspace");
 
-  // Get POC settings for DeVeye config
-  const pocSettings = await pocStorage.getPocSettings();
-
   // Remove stale container (name matches createWorkerContainer format)
   const containerName = `va-eval-${job.id}`;
   try {
@@ -109,8 +106,9 @@ export async function spawnEvalWorker(
     TARGET_URL: job.target_url ?? "",
     BROWSER_TOOL: job.browser_tool,
     CUSTOM_INSTRUCTIONS: job.custom_instructions ?? "",
-    DEVEYE_SERVER: job.deveye_server_url || pocSettings?.deveye_server_url || "",
-    DEVEYE_TOKEN: job.deveye_token || pocSettings?.deveye_token || "",
+    // DeVeye remote server abandoned; job fields only (POC settings table unread)
+    DEVEYE_SERVER: job.deveye_server_url || "",
+    DEVEYE_TOKEN: job.deveye_token || "",
     ...llmEnv,
   };
 
@@ -124,11 +122,12 @@ export async function spawnEvalWorker(
     });
   }
 
+  const networkMode = (process.env.EVAL_CONTAINER_NETWORK ?? "bridge").trim();
   const container = await createWorkerContainer({
     taskId: job.id,
     taskType: "eval",
     image: config.docker.evalWorkerImage,
-    network: pocSettings?.container_network_mode === "host" ? "host" : config.docker.network,
+    network: networkMode === "host" ? "host" : config.docker.network,
     hostWorkDir,
     cpuQuota: 200000,
     memoryBytes: 4 * 1024 * 1024 * 1024,

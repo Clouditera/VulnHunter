@@ -345,9 +345,18 @@ protect_or_migrate_legacy_volume minio "${DATA_DIR:-/opt/vulnhunter/data}/minio"
 prepare_data_dirs
 docker rm -f \
   vulnagent-web vulnagent-service vulnagent-db vulnagent-minio \
-  vulnhunter-web vulnhunter-service vulnhunter-db vulnhunter-minio \
+  vulnhunter-web vulnhunter-service vulnhunter-admin-web vulnhunter-admin-api \
+  vulnhunter-db vulnhunter-minio \
   >/dev/null 2>&1 || true
 compose_up_detached
+# Admin console default bind is 127.0.0.1 — warn operators after upgrade
+admin_addr="${ADMIN_LISTEN_ADDR:-127.0.0.1}"
+admin_port="${ADMIN_PORT:-23001}"
+echo "[upgrade] WARNING: admin console listens on ${admin_addr}:${admin_port} (default localhost-only)."
+echo "[upgrade] Remote admin: set ADMIN_LISTEN_ADDR=0.0.0.0 in .env, or ssh -L ${admin_port}:127.0.0.1:${admin_port}"
+if [[ "$admin_addr" == "127.0.0.1" || "$admin_addr" == "localhost" ]]; then
+  echo "[upgrade] Admin URL (on server): http://127.0.0.1:${admin_port}/admin"
+fi
 # Detach SandboxPlane from the legacy network once the new stack is up.
 if declare -F rename_cleanup_old_network >/dev/null 2>&1; then
   rename_cleanup_old_network || true
