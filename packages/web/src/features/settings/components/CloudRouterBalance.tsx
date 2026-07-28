@@ -109,9 +109,6 @@ export function CloudRouterBalanceStrip({ baseUrl }: { baseUrl?: string | null }
           >
             {formatBalanceAmount(data.remaining, data.unit)}
           </strong>
-          {data.unit && data.unit.toUpperCase() !== "USD" ? (
-            <span style={{ marginLeft: 4 }}>{data.unit}</span>
-          ) : null}
           {updated ? (
             <span style={{ marginLeft: 8, fontSize: 11.5 }}>
               · {i18n.t("settings.creds.cloudRouter.balanceUpdated").replace("{t}", updated)}

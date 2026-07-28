@@ -120,7 +120,7 @@ export function CloudRouterPromo() {
               fontWeight: 600,
               padding: "2px 6px",
               borderRadius: 4,
-              border: dark ? "1px solid rgba(165,180,252,0.5)" : "1px solid var(--partner-border)",
+              border: "1px solid var(--partner-border)",
               color: dark ? "var(--partner-accent)" : "var(--brand-hover)",
             }}
           >
