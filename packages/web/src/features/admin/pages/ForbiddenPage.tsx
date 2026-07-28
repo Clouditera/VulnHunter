@@ -4,9 +4,21 @@ import { api } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 
-/** Layout-free 403 for non-admin hitting /admin/* */
+/** Layout-free 403 for non-admin hitting /admin/* — always offer logout so user can switch account. */
 export function ForbiddenPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  async function logout() {
+    try {
+      await api.auth.logout();
+    } catch {
+      /* ignore */
+    }
+    qc.clear();
+    navigate("/login", { replace: true });
+  }
+
   return (
     <div
       data-testid="admin-forbidden-page"
@@ -60,8 +72,8 @@ export function ForbiddenPage() {
         </p>
         <button
           type="button"
-          data-testid="admin-forbidden-home"
-          onClick={() => navigate("/chat")}
+          data-testid="admin-forbidden-logout"
+          onClick={() => void logout()}
           style={{
             padding: "10px 18px",
             border: "none",
@@ -73,11 +85,9 @@ export function ForbiddenPage() {
             cursor: "pointer",
           }}
         >
-          {i18n.t("admin.forbidden.home")}
+          {i18n.t("admin.forbidden.logout")}
         </button>
       </div>
     </div>
   );
 }
-
-/** Shown when an admin account hits the main business app */

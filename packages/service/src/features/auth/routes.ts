@@ -12,9 +12,7 @@ import {
   getAgreementHtml,
   recordRegisterAcceptances,
 } from "./agreements.js";
-
-const SESSION_COOKIE = "va_session";
-const COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds
+import { sessionCookieName, COOKIE_MAX_AGE } from "./session-cookie.js";
 
 // IP rate limit (in-memory, single instance)
 const ipSendCounts = new Map<string, { day: string; count: number }>();
@@ -55,7 +53,7 @@ const SMTP_NOT_CONFIGURED = {
 };
 
 function setSessionCookie(c: Parameters<typeof setCookie>[0], sessionId: string): void {
-  setCookie(c, SESSION_COOKIE, sessionId, {
+  setCookie(c, sessionCookieName(), sessionId, {
     httpOnly: true,
     sameSite: "Strict",
     path: "/",
@@ -344,11 +342,11 @@ authRouter.patch("/me", licenseGuard, requireAuth, async (c) => {
 
 // POST /api/auth/logout
 authRouter.post("/logout", async (c) => {
-  const sessionId = getCookie(c, SESSION_COOKIE);
+  const sessionId = getCookie(c, sessionCookieName());
   if (sessionId) {
     await authService.logout(sessionId);
   }
-  deleteCookie(c, SESSION_COOKIE, { path: "/" });
+  deleteCookie(c, sessionCookieName(), { path: "/" });
   return c.json({ ok: true });
 });
 
@@ -452,10 +450,10 @@ adminAuthRouter.patch("/me", licenseGuard, requireAuth, async (c) => {
 });
 
 adminAuthRouter.post("/logout", async (c) => {
-  const sessionId = getCookie(c, SESSION_COOKIE);
+  const sessionId = getCookie(c, sessionCookieName());
   if (sessionId) {
     await authService.logout(sessionId);
   }
-  deleteCookie(c, SESSION_COOKIE, { path: "/" });
+  deleteCookie(c, sessionCookieName(), { path: "/" });
   return c.json({ ok: true });
 });
