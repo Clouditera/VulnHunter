@@ -103,17 +103,12 @@ authRouter.post("/login", licenseGuard, async (c) => {
     return c.json({ error: { code } }, result.error === "locked" ? 429 : 401);
   }
 
-  // Business service: reject admin accounts (admin console only)
+  // Business service: reject admin accounts without leaking console existence.
+  // Same shape as wrong password — no admin/后台/入口 hints on the public login form.
   const serviceRole = (process.env.SERVICE_ROLE ?? "business").toLowerCase();
   if (serviceRole !== "admin" && result.user.role === "admin") {
-    // Do not leave a session cookie for rejected admin logins on business entry
     await authService.logout(result.sessionId);
-    return c.json({
-      error: {
-        code: "ERR_ADMIN_USE_CONSOLE",
-        message: "管理员账号请使用管理后台登录，不能登录业务平台。本机：http://127.0.0.1:23001/admin ；远程：ssh -L 23001:127.0.0.1:23001 <user@server> 后打开该地址。",
-      },
-    }, 403);
+    return c.json({ error: { code: "ERR_AUTH_INVALID_CREDENTIALS" } }, 401);
   }
 
   setSessionCookie(c, result.sessionId);
