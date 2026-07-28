@@ -317,15 +317,21 @@ async function materializeReportContext(params: {
 export async function spawnReportWorker(params: {
   taskId: string;
   reportId: string;
-  skillId: string;
+  /** null/undefined → builtin default-report-skill (report-mode.sh fallback) */
+  skillId?: string | null;
   credentialId?: string;
   createdBy: string;
   config: ServiceConfig;
 }): Promise<string> {
   const { taskId, reportId, skillId, config } = params;
 
-  const skill = await getSkill(skillId);
-  if (!skill) throw new Error("Skill not found");
+  let skillName = "内置模板";
+  let skill: Awaited<ReturnType<typeof getSkill>> = null;
+  if (skillId) {
+    skill = await getSkill(skillId);
+    if (!skill) throw new Error("Skill not found");
+    skillName = skill.name;
+  }
 
   let cred;
   try {
@@ -356,12 +362,17 @@ export async function spawnReportWorker(params: {
   const outDir = join(hostWorkDir, "out");
   mkdirSync(outDir, { recursive: true });
 
-  // Download and extract skill zip
-  const minio = getMinio();
-  const skillZipPath = join(hostWorkDir, "skill.zip");
-  await minio.fGetObject(config.minio.bucket, skill.minio_key, skillZipPath);
-  execSync(`cd "${skillDir}" && unzip -o -q "${skillZipPath}"`, { timeout: 30_000, stdio: "pipe" });
-  logger.info({ reportId, skillId, skillDir }, "Report skill extracted");
+  // Download and extract user skill zip when provided; otherwise leave skill/
+  // empty so report-mode.sh copies default-report-skill.
+  if (skill) {
+    const minio = getMinio();
+    const skillZipPath = join(hostWorkDir, "skill.zip");
+    await minio.fGetObject(config.minio.bucket, skill.minio_key, skillZipPath);
+    execSync(`cd "${skillDir}" && unzip -o -q "${skillZipPath}"`, { timeout: 30_000, stdio: "pipe" });
+    logger.info({ reportId, skillId, skillDir }, "Report skill extracted");
+  } else {
+    logger.info({ reportId }, "No skill_id — worker will use builtin default-report-skill");
+  }
 
   // Materialize full report context as files. The YoungFlow report runtime is
   // file-based (not MCP-based), so report-context.json is only an entry index;
@@ -371,7 +382,7 @@ export async function spawnReportWorker(params: {
   const materializedContext = await materializeReportContext({
     task,
     reportId,
-    skillName: skill.name,
+    skillName,
     hostWorkDir,
     contextDir,
     config,

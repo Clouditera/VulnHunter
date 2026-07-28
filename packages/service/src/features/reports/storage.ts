@@ -1,6 +1,7 @@
 /**
  * Report Skills + User Reports CRUD.
  * Tables `report_skills` and `user_reports` already exist (migration 002).
+ * 037: owner_user_id; 039: skill_id nullable + ON DELETE SET NULL.
  */
 
 import { getDb } from "../../infra/db/client.js";
@@ -18,14 +19,16 @@ export interface DbReportSkill {
   size_bytes: number;
   attachment_count: number;
   uploaded_by: string;
+  owner_user_id: string | null;
   created_at: Date;
 }
 
-export async function listSkills(): Promise<DbReportSkill[]> {
+/** List skills owned by the user. Legacy owner=NULL rows stay hidden. */
+export async function listSkills(ownerUserId: string): Promise<DbReportSkill[]> {
   const db = getDb();
   return db<DbReportSkill[]>`
     SELECT * FROM report_skills
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE owner_user_id = ${ownerUserId}
     ORDER BY created_at DESC
   `;
 }
@@ -38,6 +41,16 @@ export async function getSkill(id: string): Promise<DbReportSkill | null> {
   return rows[0] ?? null;
 }
 
+/** Get skill only if owned by user (legacy/others → null, no existence leak). */
+export async function getOwnedSkill(id: string, ownerUserId: string): Promise<DbReportSkill | null> {
+  const db = getDb();
+  const rows = await db<DbReportSkill[]>`
+    SELECT * FROM report_skills
+    WHERE id = ${id} AND owner_user_id = ${ownerUserId}
+  `;
+  return rows[0] ?? null;
+}
+
 export async function createSkill(params: {
   name: string;
   description?: string;
@@ -45,22 +58,32 @@ export async function createSkill(params: {
   sizeBytes: number;
   attachmentCount?: number;
   uploadedBy: string;
+  ownerUserId: string;
 }): Promise<DbReportSkill> {
   const db = getDb();
   const rows = await db<DbReportSkill[]>`
-    INSERT INTO report_skills (tenant_id, name, description, minio_key, size_bytes, attachment_count, uploaded_by)
-    VALUES (${DEFAULT_TENANT_ID}, ${params.name}, ${params.description ?? ""},
-            ${params.minioKey}, ${params.sizeBytes}, ${params.attachmentCount ?? 0},
-            ${params.uploadedBy})
+    INSERT INTO report_skills (
+      tenant_id, name, description, minio_key, size_bytes, attachment_count, uploaded_by, owner_user_id
+    )
+    VALUES (
+      ${DEFAULT_TENANT_ID}, ${params.name}, ${params.description ?? ""},
+      ${params.minioKey}, ${params.sizeBytes}, ${params.attachmentCount ?? 0},
+      ${params.uploadedBy}, ${params.ownerUserId}
+    )
     RETURNING *
   `;
   return rows[0];
 }
 
-export async function deleteSkill(id: string): Promise<boolean> {
+/** Delete only if owned by user. Returns false when missing or not owned. */
+export async function deleteOwnedSkill(id: string, ownerUserId: string): Promise<DbReportSkill | null> {
   const db = getDb();
-  const rows = await db`DELETE FROM report_skills WHERE id = ${id} RETURNING id`;
-  return rows.length > 0;
+  const rows = await db<DbReportSkill[]>`
+    DELETE FROM report_skills
+    WHERE id = ${id} AND owner_user_id = ${ownerUserId}
+    RETURNING *
+  `;
+  return rows[0] ?? null;
 }
 
 // ─── User Reports ───
@@ -69,7 +92,7 @@ export interface DbUserReport {
   id: string;
   tenant_id: string;
   task_id: string;
-  skill_id: string;
+  skill_id: string | null;
   status: "generating" | "completed" | "failed";
   format: string | null;
   primary_minio_key: string | null;
@@ -83,9 +106,9 @@ export interface DbUserReport {
   duration_ms: number | null;
 }
 
-export async function listReports(taskId: string): Promise<(DbUserReport & { skill_name?: string })[]> {
+export async function listReports(taskId: string): Promise<(DbUserReport & { skill_name?: string | null })[]> {
   const db = getDb();
-  return db<(DbUserReport & { skill_name?: string })[]>`
+  return db<(DbUserReport & { skill_name?: string | null })[]>`
     SELECT r.*, s.name AS skill_name
     FROM user_reports r
     LEFT JOIN report_skills s ON r.skill_id = s.id
@@ -94,9 +117,9 @@ export async function listReports(taskId: string): Promise<(DbUserReport & { ski
   `;
 }
 
-export async function getReport(id: string): Promise<(DbUserReport & { skill_name?: string }) | null> {
+export async function getReport(id: string): Promise<(DbUserReport & { skill_name?: string | null }) | null> {
   const db = getDb();
-  const rows = await db<(DbUserReport & { skill_name?: string })[]>`
+  const rows = await db<(DbUserReport & { skill_name?: string | null })[]>`
     SELECT r.*, s.name AS skill_name
     FROM user_reports r
     LEFT JOIN report_skills s ON r.skill_id = s.id
@@ -107,14 +130,15 @@ export async function getReport(id: string): Promise<(DbUserReport & { skill_nam
 
 export async function createReport(params: {
   taskId: string;
-  skillId: string;
+  skillId?: string | null;
   createdBy: string;
   credentialId?: string;
 }): Promise<DbUserReport> {
   const db = getDb();
+  const skillId = params.skillId ?? null;
   const rows = await db<DbUserReport[]>`
     INSERT INTO user_reports (tenant_id, task_id, skill_id, created_by, started_at)
-    VALUES (${DEFAULT_TENANT_ID}, ${params.taskId}, ${params.skillId},
+    VALUES (${DEFAULT_TENANT_ID}, ${params.taskId}, ${skillId},
             ${params.createdBy}, ${new Date()})
     RETURNING *
   `;

@@ -97,13 +97,12 @@ export async function generateReport(args: { task_id: string; skill_id?: string;
     throw err;
   }
 
-  // Get skill
+  // skill_id optional: omit → builtin default template; if set must be owned
   const reportStorage = await import("../../features/reports/storage.js");
-  let skillId = args.skill_id;
-  if (!skillId) {
-    const skills = await reportStorage.listSkills();
-    if (skills.length === 0) return text("No report skills configured.");
-    skillId = skills[0].id;
+  let skillId: string | null = args.skill_id?.trim() || null;
+  if (skillId) {
+    const owned = await reportStorage.getOwnedSkill(skillId, ctx.userId);
+    if (!owned) return text("skill_id must refer to a skill you own.");
   }
 
   // Get finding keys
@@ -129,6 +128,7 @@ export async function generateReport(args: { task_id: string; skill_id?: string;
     `Report generation started.`,
     `- **Report ID**: ${report.id}`,
     `- **Task**: ${task.project_name}`,
+    `- **Skill**: ${skillId ?? "builtin default"}`,
     `- **Findings**: ${findingKeys.length} selected`,
     ``,
     `Use \`get-task-detail\` to check report status.`,

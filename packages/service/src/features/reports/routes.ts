@@ -1,9 +1,9 @@
 /**
- * Report Skills routes — skills management + report generation/preview/download.
+ * Report Skills routes — user-level skills + report generation/preview/download.
  */
 
 import { Hono } from "hono";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { loadConfig } from "../../infra/config.js";
 import { uploadFile, getMinio } from "../../infra/minio/client.js";
@@ -23,16 +23,17 @@ reportsRouter.use("*", async (c, next) => {
   return requireAuth(c, next);
 });
 
-// ─── Skills CRUD (admin) ───
+// ─── Skills CRUD (user-owned) ───
 
 // GET /api/settings/skills
-reportsRouter.get("/settings/skills", requireAdmin, async (c) => {
-  const skills = await reportStorage.listSkills();
+reportsRouter.get("/settings/skills", async (c) => {
+  const user = c.get("user");
+  const skills = await reportStorage.listSkills(user.userId);
   return c.json({ skills });
 });
 
 // POST /api/settings/skills — upload skill zip
-reportsRouter.post("/settings/skills", requireAdmin, async (c) => {
+reportsRouter.post("/settings/skills", async (c) => {
   const user = c.get("user");
   const formData = await c.req.formData();
   const file = formData.get("file") as File | null;
@@ -69,15 +70,17 @@ reportsRouter.post("/settings/skills", requireAdmin, async (c) => {
     sizeBytes: file.size,
     attachmentCount,
     uploadedBy: user.userId,
+    ownerUserId: user.userId,
   });
 
   return c.json({ skill }, 201);
 });
 
 // DELETE /api/settings/skills/:id
-reportsRouter.delete("/settings/skills/:id", requireAdmin, async (c) => {
+reportsRouter.delete("/settings/skills/:id", async (c) => {
+  const user = c.get("user");
   const id = c.req.param("id");
-  const skill = await reportStorage.getSkill(id);
+  const skill = await reportStorage.deleteOwnedSkill(id, user.userId);
   if (!skill) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
 
   // Delete from MinIO
@@ -87,7 +90,6 @@ reportsRouter.delete("/settings/skills/:id", requireAdmin, async (c) => {
     await minio.removeObject(config.minio.bucket, skill.minio_key);
   } catch { /* best effort */ }
 
-  await reportStorage.deleteSkill(id);
   return c.json({ ok: true });
 });
 
@@ -117,10 +119,15 @@ reportsRouter.post("/tasks/:taskId/reports/generate", async (c) => {
     throw err;
   }
 
-  const body = await c.req.json<{ skill_id: string; credential_id?: string; finding_keys?: string[] }>();
+  const body = await c.req.json<{ skill_id?: string | null; credential_id?: string; finding_keys?: string[] }>();
 
-  if (!body.skill_id) {
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "skill_id required" } }, 400);
+  // skill_id optional: empty/null → builtin default template
+  let skillId: string | null = body.skill_id?.trim() || null;
+  if (skillId) {
+    const owned = await reportStorage.getOwnedSkill(skillId, user.userId);
+    if (!owned) {
+      return c.json({ error: { code: "ERR_VALIDATION", detail: "skill_id must refer to a skill you own" } }, 400);
+    }
   }
 
   // If finding_keys explicitly empty array → reject
@@ -141,7 +148,7 @@ reportsRouter.post("/tasks/:taskId/reports/generate", async (c) => {
   // Create report record
   const report = await reportStorage.createReport({
     taskId,
-    skillId: body.skill_id,
+    skillId,
     createdBy: user.userId,
   });
 
@@ -149,7 +156,7 @@ reportsRouter.post("/tasks/:taskId/reports/generate", async (c) => {
   spawnReportWorker({
     taskId,
     reportId: report.id,
-    skillId: body.skill_id,
+    skillId,
     credentialId: body.credential_id,
     createdBy: user.userId,
     config,

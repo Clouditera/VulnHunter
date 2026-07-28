@@ -182,7 +182,6 @@ export class TaskScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private unsubscribeEvents: (() => void) | null = null;
   private maxParallelScan = 3;
-  private youngflowMaxParallel = 3;
   private config: ServiceConfig;
   private readonly ownerInstanceId = randomUUID();
   private readonly claimHeartbeats = new Set<ReturnType<typeof setInterval>>();
@@ -383,12 +382,11 @@ export class TaskScheduler {
   private async refreshConfig(): Promise<void> {
     try {
       const db = getDb();
-      const rows = await db<{ config: { max_parallel_scan: number; youngflow_max_parallel?: number } }[]>`
+      const rows = await db<{ config: { max_parallel_scan: number } }[]>`
         SELECT config FROM system_config WHERE id = 1
       `;
       if (rows[0]) {
         this.maxParallelScan = Number(rows[0].config.max_parallel_scan) || 3;
-        this.youngflowMaxParallel = Number(rows[0].config.youngflow_max_parallel) || 3;
       }
     } catch (err) {
       logger.warn({ err }, "Could not refresh system_config, using default max_parallel_scan=3");
@@ -502,7 +500,10 @@ export class TaskScheduler {
       // model-proxy (task-id bearer); the real LLM key must NOT be injected
       // into the worker env. Keep only the non-secret model selection vars.
       const { LLM_API_KEY: _omitted, ...scanCredEnv } = credentialToWorkerEnv(cred);
-      const llmEnv = { ...scanCredEnv, YOUNGFLOW_MAX_PARALLEL: String(this.youngflowMaxParallel) };
+      const llmEnv = {
+        ...scanCredEnv,
+        YOUNGFLOW_MAX_PARALLEL: String(task.agent_max_parallel ?? 3),
+      };
 
       if (claim.mode === "continue") {
         published = await this.prepareWorkspace(task, token);

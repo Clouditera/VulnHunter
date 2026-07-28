@@ -23,17 +23,20 @@ describe("system config validation", () => {
     delete process.env.VULNHUNTER_UPLOAD_GATEWAY_LIMIT_MB;
   });
 
-  it("saves valid youngflow_max_parallel as an object", async () => {
+  it("ignores youngflow_max_parallel patch and keeps legacy key", async () => {
     await updateSystemConfig({ youngflow_max_parallel: 10 });
     const saved = await getSystemConfig();
-    expect(saved).toMatchObject({ youngflow_max_parallel: 10 });
+    // patch is not accepted; prior value preserved for rollback safety
+    expect(saved).toMatchObject({ youngflow_max_parallel: 3 });
     expect(typeof saved).toBe("object");
     expect(typeof config).toBe("object");
   });
 
-  it("rejects out-of-range youngflow_max_parallel", async () => {
-    await expect(updateSystemConfig({ youngflow_max_parallel: 0 })).rejects.toThrow("youngflow_max_parallel must be an integer between 1 and 10");
-    await expect(updateSystemConfig({ youngflow_max_parallel: 11 })).rejects.toThrow("youngflow_max_parallel must be an integer between 1 and 10");
+  it("does not validate youngflow_max_parallel range anymore", async () => {
+    await expect(updateSystemConfig({ youngflow_max_parallel: 0 })).resolves.toBeUndefined();
+    await expect(updateSystemConfig({ youngflow_max_parallel: 11 })).resolves.toBeUndefined();
+    // still the legacy stored value
+    await expect(getSystemConfig()).resolves.toMatchObject({ youngflow_max_parallel: 3 });
   });
 
   it("uses deployment upload ceiling for source archive setting validation", async () => {
@@ -61,10 +64,10 @@ describe("system config validation", () => {
   });
 
   it("keeps config object-shaped across consecutive updates", async () => {
-    await updateSystemConfig({ max_parallel_scan: 2, youngflow_max_parallel: 4 });
-    await updateSystemConfig({ max_parallel_scan: 1, youngflow_max_parallel: 10 });
+    await updateSystemConfig({ max_parallel_scan: 2 });
+    await updateSystemConfig({ max_parallel_scan: 1 });
     const saved = await getSystemConfig();
-    expect(saved).toMatchObject({ max_parallel_scan: 1, youngflow_max_parallel: 10 });
+    expect(saved).toMatchObject({ max_parallel_scan: 1 });
     expect(saved).not.toHaveProperty("0");
   });
 
