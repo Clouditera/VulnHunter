@@ -6,7 +6,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
-const RED = "#e5342d";
+const RED = "var(--brand)"; // brand blue after rebrand
 
 type Card = { icon: ReactNode; t: string; d: string };
 
@@ -81,7 +81,7 @@ export function HomePage() {
       <section style={{ maxWidth: 1240, margin: "0 auto", padding: "80px 32px 40px", textAlign: "center", position: "relative" }}>
         <div aria-hidden style={{
           position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
-          width: 900, height: 420, background: "radial-gradient(ellipse at center, rgba(229,52,45,0.08), transparent 60%)",
+          width: 900, height: 420, background: "radial-gradient(ellipse at center, rgba(41,140,255,0.08), transparent 60%)",
           pointerEvents: "none", zIndex: 0,
         }} />
         <div style={{ position: "relative", zIndex: 1 }}>
@@ -425,7 +425,7 @@ const BTN_OUTLINE: CSSProperties = {
 };
 const BADGE: CSSProperties = {
   display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 14px",
-  background: "rgba(229,52,45,0.08)", color: RED, borderRadius: 99,
+  background: "rgba(41,140,255,0.08)", color: RED, borderRadius: 99,
   fontSize: 13, fontWeight: 600, marginBottom: 22,
 };
 const SECTION: CSSProperties = { maxWidth: 1120, margin: "0 auto", padding: "64px 32px" };
@@ -441,6 +441,6 @@ const ICON_LIGHT: CSSProperties = {
   display: "grid", placeItems: "center", marginBottom: 12,
 };
 const ICON_DARK: CSSProperties = {
-  width: 36, height: 36, borderRadius: 8, background: "rgba(229,52,45,0.15)", color: "#ff6b61",
+  width: 36, height: 36, borderRadius: 8, background: "rgba(41,140,255,0.15)", color: "#ff6b61",
   display: "grid", placeItems: "center", flexShrink: 0,
 };
