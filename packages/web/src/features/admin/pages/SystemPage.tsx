@@ -27,20 +27,6 @@ export function SystemPage() {
 
   const ceiling = config?.source_archive_upload_ceiling_mb ?? config?.upload_gateway_limit_mb ?? 2048;
 
-  async function saveParallel() {
-    setSaving(true);
-    setMsg("");
-    setErr("");
-    try {
-      await api.settings.updateSystemConfig({ max_parallel_scan: maxParallel });
-      setMsg(i18n.t("admin.system.saved"));
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function saveUpload() {
     setSaving(true);
     setMsg("");
@@ -84,18 +70,32 @@ export function SystemPage() {
             max={10}
             value={maxParallel}
             onChange={(e) => setMaxParallel(Number(e.target.value))}
+            onPointerUp={(e) => {
+              const v = Number((e.target as HTMLInputElement).value);
+              setMaxParallel(v);
+              void (async () => {
+                setSaving(true);
+                setMsg("");
+                setErr("");
+                try {
+                  await api.settings.updateSystemConfig({ max_parallel_scan: v });
+                  setMsg(i18n.t("admin.system.saved"));
+                } catch (er) {
+                  setErr(er instanceof Error ? er.message : String(er));
+                } finally {
+                  setSaving(false);
+                }
+              })();
+            }}
             style={{ flex: 1, accentColor: "var(--brand)" }}
           />
           <span data-testid="admin-max-parallel-value" style={{ fontSize: 20, fontWeight: 600, minWidth: 24, textAlign: "center" }}>
             {maxParallel}
           </span>
         </div>
-        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "0 0 14px" }}>
+        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>
           {i18n.t("admin.system.agentParallelHint")}
         </p>
-        <button type="button" data-testid="admin-save-parallel" disabled={saving} onClick={() => void saveParallel()} style={btnPrimary}>
-          {i18n.t("admin.system.save")}
-        </button>
       </section>
 
       <section style={adminCardStyle} data-testid="admin-card-upload">

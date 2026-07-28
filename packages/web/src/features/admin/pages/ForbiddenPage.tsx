@@ -133,6 +133,7 @@ export function AdminBusinessBlockedPage() {
             border: "1px solid var(--border)",
             fontSize: 12,
             textAlign: "left",
+            whiteSpace: "pre-line",
           }}
         >
           {i18n.t("admin.businessBlocked.hint")}

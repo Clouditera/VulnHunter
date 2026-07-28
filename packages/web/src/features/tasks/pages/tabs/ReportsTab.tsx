@@ -91,30 +91,6 @@ export function ReportsTab() {
       }}
     >
       {/* ──────────────────── Report list column ──────────────────── */}
-        {skills.length === 0 ? (
-          <div
-            data-testid="reports-no-skill-notice"
-            style={{
-              display: "flex",
-              gap: "10px",
-              alignItems: "flex-start",
-              padding: "10px 12px",
-              marginBottom: "12px",
-              borderRadius: "8px",
-              background: "rgba(37,99,235,0.08)",
-              border: "1px solid rgba(37,99,235,0.22)",
-              fontSize: "13px",
-              color: "var(--text-primary)",
-              lineHeight: 1.5,
-            }}
-          >
-            <span>{i18n.t("reports.noSkillNotice")}</span>
-            <a href="/settings#skills" style={{ color: "var(--brand)", fontWeight: 600, whiteSpace: "nowrap" }}>
-              {i18n.t("reports.noSkillNoticeLink")}
-            </a>
-          </div>
-        ) : null}
-
       <div
         style={{
           width: `${leftWidth}px`,
@@ -192,7 +168,7 @@ export function ReportsTab() {
           )}
         </div>
 
-        {/* Footer — primary action */}
+        {/* Footer — notice + primary action */}
         <div
           style={{
             padding: "12px 16px",
@@ -200,6 +176,30 @@ export function ReportsTab() {
             flexShrink: 0,
           }}
         >
+          {skills.length === 0 ? (
+            <div
+              data-testid="reports-no-skill-notice"
+              style={{
+                display: "flex",
+                gap: "10px",
+                alignItems: "flex-start",
+                padding: "10px 12px",
+                marginBottom: "8px",
+                borderRadius: "8px",
+                background: "rgba(37,99,235,0.08)",
+                border: "1px solid rgba(37,99,235,0.22)",
+                fontSize: "13px",
+                color: "var(--text-primary)",
+                lineHeight: 1.5,
+              }}
+            >
+              <Icon name="info" size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span style={{ flex: 1 }}>{i18n.t("reports.noSkillNotice")}</span>
+              <a href="/settings#skills" style={{ color: "var(--brand)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                {i18n.t("reports.noSkillNoticeLink")}
+              </a>
+            </div>
+          ) : null}
           <button
             type="button"
             data-testid="reports-generate-btn"
