@@ -485,6 +485,16 @@ function validateBoundedInt(key: string, value: unknown, fallback: number, min: 
   return n;
 }
 
+/** Positive integer, minimum only (no upper bound). */
+function validateMinInt(key: string, value: unknown, fallback: number, min: number): number {
+  if (value == null) return fallback;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < min) {
+    throw new Error(`${key} must be an integer >= ${min}`);
+  }
+  return n;
+}
+
 const DERIVED_SYSTEM_CONFIG_KEYS = [
   "upload_gateway_limit_mb",
   "source_archive_upload_ceiling_mb",
@@ -500,7 +510,7 @@ export async function updateSystemConfig(patch: Record<string, unknown>): Promis
     merged.source_archive_upload_max_mb = patch.upload_zip_max_mb;
   }
   const ceilingMb = deploymentUploadCeilingMb();
-  merged.max_parallel_scan = validateBoundedInt("max_parallel_scan", merged.max_parallel_scan, 3, 1, 10);
+  merged.max_parallel_scan = validateMinInt("max_parallel_scan", merged.max_parallel_scan, 3, 1);
   // youngflow_max_parallel removed from schema (task-level agent_max_parallel).
   // Preserve legacy key in DB if present; do not accept/merge from patch.
   if ("youngflow_max_parallel" in patch) {

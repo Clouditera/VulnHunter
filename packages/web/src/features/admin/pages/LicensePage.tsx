@@ -5,6 +5,7 @@ import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 import { AdminPageHeader, adminCardStyle } from "../layout.js";
+import { copyText } from "../../../shared/lib/copy-text.js";
 
 export function LicensePage() {
   const qc = useQueryClient();
@@ -21,12 +22,18 @@ export function LicensePage() {
   const machine = status?.installation_id ?? license?.machine_code ?? "";
 
   async function copyMachine() {
+    if (!machine) {
+      setError(i18n.t("admin.license.noMachineCode"));
+      return;
+    }
     try {
-      await navigator.clipboard.writeText(machine);
+      const ok = await copyText(machine);
+      if (!ok) throw new Error("copy_failed");
       setCopied(true);
+      setError("");
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      /* ignore */
+      setError(i18n.t("copy.failed"));
     }
   }
 
@@ -81,7 +88,9 @@ export function LicensePage() {
             {license?.days_remaining != null ? String(license.days_remaining) : "—"}
           </Row>
           <Row label={i18n.t("settings.license.installId")}>
-            <code style={{ fontSize: 12 }}>{machine || "—"}</code>
+            <code data-testid="admin-machine-code-value" style={{ fontSize: 12, wordBreak: "break-all" }}>
+              {machine || i18n.t("admin.license.noMachineCode")}
+            </code>
           </Row>
         </div>
       </section>

@@ -6,6 +6,7 @@ import { i18n } from "../../../shared/i18n/index.js";
 import { AuthSplitLayout } from "../../../shared/components/AuthSplitLayout.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { useSystemStatus } from "../hooks/useSystemStatus.js";
+import { copyText } from "../../../shared/lib/copy-text.js";
 
 function licenseErrorMessage(err: unknown): string {
   const detail = err instanceof Error ? err.message : String(err);
@@ -31,8 +32,8 @@ export function ActivatePage() {
     if (!machineCode) return;
     setError("");
     try {
-      if (!navigator.clipboard?.writeText) throw new Error("clipboard_unavailable");
-      await navigator.clipboard.writeText(machineCode);
+      const ok = await copyText(machineCode);
+      if (!ok) throw new Error("copy_failed");
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
