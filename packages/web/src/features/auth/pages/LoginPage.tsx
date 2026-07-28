@@ -151,7 +151,11 @@ function LoginPanel({ onGoRegister, onGoForgot }: { onGoRegister: () => void; on
       const res = await api.auth.login(email, password);
       qc.clear();
       if (res.user?.mustChangePassword) navigate("/change-password");
-      else navigate(res.user?.role === "admin" ? "/admin" : "/chat");
+      else if (import.meta.env.VITE_APP_DOMAIN === "admin") {
+        navigate(res.user?.role === "admin" ? "/admin" : "/");
+      } else {
+        navigate("/chat");
+      }
     } catch (err) {
       setError(errMessage(err, i18n.t("login.errorInvalid")));
     } finally {

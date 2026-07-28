@@ -1,15 +1,31 @@
+/**
+ * Generic session invalidation page for the business bundle.
+ * Used when an admin session cookie is present on the business site.
+ * Zero admin/console/port information — only logout.
+ */
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 
-/** Layout-free 403 for non-admin hitting /admin/* */
-export function ForbiddenPage() {
+export function SessionInvalidPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  async function logout() {
+    try {
+      await api.auth.logout();
+    } catch {
+      /* ignore */
+    }
+    qc.clear();
+    navigate("/login", { replace: true });
+  }
+
   return (
     <div
-      data-testid="admin-forbidden-page"
+      data-testid="session-invalid-page"
       style={{
         minHeight: "100vh",
         display: "grid",
@@ -20,7 +36,7 @@ export function ForbiddenPage() {
     >
       <div
         style={{
-          width: 520,
+          width: 440,
           maxWidth: "100%",
           background: "var(--bg-card)",
           border: "1px solid var(--border)",
@@ -35,33 +51,24 @@ export function ForbiddenPage() {
             height: 56,
             borderRadius: 14,
             margin: "0 auto 16px",
-            background: "var(--brand-soft)",
-            color: "var(--brand)",
+            background: "var(--bg-page)",
+            color: "var(--text-secondary)",
             display: "grid",
             placeItems: "center",
           }}
         >
-          <Icon name="shield-alert" size={28} />
+          <Icon name="lock" size={28} />
         </div>
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: "0.08em",
-            color: "var(--text-secondary)",
-            marginBottom: 8,
-          }}
-        >
-          403 · FORBIDDEN
-        </div>
-        <h1 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 700 }}>{i18n.t("admin.forbidden.title")}</h1>
-        <p style={{ margin: "0 0 20px", fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.55 }}>
-          {i18n.t("admin.forbidden.body")}
+        <h1 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>
+          {i18n.t("session.invalidTitle")}
+        </h1>
+        <p style={{ margin: "0 0 24px", fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.55 }}>
+          {i18n.t("session.invalidBody")}
         </p>
         <button
           type="button"
-          data-testid="admin-forbidden-home"
-          onClick={() => navigate("/chat")}
+          data-testid="session-invalid-logout"
+          onClick={() => void logout()}
           style={{
             padding: "10px 18px",
             border: "none",
@@ -73,11 +80,9 @@ export function ForbiddenPage() {
             cursor: "pointer",
           }}
         >
-          {i18n.t("admin.forbidden.home")}
+          {i18n.t("nav.user.logout")}
         </button>
       </div>
     </div>
   );
 }
-
-/** Shown when an admin account hits the main business app */
