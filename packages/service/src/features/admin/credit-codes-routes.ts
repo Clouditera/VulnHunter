@@ -25,7 +25,8 @@ creditCodesRouter.post("/import", async (c) => {
   return c.json({
     ok: true,
     inserted: result.inserted,
-    skipped_duplicates: result.skipped_duplicates,
+    // batch-internal dups + DB ON CONFLICT skips
+    skipped_duplicates: parsed.skipped_duplicates + result.skipped_duplicates,
     invalid: parsed.invalid,
     invalid_samples: parsed.invalid_samples,
   });
