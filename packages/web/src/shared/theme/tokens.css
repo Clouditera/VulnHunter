@@ -196,18 +196,86 @@
   --partner-accent: #60a5fa;
 }
 
-/* Global base */
+/* Global base — restore full reset (brand rebrand briefly dropped margin:0 → 8px body gap) */
+* {
+  box-sizing: border-box;
+}
+
 html,
 body,
 #root {
-  font-family: var(--font-sans);
-  color: var(--text-primary);
-  background: var(--bg-page);
+  height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
-::selection {
-  background: rgba(41, 140, 255, 0.28);
+body {
+  margin: 0;
+  background: var(--bg-page);
   color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100%;
+}
+
+/* Selection — only customized inside code/output blocks (translate="no")
+   so dark code+log areas get readable brand-tinted selection while normal
+   page text keeps the browser-default (avoids LiveLog looking muddy). */
+[translate="no"]::selection,
+[translate="no"] *::selection {
+  background: rgba(41, 140, 255, 0.32);
+  color: inherit;
+}
+
+/* Scrollbars — theme-aware */
+:root {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(115, 115, 115, 0.35);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(115, 115, 115, 0.55);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(180, 180, 180, 0.18);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(180, 180, 180, 0.32);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(115, 115, 115, 0.4) transparent;
+}
+:root[data-theme="dark"] * {
+  scrollbar-color: rgba(180, 180, 180, 0.22) transparent;
 }
 
 /* Primary button utility when used via CSS vars */
