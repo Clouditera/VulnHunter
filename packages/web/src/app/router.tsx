@@ -18,21 +18,30 @@ import { ExploitsTab } from "../features/tasks/pages/tabs/ExploitsTab.js";
 import { WikiTab } from "../features/tasks/pages/tabs/WikiTab.js";
 import { ChatPage } from "../features/chat/pages/ChatPage.js";
 import { SettingsPage } from "../features/settings/pages/SettingsPage.js";
+import { AdminLayout } from "../features/admin/layout.js";
+import { UsersPage } from "../features/admin/pages/UsersPage.js";
+import { SmtpPage } from "../features/admin/pages/SmtpPage.js";
+import { FeedbackPage } from "../features/admin/pages/FeedbackPage.js";
+import { SystemPage } from "../features/admin/pages/SystemPage.js";
+import { LicensePage } from "../features/admin/pages/LicensePage.js";
+import { CreditsPage } from "../features/admin/pages/CreditsPage.js";
+import { ForbiddenPage, AdminBusinessBlockedPage } from "../features/admin/pages/ForbiddenPage.js";
 
 function RootGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
 
   if (isLoading) return <LoadingScreen />;
 
-  // Marketing home for unauthenticated visitors (online commercial edition).
-  // Prefer home over login even if status briefly fails — login remains at /login.
   if (error || !status) return <HomePage />;
   if (status.edition !== "community") {
     if (status.license.status === "expired") return <Navigate to="/expired" replace />;
     if (status.license.status !== "active") return <Navigate to="/activate" replace />;
   }
   if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
-  if (status.is_authenticated) return <Navigate to="/chat" replace />;
+  if (status.is_authenticated) {
+    if (status.user?.role === "admin") return <Navigate to="/admin" replace />;
+    return <Navigate to="/chat" replace />;
+  }
   return <HomePage />;
 }
 
@@ -61,6 +70,10 @@ function licenseTarget(status: ReturnType<typeof useSystemStatus>["data"]): stri
     return "/expired";
   if (status.license.status !== "active") return "/activate";
   return null;
+}
+
+function postAuthHome(status: NonNullable<ReturnType<typeof useSystemStatus>["data"]>): string {
+  return status.user?.role === "admin" ? "/admin" : "/chat";
 }
 
 function ActivateGuard() {
@@ -94,7 +107,7 @@ function BootstrapGuard() {
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
   if (status.has_admin) {
-    if (status.is_authenticated) return <Navigate to="/chat" replace />;
+    if (status.is_authenticated) return <Navigate to={postAuthHome(status)} replace />;
     return <HomePage />;
   }
   return <BootstrapPage />;
@@ -107,7 +120,7 @@ function LoginGuard() {
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
   if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
-  if (status.is_authenticated) return <Navigate to="/chat" replace />;
+  if (status.is_authenticated) return <Navigate to={postAuthHome(status)} replace />;
   return <LoginPage />;
 }
 
@@ -119,6 +132,22 @@ function AuthGuard() {
   if (target) return <Navigate to={target} replace />;
   if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
   if (!status.is_authenticated) return <Navigate to="/login" replace />;
+  return <Outlet />;
+}
+
+/** Business app: admin accounts are redirected to console entry prompt */
+function BusinessGuard() {
+  const { data: status, isLoading } = useSystemStatus();
+  if (isLoading) return <LoadingScreen />;
+  if (status?.user?.role === "admin") return <AdminBusinessBlockedPage />;
+  return <Outlet />;
+}
+
+/** Admin console: non-admin → 403 page (no sidebar) */
+function AdminRoleGuard() {
+  const { data: status, isLoading } = useSystemStatus();
+  if (isLoading) return <LoadingScreen />;
+  if (status?.user?.role !== "admin") return <ForbiddenPage />;
   return <Outlet />;
 }
 
@@ -137,24 +166,47 @@ export const router = createBrowserRouter([
     element: <AuthGuard />,
     children: [
       {
-        element: <AppLayout />,
+        element: <BusinessGuard />,
         children: [
-          { path: "/dashboard", element: <DashboardPage /> },
-          { path: "/tasks", element: <TasksListPage /> },
           {
-            path: "/tasks/:taskId",
-            element: <TaskDetailPage />,
+            element: <AppLayout />,
             children: [
-              { index: true, element: <OverviewTab /> },
-              { path: "findings", element: <FindingsTab /> },
-              { path: "wiki", element: <WikiTab /> },
-              { path: "reports", element: <ReportsTab /> },
-              { path: "exploits", element: <ExploitsTab /> },
-              { path: "workspace", element: <WorkspaceTab /> },
+              { path: "/dashboard", element: <DashboardPage /> },
+              { path: "/tasks", element: <TasksListPage /> },
+              {
+                path: "/tasks/:taskId",
+                element: <TaskDetailPage />,
+                children: [
+                  { index: true, element: <OverviewTab /> },
+                  { path: "findings", element: <FindingsTab /> },
+                  { path: "wiki", element: <WikiTab /> },
+                  { path: "reports", element: <ReportsTab /> },
+                  { path: "exploits", element: <ExploitsTab /> },
+                  { path: "workspace", element: <WorkspaceTab /> },
+                ],
+              },
+              { path: "/chat", element: <ChatPage /> },
+              { path: "/settings", element: <SettingsPage /> },
             ],
           },
-          { path: "/chat", element: <ChatPage /> },
-          { path: "/settings", element: <SettingsPage /> },
+        ],
+      },
+      {
+        element: <AdminRoleGuard />,
+        children: [
+          {
+            path: "/admin",
+            element: <AdminLayout />,
+            children: [
+              { index: true, element: <Navigate to="users" replace /> },
+              { path: "users", element: <UsersPage /> },
+              { path: "smtp", element: <SmtpPage /> },
+              { path: "feedback", element: <FeedbackPage /> },
+              { path: "system", element: <SystemPage /> },
+              { path: "license", element: <LicensePage /> },
+              { path: "credits", element: <CreditsPage /> },
+            ],
+          },
         ],
       },
     ],

@@ -6,10 +6,7 @@ import { theme as themeStore } from "../../../shared/theme/index.js";
 import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential, type SystemConfig } from "../../../shared/api/client.js";
 import { SkillsSection } from "../components/SkillsSection.js";
-import { UsersSection } from "../components/UsersSection.js";
 import { ProfileSection } from "../components/ProfileSection.js";
-import { SmtpSection } from "../components/SmtpSection.js";
-import { FeedbackSection } from "../components/FeedbackSection.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 
 /* -------------------------------------------------------------------------- */
@@ -762,20 +759,10 @@ export function SettingsPage() {
 
   // Role-aware sub-nav (sysStatus/isAdmin declared at top of component)
 
-  const SUB_NAV_SECTIONS: Array<{ id: string; labelKey: string }> = isAdmin
-    ? [
-        ...(isEnterprise ? [{ id: "license", labelKey: "settings.nav.license" }] : []),
-        { id: "credentials", labelKey: "settings.nav.credentials" },
-        ...(isEnterprise ? [{ id: "users", labelKey: "settings.nav.users" }] : []),
-        ...(isEnterprise ? [{ id: "smtp", labelKey: "settings.nav.smtp" }] : []),
-        ...(isEnterprise ? [{ id: "feedback", labelKey: "settings.nav.feedback" }] : []),
-        { id: "skills", labelKey: "settings.nav.skills" },
-        { id: "appearance", labelKey: "settings.nav.appearance" },
-        { id: "engine", labelKey: "settings.nav.engine" },
-      ]
-    : [
+  const SUB_NAV_SECTIONS: Array<{ id: string; labelKey: string }> = [
         { id: "profile", labelKey: "settings.nav.profile" },
         { id: "credentials", labelKey: "settings.nav.credentials" },
+        { id: "skills", labelKey: "settings.nav.skills" },
         { id: "appearance", labelKey: "settings.nav.appearance" },
       ];
 
@@ -884,18 +871,14 @@ export function SettingsPage() {
         </div>
       ) : (
         <>
-          {/* Profile section (non-admin) */}
-          {!isAdmin && (
-            <>
-              <div id="profile" style={{ scrollMarginTop: "20px" }} />
-              <ProfileSection />
-            </>
-          )}
+          {/* Profile */}
+          <div id="profile" style={{ scrollMarginTop: "20px" }} />
+          <ProfileSection />
 
           {/* ============================================================= */}
           {/*  License Information (admin only)                              */}
           {/* ============================================================= */}
-          {isAdmin && isEnterprise && <>
+          {false && isAdmin && isEnterprise && <>
           <div id="license" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
             icon="key"
@@ -1767,23 +1750,8 @@ export function SettingsPage() {
           {/* ============================================================= */}
           {/*  Language & Appearance                                          */}
           {/* ============================================================= */}
-          {isAdmin && (
-            <>
-              {isEnterprise ? (
-                <>
-                  <div id="users" style={{ scrollMarginTop: "20px" }} />
-                  <UsersSection />
-                  <div id="smtp" style={{ scrollMarginTop: "20px" }} />
-                  <SmtpSection />
-                  <div id="feedback" style={{ scrollMarginTop: "20px" }} />
-                  <FeedbackSection />
-                </>
-              ) : null}
-
-              <div id="skills" style={{ scrollMarginTop: "20px" }} />
-              <SkillsSection />
-            </>
-          )}
+          <div id="skills" style={{ scrollMarginTop: "20px" }} />
+          <SkillsSection />
 
           <div id="appearance" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
@@ -1836,9 +1804,9 @@ export function SettingsPage() {
             </Field>
           </SettingsCard>
 
-          {isAdmin && <>
+          {false && <>
           {/* ============================================================= */}
-          {/*  Engine Settings                                                */}
+          {/*  Engine Settings (moved to /admin/system)                        */}
           {/* ============================================================= */}
           <div id="engine" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard

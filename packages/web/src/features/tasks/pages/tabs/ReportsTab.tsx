@@ -48,7 +48,7 @@ export function ReportsTab() {
 
   const generateMut = useMutation({
     mutationFn: (params: { skillId: string; findingKeys?: string[] }) =>
-      api.reports.generate(task.id, { skill_id: params.skillId, finding_keys: params.findingKeys }),
+      api.reports.generate(task.id, { skill_id: params.skillId || undefined, finding_keys: params.findingKeys }),
     onSuccess: ({ report }) => {
       qc.invalidateQueries({ queryKey: ["reports", task.id] });
       setSelectedReportId(report.id);
@@ -91,6 +91,30 @@ export function ReportsTab() {
       }}
     >
       {/* ──────────────────── Report list column ──────────────────── */}
+        {skills.length === 0 ? (
+          <div
+            data-testid="reports-no-skill-notice"
+            style={{
+              display: "flex",
+              gap: "10px",
+              alignItems: "flex-start",
+              padding: "10px 12px",
+              marginBottom: "12px",
+              borderRadius: "8px",
+              background: "rgba(37,99,235,0.08)",
+              border: "1px solid rgba(37,99,235,0.22)",
+              fontSize: "13px",
+              color: "var(--text-primary)",
+              lineHeight: 1.5,
+            }}
+          >
+            <span>{i18n.t("reports.noSkillNotice")}</span>
+            <a href="/settings#skills" style={{ color: "var(--brand)", fontWeight: 600, whiteSpace: "nowrap" }}>
+              {i18n.t("reports.noSkillNoticeLink")}
+            </a>
+          </div>
+        ) : null}
+
       <div
         style={{
           width: `${leftWidth}px`,
@@ -179,30 +203,24 @@ export function ReportsTab() {
           <button
             type="button"
             data-testid="reports-generate-btn"
-            disabled={!canGenerate || skills.length === 0}
+            disabled={!canGenerate}
             onClick={() => setShowSkillPicker(true)}
-            title={
-              !canGenerate
-                ? i18n.t("reports.needsCompleted")
-                : skills.length === 0
-                  ? i18n.t("reports.noSkills")
-                  : undefined
-            }
+            title={!canGenerate ? i18n.t("reports.cannotGenerate") : undefined}
             style={{
               width: "100%",
               padding: "9px 0",
               border: "none",
               borderRadius: "6px",
               background:
-                canGenerate && skills.length > 0
+                canGenerate
                   ? "var(--brand)"
                   : "var(--bg-disabled)",
               color: "var(--btn-primary-text)",
               fontSize: "13px",
               fontWeight: 600,
               cursor:
-                canGenerate && skills.length > 0 ? "pointer" : "not-allowed",
-              opacity: canGenerate && skills.length > 0 ? 1 : 0.6,
+                canGenerate ? "pointer" : "not-allowed",
+              opacity: canGenerate ? 1 : 0.6,
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
@@ -266,7 +284,7 @@ export function ReportsTab() {
         <ReportGenerateModal
           taskId={task.id}
           skills={skills}
-          onGenerate={(skillId, findingKeys) => generateMut.mutate({ skillId, findingKeys })}
+          onGenerate={(skillId, findingKeys) => generateMut.mutate({ skillId: skillId ?? "", findingKeys })}
           onClose={() => setShowSkillPicker(false)}
           pending={generateMut.isPending}
         />

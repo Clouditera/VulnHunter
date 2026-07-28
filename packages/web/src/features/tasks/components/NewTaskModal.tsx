@@ -42,6 +42,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [auditFocus, setAuditFocus] = useState("");
   const [scanDuration, setScanDuration] = useState<string>("10"); // hours (custom mode default 10h)
   const [timeoutMode, setTimeoutMode] = useState<"custom" | "auto">("custom");
+  const [agentMaxParallel, setAgentMaxParallel] = useState(3);
   const [enableDynamicVerify, setEnableDynamicVerify] = useState(false);
   const [enableDynamicExploit, setEnableDynamicExploit] = useState(false);
   const [sandboxCapacity, setSandboxCapacity] = useState<SandboxCapacity | null>(null);
@@ -165,6 +166,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         if (focus) fd.append("audit_focus", focus);
         fd.append("timeout_mode", timeoutMode);
         if (timeoutMode === "custom" && scanTimeout !== undefined) fd.append("scan_timeout", String(scanTimeout));
+        fd.append("agent_max_parallel", String(agentMaxParallel));
         if (enableDynamicVerify) fd.append("enable_dynamic_verify", "true");
         if (enableDynamicExploit) fd.append("enable_dynamic_exploit", "true");
         setUploadPct(0);
@@ -180,6 +182,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
           audit_focus: focus || undefined,
           timeout_mode: timeoutMode,
           scan_timeout: timeoutMode === "custom" ? scanTimeout : undefined,
+          agent_max_parallel: agentMaxParallel,
           enable_dynamic_verify: enableDynamicVerify || undefined,
           enable_dynamic_exploit: enableDynamicExploit || undefined,
         });
@@ -653,6 +656,33 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                 </span>
               </div>
               <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.45, marginBottom: "10px" }}>{i18n.t("newTask.dynamicSubtitle")}</div>
+
+              <div style={{ marginBottom: "14px" }} data-testid="new-task-agent-parallel-field">
+                <label style={{ display: "block", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-secondary)", marginBottom: "8px" }}>
+                  {i18n.t("newTask.agentMaxParallel")}
+                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <input
+                    data-testid="new-task-agent-max-parallel"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={agentMaxParallel}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (!Number.isFinite(n)) return;
+                      setAgentMaxParallel(Math.max(1, Math.trunc(n)));
+                    }}
+                    onBlur={() => setAgentMaxParallel((v) => Math.max(1, Math.trunc(Number(v) || 1)))}
+                    style={{ width: "76px", height: "36px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 8px", fontSize: "14px", fontWeight: 600, textAlign: "center", fontVariantNumeric: "tabular-nums", background: "var(--bg-card)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box" }}
+                  />
+                  <span style={{ fontSize: "11.5px", color: "var(--text-secondary)" }}>{i18n.t("newTask.agentMaxParallelRange")}</span>
+                </div>
+                <p style={{ margin: "8px 0 0", fontSize: "11.5px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                  {i18n.t("newTask.agentMaxParallelHint")}
+                </p>
+              </div>
+
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--bg-card)", cursor: "pointer" }}>
                   <input data-testid="enable-dynamic-verify" type="checkbox" checked={enableDynamicVerify} onChange={(e) => { const on = e.target.checked; setEnableDynamicVerify(on); if (!on) setEnableDynamicExploit(false); }} style={{ marginTop: "2px" }} />

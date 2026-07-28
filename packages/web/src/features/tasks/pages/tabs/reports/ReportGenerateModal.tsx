@@ -31,11 +31,11 @@ export function ReportGenerateModal({
 }: {
   taskId: string;
   skills: ReportSkill[];
-  onGenerate: (skillId: string, findingKeys: string[]) => void;
+  onGenerate: (skillId: string | undefined, findingKeys: string[]) => void;
   onClose: () => void;
   pending: boolean;
 }) {
-  const [selectedSkillId, setSelectedSkillId] = useState<string>(skills[0]?.id ?? "");
+  const [selectedSkillId, setSelectedSkillId] = useState<string>(skills[0]?.id ?? ""); // empty => builtin
 
   // Fetch all findings for this task
   const { data: findingsData } = useQuery({
@@ -204,7 +204,7 @@ export function ReportGenerateModal({
             {i18n.t("review.action.cancel")}
           </button>
           <button
-            onClick={() => onGenerate(selectedSkillId, Array.from(effectiveSelected))}
+            onClick={() => onGenerate(selectedSkillId || undefined, Array.from(effectiveSelected))}
             disabled={effectiveSelected.size === 0 || !selectedSkillId || pending}
             style={{
               padding: "7px 16px", borderRadius: 6, border: "none", fontSize: 12, fontFamily: "inherit", fontWeight: 500,
