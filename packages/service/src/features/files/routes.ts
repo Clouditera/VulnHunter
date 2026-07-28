@@ -1,3 +1,4 @@
+import { getDefaultOrFirstAvailableCredential, getCredentialById } from "../settings/storage.js";
 import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
@@ -111,6 +112,49 @@ filesRouter.get("/git/branches", async (c) => {
 
 // POST /api/tasks  — create from upload or git
 // (Unified create endpoint, not in files/ conceptually, but wired here for Phase 2)
+
+async function resolveCreateCredentialId(
+  ctx: ReturnType<typeof queryContextFromUser>,
+  credentialId?: string | null,
+): Promise<{ ok: true; credentialId: string } | { ok: false; status: 400; body: unknown }> {
+  if (credentialId) {
+    try {
+      const cred = await getCredentialById(ctx, credentialId);
+      if (!cred) {
+        return {
+          ok: false,
+          status: 400,
+          body: { error: { code: "ERR_NO_LLM_CREDENTIAL", detail: "选择的模型凭证不可用，请先在设置中配置模型凭证" } },
+        };
+      }
+      return { ok: true, credentialId: cred.id };
+    } catch {
+      return {
+        ok: false,
+        status: 400,
+        body: { error: { code: "ERR_NO_LLM_CREDENTIAL", detail: "模型凭证不可用，请先在设置中配置模型凭证" } },
+      };
+    }
+  }
+  try {
+    const cred = await getDefaultOrFirstAvailableCredential(ctx);
+    if (!cred) {
+      return {
+        ok: false,
+        status: 400,
+        body: { error: { code: "ERR_NO_LLM_CREDENTIAL", detail: "请先在设置中配置模型凭证后再创建任务" } },
+      };
+    }
+    return { ok: true, credentialId: cred.id };
+  } catch {
+    return {
+      ok: false,
+      status: 400,
+      body: { error: { code: "ERR_NO_LLM_CREDENTIAL", detail: "请先在设置中配置模型凭证后再创建任务" } },
+    };
+  }
+}
+
 filesRouter.post("/tasks", async (c) => {
   const user = c.get("user");
   const ctx = queryContextFromUser(user);
@@ -176,6 +220,9 @@ filesRouter.post("/tasks", async (c) => {
       return c.json({ error: { code: "ERR_INVALID_SCAN_OPTIONS", detail: err instanceof Error ? err.message : String(err) } }, 400);
     }
 
+    const credRes = await resolveCreateCredentialId(ctx, credentialId);
+    if (!credRes.ok) return c.json(credRes.body, credRes.status as 400);
+
     const task = await createTask({
       tenantId: ctx.tenantId,
       createdBy: user.userId,
@@ -183,7 +230,7 @@ filesRouter.post("/tasks", async (c) => {
       displayName,
       sourceType: "upload",
       sourceMeta: { filename: file.name, minio_key: minioKey, size_bytes: file.size, archive_format: detected.format, ...scanMeta },
-      credentialId,
+      credentialId: credRes.credentialId,
       agentMaxParallel,
     });
 
@@ -239,6 +286,9 @@ filesRouter.post("/tasks", async (c) => {
     return c.json({ error: { code: "ERR_VALIDATION", detail: err instanceof Error ? err.message : String(err) } }, 400);
   }
 
+  const credRes = await resolveCreateCredentialId(ctx, body.credential_id);
+  if (!credRes.ok) return c.json(credRes.body, credRes.status as 400);
+
   const task = await createTask({
     tenantId: ctx.tenantId,
     createdBy: user.userId,
@@ -251,7 +301,7 @@ filesRouter.post("/tasks", async (c) => {
       ...gitScanMeta,
     },
     autoSkillIds: body.auto_skill_ids,
-    credentialId: body.credential_id,
+    credentialId: credRes.credentialId,
     agentMaxParallel,
   });
 

@@ -136,20 +136,22 @@ function AuthGuard() {
   return <Outlet />;
 }
 
-/** Business app: admin accounts are redirected to console entry prompt */
+/** Business routes: never render on admin-web entry; admin users blocked on business entry. */
 function BusinessGuard() {
   const { data: status, isLoading } = useSystemStatus();
-  if (isLoading) return <LoadingScreen />;
+  const { data: serviceRole, isLoading: roleLoading } = useServiceRole();
+  if (isLoading || roleLoading) return <LoadingScreen />;
+  // Admin entry must not show half-broken business UI — send everyone to /admin
+  if (serviceRole === "admin") return <Navigate to="/admin" replace />;
   if (status?.user?.role === "admin") return <AdminBusinessBlockedPage />;
   return <Outlet />;
 }
 
-/** Admin console: only on admin-api entry; non-admin → 403; business entry → guide page */
+/** Admin console: only on admin-api entry; non-admin → 403; business entry → guide. */
 function AdminRoleGuard() {
   const { data: status, isLoading } = useSystemStatus();
   const { data: serviceRole, isLoading: roleLoading } = useServiceRole();
   if (isLoading || roleLoading) return <LoadingScreen />;
-  // business entry (or SPA HTML fallback) → guide only; never half-broken admin UI
   if (serviceRole === "business" || serviceRole === "unknown") return <AdminBusinessBlockedPage />;
   if (status?.user?.role !== "admin") return <ForbiddenPage />;
   return <Outlet />;

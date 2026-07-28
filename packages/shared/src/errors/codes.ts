@@ -36,6 +36,11 @@ export const ERROR_CATALOG = {
     summary: { zh: "需要管理员权限", en: "Admin required" },
     detail: { zh: "此操作需要管理员权限", en: "This action requires admin privileges" },
   },
+  ERR_ADMIN_USE_CONSOLE: {
+    httpStatus: 403,
+    summary: { zh: "请使用管理后台登录", en: "Use the admin console to sign in" },
+    detail: { zh: "管理员账号不能登录业务平台", en: "Admin accounts cannot sign in to the business app" },
+  },
   ERR_ADMIN_BUSINESS_FORBIDDEN: {
     httpStatus: 403,
     summary: { zh: "管理员账号仅用于后台管理", en: "Admin accounts are for console only" },

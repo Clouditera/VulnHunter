@@ -680,6 +680,7 @@ const ZH: Record<string, string> = {
   "newTask.uploading": "上传中",
   "newTask.processing": "处理中…",
   "newTask.uploadTooLarge": "上传文件超过平台 {max}MB 上限，请压缩后重试或联系管理员。",
+  "newTask.needCredential": "请先在设置中配置模型凭证后再创建任务",
   "newTask.uploadGatewayLimit": "上传文件过大，当前入口限制不允许上传该大小文件，请压缩后重试或联系管理员调整上传上限。",
   "newTask.supportedArchives": "支持：{extensions}；最大 {max} MB",
   "newTask.unsupportedArchive": "不支持该源码包格式。支持格式：{extensions}",
@@ -924,6 +925,7 @@ const ZH: Record<string, string> = {
   "nav.onboarding": "新手引导",
 
   "admin.badge": "管理后台",
+  "login.errorAdminConsole": "管理员请使用管理后台登录（ssh -L 23001:127.0.0.1:23001 后打开 http://127.0.0.1:23001/admin）",
   "admin.superAdmin": "超级管理员",
   "admin.nav.users": "用户管理",
   "admin.nav.smtp": "邮件服务",
@@ -1755,6 +1757,7 @@ const EN: Record<string, string> = {
   "newTask.uploading": "Uploading",
   "newTask.processing": "Processing…",
   "newTask.uploadTooLarge": "The upload exceeds the platform {max}MB limit. Compress the file and retry, or contact an administrator.",
+  "newTask.needCredential": "请先在设置中配置模型凭证后再创建任务",
   "newTask.uploadGatewayLimit": "The upload is too large for the current gateway limit. Compress the file and retry, or contact an administrator to raise the upload limit.",
   "newTask.supportedArchives": "Supported: {extensions}; max {max} MB",
   "newTask.unsupportedArchive": "Unsupported source archive format. Supported: {extensions}",
@@ -1999,6 +2002,7 @@ const EN: Record<string, string> = {
   "nav.onboarding": "Onboarding",
 
   "admin.badge": "Admin",
+  "login.errorAdminConsole": "Admins must sign in via the admin console (ssh -L 23001:127.0.0.1:23001 then http://127.0.0.1:23001/admin)",
   "admin.superAdmin": "Super admin",
   "admin.nav.users": "Users",
   "admin.nav.smtp": "Mail",

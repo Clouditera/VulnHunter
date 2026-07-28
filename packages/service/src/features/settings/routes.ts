@@ -14,6 +14,8 @@ import { diagnoseModelRuntimeCredential } from "./runtime-diagnostics.js";
 import { getDiagnosticRun, startDiagnosticRun } from "./diagnostic-runs.js";
 import { loadConfig } from "../../infra/config.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
+import * as reportStorage from "../reports/storage.js";
+import { uploadFile, getMinio } from "../../infra/minio/client.js";
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
 const VALID_PROTO_TYPES = new Set(["openai-completions", "openai-responses", "anthropic", "openai"]);
@@ -354,3 +356,68 @@ settingsRouter.post("/models", async (c) => {
 });
 
 // system-config + smtp admin endpoints moved to /api/admin/* (admin-api only)
+
+// ─── Report Skills (user-owned) — must live under settingsRouter so
+// /api/settings/* is not 404'd by this router before reportsRouter. ───
+
+// GET /api/settings/skills
+settingsRouter.get("/skills", async (c) => {
+  const user = c.get("user");
+  const skills = await reportStorage.listSkills(user.userId);
+  return c.json({ skills });
+});
+
+// POST /api/settings/skills — upload skill zip
+settingsRouter.post("/skills", async (c) => {
+  const user = c.get("user");
+  const formData = await c.req.formData();
+  const file = formData.get("file") as File | null;
+  if (!file) return c.json({ error: { code: "ERR_VALIDATION", detail: "file required" } }, 400);
+
+  const maxBytes = 50 * 1024 * 1024; // 50MB
+  if (file.size > maxBytes) {
+    return c.json({ error: { code: "ERR_UPLOAD_TOO_LARGE" } }, 413);
+  }
+
+  const config = loadConfig();
+  const name = (formData.get("name") as string | null) || file.name.replace(/\.zip$/i, "");
+  const description = (formData.get("description") as string | null) || "";
+
+  const minioKey = `report-skills/${crypto.randomUUID()}.zip`;
+  const buf = Buffer.from(await file.arrayBuffer());
+  try {
+    await uploadFile(config.minio.bucket, minioKey, buf, buf.length);
+  } catch (err) {
+    logger.error({ err }, "skill upload to MinIO failed");
+    return c.json({ error: { code: "ERR_INTERNAL", detail: "upload failed" } }, 500);
+  }
+
+  const skill = await reportStorage.createSkill({
+    name,
+    description,
+    minioKey,
+    sizeBytes: file.size,
+    attachmentCount: 0,
+    uploadedBy: user.userId,
+    ownerUserId: user.userId,
+  });
+
+  return c.json({ skill }, 201);
+});
+
+// DELETE /api/settings/skills/:id
+settingsRouter.delete("/skills/:id", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+  const skill = await reportStorage.deleteOwnedSkill(id, user.userId);
+  if (!skill) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+
+  const config = loadConfig();
+  try {
+    const minio = getMinio();
+    await minio.removeObject(config.minio.bucket, skill.minio_key);
+  } catch { /* best effort */ }
+
+  return c.json({ ok: true });
+});
+
