@@ -181,8 +181,8 @@ export function ReportsTab() {
               data-testid="reports-no-skill-notice"
               style={{
                 display: "flex",
-                gap: "10px",
-                alignItems: "flex-start",
+                flexDirection: "column",
+                gap: "8px",
                 padding: "10px 12px",
                 marginBottom: "8px",
                 borderRadius: "8px",
@@ -190,12 +190,24 @@ export function ReportsTab() {
                 border: "1px solid rgba(37,99,235,0.22)",
                 fontSize: "13px",
                 color: "var(--text-primary)",
-                lineHeight: 1.5,
+                lineHeight: 1.55,
               }}
             >
-              <Icon name="info" size={14} style={{ flexShrink: 0, marginTop: 2 }} />
-              <span style={{ flex: 1 }}>{i18n.t("reports.noSkillNotice")}</span>
-              <a href="/settings#skills" style={{ color: "var(--brand)", fontWeight: 600, whiteSpace: "nowrap" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
+                <Icon name="info" size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+                <span style={{ flex: 1 }}>{i18n.t("reports.noSkillNotice")}</span>
+              </div>
+              <a
+                href="/settings#skills"
+                data-testid="reports-no-skill-link"
+                style={{
+                  color: "var(--brand)",
+                  fontWeight: 600,
+                  alignSelf: "flex-start",
+                  marginLeft: 22,
+                  textDecoration: "none",
+                }}
+              >
                 {i18n.t("reports.noSkillNoticeLink")}
               </a>
             </div>

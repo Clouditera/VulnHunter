@@ -19,7 +19,7 @@ export function LicensePage() {
   const [copied, setCopied] = useState(false);
 
   const license = status?.license;
-  const machine = status?.installation_id ?? license?.machine_code ?? "";
+  const machine = license?.machine_code ?? status?.installation_id ?? "";
 
   async function copyMachine() {
     if (!machine) {
@@ -87,11 +87,57 @@ export function LicensePage() {
           <Row label={i18n.t("settings.license.remaining")}>
             {license?.days_remaining != null ? String(license.days_remaining) : "—"}
           </Row>
-          <Row label={i18n.t("settings.license.installId")}>
-            <code data-testid="admin-machine-code-value" style={{ fontSize: 12, wordBreak: "break-all" }}>
-              {machine || i18n.t("admin.license.noMachineCode")}
-            </code>
-          </Row>
+        </div>
+
+        {/* Machine code panel — match business ActivatePage (full mono text + copy) */}
+        <div
+          data-testid="admin-machine-code-panel"
+          style={{
+            marginTop: 16,
+            padding: 12,
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            background: "var(--bg-page)",
+          }}
+        >
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8, fontWeight: 600 }}>
+            {i18n.t("activate.machineCode")}
+          </div>
+          <div
+            data-testid="admin-machine-code-value"
+            style={{
+              fontFamily: "SF Mono, JetBrains Mono, ui-monospace, monospace",
+              fontSize: 12,
+              color: "var(--text-primary)",
+              wordBreak: "break-all",
+              lineHeight: 1.55,
+              marginBottom: 10,
+            }}
+          >
+            {machine || i18n.t("admin.license.noMachineCode")}
+          </div>
+          <button
+            type="button"
+            data-testid="admin-copy-machine"
+            onClick={() => void copyMachine()}
+            disabled={!machine}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              height: 30,
+              padding: "0 10px",
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontSize: 12,
+              cursor: machine ? "pointer" : "not-allowed",
+            }}
+          >
+            <Icon name="copy" size={13} />
+            {copied ? i18n.t("activate.copied") : i18n.t("activate.copyMachineCode")}
+          </button>
         </div>
       </section>
 
@@ -134,26 +180,6 @@ export function LicensePage() {
               }}
             >
               {loading ? i18n.t("activate.activating") : i18n.t("activate.submit")}
-            </button>
-            <button
-              type="button"
-              data-testid="admin-copy-machine"
-              onClick={() => void copyMachine()}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 12px",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                background: "var(--bg-card)",
-                color: "var(--text-primary)",
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              <Icon name="copy" size={13} />
-              {copied ? i18n.t("activate.copied") : i18n.t("activate.copyMachineCode")}
             </button>
           </div>
           {error ? <div style={{ color: "var(--brand)", marginTop: 10, fontSize: 13 }}>{error}</div> : null}
