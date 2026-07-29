@@ -1,6 +1,7 @@
 /**
  * Unified WebSocket routing — all WS upgrades go through here.
- * Chat + live-log require authenticated session cookie and resource ownership.
+ * Chat + live-log require authenticated member session + resource ownership.
+ * Admins rejected on business channels (REST forbidAdmin parity).
  */
 
 import { WebSocketServer } from "ws";
@@ -27,6 +28,10 @@ export function setupWsRouter(server: Server): void {
             rejectUpgrade(socket, 401, "Unauthorized");
             return;
           }
+          if (user.role === "admin") {
+            rejectUpgrade(socket, 403, "Forbidden");
+            return;
+          }
           liveLogWss.handleUpgrade(request, socket, head, (ws) => {
             handleLiveLogConnection(ws, request, user);
           });
@@ -41,12 +46,18 @@ export function setupWsRouter(server: Server): void {
             rejectUpgrade(socket, 401, "Unauthorized");
             return;
           }
+          if (user.role === "admin") {
+            rejectUpgrade(socket, 403, "Forbidden");
+            return;
+          }
+          // Owner check BEFORE any memory touch — strangers never getOrCreate.
           const owned = await getSessionForContext(sessionId, queryContextFromUser(user));
           if (!owned) {
             rejectUpgrade(socket, 403, "Forbidden");
             return;
           }
           chatWss.handleUpgrade(request, socket, head, (ws) => {
+            // getOrCreate only reached for owned sessions (idle attach + worker fan-out).
             handleChatWsConnection(ws, sessionId);
           });
           return;
@@ -64,5 +75,5 @@ export function setupWsRouter(server: Server): void {
     })();
   });
 
-  logger.info("WebSocket router attached: /ws/live-log + /ws/chat/:sessionId (auth required)");
+  logger.info("WebSocket router attached: /ws/live-log + /ws/chat/:sessionId (auth+owner required)");
 }

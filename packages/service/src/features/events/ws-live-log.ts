@@ -12,7 +12,7 @@ import { getEventsSince, getAllEvents } from "./event-store.js";
 import { logger } from "../../infra/logger.js";
 import type { SessionUser } from "../auth/types.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
-import { getTaskById } from "../tasks/storage.js";
+import { getAccessibleTask } from "../tasks/access.js";
 
 interface Subscription {
   ws: WebSocket;
@@ -54,7 +54,7 @@ export function handleLiveLogConnection(
         const taskId = msg.task_id;
         if (!taskId) return;
 
-        const task = await getTaskById(ctx, taskId);
+        const task = await getAccessibleTask(ctx, taskId);
         if (!task) {
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: "error", code: "ERR_NOT_FOUND" }));

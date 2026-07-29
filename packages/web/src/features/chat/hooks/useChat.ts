@@ -272,7 +272,9 @@ export function useChat() {
     };
 
     ws.onerror = () => {
-      setLastError("WebSocket connection error");
+      // Idle historical sessions have no in-memory worker — server rejects WS (404).
+      // History still loads via REST; only surface error while actively streaming.
+      if (streaming) setLastError("WebSocket connection error");
     };
 
     return () => {

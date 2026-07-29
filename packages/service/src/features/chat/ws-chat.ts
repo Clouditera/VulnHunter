@@ -1,7 +1,8 @@
 /**
  * WS handler for chat events.
  * Frontend connects to /ws/chat/:sessionId → delegates to ChatSession.
- * Auth + ownership are enforced in ws-router before upgrade.
+ * ws-router enforces cookie auth + owner check before this runs;
+ * getOrCreate is therefore safe (never for strangers / unauthenticated).
  */
 
 import { WebSocket } from "ws";

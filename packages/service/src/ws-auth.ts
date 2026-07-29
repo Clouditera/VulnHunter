@@ -38,10 +38,11 @@ export async function resolveUserFromUpgrade(req: IncomingMessage): Promise<Sess
 /** Write a minimal HTTP error and destroy the raw socket (pre-upgrade). */
 export function rejectUpgrade(
   socket: { write: (s: string) => void; destroy: () => void },
-  status: 401 | 403,
+  status: 401 | 403 | 404,
   reason: string,
 ): void {
-  const body = status === 401 ? "Unauthorized" : "Forbidden";
+  const body =
+    status === 401 ? "Unauthorized" : status === 403 ? "Forbidden" : "Not Found";
   socket.write(
     `HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: ${body.length}\r\n\r\n${body}`,
   );
