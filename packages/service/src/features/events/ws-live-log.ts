@@ -3,12 +3,16 @@
  * Protocol:
  *   Client → Server: { type: "subscribe", task_id, since_seq?, source_filter? }
  *   Server → Client: LiveLogEvent | SnapshotEndEvent | PingEvent
+ * Auth: upgrade requires session cookie; subscribe checks task ownership.
  */
 
 import { type WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
 import { getEventsSince, getAllEvents } from "./event-store.js";
 import { logger } from "../../infra/logger.js";
+import type { SessionUser } from "../auth/types.js";
+import { queryContextFromUser } from "../../infra/query-context.js";
+import { getTaskById } from "../tasks/storage.js";
 
 interface Subscription {
   ws: WebSocket;
@@ -20,65 +24,81 @@ interface Subscription {
 const subscriptions = new Set<Subscription>();
 const PING_INTERVAL_MS = 30_000;
 
-/** Handle a single live-log WS connection (called by ws-router) */
-export function handleLiveLogConnection(ws: WebSocket, req: IncomingMessage): void {
-    logger.debug({ url: req.url }, "Live log WS connection");
+/** Handle a single live-log WS connection (called by ws-router after auth). */
+export function handleLiveLogConnection(
+  ws: WebSocket,
+  req: IncomingMessage,
+  user: SessionUser,
+): void {
+  logger.debug({ url: req.url, userId: user.userId }, "Live log WS connection");
 
-    let sub: Subscription | null = null;
+  let sub: Subscription | null = null;
+  const ctx = queryContextFromUser(user);
 
-    const pingTimer = setInterval(() => {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({ type: "ping" }));
-      }
-    }, PING_INTERVAL_MS);
+  const pingTimer = setInterval(() => {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({ type: "ping" }));
+    }
+  }, PING_INTERVAL_MS);
 
-    ws.on("message", (data: Buffer) => {
+  ws.on("message", (data: Buffer) => {
+    void (async () => {
       try {
-        const msg = JSON.parse(data.toString());
-        if (msg.type === "subscribe") {
-          const { task_id, since_seq, source_filter } = msg;
-          if (!task_id) return;
+        const msg = JSON.parse(data.toString()) as {
+          type?: string;
+          task_id?: string;
+          since_seq?: number;
+          source_filter?: string[] | null;
+        };
+        if (msg.type !== "subscribe") return;
+        const taskId = msg.task_id;
+        if (!taskId) return;
 
-          if (sub) subscriptions.delete(sub);
-
-          sub = {
-            ws,
-            taskId: task_id,
-            sourceFilter: source_filter ?? null,
-            lastSeq: since_seq ?? -1,
-          };
-          subscriptions.add(sub);
-
-          // Send snapshot (events since since_seq)
-          const events =
-            since_seq != null
-              ? getEventsSince(task_id, since_seq)
-              : getAllEvents(task_id);
-
-          for (const entry of events) {
-            if (matchesFilter(entry.event, sub.sourceFilter)) {
-              ws.send(JSON.stringify(entry.event));
-              sub.lastSeq = entry.seq;
-            }
+        const task = await getTaskById(ctx, taskId);
+        if (!task) {
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: "error", code: "ERR_NOT_FOUND" }));
           }
-
-          // Snapshot end marker
-          const nextSeq = events.length > 0 ? events[events.length - 1].seq + 1 : 0;
-          ws.send(JSON.stringify({ type: "snapshot_end", next_seq: nextSeq }));
+          return;
         }
+
+        if (sub) subscriptions.delete(sub);
+
+        sub = {
+          ws,
+          taskId,
+          sourceFilter: msg.source_filter ?? null,
+          lastSeq: msg.since_seq ?? -1,
+        };
+        subscriptions.add(sub);
+
+        const sinceSeq = msg.since_seq;
+        const events =
+          sinceSeq != null ? getEventsSince(taskId, sinceSeq) : getAllEvents(taskId);
+
+        for (const entry of events) {
+          if (matchesFilter(entry.event, sub.sourceFilter)) {
+            ws.send(JSON.stringify(entry.event));
+            sub.lastSeq = entry.seq;
+          }
+        }
+
+        const nextSeq = events.length > 0 ? events[events.length - 1].seq + 1 : 0;
+        ws.send(JSON.stringify({ type: "snapshot_end", next_seq: nextSeq }));
       } catch (err) {
         logger.debug({ err }, "WS message parse error");
       }
-    });
+    })();
+  });
 
-    ws.on("close", () => {
-      clearInterval(pingTimer);
-      if (sub) subscriptions.delete(sub);
-    });
+  ws.on("close", () => {
+    clearInterval(pingTimer);
+    if (sub) subscriptions.delete(sub);
+  });
 
-    ws.on("error", (err) => {
-      logger.warn({ err }, "Live log WS error");
-    });
+  ws.on("error", (err) => {
+    logger.warn({ err }, "Live log WS error");
+  });
 }
 
 /** @deprecated Use handleLiveLogConnection + ws-router instead */
