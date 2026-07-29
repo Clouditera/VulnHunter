@@ -47,6 +47,11 @@ export function getOrCreateSession(sessionId: string): ChatSession {
   return s;
 }
 
+/** Lookup only — never creates. Used by authenticated frontend WS attach. */
+export function getExistingSession(sessionId: string): ChatSession | null {
+  return sessions.get(sessionId) ?? null;
+}
+
 export async function destroySession(sessionId: string): Promise<void> {
   const s = sessions.get(sessionId);
   if (!s) return;
