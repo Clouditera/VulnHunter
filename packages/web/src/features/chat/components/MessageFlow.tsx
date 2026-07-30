@@ -57,6 +57,7 @@ export function MessageFlow({
   onArtifactSelect,
   activity,
   onSuggest,
+  persistedArtifacts,
 }: {
   session: ChatSession | null;
   messages: ChatMessage[];
@@ -65,6 +66,7 @@ export function MessageFlow({
   onAbort: () => void;
   onEnsureSession?: () => Promise<string | null>;
   onArtifactSelect?: (artifact: ChatArtifactUnion) => void;
+  persistedArtifacts?: ChatArtifactUnion[];
   activity?: ChatActivity | null;
   onSuggest?: (text: string, submit?: boolean) => void;
 }) {
@@ -167,7 +169,7 @@ export function MessageFlow({
                 return text.length > 0;
               })
               .map((m) => (
-                <MessageBubble key={m.id} message={m} onArtifactSelect={onArtifactSelect} />
+                <MessageBubble key={m.id} message={m} onArtifactSelect={onArtifactSelect} sessionArtifacts={persistedArtifacts} />
               ))}
             {streaming && messages[messages.length - 1]?.role !== "assistant" ? (
               <div

@@ -131,7 +131,12 @@ const AGENT_BUBBLE: CSSProperties = {
 export function MessageBubble({
   message,
   onArtifactSelect,
-}: { message: ChatMessage; onArtifactSelect?: (artifact: ChatArtifactUnion) => void }) {
+  sessionArtifacts = [],
+}: {
+  message: ChatMessage;
+  onArtifactSelect?: (artifact: ChatArtifactUnion) => void;
+  sessionArtifacts?: ChatArtifactUnion[];
+}) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   if (message.role === "user") {
@@ -213,13 +218,18 @@ export function MessageBubble({
                 content={visibleContent}
                 onWorkspaceLink={(href) => {
                   const leaf = (href.split("/").pop() ?? href).split("?")[0];
-                  const match = artifacts.find((a) => {
+                  const norm = href.startsWith("/") ? href : `/${href}`;
+                  const pool = [...artifacts, ...sessionArtifacts];
+                  const match = pool.find((a) => {
                     if (!isFileArtifact(a)) return false;
+                    const wp = a.workspace_path ?? "";
                     return (
+                      wp === href ||
+                      wp === norm ||
+                      wp.endsWith(leaf) ||
                       a.filename === leaf ||
                       a.title === leaf ||
-                      a.filename.endsWith(leaf) ||
-                      (a.title != null && a.title.endsWith(leaf))
+                      a.filename.endsWith(leaf)
                     );
                   });
                   if (match && onArtifactSelect) onArtifactSelect(match);

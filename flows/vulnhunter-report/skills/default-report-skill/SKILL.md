@@ -63,3 +63,18 @@ pandoc /workspace/reports/security-report.md -o /workspace/reports/security-repo
 ```
 
 xlsx 用短 Python 脚本 + openpyxl，列建议：序号、标题、严重程度、CWE、文件:行、状态。
+
+## 呈现（Chat 会话必做）
+
+报告文件写完后，**必须**对每个产出文件各调用一次 `present-artifact`，否则用户只能看到无法打开的路径文本：
+
+| 文件 | 调用参数 |
+|---|---|
+| `/workspace/reports/security-report.md` | `source_path` 同上，`title`=`安全报告`，`filename`=`security-report.md`，`mime_type`=`text/markdown` |
+| `/workspace/reports/security-report.docx`（若生成） | `title`=`安全报告 (DOCX)`，`filename`=`security-report.docx` |
+| `/workspace/reports/security-report.xlsx`（若生成） | `title`=`漏洞清单 (XLSX)`，`filename`=`security-report.xlsx` |
+
+规则：
+1. 先 `present-artifact`，再在正文用一句话说明「报告已作为附件呈现」——**不要**只贴 `/workspace/...` 路径当超链接
+2. 每个文件单独一次调用；失败则重试一次，仍失败在正文说明文件名即可
+3. 任务报告页生成的报告仍走任务报告 Tab；本段仅约束 **Chat agent** 在对话中产出报告时的呈现

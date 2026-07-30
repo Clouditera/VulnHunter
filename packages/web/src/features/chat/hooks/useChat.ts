@@ -783,6 +783,7 @@ function toDomainArtifact(a: ChatArtifactApi): ChatArtifact {
     preview_truncated: a.preview_truncated,
     download_url: a.download_url,
     created_at: a.created_at,
+    workspace_path: a.workspace_path ?? null,
   };
 }
 

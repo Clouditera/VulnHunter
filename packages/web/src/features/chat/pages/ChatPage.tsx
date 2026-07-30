@@ -100,6 +100,7 @@ function ChatPageInner() {
         onEnsureSession={ensureSession}
         onAbort={abort}
         onArtifactSelect={handleArtifactSelect}
+        persistedArtifacts={artifacts}
         activity={activity}
         onSuggest={(text, submit = false) => {
           if (!activeId) {
