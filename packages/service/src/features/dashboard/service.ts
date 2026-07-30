@@ -78,6 +78,7 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
         AND created_at >= ${since}
     `;
 
+  // Active vulns = pending + confirmed (exclude false_positive / ignored) — VULNHUN-153
   const sevRows = userId
     ? await db<{ severity: string; count: string }[]>`
       SELECT f.severity, COUNT(*) as count FROM findings_meta f
@@ -85,6 +86,7 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
       WHERE f.tenant_id = ${tenantId} AND t.created_by = ${userId}
         AND f.item_type = 'finding'
         AND f.indexed_at >= ${since}
+        AND f.review_status IN ('pending', 'confirmed')
       GROUP BY f.severity
     `
     : await db<{ severity: string; count: string }[]>`
@@ -92,6 +94,7 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
       WHERE tenant_id = ${tenantId}
         AND item_type = 'finding'
         AND indexed_at >= ${since}
+        AND review_status IN ('pending', 'confirmed')
       GROUP BY severity
     `;
 
@@ -104,6 +107,7 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
         WHERE f.tenant_id = ${tenantId} AND t.created_by = ${userId}
           AND f.item_type = 'finding'
           AND f.indexed_at >= ${since}
+          AND f.review_status IN ('pending', 'confirmed')
           AND COALESCE(NULLIF(f.vuln_type_full, ''), NULLIF(f.vuln_type, '')) IS NOT NULL
       ) x
       GROUP BY vuln_type
@@ -117,6 +121,7 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
         WHERE tenant_id = ${tenantId}
           AND item_type = 'finding'
           AND indexed_at >= ${since}
+          AND review_status IN ('pending', 'confirmed')
           AND COALESCE(NULLIF(vuln_type_full, ''), NULLIF(vuln_type, '')) IS NOT NULL
       ) x
       GROUP BY vuln_type
@@ -200,7 +205,9 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
     recentRows.map(async (task) => {
       const rows = await db<{ severity: string; count: string }[]>`
         SELECT severity, COUNT(*) as count FROM findings_meta
-        WHERE task_id = ${task.id} AND item_type = 'finding' GROUP BY severity
+        WHERE task_id = ${task.id} AND item_type = 'finding'
+          AND review_status IN ('pending', 'confirmed')
+        GROUP BY severity
       `;
       const counts = { h: 0, m: 0, l: 0, i: 0 };
       for (const r of rows) {
@@ -261,11 +268,15 @@ async function computeDeltas(
       SELECT COUNT(*) as count FROM findings_meta f
       JOIN tasks t ON t.id = f.task_id
       WHERE f.tenant_id = ${tenantId} AND t.created_by = ${userId}
+        AND f.item_type = 'finding'
+        AND f.review_status IN ('pending', 'confirmed')
         AND f.indexed_at >= ${prevSince} AND f.indexed_at < ${since}
     `
     : await db<{ count: string }[]>`
       SELECT COUNT(*) as count FROM findings_meta
       WHERE tenant_id = ${tenantId}
+        AND item_type = 'finding'
+        AND review_status IN ('pending', 'confirmed')
         AND indexed_at >= ${prevSince} AND indexed_at < ${since}
     `;
   const prevDurRows = userId
