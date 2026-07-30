@@ -61,7 +61,10 @@ type SortMode = "newest" | "oldest" | "name";
 export function TasksListPage() {
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchDebounced, setSearchDebounced] = useState("");
   const [sortBy, setSortBy] = useState<SortMode>("newest");
+  const [page, setPage] = useState(1);
+  const [gotoPage, setGotoPage] = useState("");
   const [showModal, setShowModal] = useState(false);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -69,6 +72,12 @@ export function TasksListPage() {
   const qc = useQueryClient();
   const [, forceUpdate] = useState(0);
   useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
+
+  // Debounce search → server q
+  useEffect(() => {
+    const tmr = window.setTimeout(() => setSearchDebounced(searchQuery.trim()), 300);
+    return () => window.clearTimeout(tmr);
+  }, [searchQuery]);
 
   const { data: status } = useSystemStatus();
   const isAdmin = status?.user?.role === "admin";
@@ -80,14 +89,32 @@ export function TasksListPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["tasks", stateFilter, reviewStatusParam, selectedUserId],
+    queryKey: ["tasks", stateFilter, reviewStatusParam, selectedUserId, page, searchDebounced, sortBy],
     queryFn: () => api.tasks.list({
       state: stateFilter === "all" ? undefined : stateFilter,
       reviewStatus: reviewStatusParam ?? undefined,
       userId: selectedUserId || undefined,
+      paginate: true,
+      page,
+      q: searchDebounced || undefined,
+      sort: sortBy,
     }),
     // Server SSE (`task_state`) invalidates ["tasks"] on every state change.
   });
+
+  const total = data?.total ?? 0;
+  const pageSize = data?.page_size ?? 10;
+  const totalPages = data?.total_pages ?? 1;
+
+  // Reset to page 1 when filters / search / sort change
+  useEffect(() => {
+    setPage(1);
+  }, [stateFilter, reviewStatusParam, selectedUserId, searchDebounced, sortBy]);
+
+  // Clamp page if deletion emptied the current page
+  useEffect(() => {
+    if (!isLoading && page > totalPages) setPage(totalPages);
+  }, [isLoading, page, totalPages]);
 
   const cancelMut = useMutation({
     mutationFn: (id: string) => api.tasks.cancel(id),
@@ -102,30 +129,8 @@ export function TasksListPage() {
     },
   });
 
-  const rawTasks = data?.tasks ?? [];
+  const tasks = data?.tasks ?? [];
   const filters = ["all", "running", "completed", "failed", "queued"] as const;
-
-  // Apply search (case-insensitive substring match on project_name + id).
-  const q = searchQuery.trim().toLowerCase();
-  const filteredTasks = q
-    ? rawTasks.filter(
-        (t) =>
-          (t.display_name ?? "").toLowerCase().includes(q) ||
-          (t.project_name ?? "").toLowerCase().includes(q) ||
-          t.id.toLowerCase().includes(q),
-      )
-    : rawTasks;
-
-  // Sort. Backend returns newest-first already for "newest"; we re-sort
-  // client-side so that oldest/name modes work identically.
-  const tasks = [...filteredTasks].sort((a, b) => {
-    if (sortBy === "name") {
-      return ((a.display_name?.trim() || a.project_name) ?? "").localeCompare((b.display_name?.trim() || b.project_name) ?? "");
-    }
-    const tA = Date.parse(a.created_at);
-    const tB = Date.parse(b.created_at);
-    return sortBy === "oldest" ? tA - tB : tB - tA;
-  });
 
   return (
     <div data-testid="tasks-page" style={{ padding: "32px 40px 48px" }}>
@@ -265,7 +270,7 @@ export function TasksListPage() {
         >
           {i18n
             .t("tasks.countFormat")
-            .replace("{count}", String(tasks.length))}
+            .replace("{count}", String(total || tasks.length))}
         </span>
       </div>
 
@@ -550,6 +555,134 @@ export function TasksListPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {total > 0 ? (
+        <div
+          data-testid="tasks-pagination"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginTop: 16,
+            flexWrap: "wrap",
+            fontSize: 13,
+            color: "var(--text-secondary)",
+          }}
+        >
+          <span data-testid="tasks-total">
+            {i18n.t("tasks.pager.total").replace("{n}", String(total))}
+          </span>
+          <span style={{ opacity: 0.5 }}>·</span>
+          <span>
+            {i18n.t("tasks.pager.page").replace("{n}", `${page}/${totalPages}`)}
+          </span>
+          <div style={{ display: "flex", gap: 4, marginLeft: 8 }}>
+            {([
+              ["first", 1, page <= 1, i18n.t("tasks.pager.first")],
+              ["prev", Math.max(1, page - 1), page <= 1, i18n.t("tasks.pager.prev")],
+            ] as const).map(([key, target, disabled, label]) => (
+              <button
+                key={key}
+                type="button"
+                data-testid={`tasks-page-${key}`}
+                disabled={disabled}
+                onClick={() => setPage(target)}
+                style={{
+                  height: 30, padding: "0 10px", borderRadius: 6,
+                  border: "1px solid var(--border)", background: "var(--bg-card)",
+                  color: "var(--text-primary)", cursor: disabled ? "not-allowed" : "pointer",
+                  opacity: disabled ? 0.45 : 1, fontSize: 12, fontWeight: 600,
+                }}
+              >
+                {label}
+              </button>
+            ))}
+            {/* page window ±2 */}
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((n) => n === 1 || n === totalPages || Math.abs(n - page) <= 2)
+              .reduce<number[]>((acc, n, idx, arr) => {
+                if (idx > 0 && n - arr[idx - 1] > 1) acc.push(-1);
+                acc.push(n);
+                return acc;
+              }, [])
+              .map((n, i) =>
+                n < 0 ? (
+                  <span key={`e${i}`} style={{ padding: "0 4px" }}>…</span>
+                ) : (
+                  <button
+                    key={n}
+                    type="button"
+                    data-testid={`tasks-page-${n}`}
+                    onClick={() => setPage(n)}
+                    style={{
+                      height: 30, minWidth: 30, padding: "0 8px", borderRadius: 6,
+                      border: n === page ? "1px solid var(--brand)" : "1px solid var(--border)",
+                      background: n === page ? "var(--bg-active-filter)" : "var(--bg-card)",
+                      color: n === page ? "var(--brand)" : "var(--text-primary)",
+                      cursor: "pointer", fontSize: 12, fontWeight: 600,
+                    }}
+                  >
+                    {n}
+                  </button>
+                ),
+              )}
+            {([
+              ["next", Math.min(totalPages, page + 1), page >= totalPages, i18n.t("tasks.pager.next")],
+              ["last", totalPages, page >= totalPages, i18n.t("tasks.pager.last")],
+            ] as const).map(([key, target, disabled, label]) => (
+              <button
+                key={key}
+                type="button"
+                data-testid={`tasks-page-${key}`}
+                disabled={disabled}
+                onClick={() => setPage(target)}
+                style={{
+                  height: 30, padding: "0 10px", borderRadius: 6,
+                  border: "1px solid var(--border)", background: "var(--bg-card)",
+                  color: "var(--text-primary)", cursor: disabled ? "not-allowed" : "pointer",
+                  opacity: disabled ? 0.45 : 1, fontSize: 12, fontWeight: 600,
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <form
+            style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: 8 }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const n = Math.trunc(Number(gotoPage));
+              if (Number.isFinite(n) && n >= 1 && n <= totalPages) setPage(n);
+              setGotoPage("");
+            }}
+          >
+            <input
+              data-testid="tasks-page-goto"
+              value={gotoPage}
+              onChange={(e) => setGotoPage(e.target.value)}
+              placeholder={String(page)}
+              style={{
+                width: 48, height: 30, border: "1px solid var(--border)", borderRadius: 6,
+                padding: "0 8px", background: "var(--bg-page)", color: "var(--text-primary)",
+                fontSize: 12, textAlign: "center",
+              }}
+            />
+            <button
+              type="submit"
+              data-testid="tasks-page-goto-btn"
+              style={{
+                height: 30, padding: "0 10px", borderRadius: 6, border: "1px solid var(--border)",
+                background: "var(--bg-card)", color: "var(--text-primary)", cursor: "pointer",
+                fontSize: 12, fontWeight: 600,
+              }}
+            >
+              {i18n.t("tasks.pager.goto")}
+            </button>
+          </form>
+        </div>
+      ) : null}
+
 
       {/* Modal */}
       {showModal && (

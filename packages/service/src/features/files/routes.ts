@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { uploadFile } from "../../infra/minio/client.js";
-import { checkTaskLimit, createTask, updateTaskState } from "../tasks/storage.js";
+import { checkTaskLimit, createTask, updateTaskState, hasTaskNameConflict } from "../tasks/storage.js";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -223,10 +223,21 @@ filesRouter.post("/tasks", async (c) => {
     const credRes = await resolveCreateCredentialId(ctx, credentialId);
     if (!credRes.ok) return c.json(credRes.body, credRes.status as 400);
 
+    const projectName = stripSourceArchiveExtension(file.name);
+    const conflictName = (displayName?.trim() || projectName).trim();
+    if (await hasTaskNameConflict(ctx, conflictName)) {
+      return c.json({
+        error: {
+          code: "ERR_TASK_NAME_CONFLICT",
+          message: "已存在同名任务，请修改名称",
+        },
+      }, 409);
+    }
+
     const task = await createTask({
       tenantId: ctx.tenantId,
       createdBy: user.userId,
-      projectName: stripSourceArchiveExtension(file.name),
+      projectName,
       displayName,
       sourceType: "upload",
       sourceMeta: { filename: file.name, minio_key: minioKey, size_bytes: file.size, archive_format: detected.format, ...scanMeta },
@@ -289,10 +300,21 @@ filesRouter.post("/tasks", async (c) => {
   const credRes = await resolveCreateCredentialId(ctx, body.credential_id);
   if (!credRes.ok) return c.json(credRes.body, credRes.status as 400);
 
+  const projectName = body.project_name ?? new URL(safeGitUrl).pathname.split("/").pop() ?? "project";
+  const conflictName = (body.display_name?.trim() || projectName).trim();
+  if (await hasTaskNameConflict(ctx, conflictName)) {
+    return c.json({
+      error: {
+        code: "ERR_TASK_NAME_CONFLICT",
+        message: "已存在同名任务，请修改名称",
+      },
+    }, 409);
+  }
+
   const task = await createTask({
     tenantId: ctx.tenantId,
     createdBy: user.userId,
-    projectName: body.project_name ?? new URL(safeGitUrl).pathname.split("/").pop() ?? "project",
+    projectName,
     displayName: body.display_name,
     sourceType: "git",
     sourceMeta: {

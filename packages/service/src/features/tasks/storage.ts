@@ -120,90 +120,123 @@ export async function getTaskById(a: QueryContext | string, b?: string): Promise
   return rows[0] ?? null;
 }
 
+export type TaskSortMode = "newest" | "oldest" | "name";
+
+export type TaskListParams = {
+  state?: TaskState;
+  reviewStatus?: string;
+  limit?: number;
+  offset?: number;
+  userId?: string;
+  /** Case-insensitive substring on display_name/project_name */
+  q?: string;
+  sort?: TaskSortMode;
+};
+
+function resolveListScope(
+  ctx: QueryContext | undefined,
+  params: TaskListParams,
+): { tenantId: string; filteredUserId: string | undefined } {
+  const tenantId = tenantIdOf(ctx);
+  const filteredUserId =
+    ctx && shouldFilterByUser(ctx)
+      ? ctx.userId
+      : ctx?.role === "admin"
+        ? params.userId
+        : undefined;
+  return { tenantId, filteredUserId };
+}
+
+/** Shared WHERE + ORDER for list/count — single source of filter truth. */
+function taskListFragments(
+  db: ReturnType<typeof getDb>,
+  tenantId: string,
+  filteredUserId: string | undefined,
+  params: TaskListParams,
+) {
+  const filters = [db`t.tenant_id = ${tenantId}`];
+  if (filteredUserId) filters.push(db`t.created_by = ${filteredUserId}`);
+  if (params.state) filters.push(db`t.state = ${params.state}`);
+  if (params.reviewStatus) {
+    filters.push(
+      db`EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})`,
+    );
+  }
+  const q = (params.q ?? "").trim().toLowerCase();
+  if (q) {
+    // Substring match without LIKE wildcards (strpos + bound param).
+    filters.push(
+      db`strpos(lower(coalesce(nullif(t.display_name, ''), t.project_name)), ${q}) > 0`,
+    );
+  }
+  const where = filters.reduce((acc, frag, i) => (i === 0 ? frag : db`${acc} AND ${frag}`));
+
+  const sort: TaskSortMode =
+    params.sort === "oldest" || params.sort === "name" ? params.sort : "newest";
+  const order =
+    sort === "oldest"
+      ? db`t.created_at ASC`
+      : sort === "name"
+        ? db`lower(coalesce(nullif(t.display_name, ''), t.project_name)) ASC, t.created_at DESC`
+        : db`t.created_at DESC`;
+
+  return { where, order };
+}
+
 export async function listTasks(
   ctx: QueryContext,
-  params: { state?: TaskState; reviewStatus?: string; limit?: number; offset?: number; userId?: string },
+  params?: TaskListParams,
 ): Promise<DbTask[]>;
-export async function listTasks(params: { state?: TaskState; reviewStatus?: string; limit?: number; offset?: number }): Promise<DbTask[]>;
+export async function listTasks(params: TaskListParams): Promise<DbTask[]>;
 export async function listTasks(
-  a: QueryContext | { state?: TaskState; reviewStatus?: string; limit?: number; offset?: number },
-  b?: { state?: TaskState; reviewStatus?: string; limit?: number; offset?: number; userId?: string },
+  a: QueryContext | TaskListParams,
+  b?: TaskListParams,
 ): Promise<DbTask[]> {
   const db = getDb();
-  const hasCtx = "tenantId" in a;
-  const ctx = hasCtx ? a as QueryContext : undefined;
-  const params = (hasCtx ? b ?? {} : a) as { state?: TaskState; reviewStatus?: string; limit?: number; offset?: number; userId?: string };
+  const hasCtx = a != null && typeof a === "object" && "tenantId" in a;
+  const ctx = hasCtx ? (a as QueryContext) : undefined;
+  const params = (hasCtx ? b ?? {} : (a as TaskListParams)) ?? {};
+  const { tenantId, filteredUserId } = resolveListScope(ctx, params);
   const limit = params.limit ?? 50;
   const offset = params.offset ?? 0;
-  const tenantId = tenantIdOf(ctx);
-  const filteredUserId = ctx && shouldFilterByUser(ctx) ? ctx.userId : (ctx?.role === "admin" ? params.userId : undefined);
+  const { where, order } = taskListFragments(db, tenantId, filteredUserId, params);
 
-  if (params.state && params.reviewStatus && filteredUserId) {
-    return db<DbTask[]>`
-      SELECT t.* FROM tasks t
-      WHERE t.tenant_id = ${tenantId} AND t.created_by = ${filteredUserId} AND t.state = ${params.state}
-        AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
-      ORDER BY t.created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-  }
-  if (params.state && params.reviewStatus) {
-    return db<DbTask[]>`
-      SELECT t.* FROM tasks t
-      WHERE t.tenant_id = ${tenantId} AND t.state = ${params.state}
-        AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
-      ORDER BY t.created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-  }
-  if (params.reviewStatus && filteredUserId) {
-    return db<DbTask[]>`
-      SELECT t.* FROM tasks t
-      WHERE t.tenant_id = ${tenantId} AND t.created_by = ${filteredUserId}
-        AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
-      ORDER BY t.created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-  }
-  if (params.reviewStatus) {
-    return db<DbTask[]>`
-      SELECT t.* FROM tasks t
-      WHERE t.tenant_id = ${tenantId}
-        AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
-      ORDER BY t.created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-  }
-  if (params.state && filteredUserId) {
-    return db<DbTask[]>`
-      SELECT * FROM tasks
-      WHERE tenant_id = ${tenantId} AND created_by = ${filteredUserId} AND state = ${params.state}
-      ORDER BY created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-  }
-  if (params.state) {
-    return db<DbTask[]>`
-      SELECT * FROM tasks
-      WHERE tenant_id = ${tenantId} AND state = ${params.state}
-      ORDER BY created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-  }
-  if (filteredUserId) {
-    return db<DbTask[]>`
-      SELECT * FROM tasks
-      WHERE tenant_id = ${tenantId} AND created_by = ${filteredUserId}
-      ORDER BY created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-  }
   return db<DbTask[]>`
-    SELECT * FROM tasks
-    WHERE tenant_id = ${tenantId}
-    ORDER BY created_at DESC
+    SELECT t.* FROM tasks t
+    WHERE ${where}
+    ORDER BY ${order}
     LIMIT ${limit} OFFSET ${offset}
   `;
+}
+
+/** COUNT(*) with the same filter matrix as listTasks. */
+export async function countTasks(ctx: QueryContext, params: TaskListParams = {}): Promise<number> {
+  const db = getDb();
+  const { tenantId, filteredUserId } = resolveListScope(ctx, params);
+  const { where } = taskListFragments(db, tenantId, filteredUserId, params);
+  const rows = await db<{ count: string }[]>`
+    SELECT COUNT(*)::text AS count FROM tasks t
+    WHERE ${where}
+  `;
+  return Number(rows[0]?.count ?? 0);
+}
+
+/** Same-user task display name conflict (fish: per-user uniqueness). */
+export async function hasTaskNameConflict(
+  ctx: QueryContext,
+  name: string,
+): Promise<boolean> {
+  const n = name.trim();
+  if (!n) return false;
+  const db = getDb();
+  const rows = await db<{ ok: number }[]>`
+    SELECT 1 AS ok FROM tasks
+    WHERE tenant_id = ${ctx.tenantId}
+      AND created_by = ${ctx.userId}
+      AND lower(btrim(coalesce(nullif(display_name, ''), project_name))) = lower(${n})
+    LIMIT 1
+  `;
+  return rows.length > 0;
 }
 
 export async function updateTaskState(
