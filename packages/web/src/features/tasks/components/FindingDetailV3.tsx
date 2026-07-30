@@ -249,8 +249,16 @@ function parseUnifiedDiff(content: string): DiffLine[] {
 
 type SbsRow =
   | { kind: "hunk" | "meta"; text: string }
-  | { kind: "pair"; left?: { ln: number; text: string; del?: boolean }; right?: { ln: number; text: string; add?: boolean } };
+  | {
+      kind: "pair";
+      left?: { ln: number; text: string; del?: boolean };
+      right?: { ln: number; text: string; add?: boolean };
+    };
 
+/**
+ * Pair dels with following adds (standard unified→sbs).
+ * Unequal counts get empty placeholder cells so rows stay 1:1 aligned.
+ */
 function toSideBySide(lines: DiffLine[]): SbsRow[] {
   const rows: SbsRow[] = [];
   let i = 0;
@@ -270,7 +278,19 @@ function toSideBySide(lines: DiffLine[]): SbsRow[] {
       i += 1;
       continue;
     }
-    // gather consecutive dels then adds
+    // Only adds (no preceding dels in this run)
+    if (L.kind === "add") {
+      const adds: Extract<DiffLine, { kind: "add" }>[] = [];
+      while (i < lines.length && lines[i]!.kind === "add") {
+        adds.push(lines[i] as Extract<DiffLine, { kind: "add" }>);
+        i += 1;
+      }
+      for (const a of adds) {
+        rows.push({ kind: "pair", left: undefined, right: { ln: a.right, text: a.text, add: true } });
+      }
+      continue;
+    }
+    // dels then optional adds
     const dels: Extract<DiffLine, { kind: "del" }>[] = [];
     const adds: Extract<DiffLine, { kind: "add" }>[] = [];
     while (i < lines.length && lines[i]!.kind === "del") {
@@ -293,6 +313,76 @@ function toSideBySide(lines: DiffLine[]): SbsRow[] {
     }
   }
   return rows;
+}
+
+const SBS_LINE_H = 20;
+const SBS_GUTTER_W = 44;
+
+function SbsCell({
+  side,
+  tone,
+  sideLabel,
+}: {
+  side?: { ln: number; text: string; del?: boolean; add?: boolean };
+  tone: "del" | "add" | "ctx" | "empty";
+  sideLabel: "left" | "right";
+}) {
+  const bg =
+    tone === "del"
+      ? "var(--bg-error)"
+      : tone === "add"
+        ? "#f0fdf4"
+        : tone === "empty"
+          ? "rgba(0,0,0,0.02)"
+          : "transparent";
+  const color =
+    tone === "del"
+      ? "var(--danger-hover)"
+      : tone === "add"
+        ? "#15803d"
+        : "var(--text-primary)";
+  return (
+    <div
+      data-testid={`finding-diff-sbs-${sideLabel}`}
+      style={{
+        display: "flex",
+        minWidth: 0,
+        width: "100%",
+        height: SBS_LINE_H,
+        lineHeight: `${SBS_LINE_H}px`,
+        background: bg,
+        color,
+        boxSizing: "border-box",
+        borderLeft: sideLabel === "right" ? "1px solid var(--border)" : undefined,
+      }}
+    >
+      <span
+        style={{
+          width: SBS_GUTTER_W,
+          flexShrink: 0,
+          color: "#9ca3af",
+          textAlign: "right",
+          paddingRight: 8,
+          userSelect: "none",
+          fontSize: 11,
+        }}
+      >
+        {side ? side.ln : ""}
+      </span>
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflowX: "auto",
+          overflowY: "hidden",
+          whiteSpace: "pre",
+          paddingRight: 8,
+        }}
+      >
+        {side ? side.text || " " : " "}
+      </div>
+    </div>
+  );
 }
 
 function FixPatchSection({ content }: { content: string }) {
@@ -387,75 +477,74 @@ function FixPatchSection({ content }: { content: string }) {
           style={{
             border: "1px solid var(--border)",
             borderRadius: "6px",
-            overflow: "auto",
+            overflow: "hidden",
             maxHeight: "420px",
+            display: "flex",
+            flexDirection: "column",
             fontFamily: "ui-monospace, Menlo, Consolas, monospace",
             fontSize: "11.5px",
-            lineHeight: 1.55,
           }}
         >
+          {/* Header: fixed 50/50 */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
+              gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
               background: "#fafafa",
               fontWeight: 700,
               fontSize: "10.5px",
               letterSpacing: "0.5px",
               color: "var(--text-secondary)",
               borderBottom: "1px solid var(--border)",
+              flexShrink: 0,
             }}
           >
-            <div style={{ padding: "4px 8px" }}>{i18n.t("findings.diff.original")}</div>
-            <div style={{ padding: "4px 8px", borderLeft: "1px solid var(--border)" }}>{i18n.t("findings.diff.patched")}</div>
+            <div style={{ padding: "4px 8px", minWidth: 0 }}>{i18n.t("findings.diff.original")}</div>
+            <div style={{ padding: "4px 8px", minWidth: 0, borderLeft: "1px solid var(--border)" }}>
+              {i18n.t("findings.diff.patched")}
+            </div>
           </div>
-          {sbs.map((row, idx) => {
-            if (row.kind !== "pair") {
+          {/* Body: vertical scroll only; each cell scrolls X independently */}
+          <div style={{ overflowY: "auto", overflowX: "hidden", flex: 1, minHeight: 0 }}>
+            {sbs.map((row, idx) => {
+              if (row.kind !== "pair") {
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: "0 8px",
+                      whiteSpace: "pre",
+                      height: SBS_LINE_H,
+                      lineHeight: `${SBS_LINE_H}px`,
+                      color: row.kind === "hunk" ? "var(--brand)" : "var(--text-secondary)",
+                      background: row.kind === "hunk" ? "#eff6ff" : "#fafafa",
+                      fontWeight: 600,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {row.text || " "}
+                  </div>
+                );
+              }
+              const leftTone = !row.left ? "empty" : row.left.del ? "del" : "ctx";
+              const rightTone = !row.right ? "empty" : row.right.add ? "add" : "ctx";
               return (
                 <div
                   key={idx}
                   style={{
-                    padding: "0 8px",
-                    whiteSpace: "pre",
-                    color: row.kind === "hunk" ? "var(--brand)" : "var(--text-secondary)",
-                    background: row.kind === "hunk" ? "#eff6ff" : "#fafafa",
-                    fontWeight: 600,
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                    height: SBS_LINE_H,
+                    minHeight: SBS_LINE_H,
                   }}
                 >
-                  {row.text || " "}
+                  <SbsCell side={row.left} tone={leftTone} sideLabel="left" />
+                  <SbsCell side={row.right} tone={rightTone} sideLabel="right" />
                 </div>
               );
-            }
-            const cell = (
-              side: { ln: number; text: string; del?: boolean; add?: boolean } | undefined,
-              tone: "del" | "add" | "ctx",
-            ) => (
-              <div
-                style={{
-                  display: "flex",
-                  minWidth: 0,
-                  padding: "0 8px",
-                  whiteSpace: "pre",
-                  overflow: "hidden",
-                  background: tone === "del" ? "var(--bg-error)" : tone === "add" ? "#f0fdf4" : "transparent",
-                  color: tone === "del" ? "var(--danger-hover)" : tone === "add" ? "#15803d" : "var(--text-primary)",
-                }}
-              >
-                <span style={{ width: "30px", flexShrink: 0, color: "#9ca3af", textAlign: "right", paddingRight: "8px", userSelect: "none" }}>
-                  {side ? side.ln : ""}
-                </span>
-                <span style={{ minWidth: 0, flex: 1 }}>{side ? side.text : " "}</span>
-              </div>
-            );
-            const leftTone = row.left?.del ? "del" : "ctx";
-            const rightTone = row.right?.add ? "add" : "ctx";
-            return (
-              <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderTop: "1px solid var(--divider)" }}>
-                {cell(row.left, leftTone as "del" | "ctx")}
-                <div style={{ borderLeft: "1px solid var(--divider)" }}>{cell(row.right, rightTone as "add" | "ctx")}</div>
-              </div>
-            );
-          })}
+            })}
+          </div>
         </div>
       )}
     </div>
