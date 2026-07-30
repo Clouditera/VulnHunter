@@ -5,6 +5,7 @@ import { api, type Task, type FindingReviewStatus } from "../../../shared/api/cl
 import { NewTaskModal } from "../components/NewTaskModal.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
+import { FilterDropdown } from "../../../shared/components/FilterDropdown.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
 import { SeverityBadges } from "../../../shared/components/SeverityBadges.js";
@@ -226,66 +227,45 @@ export function TasksListPage() {
             }}
           />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <label
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "var(--text-secondary)",
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-            }}
-          >
-            {i18n.t("tasks.sort.label")}
-          </label>
-          <select
-            data-testid="tasks-sort-select"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortMode)}
-            style={{
-              height: "34px",
-              padding: "0 10px",
-              border: "1px solid var(--border)",
-              borderRadius: "6px",
-              fontSize: "12px",
-              background: "var(--bg-card)",
-              color: "var(--text-primary)",
-              cursor: "pointer",
-              outline: "none",
-            }}
-          >
-            <option value="newest">{i18n.t("tasks.sort.newest")}</option>
-            <option value="oldest">{i18n.t("tasks.sort.oldest")}</option>
-            <option value="name">{i18n.t("tasks.sort.name")}</option>
-          </select>
-        </div>
-        {isAdmin && (
-          <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            {i18n.t("filters.user")}
-            <select data-testid="tasks-user-filter" value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ height: "34px", padding: "0 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", background: "var(--bg-card)", color: "var(--text-primary)", cursor: "pointer", outline: "none" }}>
-              <option value="">{i18n.t("filters.allUsers")}</option>
-              {(usersData?.users ?? []).map((u) => <option key={u.id} value={u.id}>{u.display_name || u.email}</option>)}
-            </select>
-          </label>
-        )}
-        <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-          {i18n.t("tasks.pager.pageSize")}
-          <select
-            data-testid="tasks-page-size"
-            value={pageSize}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              setPageSize(n);
-              window.localStorage.setItem(PAGE_SIZE_KEY, String(n));
-              setPage(1);
-            }}
-            style={{ height: "34px", padding: "0 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", background: "var(--bg-card)", color: "var(--text-primary)", cursor: "pointer", outline: "none" }}
-          >
-            {PAGE_SIZE_OPTIONS.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
-        </label>
+        <FilterDropdown
+          testid="tasks-sort-select"
+          value={sortBy}
+          onChange={(v) => setSortBy(v as SortMode)}
+          options={[
+            { value: "newest", label: i18n.t("tasks.sort.newest") },
+            { value: "oldest", label: i18n.t("tasks.sort.oldest") },
+            { value: "name", label: i18n.t("tasks.sort.name") },
+          ]}
+        />
+        {isAdmin ? (
+          <FilterDropdown
+            testid="tasks-user-filter"
+            value={selectedUserId}
+            onChange={setSelectedUserId}
+            width={140}
+            options={[
+              { value: "", label: i18n.t("filters.allUsers") },
+              ...(usersData?.users ?? []).map((u) => ({
+                value: u.id,
+                label: u.display_name || u.email,
+              })),
+            ]}
+          />
+        ) : null}
+        <FilterDropdown
+          testid="tasks-page-size"
+          value={String(pageSize)}
+          onChange={(v) => {
+            const n = Number(v);
+            setPageSize(n);
+            window.localStorage.setItem(PAGE_SIZE_KEY, String(n));
+            setPage(1);
+          }}
+          options={PAGE_SIZE_OPTIONS.map((n) => ({
+            value: String(n),
+            label: i18n.t("tasks.pager.pageSize").replace("{n}", String(n)),
+          }))}
+        />
         <span
           data-testid="tasks-count"
           style={{

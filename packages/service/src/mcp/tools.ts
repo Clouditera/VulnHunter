@@ -450,6 +450,18 @@ export async function createMcpTask(args: {
     return { content: [{ type: "text", text: `Error: ${err instanceof Error ? err.message : String(err)}` }] };
   }
 
+  if (args.enable_dynamic_verify || args.enable_dynamic_exploit) {
+    const { isSandboxPlaneConfigured } = await import("../features/sandbox-plane/client.js");
+    if (!isSandboxPlaneConfigured()) {
+      return {
+        content: [{
+          type: "text",
+          text: "Error: 沙箱服务未部署，无法开启动态验证。请联系管理员安装 SandboxPlane，或创建任务时关闭动态选项。",
+        }],
+      };
+    }
+  }
+
   const cred = await resolveTaskCredential(ctx);
   if (!cred) {
     return { content: [{ type: "text", text: "Error: 当前会话没有可用模型凭证。请在右上角选择模型或在 Settings 配置默认凭证后重试。" }] };

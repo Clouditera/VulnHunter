@@ -45,6 +45,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [timeoutMode, setTimeoutMode] = useState<"custom" | "auto">("custom");
   const [agentMaxParallel, setAgentMaxParallel] = useState("3");
   const [enableDynamicVerify, setEnableDynamicVerify] = useState(false);
+  // SandboxPlane not installed → dynamic toggles locked off
   const [enableDynamicExploit, setEnableDynamicExploit] = useState(false);
   const [sandboxCapacity, setSandboxCapacity] = useState<SandboxCapacity | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -140,6 +141,16 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
     return () => window.clearTimeout(timer);
   }, [gitUrl, tab]);
 
+  const sandboxUnavailable = sandboxCapacity?.configured === false;
+
+  // Force-disable dynamic toggles when plane is not deployed
+  useEffect(() => {
+    if (sandboxUnavailable) {
+      setEnableDynamicVerify(false);
+      setEnableDynamicExploit(false);
+    }
+  }, [sandboxUnavailable]);
+
   async function handleCreate() {
     setError("");
     setLoading(true);
@@ -192,7 +203,9 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
     } catch (err) {
       const e = err as Error & { code?: string; used?: number; limit?: number };
       const show = (msg: string) => { setError(msg); toast.error(msg); };
-      if (e.code === "ERR_TASK_NAME_CONFLICT") {
+      if (e.code === "ERR_SANDBOX_NOT_CONFIGURED") {
+        show(e.message || i18n.t("newTask.sandboxNotConfigured"));
+      } else if (e.code === "ERR_TASK_NAME_CONFLICT") {
         show(e.message || i18n.t("tasks.err.nameConflict"));
       } else if (e.code === "ERR_SOURCE_ARCHIVE_UNSAFE_PATH") {
         show(e.message);
@@ -691,8 +704,25 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
               <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.45, marginBottom: "10px" }}>{i18n.t("newTask.dynamicSubtitle")}</div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--bg-card)", cursor: "pointer" }}>
-                  <input data-testid="enable-dynamic-verify" type="checkbox" checked={enableDynamicVerify} onChange={(e) => { const on = e.target.checked; setEnableDynamicVerify(on); if (!on) setEnableDynamicExploit(false); }} style={{ marginTop: "2px" }} />
+                {sandboxUnavailable ? (
+                  <div
+                    data-testid="sandbox-not-configured-hint"
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--text-secondary)",
+                      background: "var(--bg-page)",
+                      border: "1px dashed var(--border)",
+                      borderRadius: "7px",
+                      padding: "9px 11px",
+                      lineHeight: 1.5,
+                      marginBottom: "4px",
+                    }}
+                  >
+                    {i18n.t("newTask.sandboxNotConfigured")}
+                  </div>
+                ) : null}
+                <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px", border: "1px solid var(--border)", borderRadius: "8px", background: sandboxUnavailable ? "transparent" : "var(--bg-card)", cursor: sandboxUnavailable ? "not-allowed" : "pointer", opacity: sandboxUnavailable ? 0.55 : 1 }}>
+                  <input data-testid="enable-dynamic-verify" type="checkbox" checked={enableDynamicVerify} disabled={sandboxUnavailable} onChange={(e) => { const on = e.target.checked; setEnableDynamicVerify(on); if (!on) setEnableDynamicExploit(false); }} style={{ marginTop: "2px" }} />
                   <span>
                     <span style={{ display: "block", fontSize: "13px", fontWeight: 650, color: "var(--text-primary)" }}>{i18n.t("newTask.dynamicVerify")}</span>
                     <span style={{ display: "block", marginTop: "3px", fontSize: "11px", lineHeight: 1.45, color: "var(--text-secondary)" }}>{i18n.t("newTask.dynamicVerifyDesc")}</span>
@@ -700,9 +730,9 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                 </label>
                 <label
                   title={enableDynamicVerify ? undefined : i18n.t("newTask.dynamicExploitNeedsVerify")}
-                  style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px", border: `1px ${enableDynamicVerify ? "solid" : "dashed"} var(--border)`, borderRadius: "8px", background: enableDynamicVerify ? "var(--bg-card)" : "transparent", cursor: enableDynamicVerify ? "pointer" : "not-allowed", opacity: enableDynamicVerify ? 1 : 0.6 }}
+                  style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px", border: `1px ${enableDynamicVerify && !sandboxUnavailable ? "solid" : "dashed"} var(--border)`, borderRadius: "8px", background: enableDynamicVerify && !sandboxUnavailable ? "var(--bg-card)" : "transparent", cursor: enableDynamicVerify && !sandboxUnavailable ? "pointer" : "not-allowed", opacity: enableDynamicVerify && !sandboxUnavailable ? 1 : 0.6 }}
                 >
-                  <input data-testid="enable-dynamic-exploit" type="checkbox" checked={enableDynamicExploit} disabled={!enableDynamicVerify} onChange={(e) => setEnableDynamicExploit(e.target.checked)} style={{ marginTop: "2px" }} />
+                  <input data-testid="enable-dynamic-exploit" type="checkbox" checked={enableDynamicExploit} disabled={!enableDynamicVerify || sandboxUnavailable} onChange={(e) => setEnableDynamicExploit(e.target.checked)} style={{ marginTop: "2px" }} />
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", fontWeight: 650, color: enableDynamicVerify ? "var(--text-primary)" : "var(--text-secondary)" }}>
                       {i18n.t("newTask.dynamicExploit")}

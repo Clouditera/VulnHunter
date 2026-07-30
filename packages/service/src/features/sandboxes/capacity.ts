@@ -1,12 +1,14 @@
+import { isSandboxPlaneConfigured, listSandboxPlaneProfiles, SandboxPlaneUnavailableError } from "../sandbox-plane/client.js";
 import { getDb } from "../../infra/db/client.js";
-import { listSandboxPlaneProfiles } from "../sandbox-plane/client.js";
 import { logger } from "../../infra/logger.js";
 
 export interface SandboxCapacityView {
   available_now: boolean;
   running_sandboxes: number;
   queue_depth: number;
-  detail: "ok" | "capacity_tight";
+  /** ok | capacity_tight | not_configured (no plane env) | unavailable (plane down) */
+  detail: "ok" | "capacity_tight" | "not_configured" | "unavailable";
+  configured: boolean;
 }
 
 export async function getSandboxCapacityView(): Promise<SandboxCapacityView> {
@@ -25,14 +27,32 @@ export async function getSandboxCapacityView(): Promise<SandboxCapacityView> {
   `;
   const queueDepth = Number(queueRows[0]?.count ?? 0);
 
-  let anyProfileAvailable = true;
+  const configured = isSandboxPlaneConfigured();
+  if (!configured) {
+    return {
+      available_now: false,
+      running_sandboxes: running,
+      queue_depth: queueDepth,
+      detail: "not_configured",
+      configured: false,
+    };
+  }
+
+  let anyProfileAvailable = false;
   try {
     const profiles = await listSandboxPlaneProfiles();
     anyProfileAvailable = profiles.some((p) => p.status === "available");
   } catch (err) {
-    // Probe failure must not block the read surface; treat as ok (stale tip OK per contract).
-    logger.debug({ err }, "Sandbox capacity plane probe failed; assuming available");
-    anyProfileAvailable = true;
+    logger.debug({ err }, "Sandbox capacity plane probe failed");
+    const msg = err instanceof Error ? err.message : String(err);
+    const notCfg = err instanceof SandboxPlaneUnavailableError && /not configured/i.test(msg);
+    return {
+      available_now: false,
+      running_sandboxes: running,
+      queue_depth: queueDepth,
+      detail: notCfg ? "not_configured" : "unavailable",
+      configured: !notCfg,
+    };
   }
 
   const availableNow = anyProfileAvailable && queueDepth === 0;
@@ -41,6 +61,7 @@ export async function getSandboxCapacityView(): Promise<SandboxCapacityView> {
     running_sandboxes: running,
     queue_depth: queueDepth,
     detail: availableNow ? "ok" : "capacity_tight",
+    configured: true,
   };
 }
 

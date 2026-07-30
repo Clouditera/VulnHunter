@@ -57,6 +57,11 @@ function client() {
   return { baseUrl: baseUrl.replace(/\/+$/, ""), token, timeoutMs };
 }
 
+/** True when SANDBOXPLANE_BASE_URL + TOKEN are set (plane may still be down). */
+export function isSandboxPlaneConfigured(): boolean {
+  return client() != null;
+}
+
 async function request(path: string, allow404 = false): Promise<unknown | null> {
   const c = client();
   if (!c) throw new SandboxPlaneUnavailableError("SandboxPlane is not configured");

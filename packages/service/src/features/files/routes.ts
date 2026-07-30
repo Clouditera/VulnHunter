@@ -220,6 +220,18 @@ filesRouter.post("/tasks", async (c) => {
       return c.json({ error: { code: "ERR_INVALID_SCAN_OPTIONS", detail: err instanceof Error ? err.message : String(err) } }, 400);
     }
 
+    if (scanMeta.dynamic_enabled || scanMeta.enable_poc || scanMeta.enable_exp || scanMeta.enable_chain) {
+      const { isSandboxPlaneConfigured } = await import("../sandbox-plane/client.js");
+      if (!isSandboxPlaneConfigured()) {
+        return c.json({
+          error: {
+            code: "ERR_SANDBOX_NOT_CONFIGURED",
+            message: "沙箱服务未部署，无法开启动态验证",
+          },
+        }, 400);
+      }
+    }
+
     const credRes = await resolveCreateCredentialId(ctx, credentialId);
     if (!credRes.ok) return c.json(credRes.body, credRes.status as 400);
 
@@ -288,6 +300,18 @@ filesRouter.post("/tasks", async (c) => {
     });
   } catch (err) {
     return c.json({ error: { code: "ERR_INVALID_SCAN_OPTIONS", detail: err instanceof Error ? err.message : String(err) } }, 400);
+  }
+
+  if (gitScanMeta.dynamic_enabled || gitScanMeta.enable_poc || gitScanMeta.enable_exp || gitScanMeta.enable_chain) {
+    const { isSandboxPlaneConfigured } = await import("../sandbox-plane/client.js");
+    if (!isSandboxPlaneConfigured()) {
+      return c.json({
+        error: {
+          code: "ERR_SANDBOX_NOT_CONFIGURED",
+          message: "沙箱服务未部署，无法开启动态验证",
+        },
+      }, 400);
+    }
   }
 
   let agentMaxParallel: number | undefined;
