@@ -296,7 +296,7 @@ function toSideBySide(lines: DiffLine[]): SbsRow[] {
 }
 
 function FixPatchSection({ content }: { content: string }) {
-  const [mode, setMode] = useState<"unified" | "sbs">("unified");
+  const [mode, setMode] = useState<"unified" | "sbs">("sbs"); // fish: 对比视图默认
   const parsed = useMemo(() => parseUnifiedDiff(content), [content]);
   const sbs = useMemo(() => toSideBySide(parsed), [parsed]);
 
@@ -527,7 +527,7 @@ function AffectedCodeSection({
   anchors: FindingAnchor[];
   onOpenTree: (a: FindingAnchor) => void;
 }) {
-  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const [openIdx, setOpenIdx] = useState<number | null>(0); // expand first anchor by default
   if (anchors.length === 0) return null;
   return (
     <div data-testid="finding-section-affected-code" style={CARD}>
