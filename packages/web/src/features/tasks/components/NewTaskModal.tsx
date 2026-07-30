@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { api, type LlmCredential, type SourceArchivePolicy, type SandboxCapacity } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
+import { toast } from "../../../shared/toast/toast.js";
 
 interface Props {
   onClose: () => void;
@@ -190,26 +191,27 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
       onCreated();
     } catch (err) {
       const e = err as Error & { code?: string; used?: number; limit?: number };
+      const show = (msg: string) => { setError(msg); toast.error(msg); };
       if (e.code === "ERR_TASK_NAME_CONFLICT") {
-        setError(e.message || i18n.t("tasks.err.nameConflict"));
+        show(e.message || i18n.t("tasks.err.nameConflict"));
       } else if (e.code === "ERR_SOURCE_ARCHIVE_UNSAFE_PATH") {
-        setError(e.message);
+        show(e.message);
       } else if (e.code === "ERR_TASK_LIMIT_EXCEEDED" || e.message.includes("ERR_TASK_LIMIT_EXCEEDED") || e.message.includes("Task limit reached") || e.message.includes("任务创建上限")) {
-        setError(i18n.t("taskLimit.exceeded")
+        show(i18n.t("taskLimit.exceeded")
           .replace("{used}", String(e.used ?? "N"))
           .replace("{limit}", String(e.limit ?? "N")));
       } else if (e.code === "ERR_TASK_UPLOAD_TOO_LARGE" || e.code === "ERR_SOURCE_ARCHIVE_TOO_LARGE") {
-        setError(i18n.t("newTask.uploadTooLarge").replace("{max}", String(archivePolicy.max_mb)));
+        show(i18n.t("newTask.uploadTooLarge").replace("{max}", String(archivePolicy.max_mb)));
       } else if (e.code === "ERR_SOURCE_ARCHIVE_UNSUPPORTED_FORMAT") {
-        setError(i18n.t("newTask.unsupportedArchive").replace("{extensions}", archivePolicy.extensions.join(", ")));
+        show(i18n.t("newTask.unsupportedArchive").replace("{extensions}", archivePolicy.extensions.join(", ")));
       } else if (e.code?.startsWith("ERR_SOURCE_ARCHIVE_")) {
-        setError(i18n.t("newTask.invalidArchive"));
+        show(i18n.t("newTask.invalidArchive"));
       } else if (e.code === "ERR_UPLOAD_GATEWAY_LIMIT" || e.message.includes("HTTP 413")) {
-        setError(i18n.t("newTask.uploadGatewayLimit"));
+        show(i18n.t("newTask.uploadGatewayLimit"));
       } else if (e.code === "ERR_NO_LLM_CREDENTIAL" || e.message.includes("ERR_NO_LLM_CREDENTIAL") || e.message.includes("模型凭证")) {
-        setError(e.message || i18n.t("newTask.needCredential"));
+        show(e.message || i18n.t("newTask.needCredential"));
       } else {
-        setError(e.message || String(err));
+        show(e.message || String(err));
       }
     } finally {
       setLoading(false);

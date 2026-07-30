@@ -39,6 +39,7 @@ function ChatPageInner() {
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const isNarrow = useNarrowViewport(1180);
   const {
+    sessions,
     activeId,
     activeSession,
     messages,
@@ -65,8 +66,11 @@ function ChatPageInner() {
   }, [location.key, location.pathname, location.state, navigate, selectSession, startDraftSession]);
 
   useEffect(() => {
-    if (!loading && !activeId) startDraftSession();
-  }, [activeId, loading, startDraftSession]);
+    // Only auto-open a blank draft when there is truly no session to show.
+    // Login/refresh should land on the latest session (set by useChat load).
+    // Explicit "新对话" uses startDraftSession via nav state / event (VULNHUN-170).
+    if (!loading && !activeId && sessions.length === 0) startDraftSession();
+  }, [activeId, loading, startDraftSession, sessions.length]);
 
   const closeReferencePanel = () => {
     setDrawerOpen(false);
