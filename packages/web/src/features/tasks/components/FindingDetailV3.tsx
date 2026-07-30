@@ -361,8 +361,19 @@ function SbsColumn({
         borderLeft: side === "right" ? "1px solid var(--border)" : undefined,
       }}
     >
-      {/* Horizontal scroll wraps the whole column content (one bar at bottom). */}
-      <div style={{ overflowX: "auto", overflowY: "hidden", flex: 1, minHeight: 0 }}>
+      {/* Horizontal scroll: pad bottom so native scrollbar does not cover last line. */}
+      <div
+        style={{
+          overflowX: "auto",
+          overflowY: "hidden",
+          flex: 1,
+          minHeight: 0,
+          // Reserve space for classic ~12–15px scrollbar; always-stable avoids layout jump.
+          paddingBottom: 14,
+          scrollbarGutter: "stable",
+          boxSizing: "border-box",
+        }}
+      >
         <div style={{ display: "inline-block", minWidth: "100%", verticalAlign: "top" }}>
           {rows.map((row, idx) => {
             if (row.kind !== "pair") {
@@ -566,6 +577,8 @@ function FixPatchSection({ content }: { content: string }) {
               minHeight: 0,
               overflowY: "auto",
               overflowX: "hidden",
+              // Extra bottom air so column X-scrollbars sit below content, not on last line.
+              paddingBottom: 2,
             }}
           >
             <SbsColumn rows={sbs} side="left" testid="finding-diff-sbs-left" />
