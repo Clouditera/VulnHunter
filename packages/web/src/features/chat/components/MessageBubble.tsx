@@ -131,7 +131,12 @@ const AGENT_BUBBLE: CSSProperties = {
 export function MessageBubble({
   message,
   onArtifactSelect,
-}: { message: ChatMessage; onArtifactSelect?: (artifact: ChatArtifactUnion) => void }) {
+  sessionArtifacts = [],
+}: {
+  message: ChatMessage;
+  onArtifactSelect?: (artifact: ChatArtifactUnion) => void;
+  sessionArtifacts?: ChatArtifactUnion[];
+}) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   if (message.role === "user") {
@@ -208,7 +213,29 @@ export function MessageBubble({
             data-testid="chat-message-content"
             style={visibleContent || artifacts.length ? AGENT_BUBBLE : undefined}
           >
-            {visibleContent ? <Markdown content={visibleContent} /> : null}
+            {visibleContent ? (
+              <Markdown
+                content={visibleContent}
+                onWorkspaceLink={(href) => {
+                  const leaf = (href.split("/").pop() ?? href).split("?")[0];
+                  const norm = href.startsWith("/") ? href : `/${href}`;
+                  const pool = [...artifacts, ...sessionArtifacts];
+                  const match = pool.find((a) => {
+                    if (!isFileArtifact(a)) return false;
+                    const wp = a.workspace_path ?? "";
+                    return (
+                      wp === href ||
+                      wp === norm ||
+                      wp.endsWith(leaf) ||
+                      a.filename === leaf ||
+                      a.title === leaf ||
+                      a.filename.endsWith(leaf)
+                    );
+                  });
+                  if (match && onArtifactSelect) onArtifactSelect(match);
+                }}
+              />
+            ) : null}
             {artifacts.map((a) =>
               isFileArtifact(a) ? (
                 <ArtifactCard key={a.artifact_id} artifact={a} onSelect={onArtifactSelect} />

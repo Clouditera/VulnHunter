@@ -294,7 +294,7 @@ chatRouter.get("/sessions/:id/artifacts", async (c) => {
   const { getDb } = await import("../../infra/db/client.js");
   const db = getDb();
   const artifacts = await db`
-    SELECT id, title, original_name, filename, mime_type, size_bytes, minio_key, metadata, created_at
+    SELECT id, title, original_name, filename, mime_type, size_bytes, minio_key, workspace_path, metadata, created_at
     FROM chat_artifacts
     WHERE session_id = ${session.id}
       AND user_id = ${session.user_id}
@@ -323,6 +323,10 @@ chatRouter.get("/sessions/:id/artifacts", async (c) => {
         preview_status = "unsupported";
       }
     }
+    const metaSource =
+      meta && typeof meta === "object" && typeof (meta as { source_path?: unknown }).source_path === "string"
+        ? String((meta as { source_path: string }).source_path)
+        : undefined;
     return {
       artifact_id: a.id,
       title: a.title ?? a.original_name,
@@ -335,6 +339,7 @@ chatRouter.get("/sessions/:id/artifacts", async (c) => {
       preview_truncated,
       download_url: `/api/chat/sessions/${session.id}/artifacts/${a.id}/download`,
       created_at: a.created_at,
+      workspace_path: a.workspace_path ?? metaSource ?? null,
     };
   }));
 

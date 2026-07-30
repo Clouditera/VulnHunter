@@ -1430,6 +1430,7 @@ export interface ChatArtifactApi {
   preview_truncated?: boolean;
   download_url: string;
   created_at?: string;
+  workspace_path?: string | null;
 }
 
 export interface DashboardData {

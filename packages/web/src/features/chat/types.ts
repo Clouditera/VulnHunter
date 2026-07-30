@@ -200,6 +200,8 @@ export interface ChatArtifact {
   preview_truncated?: boolean;
   download_url: string;
   created_at?: string;
+  /** Present-artifact source path, e.g. /workspace/reports/x.md */
+  workspace_path?: string | null;
 }
 
 export type ArtifactRefType = "task_ref" | "finding_ref" | "wiki_ref" | "report_ref";

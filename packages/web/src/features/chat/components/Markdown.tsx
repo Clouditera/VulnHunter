@@ -172,54 +172,117 @@ const baseComponents: Components = {
   em: ({ children }) => <em>{children}</em>,
 };
 
-/** Build the component map, optionally intercepting relative .md links. */
-function buildComponents(onRelativeLink?: (href: string) => void): Components {
-  if (!onRelativeLink) return baseComponents;
+export type MarkdownLinkOptions = {
+  /** Wiki: navigate among known wiki pages. */
+  onRelativeLink?: (href: string) => void;
+  /** Wiki: only these relative targets become links; others plain text (VULNHUN-165). */
+  isRelativeLinkAllowed?: (href: string) => boolean;
+  /** Chat: workspace/file paths open artifact panel instead of browser nav (VULNHUN-159). */
+  onWorkspaceLink?: (href: string) => void;
+};
+
+function isHttpUrl(href: string): boolean {
+  return /^https?:\/\//i.test(href) || href.startsWith("mailto:");
+}
+
+function isRelativeMd(href: string): boolean {
+  return !/^[a-z]+:\/\//i.test(href) && !href.startsWith("/") && !href.startsWith("#");
+}
+
+function isWorkspacePath(href: string): boolean {
+  if (!href) return false;
+  if (href.startsWith("/workspace/") || href.startsWith("workspace/")) return true;
+  // bare relative file-ish paths (reports, attachments)
+  if (isRelativeMd(href) && /\.(md|txt|json|ya?ml|csv|log|pdf|docx?|xlsx?|zip|png|jpe?g|gif|webp)$/i.test(href))
+    return true;
+  return false;
+}
+
+/** Build the component map with optional link policies. */
+function buildComponents(opts: MarkdownLinkOptions = {}): Components {
+  const { onRelativeLink, isRelativeLinkAllowed, onWorkspaceLink } = opts;
   return {
     ...baseComponents,
     a: ({ href, children }) => {
       const text = typeof children === "string" ? children : "";
-      // Intercept relative links FIRST (before the autolink guard). In the wiki
-      // index the link text often equals the href (e.g. `[overview.md](overview.md)`),
-      // which would otherwise be swallowed by the autolink → <span> branch.
-      // Relative = no scheme, no leading slash, not a pure anchor.
-      const isRelative =
-        !!href && !/^[a-z]+:\/\//i.test(href) && !href.startsWith("/") && !href.startsWith("#");
-      if (isRelative) {
+      const h = href ?? "";
+
+      // Relative wiki-style links
+      if (h && isRelativeMd(h)) {
+        const allowed = isRelativeLinkAllowed ? isRelativeLinkAllowed(h) : !!onRelativeLink;
+        if (allowed && onRelativeLink) {
+          return (
+            <a
+              href={h}
+              style={{ ...LINK, cursor: "pointer" }}
+              onClick={(e) => {
+                e.preventDefault();
+                onRelativeLink(h);
+              }}
+            >
+              {children}
+            </a>
+          );
+        }
+        // Outside wiki set or no handler → plain text (no dead link)
+        return <span data-testid="md-plain-link">{children}</span>;
+      }
+
+      // Workspace / file paths in chat → artifact handler or plain text
+      if (h && isWorkspacePath(h)) {
+        if (onWorkspaceLink) {
+          return (
+            <a
+              href={h}
+              style={{ ...LINK, cursor: "pointer" }}
+              onClick={(e) => {
+                e.preventDefault();
+                onWorkspaceLink(h);
+              }}
+            >
+              {children}
+            </a>
+          );
+        }
+        return <span data-testid="md-plain-link">{children}</span>;
+      }
+
+      // Autolinked URLs that equal link text inside code-ish contexts
+      if (text === h && !isHttpUrl(h)) return <span>{children}</span>;
+
+      if (h && isHttpUrl(h)) {
         return (
-          <a
-            href={href}
-            style={{ ...LINK, cursor: "pointer" }}
-            onClick={(e) => {
-              e.preventDefault();
-              onRelativeLink(href!);
-            }}
-          >
+          <a href={h} style={LINK} target="_blank" rel="noopener noreferrer">
             {children}
           </a>
         );
       }
-      // Autolinked URLs inside code blocks: link text IS the URL — render plain.
-      if (text === href) return <span>{children}</span>;
-      return (
-        <a href={href} style={LINK} target="_blank" rel="noopener noreferrer">
-          {children}
-        </a>
-      );
+
+      // Unknown schemes / anchors: plain text to avoid broken navigation
+      if (h.startsWith("#")) {
+        return (
+          <a href={h} style={LINK}>
+            {children}
+          </a>
+        );
+      }
+      return <span data-testid="md-plain-link">{children}</span>;
     },
   };
 }
+
 export function Markdown({
   content,
   onRelativeLink,
+  isRelativeLinkAllowed,
+  onWorkspaceLink,
 }: {
   content: string;
-  onRelativeLink?: (href: string) => void;
-}) {
+} & MarkdownLinkOptions) {
   return (
     <ReactMarkdown
       remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
-      components={buildComponents(onRelativeLink)}
+      components={buildComponents({ onRelativeLink, isRelativeLinkAllowed, onWorkspaceLink })}
     >
       {content}
     </ReactMarkdown>
