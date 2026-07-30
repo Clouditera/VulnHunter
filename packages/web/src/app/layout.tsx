@@ -161,6 +161,15 @@ export function AppLayout() {
     return () => window.removeEventListener("vh:sessions-changed", onChanged);
   }, []);
 
+  useEffect(() => {
+    const onActive = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string | null }>).detail?.id;
+      setActiveRecentId(id ?? null);
+    };
+    window.addEventListener("vh:active-session", onActive);
+    return () => window.removeEventListener("vh:active-session", onActive);
+  }, []);
+
   const currentTheme = theme.current();
   const currentLang = i18n.locale();
 
