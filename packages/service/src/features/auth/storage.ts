@@ -198,9 +198,18 @@ export async function dismissOnboarding(userId: string): Promise<void> {
 
 export async function deleteUser(id: string): Promise<void> {
   const db = getDb();
-  // Keep tasks; clear creator pointer so UI can show "已删除用户"
+  // Keep historical rows; clear creator/owner pointers (UI shows deleted user).
+  // Order: null FKs without ON DELETE, then cascade-friendly children, then user.
   await db`UPDATE tasks SET created_by = NULL WHERE created_by = ${id}`;
+  await db`UPDATE user_reports SET created_by = NULL WHERE created_by = ${id}`;
+  await db`UPDATE report_skills SET uploaded_by = NULL WHERE uploaded_by = ${id}`;
+  await db`UPDATE report_skills SET owner_user_id = NULL WHERE owner_user_id = ${id}`;
+  await db`UPDATE poc_jobs SET created_by = NULL WHERE created_by = ${id}`;
+  await db`UPDATE poc_runs SET created_by = NULL WHERE created_by = ${id}`;
+  await db`UPDATE finding_review_events SET user_id = NULL WHERE user_id = ${id}`;
+  await db`UPDATE findings_meta SET reviewed_by = NULL WHERE reviewed_by = ${id}`;
   await db`DELETE FROM sessions WHERE user_id = ${id}`;
+  // chat_sessions / credentials / skills owner CASCADE; agreements CASCADE
   await db`DELETE FROM users WHERE id = ${id}`;
 }
 

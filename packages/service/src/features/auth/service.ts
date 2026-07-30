@@ -197,14 +197,17 @@ export async function changePassword(
 
   const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
   await storage.updateUser(userId, { passwordHash, mustChangePassword: false });
-  logger.info({ userId }, "Password changed");
+  await storage.deleteAllSessionsForUser(userId);
+  logger.info({ userId }, "Password changed; sessions invalidated");
   return { ok: true };
 }
 
 export async function forceChangePassword(userId: string, newPassword: string): Promise<void> {
   const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
   await storage.updateUser(userId, { passwordHash, mustChangePassword: false });
-  logger.info({ userId }, "Password force-changed (first login)");
+  // Invalidate all sessions; caller should mint a fresh session cookie for the current client.
+  await storage.deleteAllSessionsForUser(userId);
+  logger.info({ userId }, "Password force-changed; sessions invalidated");
 }
 
 export { hasAnyAdmin } from "./storage.js";

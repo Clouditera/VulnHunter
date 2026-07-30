@@ -15,6 +15,7 @@ export function ProfileSection() {
   const [, force] = useState(0);
   useEffect(() => i18n.onChange(() => force((n) => n + 1)), []);
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { data: status } = useSystemStatus();
   const user = status?.user;
 
@@ -50,13 +51,16 @@ export function ProfileSection() {
 
   const changePwdMut = useMutation({
     mutationFn: () => api.auth.changePassword(currentPwd, newPwd),
-    onSuccess: () => {
+    onSuccess: async () => {
       setPwdSaved(true);
       setCurrentPwd("");
       setNewPwd("");
       setConfirmPwd("");
       setPwdError("");
-      setTimeout(() => setPwdSaved(false), 2000);
+      // Server invalidated all sessions — clear client and re-login.
+      try { await api.auth.logout(); } catch { /* cookie already dead */ }
+      qc.clear();
+      navigate("/login", { replace: true });
     },
     onError: (err: Error) => setPwdError(err.message || i18n.t("profile.err.wrongCurrent")),
   });
