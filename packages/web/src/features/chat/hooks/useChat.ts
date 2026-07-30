@@ -127,11 +127,22 @@ export function useChat() {
       .list()
       .then((res) => {
         if (!mounted) return;
-        const list = res.sessions.map(toDomainSession);
+        const list = res.sessions
+          .map(toDomainSession)
+          .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
         setSessions(list);
-        // Do not clobber an already-selected session or a draft started via
-        // "新对话" navigation from task detail (VULNHUN-170).
-        setActiveId((prev) => prev ?? list[0]?.id ?? null);
+        // Login/refresh → most recently active session. Keep only an in-flight
+        // draft from explicit "新对话" (id === "draft"); never keep a stale id.
+        setActiveId((prev) => {
+          if (prev === "draft") return prev;
+          const latest = list[0]?.id ?? null;
+          if (latest) {
+            window.dispatchEvent(
+              new CustomEvent("vh:active-session", { detail: { id: latest } }),
+            );
+          }
+          return latest;
+        });
         setLoading(false);
       })
       .catch((err) => {
@@ -529,6 +540,7 @@ export function useChat() {
   const selectSession = useCallback((id: string) => {
     setDraftSession(null);
     setActiveId(id);
+    window.dispatchEvent(new CustomEvent("vh:active-session", { detail: { id } }));
   }, []);
 
   const startDraftSession = useCallback(() => {
@@ -543,6 +555,7 @@ export function useChat() {
     setDraftSession(draft);
     setMessagesBySession((prev) => ({ ...prev, [draft.id]: [] }));
     setActiveId(draft.id);
+    window.dispatchEvent(new CustomEvent("vh:active-session", { detail: { id: null } }));
   }, []);
 
   const createSession = useCallback(async () => {

@@ -1,3 +1,4 @@
+import { decodeTextFileContent } from "../source-archives/charset.js";
 export const CHAT_ARTIFACT_PREVIEW_LIMIT_BYTES = 64 * 1024;
 
 export type ArtifactPreviewStatus = "ready" | "unsupported" | "failed";
@@ -21,7 +22,7 @@ export function buildBufferPreview(buffer: Buffer, mime: string): ArtifactPrevie
   }
   const previewBuffer = buffer.subarray(0, CHAT_ARTIFACT_PREVIEW_LIMIT_BYTES);
   return {
-    preview: previewBuffer.toString("utf8"),
+    preview: decodeTextFileContent(Buffer.from(previewBuffer)),
     preview_status: "ready",
     preview_truncated: buffer.length > CHAT_ARTIFACT_PREVIEW_LIMIT_BYTES,
   };
@@ -46,7 +47,7 @@ export async function readMinioPreview(minio: any, bucket: string, key: string, 
       stream.on("error", reject);
     });
     return {
-      preview: Buffer.concat(chunks).toString("utf8"),
+      preview: decodeTextFileContent(Buffer.concat(chunks)),
       preview_status: "ready",
       preview_truncated: total > CHAT_ARTIFACT_PREVIEW_LIMIT_BYTES,
     };
