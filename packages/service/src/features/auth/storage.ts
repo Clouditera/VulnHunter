@@ -198,19 +198,25 @@ export async function dismissOnboarding(userId: string): Promise<void> {
 
 export async function deleteUser(id: string): Promise<void> {
   const db = getDb();
-  // Keep historical rows; clear creator/owner pointers (UI shows deleted user).
-  // Order: null FKs without ON DELETE, then cascade-friendly children, then user.
-  await db`UPDATE tasks SET created_by = NULL WHERE created_by = ${id}`;
-  await db`UPDATE user_reports SET created_by = NULL WHERE created_by = ${id}`;
-  await db`UPDATE report_skills SET uploaded_by = NULL WHERE uploaded_by = ${id}`;
-  await db`UPDATE report_skills SET owner_user_id = NULL WHERE owner_user_id = ${id}`;
-  await db`UPDATE poc_jobs SET created_by = NULL WHERE created_by = ${id}`;
-  await db`UPDATE poc_runs SET created_by = NULL WHERE created_by = ${id}`;
-  await db`UPDATE finding_review_events SET user_id = NULL WHERE user_id = ${id}`;
-  await db`UPDATE findings_meta SET reviewed_by = NULL WHERE reviewed_by = ${id}`;
-  await db`DELETE FROM sessions WHERE user_id = ${id}`;
-  // chat_sessions / credentials / skills owner CASCADE; agreements CASCADE
-  await db`DELETE FROM users WHERE id = ${id}`;
+  // Architect A: app-level cleanup in one transaction (FK NO ACTION blockers).
+  await db.begin(async (tx) => {
+    // Keep tasks; clear creator (column nullable via migration 041).
+    await tx`UPDATE tasks SET created_by = NULL WHERE created_by = ${id}`;
+    // Review history: drop actor rows / clear reviewed_by
+    await tx`DELETE FROM finding_review_events WHERE user_id = ${id}`;
+    await tx`UPDATE findings_meta SET reviewed_by = NULL WHERE reviewed_by = ${id}`;
+    // POC artifacts owned by user
+    await tx`DELETE FROM poc_runs WHERE created_by = ${id}`;
+    await tx`DELETE FROM poc_jobs WHERE created_by = ${id}`;
+    // User-generated reports
+    await tx`DELETE FROM user_reports WHERE created_by = ${id}`;
+    // Report skills: owner CASCADE covers most; delete any leftover uploaded_by rows
+    await tx`DELETE FROM report_skills WHERE uploaded_by = ${id} OR owner_user_id = ${id}`;
+    // Login sessions
+    await tx`DELETE FROM sessions WHERE user_id = ${id}`;
+    // chat_sessions / credentials / agreements CASCADE on user delete
+    await tx`DELETE FROM users WHERE id = ${id}`;
+  });
 }
 
 export async function deleteAllSessionsForUser(userId: string): Promise<void> {
