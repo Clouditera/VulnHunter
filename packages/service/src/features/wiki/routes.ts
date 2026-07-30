@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { getMinio } from "../../infra/minio/client.js";
+import { decodeTextFileContent } from "../source-archives/charset.js";
 import { loadConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
@@ -52,7 +53,7 @@ async function readMinioText(bucket: string, key: string): Promise<string | null
     const stream = await minio.getObject(bucket, key);
     const chunks: Buffer[] = [];
     for await (const chunk of stream) chunks.push(Buffer.from(chunk));
-    return Buffer.concat(chunks).toString("utf-8");
+    return decodeTextFileContent(Buffer.concat(chunks));
   } catch {
     return null;
   }

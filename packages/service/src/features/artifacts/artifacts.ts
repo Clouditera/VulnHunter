@@ -1,3 +1,4 @@
+import { decodeTextFileContent } from "../source-archives/charset.js";
 /**
  * H4 dynamic artifact read model: file listing + read-only preview for the
  * Finding three-card UI and the EXP page.
@@ -290,7 +291,7 @@ export async function getExploitPageData(task: DbTask, bucket: string): Promise<
   for (const key of reportKeys) {
     const id = key.slice(`${prefix}exploits/`.length, -"/report.yaml".length);
     try {
-      const raw = (await readObjectBuffer(bucket, key)).toString("utf-8");
+      const raw = decodeTextFileContent(await readObjectBuffer(bucket, key));
       chains.push({ id, report: parseChainReport(raw) });
     } catch (error) {
       // One malformed chain report must not sink the whole page (H4 §2.②).

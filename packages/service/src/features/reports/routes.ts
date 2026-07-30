@@ -6,6 +6,8 @@ import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { loadConfig } from "../../infra/config.js";
+import { withUtf8Charset } from "../../infra/http-text.js";
+import { decodeTextFileContent } from "../source-archives/charset.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
@@ -127,15 +129,34 @@ reportsRouter.get("/tasks/:taskId/reports/:reportId/file", async (c) => {
       stream.on("end", resolve);
       stream.on("error", reject);
     });
-    const content = Buffer.concat(chunks).toString("utf-8");
+    const buf = Buffer.concat(chunks);
+    const format = (report.format || "").toLowerCase();
+    // Binary formats: stream raw bytes
+    if (format === "pdf" || format === "docx" || format === "xlsx") {
+      const binType =
+        format === "pdf"
+          ? "application/pdf"
+          : format === "docx"
+            ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      return new Response(buf, { headers: { "Content-Type": binType } });
+    }
 
-    const contentType = report.format === "html" ? "text/html"
-      : report.format === "json" ? "application/json"
-      : report.format === "pdf" ? "application/pdf"
-      : "text/plain";
+    const content = decodeTextFileContent(buf);
+    const contentType =
+      format === "html"
+        ? "text/html"
+        : format === "json"
+          ? "application/json"
+          : format === "md" || format === "markdown"
+            ? "text/markdown"
+            : "text/plain";
 
     return new Response(content, {
-      headers: { "Content-Type": contentType },
+      headers: {
+        "Content-Type": withUtf8Charset(contentType),
+        "X-Content-Type-Options": "nosniff",
+      },
     });
   } catch {
     return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);

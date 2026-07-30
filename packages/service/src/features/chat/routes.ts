@@ -5,6 +5,7 @@ import * as chatStorage from "./storage.js";
 import { getOrCreateSession, destroySession } from "./chat-session.js";
 import { logger } from "../../infra/logger.js";
 import { loadConfig } from "../../infra/config.js";
+import { isTextualMime, withUtf8Charset } from "../../infra/http-text.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, extname, basename } from "node:path";
 import { createHash } from "node:crypto";
@@ -377,10 +378,14 @@ chatRouter.get("/sessions/:id/artifacts/:artifactId/download", async (c) => {
       stream.on("error", reject);
     });
     const filename = basename(artifact.filename || "artifact").replace(/["\\]/g, "_");
-    return new Response(Buffer.concat(chunks), {
+    const buf = Buffer.concat(chunks);
+    const mime = artifact.mime_type || "application/octet-stream";
+    const contentType = isTextualMime(mime) ? withUtf8Charset(mime) : mime;
+    return new Response(buf, {
       headers: {
-        "Content-Type": artifact.mime_type || "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Type": contentType,
+        "Content-Disposition": `inline; filename="${filename}"`,
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (err) {
