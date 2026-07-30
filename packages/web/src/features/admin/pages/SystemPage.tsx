@@ -9,6 +9,7 @@ export function SystemPage() {
   useEffect(() => i18n.onChange(() => tick((n) => n + 1)), []);
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [maxParallel, setMaxParallel] = useState<number | "">(3);
+  const [tasksPageSize, setTasksPageSize] = useState<number | "">(10);
   const [uploadMb, setUploadMb] = useState(500);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -20,6 +21,7 @@ export function SystemPage() {
       .then((r) => {
         setConfig(r.config);
         setMaxParallel(r.config.max_parallel_scan ?? 3);
+        setTasksPageSize((r.config as { tasks_page_size?: number }).tasks_page_size ?? 10);
         setUploadMb(r.config.source_archive_upload_max_mb ?? r.config.upload_zip_max_mb ?? 500);
       })
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)));
@@ -35,6 +37,21 @@ export function SystemPage() {
     try {
       await api.settings.updateSystemConfig({ max_parallel_scan: n });
       setMsg(i18n.t("admin.system.parallelSaved"));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveTasksPageSize(v: number) {
+    const n = Math.min(500, Math.max(1, Math.trunc(Number(v) || 10)));
+    setSaving(true);
+    setMsg("");
+    setErr("");
+    try {
+      await api.settings.updateSystemConfig({ tasks_page_size: n } as never);
+      setMsg(i18n.t("admin.system.pageSizeSaved"));
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -124,9 +141,39 @@ export function SystemPage() {
             {i18n.t("admin.system.parallelHint")}
           </span>
         </div>
-        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>
+        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "0 0 18px" }}>
           {i18n.t("admin.system.agentParallelHint")}
         </p>
+        <label style={labelStyle}>{i18n.t("admin.system.pageSizeLabel")}</label>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
+          <input
+            type="number"
+            data-testid="admin-tasks-page-size"
+            min={1}
+            max={500}
+            step={1}
+            value={tasksPageSize}
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw === "") { setTasksPageSize("" as unknown as number); return; }
+              const n = Number(raw);
+              if (Number.isFinite(n)) setTasksPageSize(Math.trunc(n));
+            }}
+            onBlur={() => {
+              const n = Math.min(500, Math.max(1, Math.trunc(Number(tasksPageSize) || 10)));
+              setTasksPageSize(n);
+              void saveTasksPageSize(n);
+            }}
+            style={{
+              width: 96, height: 36, border: "1px solid var(--border)", borderRadius: 6,
+              padding: "0 10px", fontSize: 16, fontWeight: 600, fontVariantNumeric: "tabular-nums",
+              background: "var(--bg-page)", color: "var(--text-primary)", textAlign: "center",
+            }}
+          />
+          <span style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>
+            {i18n.t("admin.system.pageSizeHint")}
+          </span>
+        </div>
       </section>
 
       <section style={adminCardStyle} data-testid="admin-card-upload">

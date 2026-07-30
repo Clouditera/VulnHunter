@@ -19,15 +19,20 @@ function archiveError(code: "ERR_SOURCE_ARCHIVE_UNSAFE_PATH" | "ERR_SOURCE_ARCHI
   return new SourceArchiveError(code, message);
 }
 
+/** Fish 2026-07-30: Chinese + point out the specific entry for path/symlink issues. */
+function zhUnsafePath(entryPath: string): string {
+  return `压缩包包含不安全的路径或链接（可能导致路径穿越）：${entryPath}。请删除该条目后重新打包上传。`;
+}
+
 function normalizeEntryPath(entryPath: string): string {
-  if (entryPath.includes("\\") || entryPath.includes("\0")) throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", `Archive contains an unsafe path: ${entryPath}`);
+  if (entryPath.includes("\\") || entryPath.includes("\0")) throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", zhUnsafePath(entryPath));
   const raw = entryPath.replace(/^\.\//, "").replace(/\/$/, "");
-  if (!raw || raw === ".") throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", "Archive contains an empty path");
-  if (raw.startsWith("/") || raw.startsWith("//") || /^[A-Za-z]:/.test(raw)) throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", `Archive contains an unsafe absolute path: ${entryPath}`);
-  if (raw.split("/").includes("..")) throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", `Archive contains path traversal: ${entryPath}`);
+  if (!raw || raw === ".") throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", zhUnsafePath(entryPath || "(empty)"));
+  if (raw.startsWith("/") || raw.startsWith("//") || /^[A-Za-z]:/.test(raw)) throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", zhUnsafePath(entryPath));
+  if (raw.split("/").includes("..")) throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", zhUnsafePath(entryPath));
   const normalized = posix.normalize(raw);
-  if (!normalized || normalized === "." || normalized.startsWith("../") || normalized === "..") throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", `Archive contains path traversal: ${entryPath}`);
-  if (normalized !== raw) throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", `Archive contains a non-canonical path: ${entryPath}`);
+  if (!normalized || normalized === "." || normalized.startsWith("../") || normalized === "..") throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", zhUnsafePath(entryPath));
+  if (normalized !== raw) throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", zhUnsafePath(entryPath));
   return normalized;
 }
 
@@ -43,10 +48,10 @@ function bumpState(state: InspectState, bytes: number, regular: boolean, policy:
 
 function resolveLinkTarget(path: string, target: string): string {
   if (!target || target.length > MAX_LINK_BYTES || target.includes("\\") || target.includes("\0") || target.startsWith("/") || target.startsWith("//") || /^[A-Za-z]:/.test(target)) {
-    throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", `Archive contains an unsafe symbolic link: ${path}`);
+    throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", zhUnsafePath(path));
   }
   const resolved = posix.normalize(posix.join(posix.dirname(path), target));
-  if (!resolved || resolved === "." || resolved === ".." || resolved.startsWith("../") || resolved.startsWith("/")) throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", `Archive symbolic link escapes the source root: ${path}`);
+  if (!resolved || resolved === "." || resolved === ".." || resolved.startsWith("../") || resolved.startsWith("/")) throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", zhUnsafePath(path));
   return resolved;
 }
 

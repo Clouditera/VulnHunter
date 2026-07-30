@@ -39,8 +39,7 @@ tasksRouter.use("*", requireAuth);
 tasksRouter.get("/", async (c) => {
   const state = c.req.query("state") as string | undefined;
   const reviewStatus = c.req.query("review_status") as string | undefined;
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
-  const offset = Number(c.req.query("offset") ?? 0);
+  const paginate = c.req.query("paginate") === "1" || c.req.query("paginate") === "true";
 
   if (reviewStatus) {
     const { isFindingReviewStatus } = await import("../findings/storage.js");
@@ -51,7 +50,35 @@ tasksRouter.get("/", async (c) => {
 
   const ctx = queryContextFromUser(c.get("user"));
   const filterUserId = ctx.role === "admin" ? c.req.query("user_id") : undefined;
-  const tasks = await taskStorage.listTasks(ctx, { state: state as never, reviewStatus, limit, offset, userId: filterUserId });
+
+  let limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
+  let offset = Number(c.req.query("offset") ?? 0);
+  let page = 1;
+  let pageSize = limit;
+  let total: number | undefined;
+
+  if (paginate) {
+    const { getSystemConfig } = await import("../settings/storage.js");
+    const cfg = await getSystemConfig();
+    const raw = Number(cfg.tasks_page_size ?? 10);
+    pageSize = Number.isFinite(raw) ? Math.min(500, Math.max(1, Math.trunc(raw))) : 10;
+    page = Math.max(1, Math.trunc(Number(c.req.query("page") ?? 1)) || 1);
+    limit = pageSize;
+    offset = (page - 1) * pageSize;
+    total = await taskStorage.countTasks(ctx, {
+      state: state as never,
+      reviewStatus,
+      userId: filterUserId,
+    });
+  }
+
+  const tasks = await taskStorage.listTasks(ctx, {
+    state: state as never,
+    reviewStatus,
+    limit,
+    offset,
+    userId: filterUserId,
+  });
 
   // Enrich with findings severity counts
   const taskIds = tasks.map((t) => t.id);
@@ -64,7 +91,21 @@ tasksRouter.get("/", async (c) => {
     severity_counts: severityCounts.get(t.id) ?? { high: 0, medium: 0, low: 0, info: 0 },
   }));
   const creators = ctx.role === "admin" ? await listUsersByIds(uniqueCreatorIds(tasks, "created_by")) : [];
-  return c.json({ tasks: attachCreatorSummaries(ctx.role, rows, "created_by", creators) });
+  const enriched = attachCreatorSummaries(ctx.role, rows, "created_by", creators);
+
+  if (paginate) {
+    const totalVal = total ?? 0;
+    const totalPages = Math.max(1, Math.ceil(totalVal / pageSize) || 1);
+    return c.json({
+      tasks: enriched,
+      total: totalVal,
+      page,
+      page_size: pageSize,
+      total_pages: totalPages,
+    });
+  }
+
+  return c.json({ tasks: enriched });
 });
 
 // GET /api/tasks/source-archive-policy — upload policy for New Task UI.

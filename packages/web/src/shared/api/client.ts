@@ -264,7 +264,13 @@ export const api = {
     branches: (url: string) => request<{ default_branch: string | null; branches: string[] }>(`/api/git/branches?url=${encodeURIComponent(url)}`),
   },
   tasks: {
-    list: (filters?: string | { state?: string; reviewStatus?: string; userId?: string }) => {
+    list: (filters?: string | {
+      state?: string;
+      reviewStatus?: string;
+      userId?: string;
+      paginate?: boolean;
+      page?: number;
+    }) => {
       const params = new URLSearchParams();
       if (typeof filters === "string") {
         params.set("state", filters);
@@ -272,9 +278,19 @@ export const api = {
         if (filters.state) params.set("state", filters.state);
         if (filters.reviewStatus) params.set("review_status", filters.reviewStatus);
         if (filters.userId) params.set("user_id", filters.userId);
+        if (filters.paginate) {
+          params.set("paginate", "1");
+          if (filters.page) params.set("page", String(filters.page));
+        }
       }
       const qs = params.toString();
-      return request<{ tasks: Task[] }>(`/api/tasks${qs ? `?${qs}` : ""}`);
+      return request<{
+        tasks: Task[];
+        total?: number;
+        page?: number;
+        page_size?: number;
+        total_pages?: number;
+      }>(`/api/tasks${qs ? `?${qs}` : ""}`);
     },
     get: (id: string) => request<{ task: Task }>(`/api/tasks/${id}`),
     sourceArchivePolicy: () => request<SourceArchivePolicy>("/api/tasks/source-archive-policy"),
@@ -946,6 +962,7 @@ export interface CreditCodeItem {
 export interface SystemConfig {
 
   max_parallel_scan: number;
+  tasks_page_size?: number;
   /** @deprecated task-level agent_max_parallel; may still exist in legacy DB */
   youngflow_max_parallel?: number;
   max_parallel_chat: number;

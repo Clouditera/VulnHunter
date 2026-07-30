@@ -206,6 +206,87 @@ export async function listTasks(
   `;
 }
 
+export type TaskListParams = {
+  state?: TaskState;
+  reviewStatus?: string;
+  limit?: number;
+  offset?: number;
+  userId?: string;
+};
+
+/** COUNT(*) with the same filter matrix as listTasks (keep branches in sync). */
+export async function countTasks(ctx: QueryContext, params: TaskListParams = {}): Promise<number> {
+  const db = getDb();
+  const tenantId = tenantIdOf(ctx);
+  const filteredUserId = shouldFilterByUser(ctx) ? ctx.userId : params.userId;
+
+  let rows: { count: string }[];
+  if (params.state && params.reviewStatus && filteredUserId) {
+    rows = await db<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM tasks t
+      WHERE t.tenant_id = ${tenantId} AND t.created_by = ${filteredUserId} AND t.state = ${params.state}
+        AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
+    `;
+  } else if (params.state && params.reviewStatus) {
+    rows = await db<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM tasks t
+      WHERE t.tenant_id = ${tenantId} AND t.state = ${params.state}
+        AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
+    `;
+  } else if (params.reviewStatus && filteredUserId) {
+    rows = await db<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM tasks t
+      WHERE t.tenant_id = ${tenantId} AND t.created_by = ${filteredUserId}
+        AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
+    `;
+  } else if (params.reviewStatus) {
+    rows = await db<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM tasks t
+      WHERE t.tenant_id = ${tenantId}
+        AND EXISTS (SELECT 1 FROM findings_meta f WHERE f.task_id = t.id AND f.review_status = ${params.reviewStatus})
+    `;
+  } else if (params.state && filteredUserId) {
+    rows = await db<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM tasks
+      WHERE tenant_id = ${tenantId} AND created_by = ${filteredUserId} AND state = ${params.state}
+    `;
+  } else if (params.state) {
+    rows = await db<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM tasks
+      WHERE tenant_id = ${tenantId} AND state = ${params.state}
+    `;
+  } else if (filteredUserId) {
+    rows = await db<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM tasks
+      WHERE tenant_id = ${tenantId} AND created_by = ${filteredUserId}
+    `;
+  } else {
+    rows = await db<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM tasks
+      WHERE tenant_id = ${tenantId}
+    `;
+  }
+  return Number(rows[0]?.count ?? 0);
+}
+
+/** Same-user task display name conflict (fish: per-user uniqueness). */
+export async function hasTaskNameConflict(
+  ctx: QueryContext,
+  name: string,
+): Promise<boolean> {
+  const n = name.trim();
+  if (!n) return false;
+  const db = getDb();
+  const rows = await db<{ ok: number }[]>`
+    SELECT 1 AS ok FROM tasks
+    WHERE tenant_id = ${ctx.tenantId}
+      AND created_by = ${ctx.userId}
+      AND lower(btrim(coalesce(nullif(display_name, ''), project_name))) = lower(${n})
+    LIMIT 1
+  `;
+  return rows.length > 0;
+}
+
 export async function updateTaskState(
   id: string,
   state: TaskState,

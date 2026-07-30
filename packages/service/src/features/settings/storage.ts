@@ -511,6 +511,7 @@ export async function updateSystemConfig(patch: Record<string, unknown>): Promis
   }
   const ceilingMb = deploymentUploadCeilingMb();
   merged.max_parallel_scan = validateMinInt("max_parallel_scan", merged.max_parallel_scan, 3, 1);
+  merged.tasks_page_size = validateBoundedInt("tasks_page_size", merged.tasks_page_size, 10, 1, 500);
   // youngflow_max_parallel removed from schema (task-level agent_max_parallel).
   // Preserve legacy key in DB if present; do not accept/merge from patch.
   if ("youngflow_max_parallel" in patch) {
