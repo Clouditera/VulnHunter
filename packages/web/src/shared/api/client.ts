@@ -1100,7 +1100,8 @@ export interface SandboxCapacity {
   available_now: boolean;
   running_sandboxes: number;
   queue_depth: number;
-  detail: "ok" | "capacity_tight" | string;
+  detail: "ok" | "capacity_tight" | "not_configured" | "unavailable";
+  configured: boolean;
 }
 
 export interface SandboxQueueInfo {
