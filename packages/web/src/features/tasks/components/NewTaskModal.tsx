@@ -83,19 +83,16 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [, forceI18n] = useState(0);
   useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
 
-  // Capacity is a soft hint only (contract B3) — never blocks create.
+  // Always load capacity when modal opens so "not configured" can disable
+  // toggles before the user clicks them (fish / QA: was only fetched after enable).
   useEffect(() => {
-    if (!enableDynamicVerify) {
-      setSandboxCapacity(null);
-      return;
-    }
     let cancelled = false;
     api.sandbox
       .capacity()
       .then((c) => { if (!cancelled) setSandboxCapacity(c); })
       .catch(() => { if (!cancelled) setSandboxCapacity(null); });
     return () => { cancelled = true; };
-  }, [enableDynamicVerify]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
