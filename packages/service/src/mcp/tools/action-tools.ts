@@ -124,15 +124,35 @@ export async function generateReport(args: { task_id: string; skill_id?: string;
   const config = (await import("../../infra/config.js")).loadConfig();
   await spawnReportWorker({ taskId: task.id, reportId: report.id, skillId, createdBy: ctx.userId, config });
 
-  return text([
-    `Report generation started.`,
-    `- **Report ID**: ${report.id}`,
-    `- **Task**: ${task.project_name}`,
-    `- **Skill**: ${skillId ?? "builtin default"}`,
-    `- **Findings**: ${findingKeys.length} selected`,
-    ``,
-    `Use \`get-task-detail\` to check report status.`,
-  ].join("\n"));
+  // Always emit a report_ref card so the UI shows artifact panel (VULNHUN-159),
+  // not just a markdown file path the user cannot open.
+  const refJson = JSON.stringify(
+    {
+      type: "report_ref",
+      task_id: task.id,
+      report_id: report.id,
+      title: skillId ? `Report · ${skillId}` : "Report · builtin",
+      summary: `generating · ${findingKeys.length} findings`,
+    },
+    null,
+    2,
+  );
+
+  return text(
+    [
+      `Report generation started.`,
+      `- **Report ID**: ${report.id}`,
+      `- **Task**: ${task.project_name}`,
+      `- **Skill**: ${skillId ?? "builtin default"}`,
+      `- **Findings**: ${findingKeys.length} selected`,
+      ``,
+      `A report card is attached below — open it from the artifact panel when ready.`,
+      ``,
+      "```json",
+      refJson,
+      "```",
+    ].join("\n"),
+  );
 }
 
 // ─── generate-poc ───
