@@ -318,68 +318,124 @@ function toSideBySide(lines: DiffLine[]): SbsRow[] {
 const SBS_LINE_H = 20;
 const SBS_GUTTER_W = 44;
 
-function SbsCell({
+function sbsTone(
+  side: { del?: boolean; add?: boolean } | undefined,
+): "del" | "add" | "ctx" | "empty" {
+  if (!side) return "empty";
+  if (side.del) return "del";
+  if (side.add) return "add";
+  return "ctx";
+}
+
+function sbsBg(tone: "del" | "add" | "ctx" | "empty"): string {
+  if (tone === "del") return "var(--bg-error)";
+  if (tone === "add") return "#f0fdf4";
+  if (tone === "empty") return "rgba(0,0,0,0.02)";
+  return "transparent";
+}
+
+function sbsColor(tone: "del" | "add" | "ctx" | "empty"): string {
+  if (tone === "del") return "var(--danger-hover)";
+  if (tone === "add") return "#15803d";
+  return "var(--text-primary)";
+}
+
+/** One column of the side-by-side diff: gutter + single horizontal scroller for all lines. */
+function SbsColumn({
+  rows,
   side,
-  tone,
-  sideLabel,
+  testid,
 }: {
-  side?: { ln: number; text: string; del?: boolean; add?: boolean };
-  tone: "del" | "add" | "ctx" | "empty";
-  sideLabel: "left" | "right";
+  rows: SbsRow[];
+  side: "left" | "right";
+  testid: string;
 }) {
-  const bg =
-    tone === "del"
-      ? "var(--bg-error)"
-      : tone === "add"
-        ? "#f0fdf4"
-        : tone === "empty"
-          ? "rgba(0,0,0,0.02)"
-          : "transparent";
-  const color =
-    tone === "del"
-      ? "var(--danger-hover)"
-      : tone === "add"
-        ? "#15803d"
-        : "var(--text-primary)";
   return (
     <div
-      data-testid={`finding-diff-sbs-${sideLabel}`}
+      data-testid={testid}
       style={{
         display: "flex",
+        flexDirection: "column",
         minWidth: 0,
-        width: "100%",
-        height: SBS_LINE_H,
-        lineHeight: `${SBS_LINE_H}px`,
-        background: bg,
-        color,
-        boxSizing: "border-box",
-        borderLeft: sideLabel === "right" ? "1px solid var(--border)" : undefined,
+        flex: "1 1 50%",
+        borderLeft: side === "right" ? "1px solid var(--border)" : undefined,
       }}
     >
-      <span
-        style={{
-          width: SBS_GUTTER_W,
-          flexShrink: 0,
-          color: "#9ca3af",
-          textAlign: "right",
-          paddingRight: 8,
-          userSelect: "none",
-          fontSize: 11,
-        }}
-      >
-        {side ? side.ln : ""}
-      </span>
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          overflowX: "auto",
-          overflowY: "hidden",
-          whiteSpace: "pre",
-          paddingRight: 8,
-        }}
-      >
-        {side ? side.text || " " : " "}
+      {/* Horizontal scroll wraps the whole column content (one bar at bottom). */}
+      <div style={{ overflowX: "auto", overflowY: "hidden", flex: 1, minHeight: 0 }}>
+        <div style={{ display: "inline-block", minWidth: "100%", verticalAlign: "top" }}>
+          {rows.map((row, idx) => {
+            if (row.kind !== "pair") {
+              // Hunk/meta only drawn once on left; right shows spacer for row height sync
+              if (side === "right") {
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      height: SBS_LINE_H,
+                      lineHeight: `${SBS_LINE_H}px`,
+                      background: row.kind === "hunk" ? "#eff6ff" : "#fafafa",
+                    }}
+                  />
+                );
+              }
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    padding: "0 8px",
+                    whiteSpace: "pre",
+                    height: SBS_LINE_H,
+                    lineHeight: `${SBS_LINE_H}px`,
+                    color: row.kind === "hunk" ? "var(--brand)" : "var(--text-secondary)",
+                    background: row.kind === "hunk" ? "#eff6ff" : "#fafafa",
+                    fontWeight: 600,
+                  }}
+                >
+                  {row.text || " "}
+                </div>
+              );
+            }
+            const cell = side === "left" ? row.left : row.right;
+            const tone = sbsTone(cell);
+            return (
+              <div
+                key={idx}
+                style={{
+                  display: "flex",
+                  height: SBS_LINE_H,
+                  lineHeight: `${SBS_LINE_H}px`,
+                  background: sbsBg(tone),
+                  color: sbsColor(tone),
+                  boxSizing: "border-box",
+                }}
+              >
+                <span
+                  style={{
+                    width: SBS_GUTTER_W,
+                    flexShrink: 0,
+                    color: "#9ca3af",
+                    textAlign: "right",
+                    paddingRight: 8,
+                    userSelect: "none",
+                    fontSize: 11,
+                  }}
+                >
+                  {cell ? cell.ln : ""}
+                </span>
+                <span
+                  style={{
+                    whiteSpace: "pre",
+                    paddingRight: 12,
+                    display: "inline-block",
+                  }}
+                >
+                  {cell ? cell.text || " " : " "}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -485,11 +541,9 @@ function FixPatchSection({ content }: { content: string }) {
             fontSize: "11.5px",
           }}
         >
-          {/* Header: fixed 50/50 */}
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+              display: "flex",
               background: "#fafafa",
               fontWeight: 700,
               fontSize: "10.5px",
@@ -499,51 +553,23 @@ function FixPatchSection({ content }: { content: string }) {
               flexShrink: 0,
             }}
           >
-            <div style={{ padding: "4px 8px", minWidth: 0 }}>{i18n.t("findings.diff.original")}</div>
-            <div style={{ padding: "4px 8px", minWidth: 0, borderLeft: "1px solid var(--border)" }}>
+            <div style={{ flex: "1 1 50%", minWidth: 0, padding: "4px 8px" }}>{i18n.t("findings.diff.original")}</div>
+            <div style={{ flex: "1 1 50%", minWidth: 0, padding: "4px 8px", borderLeft: "1px solid var(--border)" }}>
               {i18n.t("findings.diff.patched")}
             </div>
           </div>
-          {/* Body: vertical scroll only; each cell scrolls X independently */}
-          <div style={{ overflowY: "auto", overflowX: "hidden", flex: 1, minHeight: 0 }}>
-            {sbs.map((row, idx) => {
-              if (row.kind !== "pair") {
-                return (
-                  <div
-                    key={idx}
-                    style={{
-                      padding: "0 8px",
-                      whiteSpace: "pre",
-                      height: SBS_LINE_H,
-                      lineHeight: `${SBS_LINE_H}px`,
-                      color: row.kind === "hunk" ? "var(--brand)" : "var(--text-secondary)",
-                      background: row.kind === "hunk" ? "#eff6ff" : "#fafafa",
-                      fontWeight: 600,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {row.text || " "}
-                  </div>
-                );
-              }
-              const leftTone = !row.left ? "empty" : row.left.del ? "del" : "ctx";
-              const rightTone = !row.right ? "empty" : row.right.add ? "add" : "ctx";
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-                    height: SBS_LINE_H,
-                    minHeight: SBS_LINE_H,
-                  }}
-                >
-                  <SbsCell side={row.left} tone={leftTone} sideLabel="left" />
-                  <SbsCell side={row.right} tone={rightTone} sideLabel="right" />
-                </div>
-              );
-            })}
+          {/* Shared vertical scroll; each column has its own bottom horizontal bar */}
+          <div
+            style={{
+              display: "flex",
+              flex: 1,
+              minHeight: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+            }}
+          >
+            <SbsColumn rows={sbs} side="left" testid="finding-diff-sbs-left" />
+            <SbsColumn rows={sbs} side="right" testid="finding-diff-sbs-right" />
           </div>
         </div>
       )}
