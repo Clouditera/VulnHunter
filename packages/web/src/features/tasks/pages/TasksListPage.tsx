@@ -61,6 +61,7 @@ type SortMode = "newest" | "oldest" | "name";
 export function TasksListPage() {
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchDebounced, setSearchDebounced] = useState("");
   const [sortBy, setSortBy] = useState<SortMode>("newest");
   const [page, setPage] = useState(1);
   const [gotoPage, setGotoPage] = useState("");
@@ -72,6 +73,12 @@ export function TasksListPage() {
   const [, forceUpdate] = useState(0);
   useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
 
+  // Debounce search → server q
+  useEffect(() => {
+    const tmr = window.setTimeout(() => setSearchDebounced(searchQuery.trim()), 300);
+    return () => window.clearTimeout(tmr);
+  }, [searchQuery]);
+
   const { data: status } = useSystemStatus();
   const isAdmin = status?.user?.role === "admin";
   const [selectedUserId, setSelectedUserId] = useState("");
@@ -82,13 +89,15 @@ export function TasksListPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["tasks", stateFilter, reviewStatusParam, selectedUserId, page],
+    queryKey: ["tasks", stateFilter, reviewStatusParam, selectedUserId, page, searchDebounced, sortBy],
     queryFn: () => api.tasks.list({
       state: stateFilter === "all" ? undefined : stateFilter,
       reviewStatus: reviewStatusParam ?? undefined,
       userId: selectedUserId || undefined,
       paginate: true,
       page,
+      q: searchDebounced || undefined,
+      sort: sortBy,
     }),
     // Server SSE (`task_state`) invalidates ["tasks"] on every state change.
   });
@@ -97,10 +106,10 @@ export function TasksListPage() {
   const pageSize = data?.page_size ?? 10;
   const totalPages = data?.total_pages ?? 1;
 
-  // Reset to page 1 when filters change
+  // Reset to page 1 when filters / search / sort change
   useEffect(() => {
     setPage(1);
-  }, [stateFilter, reviewStatusParam, selectedUserId]);
+  }, [stateFilter, reviewStatusParam, selectedUserId, searchDebounced, sortBy]);
 
   // Clamp page if deletion emptied the current page
   useEffect(() => {
@@ -120,30 +129,8 @@ export function TasksListPage() {
     },
   });
 
-  const rawTasks = data?.tasks ?? [];
+  const tasks = data?.tasks ?? [];
   const filters = ["all", "running", "completed", "failed", "queued"] as const;
-
-  // Apply search (case-insensitive substring match on project_name + id).
-  const q = searchQuery.trim().toLowerCase();
-  const filteredTasks = q
-    ? rawTasks.filter(
-        (t) =>
-          (t.display_name ?? "").toLowerCase().includes(q) ||
-          (t.project_name ?? "").toLowerCase().includes(q) ||
-          t.id.toLowerCase().includes(q),
-      )
-    : rawTasks;
-
-  // Sort. Backend returns newest-first already for "newest"; we re-sort
-  // client-side so that oldest/name modes work identically.
-  const tasks = [...filteredTasks].sort((a, b) => {
-    if (sortBy === "name") {
-      return ((a.display_name?.trim() || a.project_name) ?? "").localeCompare((b.display_name?.trim() || b.project_name) ?? "");
-    }
-    const tA = Date.parse(a.created_at);
-    const tB = Date.parse(b.created_at);
-    return sortBy === "oldest" ? tA - tB : tB - tA;
-  });
 
   return (
     <div data-testid="tasks-page" style={{ padding: "32px 40px 48px" }}>

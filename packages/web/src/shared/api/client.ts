@@ -270,6 +270,8 @@ export const api = {
       userId?: string;
       paginate?: boolean;
       page?: number;
+      q?: string;
+      sort?: "newest" | "oldest" | "name";
     }) => {
       const params = new URLSearchParams();
       if (typeof filters === "string") {
@@ -278,6 +280,8 @@ export const api = {
         if (filters.state) params.set("state", filters.state);
         if (filters.reviewStatus) params.set("review_status", filters.reviewStatus);
         if (filters.userId) params.set("user_id", filters.userId);
+        if (filters.q) params.set("q", filters.q);
+        if (filters.sort) params.set("sort", filters.sort);
         if (filters.paginate) {
           params.set("paginate", "1");
           if (filters.page) params.set("page", String(filters.page));

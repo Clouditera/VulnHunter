@@ -50,12 +50,26 @@ tasksRouter.get("/", async (c) => {
 
   const ctx = queryContextFromUser(c.get("user"));
   const filterUserId = ctx.role === "admin" ? c.req.query("user_id") : undefined;
+  const q = (c.req.query("q") ?? "").trim() || undefined;
+  const sortRaw = (c.req.query("sort") ?? "newest").toLowerCase();
+  const sort =
+    sortRaw === "oldest" || sortRaw === "name"
+      ? (sortRaw as "oldest" | "name")
+      : ("newest" as const);
 
   let limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
   let offset = Number(c.req.query("offset") ?? 0);
   let page = 1;
   let pageSize = limit;
   let total: number | undefined;
+
+  const listParams = {
+    state: state as never,
+    reviewStatus,
+    userId: filterUserId,
+    q,
+    sort,
+  };
 
   if (paginate) {
     const { getSystemConfig } = await import("../settings/storage.js");
@@ -65,19 +79,13 @@ tasksRouter.get("/", async (c) => {
     page = Math.max(1, Math.trunc(Number(c.req.query("page") ?? 1)) || 1);
     limit = pageSize;
     offset = (page - 1) * pageSize;
-    total = await taskStorage.countTasks(ctx, {
-      state: state as never,
-      reviewStatus,
-      userId: filterUserId,
-    });
+    total = await taskStorage.countTasks(ctx, listParams);
   }
 
   const tasks = await taskStorage.listTasks(ctx, {
-    state: state as never,
-    reviewStatus,
+    ...listParams,
     limit,
     offset,
-    userId: filterUserId,
   });
 
   // Enrich with findings severity counts
