@@ -122,7 +122,7 @@ export function FilterDropdown({
                   ...OPTION,
                   background: sel ? "var(--bg-active-filter)" : "transparent",
                   color: sel ? "var(--brand)" : "var(--text-primary)",
-                  fontWeight: sel ? 600 : 500,
+                  fontWeight: 400,
                 }}
                 onMouseEnter={(e) => {
                   if (!sel) e.currentTarget.style.background = "var(--bg-hover)";
@@ -155,7 +155,7 @@ const TRIGGER: CSSProperties = {
   background: "var(--bg-card)",
   color: "var(--text-primary)",
   fontSize: 12,
-  fontWeight: 500,
+  fontWeight: 400,
   fontFamily: "inherit",
   cursor: "pointer",
   outline: "none",
