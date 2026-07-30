@@ -19,6 +19,7 @@ import { notify } from "../notifications/index.js";
 import type { Severity, FindingReviewStatus } from "@vulnhunter/shared";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import { getAccessibleTask } from "../tasks/access.js";
+import { invalidateDashboardCache } from "../dashboard/service.js";
 
 export const findingsRouter = new Hono();
 findingsRouter.use("*", licenseGuard);
@@ -116,6 +117,7 @@ findingsRouter.patch("/:taskId/findings/:key/review", async (c) => {
       findingKeys: [key],
       reviewStatus: body.review_status,
     });
+    invalidateDashboardCache();
 
     return c.json({ finding: result.finding, event: result.event });
   } catch (err: any) {
@@ -156,6 +158,7 @@ findingsRouter.post("/:taskId/findings/review/bulk", async (c) => {
       findingKeys: body.finding_keys,
       reviewStatus: body.review_status,
     });
+    invalidateDashboardCache();
 
     return c.json({ updated: result.updated, findings: result.findings });
   } catch (err: any) {
