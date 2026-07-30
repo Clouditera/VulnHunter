@@ -428,7 +428,14 @@ function WikiMarkdownBrowser({
           <div style={{ color: "var(--text-secondary)", fontSize: "13px" }}>{i18n.t("wiki.loading")}</div>
         ) : pageData ? (
           <div style={{ fontSize: "13px", lineHeight: 1.7, color: "var(--text-primary)" }}>
-            <Markdown content={pageData.content} onRelativeLink={handleRelativeLink} />
+            <Markdown
+              content={pageData.content}
+              onRelativeLink={handleRelativeLink}
+              isRelativeLinkAllowed={(href) => {
+                const name = href.split(/[#?]/)[0].split("/").pop() ?? href;
+                return knownNames.has(name);
+              }}
+            />
           </div>
         ) : (
           <div style={{ color: "var(--text-secondary)", fontSize: "13px" }}>{i18n.t("wiki.empty.hint")}</div>

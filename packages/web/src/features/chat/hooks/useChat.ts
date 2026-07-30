@@ -129,7 +129,9 @@ export function useChat() {
         if (!mounted) return;
         const list = res.sessions.map(toDomainSession);
         setSessions(list);
-        setActiveId(list[0]?.id ?? null);
+        // Do not clobber an already-selected session or a draft started via
+        // "新对话" navigation from task detail (VULNHUN-170).
+        setActiveId((prev) => prev ?? list[0]?.id ?? null);
         setLoading(false);
       })
       .catch((err) => {

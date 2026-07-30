@@ -208,7 +208,24 @@ export function MessageBubble({
             data-testid="chat-message-content"
             style={visibleContent || artifacts.length ? AGENT_BUBBLE : undefined}
           >
-            {visibleContent ? <Markdown content={visibleContent} /> : null}
+            {visibleContent ? (
+              <Markdown
+                content={visibleContent}
+                onWorkspaceLink={(href) => {
+                  const leaf = (href.split("/").pop() ?? href).split("?")[0];
+                  const match = artifacts.find((a) => {
+                    if (!isFileArtifact(a)) return false;
+                    return (
+                      a.filename === leaf ||
+                      a.title === leaf ||
+                      a.filename.endsWith(leaf) ||
+                      (a.title != null && a.title.endsWith(leaf))
+                    );
+                  });
+                  if (match && onArtifactSelect) onArtifactSelect(match);
+                }}
+              />
+            ) : null}
             {artifacts.map((a) =>
               isFileArtifact(a) ? (
                 <ArtifactCard key={a.artifact_id} artifact={a} onSelect={onArtifactSelect} />

@@ -304,7 +304,8 @@ async function computeDeltas(
 
 function formatDelta(current: number, previous: number): string {
   if (previous === 0 && current === 0) return "";
-  if (previous === 0) return current > 0 ? "+∞" : "";
+  // No prior baseline — show absolute total, not "+∞" (VULNHUN-162).
+  if (previous === 0) return current > 0 ? `总计 ${current}` : "";
   const pct = Math.round(((current - previous) / previous) * 100);
   if (pct === 0) return "0%";
   return pct > 0 ? `+${pct}%` : `${pct}%`;

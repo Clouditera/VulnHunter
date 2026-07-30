@@ -588,6 +588,8 @@ function ForgotPanel({ onBack }: { onBack: () => void }) {
       await api.auth.passwordReset({ email: email.trim(), code: code.trim(), new_password: password });
       setDone(true);
       setOkMsg(i18n.t("auth.resetDone"));
+      // Auto return to login after short notice (VULNHUN-161).
+      window.setTimeout(() => onBack(), 1200);
     } catch (err) {
       setError(errMessage(err, i18n.t("auth.err.resetFailed")));
     } finally {
