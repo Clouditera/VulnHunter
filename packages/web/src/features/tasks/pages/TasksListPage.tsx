@@ -324,15 +324,25 @@ export function TasksListPage() {
 
       {/* Table */}
       <div
+        data-testid="tasks-table-scroll"
         style={{
           background: "var(--bg-card)",
           borderRadius: "10px",
-          overflow: "hidden",
+          overflowX: "auto",
+          overflowY: "hidden",
           border: "1px solid var(--border)",
           boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+          WebkitOverflowScrolling: "touch",
         }}
       >
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+        <table
+          style={{
+            width: "100%",
+            minWidth: 860,
+            borderCollapse: "collapse",
+            fontSize: "13px",
+          }}
+        >
           <thead>
             <tr style={{ borderBottom: "1px solid var(--divider)" }}>
               {(

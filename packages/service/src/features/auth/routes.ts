@@ -323,6 +323,16 @@ authRouter.post("/force-change-password", licenseGuard, requireAuth, async (c) =
   }
 
   await authService.forceChangePassword(user.userId, body.new_password);
+  // forceChange wiped all sessions — mint a fresh one so the user stays signed in
+  // for the first-login flow, while any other devices are kicked.
+  const ip = clientIp(c);
+  const userAgent = c.req.header("user-agent");
+  const fresh = await authStorage.createSession({
+    userId: user.userId,
+    ip,
+    userAgent,
+  });
+  setSessionCookie(c, fresh);
   return c.json({ ok: true });
 });
 
@@ -434,6 +444,14 @@ adminAuthRouter.post("/force-change-password", licenseGuard, requireAuth, async 
   }
 
   await authService.forceChangePassword(user.userId, body.new_password);
+  const ip = clientIp(c);
+  const userAgent = c.req.header("user-agent");
+  const fresh = await authStorage.createSession({
+    userId: user.userId,
+    ip,
+    userAgent,
+  });
+  setSessionCookie(c, fresh);
   return c.json({ ok: true });
 });
 

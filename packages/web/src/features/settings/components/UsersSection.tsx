@@ -24,9 +24,16 @@ export function UsersSection() {
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserApi | null>(null);
 
+  const [actionError, setActionError] = useState("");
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.users.delete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: () => {
+      setActionError("");
+      qc.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: (err) => {
+      setActionError(err instanceof Error ? err.message : String(err));
+    },
   });
 
   const toggleMut = useMutation({
@@ -58,6 +65,12 @@ export function UsersSection() {
           {i18n.t("settings.users.create")}
         </button>
       </div>
+
+      {actionError ? (
+        <div data-testid="users-action-error" style={{ color: "var(--danger)", fontSize: 13, marginBottom: 12 }}>
+          {actionError}
+        </div>
+      ) : null}
 
       {/* Table — no overflow:hidden so action menu can escape */}
       <div style={{ border: "1px solid var(--divider)", borderRadius: "8px" }}>
