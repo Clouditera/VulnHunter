@@ -6,6 +6,8 @@ import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { loadConfig } from "../../infra/config.js";
+import { withUtf8Charset } from "../../infra/http-text.js";
+import { decodeTextFileContent } from "../source-archives/charset.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
@@ -177,10 +179,10 @@ pocRouter.get("/:taskId/poc/:findingKey/script", async (c) => {
   const stream = await minio.getObject(config.minio.bucket, result.poc_script_minio_key);
   const chunks: Buffer[] = [];
   for await (const chunk of stream) chunks.push(chunk as Buffer);
-  const content = Buffer.concat(chunks).toString("utf-8");
+  const content = decodeTextFileContent(Buffer.concat(chunks));
 
   return c.text(content, 200, {
-    "Content-Type": "text/x-shellscript",
+    "Content-Type": withUtf8Charset("text/x-shellscript"),
     "Content-Disposition": `attachment; filename="${result.finding_key}-poc.sh"`,
   });
 });
@@ -216,7 +218,9 @@ pocRouter.get("/:taskId/poc/:findingKey/log", async (c) => {
     const stream = await minio.getObject(config.minio.bucket, logKey);
     const chunks: Buffer[] = [];
     for await (const chunk of stream) chunks.push(chunk as Buffer);
-    return c.text(Buffer.concat(chunks).toString("utf-8"));
+    return c.text(decodeTextFileContent(Buffer.concat(chunks)), 200, {
+      "Content-Type": withUtf8Charset("text/plain"),
+    });
   } catch {
     return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   }

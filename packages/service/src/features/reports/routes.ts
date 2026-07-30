@@ -143,14 +143,13 @@ reportsRouter.get("/tasks/:taskId/reports/:reportId/file", async (c) => {
     }
 
     const content = decodeTextFileContent(buf);
+    // md must be text/plain — Chrome will download text/markdown + nosniff instead of rendering.
     const contentType =
       format === "html"
         ? "text/html"
         : format === "json"
           ? "application/json"
-          : format === "md" || format === "markdown"
-            ? "text/markdown"
-            : "text/plain";
+          : "text/plain";
 
     return new Response(content, {
       headers: {

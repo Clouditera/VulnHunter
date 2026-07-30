@@ -384,7 +384,7 @@ chatRouter.get("/sessions/:id/artifacts/:artifactId/download", async (c) => {
     return new Response(buf, {
       headers: {
         "Content-Type": contentType,
-        "Content-Disposition": `inline; filename="${filename}"`,
+        "Content-Disposition": `attachment; filename="${filename}"`,
         "X-Content-Type-Options": "nosniff",
       },
     });
