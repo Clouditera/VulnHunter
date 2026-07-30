@@ -4,10 +4,9 @@
  */
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type FindingMeta, type FindingReviewStatus } from "../../../../../shared/api/client.js";
+import { api, type FindingReviewStatus } from "../../../../../shared/api/client.js";
 import { i18n } from "../../../../../shared/i18n/index.js";
 import { ReviewStatusBadge } from "../../../components/FindingReviewControls.js";
-import { Icon } from "../../../../../shared/components/Icon.js";
 
 const SEV_COLORS: Record<string, string> = {
   high: "var(--sev-high)",
@@ -19,7 +18,7 @@ const SEV_COLORS: Record<string, string> = {
 export interface ReportSkill {
   id: string;
   name: string;
-  description?: string;
+  description?: string | null;
 }
 
 export function ReportGenerateModal({

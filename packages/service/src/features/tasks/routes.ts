@@ -74,7 +74,10 @@ tasksRouter.get("/", async (c) => {
   if (paginate) {
     const { getSystemConfig } = await import("../settings/storage.js");
     const cfg = await getSystemConfig();
-    const raw = Number(cfg.tasks_page_size ?? 10);
+    // Prefer client page_size (user list preference); fall back to system default.
+    const clientPs = Number(c.req.query("page_size") ?? "");
+    const cfgPs = Number(cfg.tasks_page_size ?? 10);
+    const raw = Number.isFinite(clientPs) && clientPs > 0 ? clientPs : cfgPs;
     pageSize = Number.isFinite(raw) ? Math.min(500, Math.max(1, Math.trunc(raw))) : 10;
     page = Math.max(1, Math.trunc(Number(c.req.query("page") ?? 1)) || 1);
     limit = pageSize;

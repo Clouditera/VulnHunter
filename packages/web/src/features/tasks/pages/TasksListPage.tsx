@@ -43,20 +43,27 @@ function renderFindingsCell(task: Task): JSX.Element {
       </span>
     );
   }
-  if (task.state !== "completed") {
-    return <span>—</span>;
-  }
+  // Show counts whenever findings exist — including failed/cancelled tasks (fish).
   const counts = task.severity_counts ?? { high: 0, medium: 0, low: 0, info: 0 };
   const total = counts.high + counts.medium + counts.low + counts.info;
   if (total === 0) {
-    return (
-      <span style={{ opacity: 0.75 }}>{i18n.t("tasks.findings.none")}</span>
-    );
+    if (task.state === "completed") {
+      return (
+        <span style={{ opacity: 0.75 }}>{i18n.t("tasks.findings.none")}</span>
+      );
+    }
+    return <span>—</span>;
   }
   return <SeverityBadges counts={counts} />;
 }
 
 type SortMode = "newest" | "oldest" | "name";
+const PAGE_SIZE_KEY = "vh.tasks.pageSize";
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
+function loadPageSize(): number {
+  const n = Number(window.localStorage.getItem(PAGE_SIZE_KEY) ?? 10);
+  return PAGE_SIZE_OPTIONS.includes(n as (typeof PAGE_SIZE_OPTIONS)[number]) ? n : 10;
+}
 
 export function TasksListPage() {
   const [stateFilter, setStateFilter] = useState<string>("all");
@@ -64,6 +71,7 @@ export function TasksListPage() {
   const [searchDebounced, setSearchDebounced] = useState("");
   const [sortBy, setSortBy] = useState<SortMode>("newest");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(loadPageSize);
   const [gotoPage, setGotoPage] = useState("");
   const [showModal, setShowModal] = useState(false);
   const navigate = useNavigate();
@@ -89,13 +97,14 @@ export function TasksListPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["tasks", stateFilter, reviewStatusParam, selectedUserId, page, searchDebounced, sortBy],
+    queryKey: ["tasks", stateFilter, reviewStatusParam, selectedUserId, page, pageSize, searchDebounced, sortBy],
     queryFn: () => api.tasks.list({
       state: stateFilter === "all" ? undefined : stateFilter,
       reviewStatus: reviewStatusParam ?? undefined,
       userId: selectedUserId || undefined,
       paginate: true,
       page,
+      pageSize,
       q: searchDebounced || undefined,
       sort: sortBy,
     }),
@@ -103,13 +112,12 @@ export function TasksListPage() {
   });
 
   const total = data?.total ?? 0;
-  const pageSize = data?.page_size ?? 10;
-  const totalPages = data?.total_pages ?? 1;
+  const totalPages = Math.max(1, data?.total_pages ?? (Math.ceil(total / pageSize) || 1));
 
   // Reset to page 1 when filters / search / sort change
   useEffect(() => {
     setPage(1);
-  }, [stateFilter, reviewStatusParam, selectedUserId, searchDebounced, sortBy]);
+  }, [stateFilter, reviewStatusParam, selectedUserId, searchDebounced, sortBy, pageSize]);
 
   // Clamp page if deletion emptied the current page
   useEffect(() => {
@@ -260,6 +268,24 @@ export function TasksListPage() {
             </select>
           </label>
         )}
+        <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          {i18n.t("tasks.pager.pageSize")}
+          <select
+            data-testid="tasks-page-size"
+            value={pageSize}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              setPageSize(n);
+              window.localStorage.setItem(PAGE_SIZE_KEY, String(n));
+              setPage(1);
+            }}
+            style={{ height: "34px", padding: "0 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", background: "var(--bg-card)", color: "var(--text-primary)", cursor: "pointer", outline: "none" }}
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </label>
         <span
           data-testid="tasks-count"
           style={{

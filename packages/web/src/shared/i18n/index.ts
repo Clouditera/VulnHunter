@@ -63,6 +63,7 @@ const ZH: Record<string, string> = {
   "tasks.pager.first": "首页",
   "tasks.pager.last": "尾页",
   "tasks.pager.goto": "跳转",
+  "tasks.pager.pageSize": "每页",
   "tasks.pager.page": "第 {n} 页",
   "tasks.err.nameConflict": "已存在同名任务，请修改名称",
 
@@ -1097,6 +1098,7 @@ const EN: Record<string, string> = {
   "tasks.pager.first": "First",
   "tasks.pager.last": "Last",
   "tasks.pager.goto": "Go",
+  "tasks.pager.pageSize": "Per page",
   "tasks.pager.page": "Page {n}",
   "tasks.err.nameConflict": "A task with this name already exists. Please rename.",
   "tasks.cancel": "Cancel",

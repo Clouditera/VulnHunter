@@ -160,15 +160,18 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
   const avgDurationMin = Math.round(avgDurationMs / 60_000 * 10) / 10;
 
   // Total token usage across completed scans in range (sum of per-task total_tokens).
+  // Count tokens from any finished task that recorded usage (completed + failed).
   const tokenRows = userId
     ? await db<{ total: string | null }[]>`
       SELECT COALESCE(SUM(total_tokens), 0) as total FROM tasks
-      WHERE tenant_id = ${tenantId} AND created_by = ${userId} AND state = 'completed'
+      WHERE tenant_id = ${tenantId} AND created_by = ${userId}
+        AND state IN ('completed', 'failed', 'cancelled')
         AND created_at >= ${since}
     `
     : await db<{ total: string | null }[]>`
       SELECT COALESCE(SUM(total_tokens), 0) as total FROM tasks
-      WHERE tenant_id = ${tenantId} AND state = 'completed'
+      WHERE tenant_id = ${tenantId}
+        AND state IN ('completed', 'failed', 'cancelled')
         AND created_at >= ${since}
     `;
   const totalTokens = Number(tokenRows[0]?.total ?? 0);

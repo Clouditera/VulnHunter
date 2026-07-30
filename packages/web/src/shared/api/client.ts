@@ -270,6 +270,7 @@ export const api = {
       userId?: string;
       paginate?: boolean;
       page?: number;
+      pageSize?: number;
       q?: string;
       sort?: "newest" | "oldest" | "name";
     }) => {
@@ -285,6 +286,7 @@ export const api = {
         if (filters.paginate) {
           params.set("paginate", "1");
           if (filters.page) params.set("page", String(filters.page));
+          if (filters.pageSize) params.set("page_size", String(filters.pageSize));
         }
       }
       const qs = params.toString();
