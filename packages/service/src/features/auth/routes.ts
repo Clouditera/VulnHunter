@@ -362,6 +362,19 @@ authRouter.post("/logout", async (c) => {
 
 // POST /api/system/bootstrap
 authRouter.post("/bootstrap", licenseGuard, async (c) => {
+  // When deploy-provisioned system admin is configured, bootstrap is disabled.
+  if (process.env.VULNHUNTER_ADMIN_EMAIL?.trim() && process.env.VULNHUNTER_ADMIN_PASSWORD) {
+    return c.json(
+      {
+        error: {
+          code: "ERR_ADMIN_SINGLETON",
+          detail: "管理员由部署配置管理，无需 bootstrap",
+        },
+      },
+      400,
+    );
+  }
+
   const body = await c.req.json<{ email: string; password: string }>();
 
   if (!body.email || !body.password || body.password.length < 8) {

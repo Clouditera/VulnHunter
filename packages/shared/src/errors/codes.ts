@@ -115,6 +115,16 @@ export const ERROR_CATALOG = {
     summary: { zh: "请填写令牌名称", en: "Token name required" },
     detail: { zh: "名称不能为空", en: "Name must not be empty" },
   },
+  ERR_PROTECTED_ACCOUNT: {
+    httpStatus: 400,
+    summary: { zh: "系统管理员账号受保护", en: "System admin is protected" },
+    detail: { zh: "系统管理员账号受保护，请通过部署配置管理", en: "Manage the system admin via deployment configuration" },
+  },
+  ERR_ADMIN_SINGLETON: {
+    httpStatus: 400,
+    summary: { zh: "不允许创建额外管理员", en: "Cannot create additional admins" },
+    detail: { zh: "管理员由部署配置唯一供给", en: "Admin is provisioned solely from deployment config" },
+  },
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CATALOG;
