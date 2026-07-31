@@ -3,6 +3,7 @@ import type { Server } from "node:http";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authRouter, adminAuthRouter } from "./features/auth/index.js";
+import { meApiTokensRouter } from "./features/auth/api-token-routes.js";
 import { sandboxCapacityRouter } from "./features/sandboxes/capacity-routes.js";
 import { systemRouter, adminSystemRouter } from "./features/system/index.js";
 import { tasksRouter } from "./features/tasks/index.js";
@@ -44,6 +45,7 @@ const ADMIN_FORBIDDEN_PREFIXES = [
   "/api/downloads",
   "/api/sandbox",
   "/api/promo",
+  "/api/me",
 ] as const;
 
 function mountForbidAdmin(app: Hono): void {
@@ -80,6 +82,7 @@ export function createApp(role: ServiceRole = "business"): Hono {
   // Public routes
   app.route("/api/system", systemRouter);
   app.route("/api/auth", authRouter);
+  app.route("/api/me", meApiTokensRouter);
   // /api/admin/* intentionally NOT mounted on business service (404)
   app.route("/api/sandbox", sandboxCapacityRouter);
 
