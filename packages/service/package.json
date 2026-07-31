@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./dist/main.js",
   "scripts": {
-    "build": "tsc && cp -r src/infra/db/migrations dist/infra/db/ && mkdir -p dist/features/prepare && cp -r src/features/prepare/schemas dist/features/prepare/ && mkdir -p dist/features/auth/legal && cp -r src/features/auth/legal/. dist/features/auth/legal/",
+    "build": "rm -rf dist && tsc && cp -r src/infra/db/migrations dist/infra/db/ && mkdir -p dist/features/prepare && cp -r src/features/prepare/schemas dist/features/prepare/ && mkdir -p dist/features/auth/legal && cp -r src/features/auth/legal/. dist/features/auth/legal/",
     "dev": "node --watch --experimental-specifier-resolution=node dist/main.js",
     "start": "node dist/main.js",
     "test": "vitest run",
