@@ -1,17 +1,7 @@
-# Keep context lean; do NOT ignore package source.
-# Host dist for service must not ship orphans into the builder COPY layer
-# (tsc does not delete removed files). service build also does rm -rf dist.
 **/node_modules
 **/.git
 **/.turbo
-release
-*.tar.gz
+# Prevent stale host service dist (orphaned deleted scripts) from entering
+# the builder COPY layer. service build also runs `rm -rf dist` before tsc.
 packages/service/dist
-packages/web/dist
-packages/web/dist-business
-packages/web/dist-admin
-# Note: do not ignore packages/shared/dist or enterprise/dist in a way that
-# confuses tooling — builder always rebuilds; excluding only large web/service
-# host artifacts is enough.
-.bossmode-attachments
-docs
+release
