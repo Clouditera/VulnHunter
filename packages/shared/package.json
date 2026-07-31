@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc",
+    "build": "rm -rf dist *.tsbuildinfo && tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist"
   },

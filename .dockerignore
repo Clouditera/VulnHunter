@@ -1,7 +1,5 @@
 **/node_modules
 **/.git
 **/.turbo
-# Prevent stale host service dist (orphaned deleted scripts) from entering
-# the builder COPY layer. service build also runs `rm -rf dist` before tsc.
 packages/service/dist
 release
