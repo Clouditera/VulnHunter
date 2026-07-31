@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { requireAdmin } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
+import { logger } from "../../infra/logger.js";
 import * as authStorage from "./storage.js";
 import { countTasksForUser } from "../tasks/storage.js";
 import { listAcceptancesForUsers } from "./agreements.js";
@@ -8,6 +9,10 @@ import { listAcceptancesForUsers } from "./agreements.js";
 export const adminUsersRouter = new Hono();
 adminUsersRouter.use("*", licenseGuard);
 adminUsersRouter.use("*", requireAdmin);
+
+function clientIp(c: { req: { header: (n: string) => string | undefined } }): string | undefined {
+  return c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || c.req.header("x-real-ip") || undefined;
+}
 
 function serializeAdminUser(
   u: authStorage.DbUser,
@@ -21,6 +26,7 @@ function serializeAdminUser(
     role: u.role,
     status: u.status,
     source: u.source ?? "admin",
+    is_system: Boolean(u.is_system),
     must_change_password: u.must_change_password,
     task_limit: u.task_limit,
     sandbox_max_running: u.sandbox_max_running,
@@ -61,6 +67,27 @@ adminUsersRouter.patch("/:id", async (c) => {
   if (!user) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
 
   const me = c.get("user");
+  const ip = clientIp(c);
+
+  if (user.is_system) {
+    logger.warn({
+      actor: me.userId,
+      target: id,
+      action: "status",
+      result: "denied_protected",
+      ip,
+    });
+    return c.json(
+      {
+        error: {
+          code: "ERR_PROTECTED_ACCOUNT",
+          message: "系统管理员账号受保护，请通过部署配置管理",
+        },
+      },
+      400,
+    );
+  }
+
   if (body.status === "suspended") {
     if (me.userId === id) {
       return c.json({ error: { code: "ERR_SELF_SUSPEND", message: "Cannot disable yourself" } }, 400);
@@ -74,7 +101,19 @@ adminUsersRouter.patch("/:id", async (c) => {
   }
 
   if (body.status === "active" || body.status === "suspended") {
-    await authStorage.updateUser(id, { status: body.status });
+    try {
+      await authStorage.updateUser(id, { status: body.status });
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "ERR_PROTECTED_ACCOUNT") {
+        return c.json({ error: { code, message: "系统管理员账号受保护，请通过部署配置管理" } }, 400);
+      }
+      throw err;
+    }
+    if (body.status === "suspended") {
+      await authStorage.deleteAllSessionsForUser(id);
+      logger.warn({ actor: me.userId, target: id, action: "suspend", result: "ok", ip });
+    }
   }
   return c.json({ ok: true });
 });
@@ -86,6 +125,21 @@ adminUsersRouter.delete("/:id", async (c) => {
   if (!user) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
 
   const me = c.get("user");
+  const ip = clientIp(c);
+
+  if (user.is_system) {
+    logger.warn({ actor: me.userId, target: id, action: "delete", result: "denied_protected", ip });
+    return c.json(
+      {
+        error: {
+          code: "ERR_PROTECTED_ACCOUNT",
+          message: "系统管理员账号受保护，请通过部署配置管理",
+        },
+      },
+      400,
+    );
+  }
+
   if (me.userId === id) {
     return c.json({ error: { code: "ERR_SELF_DELETE", message: "Cannot delete yourself" } }, 400);
   }
@@ -96,6 +150,15 @@ adminUsersRouter.delete("/:id", async (c) => {
     }
   }
 
-  await authStorage.deleteUser(id);
+  try {
+    await authStorage.deleteUser(id);
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === "ERR_PROTECTED_ACCOUNT") {
+      return c.json({ error: { code, message: "系统管理员账号受保护，请通过部署配置管理" } }, 400);
+    }
+    throw err;
+  }
+  logger.warn({ actor: me.userId, target: id, action: "delete", result: "ok", ip });
   return c.json({ ok: true });
 });

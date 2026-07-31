@@ -20,6 +20,8 @@ export interface DbUser {
   last_login_at: Date | null;
   /** Set when user dismisses first-run onboarding (migration 040). */
   onboarding_dismissed_at: Date | null;
+  /** Deploy-provisioned system admin — cannot disable/delete/demote (044). */
+  is_system: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -54,10 +56,11 @@ export async function createUser(params: {
   sandboxMaxCpuCores?: number;
   sandboxMaxMemoryGb?: number;
   source?: "admin" | "registered";
+  isSystem?: boolean;
 }): Promise<DbUser> {
   const db = getDb();
   const rows = await db<DbUser[]>`
-    INSERT INTO users (tenant_id, email, password_hash, role, display_name, admin_remark, must_change_password, task_limit, sandbox_max_running, sandbox_max_cpu_cores, sandbox_max_memory_gb, source)
+    INSERT INTO users (tenant_id, email, password_hash, role, display_name, admin_remark, must_change_password, task_limit, sandbox_max_running, sandbox_max_cpu_cores, sandbox_max_memory_gb, source, is_system)
     VALUES (
       ${DEFAULT_TENANT_ID},
       ${params.email},
@@ -70,7 +73,8 @@ export async function createUser(params: {
       ${params.sandboxMaxRunning ?? 0},
       ${params.sandboxMaxCpuCores ?? 0},
       ${params.sandboxMaxMemoryGb ?? 0},
-      ${params.source ?? "admin"}
+      ${params.source ?? "admin"},
+      ${params.isSystem ?? false}
     )
     RETURNING *
   `;
@@ -164,10 +168,26 @@ export async function updateUser(
     sandboxMaxCpuCores?: number;
     sandboxMaxMemoryGb?: number;
     adminRemark?: string | null;
+    /** Internal: provisionSystemAdmin only */
+    isSystem?: boolean;
   },
 ): Promise<void> {
   const db = getDb();
+  const target = await getUserById(id);
+  if (target?.is_system) {
+    // System admin: block disable/demote/delete-equivalent. Password rewrite is
+    // allowed only when isSystem is also being forced true (provision path).
+    const statusBad = fields.status !== undefined && fields.status !== "active";
+    const roleBad = fields.role !== undefined && fields.role !== "admin";
+    const pwdFromUi = fields.passwordHash !== undefined && fields.isSystem !== true;
+    if (statusBad || roleBad || pwdFromUi) {
+      const err = new Error("ERR_PROTECTED_ACCOUNT") as Error & { code: string };
+      err.code = "ERR_PROTECTED_ACCOUNT";
+      throw err;
+    }
+  }
   const updateAdminRemark = Object.prototype.hasOwnProperty.call(fields, "adminRemark");
+  const updateIsSystem = Object.prototype.hasOwnProperty.call(fields, "isSystem");
   await db`
     UPDATE users SET
       display_name = COALESCE(${fields.displayName ?? null}, display_name),
@@ -180,6 +200,7 @@ export async function updateUser(
       sandbox_max_cpu_cores = COALESCE(${fields.sandboxMaxCpuCores ?? null}, sandbox_max_cpu_cores),
       sandbox_max_memory_gb = COALESCE(${fields.sandboxMaxMemoryGb ?? null}, sandbox_max_memory_gb),
       admin_remark = CASE WHEN ${updateAdminRemark} THEN ${fields.adminRemark ?? null} ELSE admin_remark END,
+      is_system = CASE WHEN ${updateIsSystem} THEN ${fields.isSystem ?? false} ELSE is_system END,
       updated_at = now()
     WHERE id = ${id}
   `;
@@ -197,6 +218,12 @@ export async function dismissOnboarding(userId: string): Promise<void> {
 }
 
 export async function deleteUser(id: string): Promise<void> {
+  const target = await getUserById(id);
+  if (target?.is_system) {
+    const err = new Error("ERR_PROTECTED_ACCOUNT") as Error & { code: string };
+    err.code = "ERR_PROTECTED_ACCOUNT";
+    throw err;
+  }
   const db = getDb();
   // Architect A: app-level cleanup in one transaction (FK NO ACTION blockers).
   await db.begin(async (tx) => {

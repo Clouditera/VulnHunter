@@ -14,6 +14,7 @@ import { initDocker, TaskScheduler, reconcileWorkers } from "./features/workers/
 import { initWorkerInstanceId } from "./features/workers/instance-id.js";
 import { createApp, startServer, type ServiceRole } from "./server.js";
 import { initInstallation } from "./features/system/index.js";
+import { provisionSystemAdmin } from "./features/auth/system-admin.js";
 
 type EnterpriseModule = typeof import("@vulnhunter/enterprise");
 
@@ -45,6 +46,11 @@ async function main(): Promise<void> {
     // Schema migrations: business role is the single writer
     await runMigrations();
   }
+
+  // Deploy-provisioned singleton system admin (both roles; idempotent).
+  await provisionSystemAdmin().catch((err) =>
+    logger.warn({ err }, "System admin provision failed — continuing"),
+  );
 
   // Installation identity (both roles)
   initInstallation(config.dataDir);

@@ -1101,6 +1101,8 @@ export interface UserApi {
   status: string;
   /** 'admin' | 'registered' — source of account creation */
   source?: string;
+  /** Deploy-provisioned system admin — protected in UI + API */
+  is_system?: boolean;
   must_change_password: boolean;
   last_login_at: string | null;
   created_at: string;

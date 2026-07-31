@@ -106,7 +106,10 @@ export function UsersSection() {
                 border: u.status === "active" ? "none" : "1.5px solid var(--text-secondary)",
               }} />
             </div>
-            <div style={{ flex: 1, fontSize: "13px", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, whiteSpace: "nowrap" }}>{u.email}</div>
+            <div style={{ flex: 1, fontSize: "13px", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{u.email}</span>
+              {u.is_system ? <SystemBadge /> : null}
+            </div>
             <div style={{ width: "120px", fontSize: "13px", color: u.display_name ? "var(--text-primary)" : "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.display_name || "—"}</div>
             <div title={u.admin_remark ?? ""} style={{ width: "180px", fontSize: "12px", color: u.admin_remark ? "var(--text-primary)" : "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.admin_remark || "—"}</div>
             <div style={{ width: "100px" }}>
@@ -118,20 +121,32 @@ export function UsersSection() {
             <div style={{ width: "110px", fontSize: "12px", color: "var(--text-secondary)" }}>{formatTaskLimit(u)}</div>
             <div style={{ width: "100px", fontSize: "12px", color: "var(--text-secondary)" }}>{relativeTime(u.last_login_at)}</div>
             <div style={{ width: "40px", position: "relative" }}>
-              <button
-                onClick={() => setMenuOpen(menuOpen === u.id ? null : u.id)}
-                style={{ ...GHOST_BTN, fontSize: "16px", padding: "4px 8px" }}
-              >⋯</button>
-              {menuOpen === u.id && (
-                <ActionMenu
-                  user={u}
-                  onEdit={() => { setEditUser(u); setMenuOpen(null); }}
-                  onResetPwd={() => { setResetPwdUser(u); setMenuOpen(null); }}
-                  onToggle={() => { toggleMut.mutate({ id: u.id, status: u.status === "active" ? "suspended" : "active" }); setMenuOpen(null); }}
-                  onDelete={() => { setDeleteTarget(u); setMenuOpen(null); }}
-                  onClose={() => setMenuOpen(null)}
-                  users={users}
-                />
+              {u.is_system ? (
+                <span
+                  data-testid={`user-system-locked-${u.id}`}
+                  title={i18n.t("settings.users.systemLocked")}
+                  style={{ fontSize: 11, color: "var(--text-secondary)", padding: "4px 6px" }}
+                >
+                  —
+                </span>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setMenuOpen(menuOpen === u.id ? null : u.id)}
+                    style={{ ...GHOST_BTN, fontSize: "16px", padding: "4px 8px" }}
+                  >⋯</button>
+                  {menuOpen === u.id && (
+                    <ActionMenu
+                      user={u}
+                      onEdit={() => { setEditUser(u); setMenuOpen(null); }}
+                      onResetPwd={() => { setResetPwdUser(u); setMenuOpen(null); }}
+                      onToggle={() => { toggleMut.mutate({ id: u.id, status: u.status === "active" ? "suspended" : "active" }); setMenuOpen(null); }}
+                      onDelete={() => { setDeleteTarget(u); setMenuOpen(null); }}
+                      onClose={() => setMenuOpen(null)}
+                      users={users}
+                    />
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -174,6 +189,27 @@ function SourceBadge({ source }: { source?: string }) {
       }}
     >
       {label}
+    </span>
+  );
+}
+
+function SystemBadge() {
+  return (
+    <span
+      data-testid="user-system-badge"
+      style={{
+        flexShrink: 0,
+        fontSize: 10,
+        fontWeight: 700,
+        padding: "2px 7px",
+        borderRadius: 999,
+        background: "rgba(37,99,235,0.12)",
+        color: "var(--brand)",
+        border: "1px solid rgba(37,99,235,0.3)",
+        letterSpacing: "0.02em",
+      }}
+    >
+      {i18n.t("settings.users.systemBadge")}
     </span>
   );
 }
@@ -221,7 +257,6 @@ function ActionMenu({ user, users, onEdit, onResetPwd, onToggle, onDelete, onClo
 function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [role, setRole] = useState<"admin" | "member">("member");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
@@ -233,7 +268,8 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   const mut = useMutation({
     mutationFn: () => {
       if (password !== confirmPassword) throw new Error(i18n.t("userModal.err.passwordMismatch"));
-      return api.users.create({ email, password, display_name: displayName || undefined, role, must_change_password: forceChange, task_limit: Math.max(0, Number(taskLimit) || 0), admin_remark: adminRemark.trim() || null });
+      // role always member — system admin is deploy-provisioned only
+      return api.users.create({ email, password, display_name: displayName || undefined, role: "member", must_change_password: forceChange, task_limit: Math.max(0, Number(taskLimit) || 0), admin_remark: adminRemark.trim() || null });
     },
     onSuccess,
     onError: (err: Error) => setError(err.message),
@@ -246,12 +282,7 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
         <div style={MODAL_BODY}>
           <Field label={i18n.t("userModal.email")}><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={INPUT} placeholder="user@example.com" /></Field>
           <Field label={i18n.t("userModal.displayName.optional")}><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={INPUT} /></Field>
-          <Field label={i18n.t("userModal.role")}>
-            <div style={{ display: "flex", gap: "12px" }}>
-              <RadioBtn active={role === "admin"} onClick={() => setRole("admin")} label={i18n.t("userModal.role.admin")} />
-              <RadioBtn active={role === "member"} onClick={() => setRole("member")} label={i18n.t("userModal.role.user")} />
-            </div>
-          </Field>
+          {/* Admin role removed — singleton system admin is deploy-provisioned only. */}
           <Field label={i18n.t("userModal.taskLimit")}><input type="number" min={0} value={taskLimit} onChange={(e) => setTaskLimit(e.target.value)} style={INPUT} /></Field>
           <Field label={i18n.t("userModal.adminRemark.optional")}>
             <textarea value={adminRemark} onChange={(e) => setAdminRemark(e.target.value)} maxLength={1000} rows={3} style={{ ...INPUT, height: "auto", resize: "vertical" }} />
@@ -284,14 +315,20 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
 /* ── Edit User Modal ── */
 function EditUserModal({ user, onClose, onSuccess }: { user: UserApi; onClose: () => void; onSuccess: () => void }) {
   const [displayName, setDisplayName] = useState(user.display_name);
-  const [role, setRole] = useState(user.role);
   const [disabled, setDisabled] = useState(user.status === "suspended");
   const [taskLimit, setTaskLimit] = useState(String(user.task_limit ?? 0));
   const [adminRemark, setAdminRemark] = useState(user.admin_remark ?? "");
   const [error, setError] = useState("");
 
   const mut = useMutation({
-    mutationFn: () => api.users.update(user.id, { display_name: displayName, role, status: disabled ? "suspended" : "active", task_limit: Math.max(0, Number(taskLimit) || 0), admin_remark: adminRemark.trim() || null }),
+    mutationFn: () =>
+      api.users.update(user.id, {
+        display_name: displayName,
+        // role not editable via UI — system admin is deploy-only; members stay members
+        status: disabled ? "suspended" : "active",
+        task_limit: Math.max(0, Number(taskLimit) || 0),
+        admin_remark: adminRemark.trim() || null,
+      }),
     onSuccess,
     onError: (err: Error) => setError(err.message),
   });
@@ -303,12 +340,6 @@ function EditUserModal({ user, onClose, onSuccess }: { user: UserApi; onClose: (
         <div style={MODAL_BODY}>
           <Field label={i18n.t("userModal.email")}><input value={user.email} readOnly title={i18n.t("userModal.emailReadonly")} style={{ ...INPUT, background: "var(--bg-page)", cursor: "not-allowed" }} /></Field>
           <Field label={i18n.t("userModal.displayName")}><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={INPUT} maxLength={64} /></Field>
-          <Field label={i18n.t("userModal.role")}>
-            <div style={{ display: "flex", gap: "12px" }}>
-              <RadioBtn active={role === "admin"} onClick={() => setRole("admin")} label={i18n.t("userModal.role.admin")} />
-              <RadioBtn active={role === "member"} onClick={() => setRole("member")} label={i18n.t("userModal.role.user")} />
-            </div>
-          </Field>
           <Field label={i18n.t("userModal.taskLimit")}><input type="number" min={0} value={taskLimit} onChange={(e) => setTaskLimit(e.target.value)} style={INPUT} /></Field>
           <Field label={i18n.t("userModal.adminRemark.optional")}>
             <textarea value={adminRemark} onChange={(e) => setAdminRemark(e.target.value)} maxLength={1000} rows={3} style={{ ...INPUT, height: "auto", resize: "vertical" }} />
@@ -396,18 +427,6 @@ function PwdInput({ value, onChange, show, onToggle }: { value: string; onChange
         <Icon name={show ? "eye-off" : "eye"} size={14} />
       </button>
     </div>
-  );
-}
-
-function RadioBtn({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
-  return (
-    <button onClick={onClick} style={{
-      flex: 1, padding: "8px 12px", border: `1px solid ${active ? "var(--brand)" : "var(--border)"}`,
-      borderRadius: "6px", background: active ? "rgba(194,40,40,0.05)" : "transparent",
-      color: active ? "var(--brand)" : "var(--text-primary)", fontSize: "12px", fontWeight: active ? 600 : 400, cursor: "pointer", textAlign: "left",
-    }}>
-      {label}
-    </button>
   );
 }
 
