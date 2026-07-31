@@ -7,10 +7,17 @@
  */
 
 import { Hono } from "hono";
+import { createWriteStream } from "node:fs";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { pipeline } from "node:stream/promises";
+import * as tar from "tar";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { loadConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
+import { getMinio } from "../../infra/minio/client.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import { getAccessibleTask } from "../tasks/access.js";
 import {
@@ -19,10 +26,14 @@ import {
   isValidExploitId,
   isValidFindingId,
   listArtifactTree,
+  listArtifactTreeEntries,
   listExploitArtifacts,
   listFindingArtifacts,
   normalizeArtifactPath,
 } from "./artifacts.js";
+
+/** One-shot archive size ceiling: refuse to assemble beyond this (pre-download). */
+const MAX_ARCHIVE_BYTES = 200 * 1024 * 1024;
 
 export const artifactsRouter = new Hono();
 artifactsRouter.use("*", licenseGuard);
@@ -102,6 +113,65 @@ artifactsRouter.get("/:taskId/artifacts/file", async (c) => {
     return c.json(preview);
   } catch (error) {
     logger.warn({ code: "WARN_ARTIFACT_PREVIEW_FAILED", taskId, error_class: safeErrorClass(error) }, "Artifact preview failed");
+    return c.json({ error: { code: "ERR_INTERNAL" } }, 500);
+  }
+});
+
+// GET /api/tasks/:taskId/artifacts/archive — one-shot bulk collection of the
+// findings/ + exploits/ whitelist trees as a streamed tar.gz. Keys come from
+// the MinIO listing only (no user-controlled path), sharing the same whitelist
+// discipline as the per-file preview endpoint.
+artifactsRouter.get("/:taskId/artifacts/archive", async (c) => {
+  const { taskId } = c.req.param();
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+
+  const config = loadConfig();
+  const bucket = config.minio.bucket;
+
+  let entries: Awaited<ReturnType<typeof listArtifactTreeEntries>>;
+  try {
+    entries = await listArtifactTreeEntries(taskId, bucket);
+  } catch (error) {
+    logger.warn({ code: "WARN_ARTIFACT_ARCHIVE_FAILED", taskId, error_class: safeErrorClass(error) }, "Artifact archive listing failed");
+    return c.json({ error: { code: "ERR_INTERNAL" } }, 500);
+  }
+
+  const totalBytes = entries.reduce((sum, entry) => sum + entry.size, 0);
+  if (totalBytes > MAX_ARCHIVE_BYTES) {
+    return c.json({ error: { code: "ERR_ARCHIVE_TOO_LARGE" } }, 413);
+  }
+
+  // Materialize the tree under a private temp dir (relative structure kept),
+  // then stream a tar.gz off it. Cleanup runs on stream close — covering both
+  // normal completion and a client that disconnects mid-download.
+  const tmpRoot = await mkdtemp(join(tmpdir(), `task-artifacts-${taskId}-`));
+  const cleanup = () => { rm(tmpRoot, { recursive: true, force: true }).catch(() => { /* best effort */ }); };
+  try {
+    const minio = getMinio();
+    for (const entry of entries) {
+      const dest = join(tmpRoot, entry.path);
+      await mkdir(dirname(dest), { recursive: true });
+      const objStream = await minio.getObject(bucket, `scan-outputs/${taskId}/${entry.path}`);
+      await pipeline(objStream, createWriteStream(dest));
+    }
+
+    // Empty tree still yields a valid (near-empty) tar.gz — "no artifacts",
+    // never a 404. tar.c rejects an empty path list, so pack the temp root.
+    const paths = entries.length > 0 ? entries.map((entry) => entry.path) : ["."];
+    const archive = tar.c({ gzip: true, cwd: tmpRoot }, paths);
+    archive.on("close", cleanup);
+    archive.on("error", cleanup);
+
+    return new Response(archive as unknown as ReadableStream, {
+      headers: {
+        "Content-Type": "application/gzip",
+        "Content-Disposition": `attachment; filename="task-${taskId}-artifacts.tar.gz"`,
+      },
+    });
+  } catch (error) {
+    cleanup();
+    logger.warn({ code: "WARN_ARTIFACT_ARCHIVE_FAILED", taskId, error_class: safeErrorClass(error) }, "Artifact archive build failed");
     return c.json({ error: { code: "ERR_INTERNAL" } }, 500);
   }
 });

@@ -155,15 +155,31 @@ async function readObjectBuffer(bucket: string, key: string): Promise<Buffer> {
   });
 }
 
-/** All artifact-relative paths present under the two whitelisted roots. */
-export async function listArtifactTree(taskId: string, bucket: string): Promise<Set<string>> {
+export interface ArtifactTreeEntry {
+  /** task-relative path under a whitelisted root, e.g. findings/BUG-1/poc/poc.md */
+  path: string;
+  size: number;
+}
+
+/**
+ * All artifact objects under the two whitelisted roots, with their MinIO
+ * listing sizes. Sizes come straight from the listing (no object fetch), so
+ * callers can budget a bulk operation before downloading anything.
+ */
+export async function listArtifactTreeEntries(taskId: string, bucket: string): Promise<ArtifactTreeEntry[]> {
   const prefix = `scan-outputs/${taskId}/`;
-  const tree = new Set<string>();
+  const entries: ArtifactTreeEntry[] = [];
   for (const root of ARTIFACT_ROOTS) {
     const objects = await listObjectKeys(bucket, `${prefix}${root}/`);
-    for (const obj of objects) tree.add(obj.name.slice(prefix.length));
+    for (const obj of objects) entries.push({ path: obj.name.slice(prefix.length), size: obj.size });
   }
-  return tree;
+  return entries;
+}
+
+/** All artifact-relative paths present under the two whitelisted roots. */
+export async function listArtifactTree(taskId: string, bucket: string): Promise<Set<string>> {
+  const entries = await listArtifactTreeEntries(taskId, bucket);
+  return new Set(entries.map((entry) => entry.path));
 }
 
 /**
