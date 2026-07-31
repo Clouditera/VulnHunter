@@ -247,6 +247,19 @@ export interface FindingReviewEvent {
   created_at: string;
 }
 
+
+export type ApiTokenStatus = "active" | "expired" | "revoked";
+
+export interface ApiToken {
+  id: string;
+  name: string;
+  created_at: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  status: ApiTokenStatus;
+}
+
 export const api = {
   system: {
     status: () => request<SystemStatus>("/api/system/status"),
@@ -837,6 +850,22 @@ export const api = {
     },
     delete: (id: string) =>
       request<{ ok: boolean }>(`/api/settings/skills/${id}`, { method: "DELETE" }),
+  },
+  apiTokens: {
+    list: () =>
+      request<{ tokens: ApiToken[]; limit: number; count: number }>("/api/me/api-tokens"),
+    create: (body: { name: string; expires_in_days: number | null }) =>
+      request<{ token: ApiToken; plaintext: string; limit: number }>("/api/me/api-tokens", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    rename: (id: string, name: string) =>
+      request<{ token: ApiToken }>(`/api/me/api-tokens/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      }),
+    revoke: (id: string) =>
+      request<{ token: ApiToken }>(`/api/me/api-tokens/${id}`, { method: "DELETE" }),
   },
   reports: {
     list: (taskId: string) =>

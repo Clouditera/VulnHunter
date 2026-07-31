@@ -100,6 +100,21 @@ export const ERROR_CATALOG = {
     summary: { zh: "资源不存在", en: "Not found" },
     detail: { zh: "请求的资源不存在", en: "The requested resource does not exist" },
   },
+  ERR_API_TOKEN_LIMIT: {
+    httpStatus: 403,
+    summary: { zh: "令牌数量已达上限", en: "API token limit reached" },
+    detail: { zh: "请先吊销不再使用的令牌后再创建", en: "Revoke an unused token before creating a new one" },
+  },
+  ERR_API_TOKEN_NOT_FOUND: {
+    httpStatus: 404,
+    summary: { zh: "令牌不存在", en: "API token not found" },
+    detail: { zh: "令牌不存在或无权操作", en: "Token does not exist or you cannot access it" },
+  },
+  ERR_API_TOKEN_NAME_REQUIRED: {
+    httpStatus: 400,
+    summary: { zh: "请填写令牌名称", en: "Token name required" },
+    detail: { zh: "名称不能为空", en: "Name must not be empty" },
+  },
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CATALOG;

@@ -6,6 +6,7 @@ import { theme as themeStore } from "../../../shared/theme/index.js";
 import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential } from "../../../shared/api/client.js";
 import { SkillsSection } from "../components/SkillsSection.js";
+import { ApiTokensSection } from "../components/ApiTokensSection.js";
 import { ProfileSection } from "../components/ProfileSection.js";
 import { CloudRouterPromo, CredentialsEmptyNotice } from "../components/CloudRouterPromo.js";
 import { CloudRouterBalanceGlance, CloudRouterBalanceStrip } from "../components/CloudRouterBalance.js";
@@ -682,6 +683,7 @@ export function SettingsPage() {
         { id: "profile", labelKey: "settings.nav.profile" },
         { id: "credentials", labelKey: "settings.nav.credentials" },
         { id: "skills", labelKey: "settings.nav.skills" },
+        { id: "tokens", labelKey: "settings.nav.tokens" },
         { id: "appearance", labelKey: "settings.nav.appearance" },
       ];
 
@@ -1599,6 +1601,9 @@ export function SettingsPage() {
           {/* ============================================================= */}
           <div id="skills" style={{ scrollMarginTop: "20px" }} />
           <SkillsSection />
+
+          <div id="tokens" style={{ scrollMarginTop: "20px" }} />
+          <ApiTokensSection />
 
           <div id="appearance" style={{ scrollMarginTop: "20px" }} />
           <SettingsCard
