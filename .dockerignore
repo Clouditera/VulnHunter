@@ -1,9 +1,5 @@
 **/node_modules
 **/.git
+**/.turbo
 packages/service/dist
-packages/web/dist
-packages/web/dist-business
-packages/web/dist-admin
-packages/shared/dist
-packages/enterprise/dist
 release
