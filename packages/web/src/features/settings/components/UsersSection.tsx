@@ -430,18 +430,6 @@ function PwdInput({ value, onChange, show, onToggle }: { value: string; onChange
   );
 }
 
-function RadioBtn({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
-  return (
-    <button onClick={onClick} style={{
-      flex: 1, padding: "8px 12px", border: `1px solid ${active ? "var(--brand)" : "var(--border)"}`,
-      borderRadius: "6px", background: active ? "rgba(194,40,40,0.05)" : "transparent",
-      color: active ? "var(--brand)" : "var(--text-primary)", fontSize: "12px", fontWeight: active ? 600 : 400, cursor: "pointer", textAlign: "left",
-    }}>
-      {label}
-    </button>
-  );
-}
-
 /* ── Styles ── */
 
 const CARD: CSSProperties = { background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "12px", padding: "24px", marginBottom: "16px" };
