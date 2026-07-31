@@ -137,20 +137,6 @@ if find "$OUT" -type f ! -path "$OUT/images/*" ! -path "$OUT/.secrets/license-pu
   exit 1
 fi
 
-(
-  cd "$OUT"
-  find images -type f -name '*.tar' -print | sort
-  printf '%s\n' docker-compose.yml .env.example install.sh doctor.sh upgrade.sh uninstall.sh VERSION.json .secrets/license-public.pem
-  find lib -type f -name '*.sh' -print | sort
-  find docs -type f -print | sort
-  if [[ -d "$OUT/sandbox" ]]; then
-    find sandbox -type f ! -path 'sandbox/secrets/*' -print | sort
-  fi
-) | while IFS= read -r file; do
-  [[ -f "$OUT/$file" ]] && sha256sum "$OUT/$file"
-done | sed "s|  $OUT/|  |" > "$OUT/checksums.sha256"
-
-
 # ── SandboxPlane optional substack ─────────────────────────────────────
 # Sandbox substack is included by default (fish 2026-07-31).
 # Override: SANDBOX_PLANE_REF= for platform-only; or set another tag/commit.
@@ -231,6 +217,23 @@ else
   echo "SANDBOX_PLANE_REF unset — platform-only package (no sandbox/)"
 fi
 
+
+# Checksums AFTER sandbox packing (VERSION.json may be rewritten; sandbox files included).
+(
+  cd "$OUT"
+  find images -type f -name '*.tar' -print | sort
+  printf '%s\n' docker-compose.yml .env.example install.sh doctor.sh upgrade.sh uninstall.sh VERSION.json .secrets/license-public.pem
+  find lib -type f -name '*.sh' -print 2>/dev/null | sort
+  find docs -type f -print 2>/dev/null | sort
+  if [[ -d sandbox ]]; then
+    find sandbox -type f ! -path 'sandbox/secrets/*' -print | sort
+  fi
+) | while IFS= read -r file; do
+  [[ -f "$OUT/$file" ]] && sha256sum "$OUT/$file"
+done | sed "s|  $OUT/|  |" > "$OUT/checksums.sha256"
+
+# Self-check: every listed file must match (catches VERSION rewrite race).
+( cd "$OUT" && sha256sum -c checksums.sha256 >/dev/null )   || { echo "release validation failed: checksums.sha256 does not match tree" >&2; exit 1; }
 
 tar -C "$(dirname "$OUT")" -czf "$OUT.tar.gz" "$(basename "$OUT")"
 (
