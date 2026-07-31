@@ -4,10 +4,35 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Image/tarball source: always the directory that holds this script (package or seeded copy).
 SANDBOX_DIR="$SCRIPT_DIR"
-# Prefer package root as platform root (parent of sandbox/)
+# Prefer package root as platform root (parent of sandbox/) unless PLATFORM_DIR/INSTANCE_DIR set.
 PKG_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-PLATFORM_DIR="${PLATFORM_DIR:-$PKG_ROOT}"
+# Self-contained layout: PLATFORM_DIR = INSTANCE_DIR (has .env + compose + optional sandbox/).
+if [[ -n "${PLATFORM_DIR:-}" ]]; then
+  :
+elif [[ -n "${INSTANCE_DIR:-}" && -f "${INSTANCE_DIR}/.env" ]]; then
+  PLATFORM_DIR="$INSTANCE_DIR"
+elif [[ -f "$PKG_ROOT/.env" && -f "$PKG_ROOT/docker-compose.yml" ]]; then
+  PLATFORM_DIR="$PKG_ROOT"
+elif [[ -f "$SCRIPT_DIR/../.env" ]]; then
+  PLATFORM_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+else
+  PLATFORM_DIR="$PKG_ROOT"
+fi
+
+# Instance-owned secrets/compose when PLATFORM_DIR/sandbox exists (seeded by install v2).
+INSTANCE_SANDBOX=""
+if [[ -d "$PLATFORM_DIR/sandbox" ]]; then
+  INSTANCE_SANDBOX="$PLATFORM_DIR/sandbox"
+  # Prefer instance compose/config if present; still load images from SANDBOX_DIR (may be same).
+  for _f in docker-compose.yml config.yaml profiles.yaml; do
+    if [[ ! -f "$INSTANCE_SANDBOX/$_f" && -f "$SANDBOX_DIR/$_f" ]]; then
+      cp -f "$SANDBOX_DIR/$_f" "$INSTANCE_SANDBOX/$_f"
+    fi
+  done
+fi
+COMPOSE_DIR="${INSTANCE_SANDBOX:-$SANDBOX_DIR}"
 
 REMOTE=0
 WITH_QEMU=0
@@ -84,7 +109,8 @@ assert_profile_images() {
 assert_profile_images
 
 # Secrets (idempotent) — plane TokenFileProvider schema: version+service_id+token
-SECRETS="$SANDBOX_DIR/secrets"
+# Prefer instance-owned secrets path so the release package can be deleted.
+SECRETS="${INSTANCE_SANDBOX:-$SANDBOX_DIR}/secrets"
 mkdir -p "$SECRETS"
 chmod 700 "$SECRETS"
 TOKEN_FILE="$SECRETS/sandbox-plane-service-token.json"
@@ -100,7 +126,7 @@ gen_token_json() {
 gen_admin_json() {
   # Host may lack node/python — run scrypt inside the plane service image we just loaded.
   local svc_img
-  svc_img=$(grep -E '^\s+image:\s+sandbox-plane/service' "$SANDBOX_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
+  svc_img=$(grep -E '^\s+image:\s+sandbox-plane/service' "$COMPOSE_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
   [[ -n "$svc_img" ]] || die "cannot parse plane service image for admin credential generation"
   docker run --rm --entrypoint node "$svc_img" -e '
 const { randomBytes, scrypt } = require("node:crypto");
@@ -122,7 +148,7 @@ if [[ ! -f "$TOKEN_FILE" ]]; then
   chmod 600 "$TOKEN_FILE"
 else
   # migrate legacy token files via plane image node (no host python/node)
-  local_svc=$(grep -E '^\s+image:\s+sandbox-plane/service' "$SANDBOX_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
+  local_svc=$(grep -E '^\s+image:\s+sandbox-plane/service' "$COMPOSE_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
   if ! docker run --rm -v "$TOKEN_FILE:/token.json:ro" --entrypoint node "$local_svc" -e 'const d=JSON.parse(require("fs").readFileSync("/token.json","utf8")); if(!(d.version===1&&d.service_id&&String(d.token||"").length>=32)) process.exit(2)' 2>/dev/null; then
     log "upgrading legacy token file schema"
     tok=$(docker run --rm -v "$TOKEN_FILE:/token.json:ro" --entrypoint node "$local_svc" -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFileSync("/token.json","utf8")).token||""))}catch{process.stdout.write("")}' 2>/dev/null || true)
@@ -139,7 +165,7 @@ if [[ ! -f "$ADMIN_FILE" ]]; then
   gen_admin_json >"$ADMIN_FILE"
   chmod 600 "$ADMIN_FILE"
 else
-  PLANE_SERVICE_IMAGE=${PLANE_SERVICE_IMAGE:-$(grep -E '^\s+image:\s+sandbox-plane/service' "$SANDBOX_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")}
+  PLANE_SERVICE_IMAGE=${PLANE_SERVICE_IMAGE:-$(grep -E '^\s+image:\s+sandbox-plane/service' "$COMPOSE_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")}
   if ! docker run --rm -v "$ADMIN_FILE:/admin.json:ro" --entrypoint node "$PLANE_SERVICE_IMAGE" -e 'const d=JSON.parse(require("fs").readFileSync("/admin.json","utf8")); if(!(d.version===1&&d.password_hash)) process.exit(2)' 2>/dev/null; then
     log "upgrading legacy admin credential file"
     gen_admin_json >"$ADMIN_FILE"
@@ -149,19 +175,23 @@ else
   fi
 fi
 
-PLANE_SERVICE_IMAGE=$(grep -E '^\s+image:\s+sandbox-plane/service' "$SANDBOX_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
+PLANE_SERVICE_IMAGE=$(grep -E '^\s+image:\s+sandbox-plane/service' "$COMPOSE_DIR/docker-compose.yml" | head -1 | sed -E 's/.*image:[[:space:]]*//' | tr -d '"' | tr -d "'")
 TOKEN=$(docker run --rm -v "$TOKEN_FILE:/token.json:ro" --entrypoint node "$PLANE_SERVICE_IMAGE" -e 'console.log(JSON.parse(require("fs").readFileSync("/token.json","utf8")).token)')
 
 # Ensure config copies next to compose for volume mounts
-cp -f "$SANDBOX_DIR/config.yaml" "$SANDBOX_DIR/config.yaml.bak" 2>/dev/null || true
-# compose expects ./config.yaml and ./profiles.yaml relative to sandbox dir
-[[ -f "$SANDBOX_DIR/config.yaml" ]]
-[[ -f "$SANDBOX_DIR/profiles.yaml" ]]
-mkdir -p "$SANDBOX_DIR/data"
+cp -f "$COMPOSE_DIR/config.yaml" "$COMPOSE_DIR/config.yaml.bak" 2>/dev/null || true
+# compose expects ./config.yaml and ./profiles.yaml relative to compose dir
+[[ -f "$COMPOSE_DIR/config.yaml" ]]
+[[ -f "$COMPOSE_DIR/profiles.yaml" ]]
+mkdir -p "$COMPOSE_DIR/data"
+# Plane compose typically bind-mounts ./secrets — ensure it sees instance secrets
+if [[ -n "$INSTANCE_SANDBOX" && "$COMPOSE_DIR" == "$INSTANCE_SANDBOX" ]]; then
+  mkdir -p "$COMPOSE_DIR/secrets"
+fi
 
-log "starting sandbox-plane stack..."
+log "starting sandbox-plane stack (compose_dir=$COMPOSE_DIR)..."
 (
-  cd "$SANDBOX_DIR"
+  cd "$COMPOSE_DIR"
   unset COMPOSE_PROJECT_NAME || true
   export COMPOSE_PROJECT_NAME=sandbox-plane
   docker compose -p sandbox-plane up -d
