@@ -152,16 +152,25 @@ done | sed "s|  $OUT/|  |" > "$OUT/checksums.sha256"
 
 
 # ── SandboxPlane optional substack ─────────────────────────────────────
-# Set SANDBOX_PLANE_REF (tag/commit) to embed sandbox/. Unset → platform-only package.
+# Sandbox substack is included by default (fish 2026-07-31).
+# Override: SANDBOX_PLANE_REF= for platform-only; or set another tag/commit.
 SANDBOX_PLANE_REPO="${SANDBOX_PLANE_REPO:-$ROOT/../sandbox-center}"
-SANDBOX_PLANE_REF="${SANDBOX_PLANE_REF:-}"
+# Empty SANDBOX_PLANE_REF after default means "use default tag" unless PLATFORM_ONLY=1.
+if [[ "${PLATFORM_ONLY:-0}" == "1" ]]; then
+  SANDBOX_PLANE_REF=""
+else
+  SANDBOX_PLANE_REF="${SANDBOX_PLANE_REF:-v0.3.2}"
+fi
 WITH_QEMU="${WITH_QEMU:-1}"  # legacy flag ignored; full pack is default
 if [[ -n "$SANDBOX_PLANE_REF" ]]; then
   echo "packing sandbox substack from $SANDBOX_PLANE_REPO @ $SANDBOX_PLANE_REF"
   [[ -d "$SANDBOX_PLANE_REPO" ]] || { echo "SANDBOX_PLANE_REPO not found: $SANDBOX_PLANE_REPO" >&2; exit 1; }
   PLANE_HEAD="$(git -C "$SANDBOX_PLANE_REPO" rev-parse HEAD)"
   PLANE_SHORT="$(git -C "$SANDBOX_PLANE_REPO" rev-parse --short HEAD)"
-  # soft check: warn if dirty; hard check ref if tag exists
+  # Fail hard if checkout does not match requested ref (avoid VERSION name/content mismatch).
+  PLANE_WANT="$(git -C "$SANDBOX_PLANE_REPO" rev-parse "$SANDBOX_PLANE_REF^{commit}" 2>/dev/null)"     || { echo "ref not found: $SANDBOX_PLANE_REF" >&2; exit 1; }
+  [[ "$PLANE_HEAD" == "$PLANE_WANT" ]] || { echo "sandbox repo HEAD != $SANDBOX_PLANE_REF (checkout it first)" >&2; exit 1; }
+  # soft check: warn if dirty
   if [[ -n "$(git -C "$SANDBOX_PLANE_REPO" status --porcelain)" ]]; then
     echo "warning: sandbox plane repo is dirty" >&2
   fi
