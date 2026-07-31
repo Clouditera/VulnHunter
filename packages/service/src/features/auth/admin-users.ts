@@ -62,12 +62,41 @@ adminUsersRouter.get("/", async (c) => {
 // PATCH /api/admin/users/:id — status only (contract A5); other fields stay on /api/users
 adminUsersRouter.patch("/:id", async (c) => {
   const id = c.req.param("id");
-  const body = await c.req.json<{ status?: "active" | "suspended" }>();
+  const body = await c.req.json<{
+    status?: "active" | "suspended";
+    role?: string;
+    reset_password?: string;
+    display_name?: string;
+  }>();
   const user = await authStorage.getUserById(id);
   if (!user) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
 
   const me = c.get("user");
   const ip = clientIp(c);
+
+  // Community admin-users is status-only. Reject password/role mutations with
+  // explicit 400 so clients never see silent "ok" that did not apply (QA).
+  if (body.reset_password !== undefined) {
+    logger.warn({ actor: me.userId, target: id, action: "reset_password", result: "denied", ip });
+    return c.json(
+      {
+        error: {
+          code: user.is_system ? "ERR_PROTECTED_ACCOUNT" : "ERR_PROTECTED_ACCOUNT",
+          message: user.is_system
+            ? "系统管理员账号受保护，请通过部署配置管理"
+            : "请使用完整用户管理接口重置密码",
+        },
+      },
+      400,
+    );
+  }
+  if (body.role !== undefined) {
+    logger.warn({ actor: me.userId, target: id, action: "role", result: "denied_singleton", ip });
+    return c.json(
+      { error: { code: "ERR_ADMIN_SINGLETON", message: "管理员由部署配置唯一供给" } },
+      400,
+    );
+  }
 
   if (user.is_system) {
     logger.warn({
