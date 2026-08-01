@@ -7,7 +7,7 @@
 import { logger } from "../../infra/logger.js";
 import type Dockerode from "dockerode";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import type { DbTask } from "../tasks/storage.js";
 import type { TaskSandbox } from "../sandboxes/storage.js";
 
@@ -328,11 +328,31 @@ export async function injectSandboxFiles(container: Dockerode.Container, files: 
 // H1 §7: key-material leak scan before outputs leave the workspace.
 // Scans business-artifact dirs (not .youngflow — LLM session logs are huge
 // and never a scp target). A hit quarantines: sync is skipped and the task
-// gets a visible security anomaly. Expected to never fire.
+// gets a visible security anomaly.
+//
+// Dynamic verification artifacts intentionally contain payloads that may look
+// like secrets (POC/EXP scripts, verification logs). Whitelist those paths so
+// a successful exploit pipeline is not quarantined (fish core-flow 2026-08-01).
 // ---------------------------------------------------------------------------
 const KEY_MATERIAL_MARKER = "PRIVATE KEY-----";
 const SCAN_SUBDIRS = ["findings", "risks", "knowledge", "todo", "done", "exploits", "leads", "report", "wiki"];
 const MAX_SCAN_FILE_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Relative path (posix, from outDir) that is expected to hold attack payloads
+ * / dynamic verification artifacts — not scanned for key-material leaks.
+ *
+ * - findings/<id>/poc/**
+ * - findings/<id>/exp/**
+ * - exploits/**
+ */
+export function isDynamicPayloadPath(relPosix: string): boolean {
+  const p = relPosix.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (p === "exploits" || p.startsWith("exploits/")) return true;
+  // findings/<seg>/poc/... or findings/<seg>/exp/...
+  const m = /^findings\/[^/]+\/(poc|exp)(\/|$)/.exec(p);
+  return m != null;
+}
 
 async function* walk(dir: string): AsyncGenerator<string> {
   let entries;
@@ -352,6 +372,8 @@ export async function scanOutputsForKeyMaterial(outDir: string): Promise<string[
   const hits: string[] = [];
   for (const sub of SCAN_SUBDIRS) {
     for await (const file of walk(join(outDir, sub))) {
+      const rel = relative(outDir, file).split("\\").join("/");
+      if (isDynamicPayloadPath(rel)) continue;
       try {
         const info = await stat(file);
         if (info.size > MAX_SCAN_FILE_BYTES) continue;
