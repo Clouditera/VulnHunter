@@ -7,6 +7,7 @@ import { generateTaskSshKeypair } from "../../src/features/sandboxes/ssh-keys.js
 import {
   buildInjectionTar,
   formatKnownHostsEntry,
+  isDynamicPayloadPath,
   parseBastionSpec,
   renderInjectionFiles,
   renderKnownHosts,
@@ -201,13 +202,33 @@ describe("scanOutputsForKeyMaterial (H1 §7)", () => {
   it("flags planted key material in business dirs, ignores .youngflow, tolerates missing dirs", async () => {
     const dir = mkdtempSync(join(tmpdir(), "h1-leak-"));
     try {
-      mkdirSync(join(dir, "findings/BUG-1/poc"), { recursive: true });
-      writeFileSync(join(dir, "findings/BUG-1/poc/leaked.txt"), "-----BEGIN OPENSSH PRIVATE KEY-----\noops");
+      // report.yaml is still scanned (not under poc/exp)
+      mkdirSync(join(dir, "findings/BUG-1"), { recursive: true });
+      writeFileSync(join(dir, "findings/BUG-1/report.yaml"), "-----BEGIN OPENSSH PRIVATE KEY-----\noops");
       mkdirSync(join(dir, ".youngflow/sessions"), { recursive: true });
       writeFileSync(join(dir, ".youngflow/sessions/big.log"), "-----BEGIN OPENSSH PRIVATE KEY----- but ignored");
       const hits = await scanOutputsForKeyMaterial(dir);
       expect(hits).toHaveLength(1);
-      expect(hits[0]).toContain("leaked.txt");
+      expect(hits[0]).toContain("report.yaml");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it("whitelists findings/**/poc|exp and exploits/** (dynamic payloads)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "h1-dyn-"));
+    try {
+      mkdirSync(join(dir, "findings/BUG-1/poc"), { recursive: true });
+      mkdirSync(join(dir, "findings/BUG-1/exp"), { recursive: true });
+      mkdirSync(join(dir, "exploits/chain-1"), { recursive: true });
+      writeFileSync(join(dir, "findings/BUG-1/poc/run.sh"), "-----BEGIN OPENSSH PRIVATE KEY-----\npayload");
+      writeFileSync(join(dir, "findings/BUG-1/exp/exp_max_impact.sh"), "-----BEGIN RSA PRIVATE KEY-----\npayload");
+      writeFileSync(join(dir, "findings/BUG-1/exp/verification.log"), "saw PRIVATE KEY----- in output");
+      writeFileSync(join(dir, "exploits/chain-1/run.sh"), "-----BEGIN OPENSSH PRIVATE KEY-----\nx");
+      expect(await scanOutputsForKeyMaterial(dir)).toEqual([]);
+      expect(isDynamicPayloadPath("findings/BUG-1/poc/run.sh")).toBe(true);
+      expect(isDynamicPayloadPath("findings/BUG-1/exp/verification.log")).toBe(true);
+      expect(isDynamicPayloadPath("exploits/chain-1/run.sh")).toBe(true);
+      expect(isDynamicPayloadPath("findings/BUG-1/report.yaml")).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
