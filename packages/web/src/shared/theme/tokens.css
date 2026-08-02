@@ -141,9 +141,12 @@
   /* Font stacks */
   --font-sans: "Roboto", "Source Han Sans CN", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* Markdown inline code tint (typography v1.0) */
+  --md-code-inline-bg: rgba(97, 109, 126, 0.10);
 }
 
 :root[data-theme="dark"] {
+  --md-code-inline-bg: rgba(187, 195, 204, 0.14);
   --bg-page: #131828;
   --bg-card: #1b2033;
   --bg-header: #232a40;

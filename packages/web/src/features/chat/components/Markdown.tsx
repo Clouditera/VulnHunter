@@ -18,25 +18,27 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { CSSProperties } from "react";
 
+/** Inline code: texture, not cards (design-spec-markdown-typography-v1.0). */
 const CODE_INLINE: CSSProperties = {
-  padding: "1px 6px",
-  borderRadius: "3px",
-  background: "var(--bg-page)",
-  border: "1px solid var(--divider)",
-  fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-  fontSize: "12.5px",
+  padding: "1px 4px",
+  borderRadius: 4,
+  // N9 ~10% light / ~14% dark via token (tokens.css)
+  background: "var(--md-code-inline-bg)",
+  // no border — was slicing CJK sentences into chips
+  fontFamily: "var(--font-mono)",
+  fontSize: "0.92em",
 };
 
 const CODE_BLOCK: CSSProperties = {
   margin: "6px 0 10px",
   padding: "12px 14px",
   background: "var(--bg-page)",
-  border: "1px solid var(--divider)",
-  borderRadius: "6px",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
   overflow: "auto",
   fontSize: "12.5px",
-  fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-  lineHeight: 1.5,
+  fontFamily: "var(--font-mono)",
+  lineHeight: 1.6,
 };
 
 const LINK: CSSProperties = {
@@ -47,27 +49,30 @@ const LINK: CSSProperties = {
 const TABLE_WRAP: CSSProperties = {
   margin: "6px 0 12px",
   overflow: "auto",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
 };
 
 const TABLE: CSSProperties = {
   borderCollapse: "collapse",
   fontSize: "13px",
-  width: "auto",
+  width: "100%",
   minWidth: "40%",
 };
 
 const TH: CSSProperties = {
-  padding: "6px 12px",
+  padding: "8px 14px",
   textAlign: "left",
   fontWeight: 600,
-  borderBottom: "2px solid var(--divider)",
+  fontSize: 12,
+  borderBottom: "1px solid var(--divider)",
   color: "var(--text-primary)",
   whiteSpace: "nowrap",
-  background: "var(--bg-page)",
+  background: "var(--bg-header)",
 };
 
 const TD: CSSProperties = {
-  padding: "6px 12px",
+  padding: "8px 14px",
   borderBottom: "1px solid var(--divider)",
   verticalAlign: "top",
 };
@@ -80,24 +85,26 @@ const BLOCKQUOTE: CSSProperties = {
 };
 
 const H1: CSSProperties = {
-  fontSize: "18px",
+  fontSize: 20,
   fontWeight: 700,
-  margin: "12px 0 8px",
+  margin: "20px 0 10px",
   color: "var(--text-primary)",
 };
 const H2: CSSProperties = {
-  fontSize: "16px",
-  fontWeight: 700,
-  margin: "10px 0 6px",
+  fontSize: 16,
+  fontWeight: 650,
+  margin: "16px 0 8px",
+  paddingBottom: 4,
+  borderBottom: "1px solid var(--divider)",
   color: "var(--text-primary)",
 };
 const H3: CSSProperties = {
-  fontSize: "14.5px",
-  fontWeight: 700,
-  margin: "10px 0 4px",
+  fontSize: 14,
+  fontWeight: 600,
+  margin: "12px 0 6px",
   color: "var(--text-primary)",
 };
-const H4: CSSProperties = { ...H3, fontSize: "13.5px" };
+const H4: CSSProperties = { ...H3, fontSize: 13, fontWeight: 600 };
 
 const baseComponents: Components = {
   // Code: inline vs fenced. `className` is "language-xxx" for fenced blocks.
@@ -118,7 +125,7 @@ const baseComponents: Components = {
     );
   },
   pre: ({ children }) => <pre style={CODE_BLOCK}>{children}</pre>,
-  p: ({ children }) => <p style={{ margin: "0 0 8px", lineHeight: 1.7 }}>{children}</p>,
+  p: ({ children }) => <p style={{ margin: "0 0 10px", lineHeight: 1.75 }}>{children}</p>,
   ul: ({ children }) => (
     <ul style={{ margin: "0 0 8px 20px", padding: 0, listStyle: "disc" }}>
       {children}
@@ -127,7 +134,7 @@ const baseComponents: Components = {
   ol: ({ children }) => (
     <ol style={{ margin: "0 0 8px 22px", padding: 0 }}>{children}</ol>
   ),
-  li: ({ children }) => <li style={{ marginBottom: "2px" }}>{children}</li>,
+  li: ({ children }) => <li style={{ marginBottom: 4 }}>{children}</li>,
   h1: ({ children }) => <h1 style={H1}>{children}</h1>,
   h2: ({ children }) => <h2 style={H2}>{children}</h2>,
   h3: ({ children }) => <h3 style={H3}>{children}</h3>,
