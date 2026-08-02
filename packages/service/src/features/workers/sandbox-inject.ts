@@ -14,6 +14,9 @@ import type { TaskSandbox } from "../sandboxes/storage.js";
 export const SANDBOX_RUNTIME_DIR = "/run/vulnhunter";
 export const SANDBOX_CFG_CONTAINER_PATH = `${SANDBOX_RUNTIME_DIR}/sandbox.md`;
 const SSH_DIR = `${SANDBOX_RUNTIME_DIR}/ssh`;
+/** OpenSSH drop-in so bare `ssh vulnhunter-sandbox` works without -F (fish 2026-08-02). */
+const SSH_SYSTEM_DROPIN_PATH = "/etc/ssh/ssh_config.d/99-vulnhunter.conf";
+const SSH_SYSTEM_DROPIN_CONTENT = `Include ${SSH_DIR}/config\n`;
 
 export interface SandboxConnection {
   host: string;
@@ -236,6 +239,13 @@ export function renderInjectionFiles(
         targetPort,
       }),
       mode: 0o444,
+    },
+    // System-wide Include so OpenSSH finds Host vulnhunter-sandbox without -F.
+    // Worker image ships `Include /etc/ssh/ssh_config.d/*.conf` in ssh_config.
+    {
+      containerPath: SSH_SYSTEM_DROPIN_PATH,
+      content: SSH_SYSTEM_DROPIN_CONTENT,
+      mode: 0o644,
     },
     { containerPath: SANDBOX_CFG_CONTAINER_PATH, content: renderSandboxMd(capabilities), mode: 0o444 },
   ];

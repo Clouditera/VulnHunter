@@ -146,14 +146,18 @@ describe("renderInjectionFiles + buildInjectionTar", () => {
     ssh_host_public_key: "ssh-ed25519 AAAASAND",
   };
   const task: any = { id: "t1", metadata: { prepare: { sandbox_capabilities: ["docker"] } } };
-  it("renders four files with exact paths and modes; pins known_hosts when key present", () => {
+  it("renders injection files with exact paths and modes; pins known_hosts when key present", () => {
     const files = renderInjectionFiles(task, mapping, "PRIVATE", null);
     expect(files.map((f) => [f.containerPath, f.mode])).toEqual([
       ["/run/vulnhunter/ssh/id_ed25519", 0o400],
       ["/run/vulnhunter/ssh/known_hosts", 0o444],
       ["/run/vulnhunter/ssh/config", 0o444],
+      ["/etc/ssh/ssh_config.d/99-vulnhunter.conf", 0o644],
       ["/run/vulnhunter/sandbox.md", 0o444],
     ]);
+    const dropin = files.find((f) => f.containerPath.endsWith("99-vulnhunter.conf"));
+    expect(dropin?.content).toBe("Include /run/vulnhunter/ssh/config\n");
+
     expect(files[0]!.content).toBe("PRIVATE");
     expect(files[1]!.content).toContain("[host.docker.internal]:32771 ssh-ed25519 AAAASAND");
     expect(files[2]!.content).toContain("HostName host.docker.internal");
@@ -188,6 +192,7 @@ describe("renderInjectionFiles + buildInjectionTar", () => {
       writeFileSync(tarPath, tar);
       const listing = execFileSync("tar", ["-tvf", tarPath]).toString();
       expect(listing).toContain("run/vulnhunter/ssh/id_ed25519");
+      expect(listing).toContain("etc/ssh/ssh_config.d/99-vulnhunter.conf");
       expect(listing).toMatch(/-r--------.*id_ed25519/);
       expect(listing).toMatch(/-r--r--r--.*sandbox\.md/);
       // tar extracts cleanly
