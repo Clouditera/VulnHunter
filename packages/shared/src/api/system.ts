@@ -1,6 +1,6 @@
 export type LicenseStatus = "active" | "expired" | "not_activated" | "invalid";
 
-export type Edition = "community" | "enterprise";
+export type Edition = "community" | "enterprise" | "saas";
 
 export interface SystemStatus {
   edition: Edition;
