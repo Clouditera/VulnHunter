@@ -10,9 +10,9 @@
 
 <p align="center">
   <a href="./LICENSE">
-    <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License">
+    <img src="https://img.shields.io/badge/license-AGPL%20v3-blue.svg" alt="License">
   </a>
-  <img src="https://img.shields.io/badge/version-2.0.0-green.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.3.2-green.svg" alt="Version">
   <img src="https://img.shields.io/badge/node-20+-brightgreen.svg" alt="Node.js">
   <img src="https://img.shields.io/badge/docker-required-blue.svg" alt="Docker">
 </p>
@@ -193,7 +193,7 @@ See `deploy/.env.example` for all options. Common settings:
 This project uses an **Open Core** model:
 
 - **Core** (root directory): [Apache License 2.0](./LICENSE) — free to use, modify, and distribute
-- **Enterprise** (`packages/enterprise/`): [Business Source License 1.1](./packages/enterprise/LICENSE) — free for personal, educational, and research use; commercial use requires a license. Converts to Apache 2.0 on 2030-06-01.
+- **Enterprise** (`packages/enterprise/`): [Business Source License 1.1](./packages/enterprise/LICENSE) — free for personal, educational, and research use; commercial use requires a license. Converts to AGPL-3.0 on 2030-06-01.
 
 ---
 

@@ -60,7 +60,7 @@ describe("resolveWorkerSshHost", () => {
   });
   it("keeps real addresses and honors the deployment override", () => {
     expect(resolveWorkerSshHost("10.0.0.9")).toBe("10.0.0.9");
-    expect(resolveWorkerSshHost("127.0.0.1", "192.168.31.102")).toBe("192.168.31.102");
+    expect(resolveWorkerSshHost("127.0.0.1", "192.0.2.102")).toBe("192.0.2.102");
     expect(resolveWorkerSshHost("10.0.0.9", "  ")).toBe("10.0.0.9");
   });
 });

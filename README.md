@@ -10,9 +10,9 @@
 
 <p align="center">
   <a href="./LICENSE">
-    <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License">
+    <img src="https://img.shields.io/badge/license-AGPL%20v3-blue.svg" alt="License">
   </a>
-  <img src="https://img.shields.io/badge/version-2.0.0-green.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.3.2-green.svg" alt="Version">
   <img src="https://img.shields.io/badge/node-20+-brightgreen.svg" alt="Node.js">
   <img src="https://img.shields.io/badge/docker-required-blue.svg" alt="Docker">
 </p>
@@ -198,7 +198,7 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env.example up -d
 本项目采用 **Open Core** 模式：
 
 - **核心代码**（根目录）：[Apache License 2.0](./LICENSE) — 自由使用、修改和分发
-- **Enterprise 目录**（`packages/enterprise/`）：[Business Source License 1.1](./packages/enterprise/LICENSE) — 个人/学习/研究免费，商业使用需授权；2030-06-01 自动转为 Apache 2.0
+- **Enterprise 目录**（`packages/enterprise/`）：[Business Source License 1.1](./packages/enterprise/LICENSE) — 个人/学习/研究免费，商业使用需授权；2030-06-01 自动转为 AGPL-3.0
 
 ---
 

@@ -46,5 +46,6 @@
   "exports": {
     ".": "./dist/main.js",
     "./enterprise-api": "./dist/enterprise-api.js"
-  }
+  },
+  "license": "AGPL-3.0-only"
 }
