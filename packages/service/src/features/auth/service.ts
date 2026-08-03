@@ -10,24 +10,35 @@ const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
 
 function getLockoutKey(ip: string, email: string): string {
-  return `${ip}:${email}`;
+  return `${ip}:${email.toLowerCase()}`;
 }
 
-function checkLockout(ip: string, email: string): boolean {
+/**
+ * True while lockout window is active.
+ * After lockedUntil elapses, the entry is cleared so the user can try again
+ * (bugfix: previously `count >= MAX` kept the account locked forever).
+ */
+function checkLockout(ip: string, email: string, now = Date.now()): boolean {
   const key = getLockoutKey(ip, email);
   const entry = loginAttempts.get(key);
   if (!entry) return false;
-  if (entry.lockedUntil > Date.now()) return true;
-  if (entry.count >= MAX_ATTEMPTS) return true;
+  if (entry.lockedUntil > now) return true;
+  // Window expired (or never locked) — drop stale counter so attempts restart.
+  if (entry.lockedUntil > 0 && entry.lockedUntil <= now) {
+    loginAttempts.delete(key);
+    return false;
+  }
   return false;
 }
 
-function recordFailedAttempt(ip: string, email: string): void {
+function recordFailedAttempt(ip: string, email: string, now = Date.now()): void {
   const key = getLockoutKey(ip, email);
+  // If a previous lockout already expired, start fresh before counting.
+  checkLockout(ip, email, now);
   const entry = loginAttempts.get(key) ?? { count: 0, lockedUntil: 0 };
   entry.count++;
   if (entry.count >= MAX_ATTEMPTS) {
-    entry.lockedUntil = Date.now() + LOCKOUT_MS;
+    entry.lockedUntil = now + LOCKOUT_MS;
   }
   loginAttempts.set(key, entry);
 }
@@ -35,6 +46,30 @@ function recordFailedAttempt(ip: string, email: string): void {
 function clearAttempts(ip: string, email: string): void {
   loginAttempts.delete(getLockoutKey(ip, email));
 }
+
+/** Test / ops hooks (in-memory only — not a DB). */
+export function _resetLoginAttemptsForTests(): void {
+  loginAttempts.clear();
+}
+
+export function _getLoginAttemptEntryForTests(ip: string, email: string) {
+  return loginAttempts.get(getLockoutKey(ip, email)) ?? null;
+}
+
+/** Ops: clear lockout for one email (all IPs that keyed it). Returns cleared key count. */
+export function clearLoginLockoutForEmail(email: string): number {
+  const needle = `:${email.toLowerCase()}`;
+  let n = 0;
+  for (const key of [...loginAttempts.keys()]) {
+    if (key.toLowerCase().endsWith(needle)) {
+      loginAttempts.delete(key);
+      n++;
+    }
+  }
+  return n;
+}
+
+export const LOGIN_LOCKOUT = { MAX_ATTEMPTS, LOCKOUT_MS } as const;
 
 export async function login(params: {
   email: string;
