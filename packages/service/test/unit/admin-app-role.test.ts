@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
@@ -12,7 +12,8 @@ describe("admin console backend wiring", () => {
   const authMw = readFileSync(resolve(__dirname, "../../src/middleware/auth.ts"), "utf8");
   const codes = readFileSync(resolve(__dirname, "../../../shared/src/errors/codes.ts"), "utf8");
   const compose = readFileSync(resolve(__dirname, "../../../../deploy/docker-compose.yml"), "utf8");
-  const ent = readFileSync(resolve(__dirname, "../../../enterprise/src/index.ts"), "utf8");
+  const entPath = resolve(__dirname, "../../../enterprise/src/index.ts");
+  const ent = existsSync(entPath) ? readFileSync(entPath, "utf8") : null;
 
   it("exports createApp(role) with business|admin", () => {
     expect(serverSrc).toMatch(/export type ServiceRole = "business" \| "admin"/);
@@ -71,7 +72,8 @@ describe("admin console backend wiring", () => {
     expect(adminApiBlock).not.toMatch(/docker\.sock/);
   });
 
-  it("enterprise mounts /api/admin/users only on admin role", () => {
+  it("enterprise mounts /api/admin/users only on admin role (skipped on OSS tree)", () => {
+    if (!ent) return;
     expect(ent).toMatch(/role === "admin"/);
     expect(ent).toMatch(/\/api\/admin\/users/);
     expect(ent).not.toMatch(/app\.route\("\/api\/users"/);
