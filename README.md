@@ -224,3 +224,12 @@ VulnHunter 是安全研究工具。请仅对您拥有或获得明确授权的系
 <p align="center">
   <sub>Built with ❤️ for the security research community</sub>
 </p>
+
+---
+
+## 贡献与安全
+
+- 贡献指南与 CLA：[CONTRIBUTING.md](./CONTRIBUTING.md) · [CLA.md](./CLA.md)
+- 安全漏洞私下上报：[SECURITY.md](./SECURITY.md)
+- 许可证：[AGPL-3.0](./LICENSE)
+

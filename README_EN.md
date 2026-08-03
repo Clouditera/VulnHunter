@@ -219,3 +219,12 @@ VulnHunter is a security research tool. Only scan systems, codebases, and servic
 <p align="center">
   <sub>Built with ❤️ for the security research community</sub>
 </p>
+
+---
+
+## Contributing & security
+
+- Contributing guide and CLA: [CONTRIBUTING.md](./CONTRIBUTING.md) · [CLA.md](./CLA.md)
+- Private vulnerability reports: [SECURITY.md](./SECURITY.md)
+- License: [AGPL-3.0](./LICENSE)
+
