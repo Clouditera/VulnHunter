@@ -14,6 +14,7 @@ import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
 import { SessionSearchModal } from "../features/chat/components/SessionSearchModal.js";
 import { FeedbackModal } from "../features/feedback/components/FeedbackModal.js";
 import { OnboardingHost } from "../features/onboarding/OnboardingTour.js";
+import { useEdition } from "../shared/hooks/useEdition.js";
 
 const NAV_ITEMS: Array<{ to: string; icon: IconName; labelKey: string; testid: string; tour?: string }> = [
   { to: "/chat", icon: "chat", labelKey: "nav.chat", testid: "nav-chat" },
@@ -49,6 +50,7 @@ export function AppLayout() {
   const [showChangelogDrawer, setShowChangelogDrawer] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const { isSaas } = useEdition();
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [listError, setListError] = useState(false);
@@ -384,7 +386,7 @@ export function AppLayout() {
         )}
 
         <div data-testid="nav-bottom" style={collapsed ? FOOTER_COLLAPSED : FOOTER_EXPANDED}>
-          {!collapsed ? (
+          {isSaas ? (!collapsed ? (
             <>
             <button
               type="button"
@@ -427,7 +429,7 @@ export function AppLayout() {
               <Icon name="send" size={15} />
             </button>
             </>
-          )}
+          )) : null}
           <VersionEntry
             collapsed={collapsed}
             version={systemStatus?.version?.version}
@@ -478,7 +480,7 @@ export function AppLayout() {
         onSelect={handleSelectSession}
         onNewChat={handleNewChat}
       />
-      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+      {isSaas ? <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} /> : null}
       {!isAdmin ? <OnboardingHost /> : null}
     </div>
   );

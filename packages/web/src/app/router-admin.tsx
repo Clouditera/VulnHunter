@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
 import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
 import { ActivatePage } from "../features/auth/pages/ActivatePage.js";
@@ -13,6 +14,23 @@ import { SystemPage } from "../features/admin/pages/SystemPage.js";
 import { LicensePage } from "../features/admin/pages/LicensePage.js";
 import { CreditsPage } from "../features/admin/pages/CreditsPage.js";
 import { ForbiddenPage } from "../features/admin/pages/ForbiddenPage.js";
+import { useEdition } from "../shared/hooks/useEdition.js";
+
+/** Hide SaaS-only admin pages outside saas edition (direct URL fallback). */
+function SaasOnly({ children }: { children: ReactNode }) {
+  const { isSaas, isLoading } = useEdition();
+  if (isLoading) return <LoadingScreen />;
+  if (!isSaas) return <Navigate to="/admin/users" replace />;
+  return <>{children}</>;
+}
+
+/** Hide license page on community (direct URL fallback). */
+function EnterpriseOrAbove({ children }: { children: ReactNode }) {
+  const { isEnterpriseOrAbove, isLoading } = useEdition();
+  if (isLoading) return <LoadingScreen />;
+  if (!isEnterpriseOrAbove) return <Navigate to="/admin/users" replace />;
+  return <>{children}</>;
+}
 
 function LoadingScreen() {
   return (
@@ -150,10 +168,10 @@ export const router = createBrowserRouter([
               { index: true, element: <Navigate to="users" replace /> },
               { path: "users", element: <UsersPage /> },
               { path: "smtp", element: <SmtpPage /> },
-              { path: "feedback", element: <FeedbackPage /> },
+              { path: "feedback", element: <SaasOnly><FeedbackPage /></SaasOnly> },
               { path: "system", element: <SystemPage /> },
-              { path: "license", element: <LicensePage /> },
-              { path: "credits", element: <CreditsPage /> },
+              { path: "license", element: <EnterpriseOrAbove><LicensePage /></EnterpriseOrAbove> },
+              { path: "credits", element: <SaasOnly><CreditsPage /></SaasOnly> },
             ],
           },
         ],
