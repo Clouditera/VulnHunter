@@ -18,69 +18,6 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
-  packages/enterprise:
-    dependencies:
-      '@vulnhunter/service':
-        specifier: workspace:*
-        version: link:../service
-      bcrypt:
-        specifier: ^5.1.1
-        version: 5.1.1
-      hono:
-        specifier: ^4.7.4
-        version: 4.12.14
-    devDependencies:
-      '@types/bcrypt':
-        specifier: ^5.0.2
-        version: 5.0.2
-      '@types/node':
-        specifier: ^22.10.2
-        version: 22.19.17
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.9
-        version: 2.1.9(@types/node@22.19.17)
-
-  packages/enterprise/license-issuer:
-    dependencies:
-      '@hono/node-server':
-        specifier: ^1.13.7
-        version: 1.19.14(hono@4.12.14)
-      hono:
-        specifier: ^4.7.4
-        version: 4.12.14
-    devDependencies:
-      '@types/node':
-        specifier: ^22.10.2
-        version: 22.19.17
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.9
-        version: 2.1.9(@types/node@22.19.17)
-
-  packages/saas:
-    dependencies:
-      '@vulnhunter/service':
-        specifier: workspace:*
-        version: link:../service
-      hono:
-        specifier: ^4.7.4
-        version: 4.12.14
-    devDependencies:
-      '@types/node':
-        specifier: ^22.10.2
-        version: 22.19.17
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.9
-        version: 2.1.9(@types/node@22.19.17)
-
   packages/service:
     dependencies:
       '@hono/node-server':

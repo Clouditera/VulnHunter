@@ -7,6 +7,8 @@ dist/
 coverage/
 .data/
 release/
+!scripts/release/
+!scripts/release/**
 submodules/DevEye/
 
 # Removed local/test artifacts

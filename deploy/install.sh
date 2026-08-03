@@ -240,7 +240,11 @@ if [[ -f "$PKG_ROOT/.secrets/license-public.pem" ]]; then
   cp -f "$PKG_ROOT/.secrets/license-public.pem" "$license_key_file"
   chmod 0444 "$license_key_file" 2>/dev/null || true
 else
-  echo "[install] warning: package missing .secrets/license-public.pem — activation will fail until provided at $license_key_file" >&2
+  # Community packs ship without a license public key. Touch a placeholder so the
+  # compose bind-mount path exists; enterprise/saas activation is N/A.
+  : > "$license_key_file"
+  chmod 0444 "$license_key_file" 2>/dev/null || true
+  echo "[install] note: no license-public.pem in package (community) — placeholder at $license_key_file" >&2
 fi
 
 # Patch instance .env
