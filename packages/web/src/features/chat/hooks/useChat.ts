@@ -69,7 +69,8 @@ export function useChat() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messagesBySession, setMessagesBySession] = useState<Record<string, ChatMessage[]>>({});
   const [artifactsBySession, setArtifactsBySession] = useState<Record<string, ChatArtifact[]>>({});
-  const [streaming, setStreaming] = useState(false);
+  /** Per-session streaming flags — one session thinking must not block another (fish 2026-08-03). */
+  const [streamingBySession, setStreamingBySession] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [lastError, setLastError] = useState<string | null>(null);
   const [draftSession, setDraftSession] = useState<ChatSession | null>(null);
@@ -81,8 +82,10 @@ export function useChat() {
   const wsRef = useRef<WebSocket | null>(null);
   const activeIdRef = useRef<string | null>(null);
   const draftSessionRef = useRef<ChatSession | null>(null);
+  const streamingBySessionRef = useRef<Record<string, boolean>>({});
   activeIdRef.current = activeId;
   draftSessionRef.current = draftSession;
+  streamingBySessionRef.current = streamingBySession;
 
   const pushActivity = useCallback((sid: string, draft: ActivityDraft) => {
     const now = Date.now();
@@ -262,11 +265,10 @@ export function useChat() {
   useEffect(() => {
     if (!activeId || activeId === "draft") return;
     // Reset per-session transient state whenever we switch / reconnect.
-    // Without this, a stale `currentAssistantId.current` or `streaming`
-    // flag from the previous session can cause replayed bridge-proxy
-    // events to append phantom bubbles to the new session.
+    // Without this, a stale `currentAssistantId.current` can cause
+    // replayed bridge-proxy events to append phantom bubbles.
+    // Do NOT clear other sessions' streaming flags on switch.
     currentAssistantId.current = null;
-    setStreaming(false);
     setLastError(null);
 
     const wsUrl = buildWsUrl(`/ws/chat/${activeId}`);
@@ -287,7 +289,7 @@ export function useChat() {
     ws.onerror = () => {
       // Idle historical sessions have no in-memory worker — server rejects WS (404).
       // History still loads via REST; only surface error while actively streaming.
-      if (streaming) setLastError("WebSocket connection error");
+      if (streamingBySessionRef.current[activeId]) setLastError("WebSocket connection error");
     };
 
     return () => {
@@ -316,7 +318,7 @@ export function useChat() {
         case "agent_start":
         case "turn_start":
           pushActivity(sid, thinkingActivity());
-          setStreaming(true);
+          setStreamingBySession((prev) => ({ ...prev, [sid]: true }));
           setSessions((s) =>
             s.map((x) => (x.id === sid ? { ...x, worker_state: "running" as const } : x)),
           );
@@ -325,7 +327,7 @@ export function useChat() {
         case "agent_end":
         case "turn_end":
           expireActivities(sid, 2500);
-          setStreaming(false);
+          setStreamingBySession((prev) => ({ ...prev, [sid]: false }));
           return;
 
         case "message_start": {
@@ -503,7 +505,7 @@ export function useChat() {
         case "error": {
           pushActivity(sid, warningActivity());
           setLastError(evt.error ?? "pi error");
-          setStreaming(false);
+          setStreamingBySession((prev) => ({ ...prev, [sid]: false }));
           return;
         }
 
@@ -525,6 +527,7 @@ export function useChat() {
   const activity = activeActivities[activeActivities.length - 1] ?? null;
   const messages = activeId ? (messagesBySession[activeId] ?? []) : [];
   const artifacts = activeId ? (artifactsBySession[activeId] ?? []) : [];
+  const streaming = activeId ? Boolean(streamingBySession[activeId]) : false;
   const activeSession = useMemo(
     () =>
       draftSession && activeId === draftSession.id
@@ -616,7 +619,11 @@ export function useChat() {
       delete next[id];
       return next;
     });
-    setStreaming(false);
+    setStreamingBySession((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     setLastError(null);
 
     if (wasActive || draftSessionRef.current?.id === id) {
@@ -646,7 +653,8 @@ export function useChat() {
       // Allow sending when there are images even with empty text
       // (mirrors ChatGPT / Claude behaviour — "describe this image").
       const hasImages = !!images && images.length > 0;
-      if (!activeId || (!text.trim() && !hasImages) || streaming) return;
+      // Only block if *this* session is already streaming — other sessions OK.
+      if (!activeId || (!text.trim() && !hasImages) || streamingBySession[activeId]) return;
       let sid = activeId;
       if (draftSession && activeId === draftSession.id) {
         const created = await createSession();
@@ -669,7 +677,7 @@ export function useChat() {
         [sid]: [...(prev[sid] ?? []), optimistic],
       }));
       pushActivity(sid, thinkingActivity());
-      setStreaming(true);
+      setStreamingBySession((prev) => ({ ...prev, [sid]: true }));
       setLastError(null);
       try {
         // Image attachments are sent as file-path references inside the
@@ -699,11 +707,11 @@ export function useChat() {
           [sid]: [...(prev[sid] ?? []), errMsg],
         }));
         pushActivity(sid, warningActivity(userMessage));
-        setStreaming(false);
+        setStreamingBySession((prev) => ({ ...prev, [sid]: false }));
         setLastError(code);
       }
     },
-    [activeId, streaming, messagesBySession, pushActivity, draftSession, createSession],
+    [activeId, streamingBySession, messagesBySession, pushActivity, draftSession, createSession],
   );
 
   const abort = useCallback(() => {
@@ -712,7 +720,7 @@ export function useChat() {
       /* best-effort */
     });
     pushActivity(activeId, stoppedActivity());
-    setStreaming(false);
+    setStreamingBySession((prev) => ({ ...prev, [activeId]: false }));
   }, [activeId, pushActivity]);
 
   return {
