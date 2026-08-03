@@ -91,9 +91,12 @@ export function UsersSection() {
           return (
           <div
             key={u.id}
+            data-status={u.status}
             style={{
               ...ROW,
-              opacity: u.status === "suspended" ? 0.55 : 1,
+              // Suspended users stay fully interactive for admin actions
+              // (re-enable must remain clickable — fish 2026-08-03).
+              // Visual cue: muted text only, not whole-row opacity.
               ...(isLast ? { borderBottom: "none", borderBottomLeftRadius: "8px", borderBottomRightRadius: "8px" } : {}),
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
@@ -106,11 +109,15 @@ export function UsersSection() {
                 border: u.status === "active" ? "none" : "1.5px solid var(--text-secondary)",
               }} />
             </div>
-            <div style={{ flex: 1, fontSize: "13px", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{
+              flex: 1, fontSize: "13px", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 8,
+              color: u.status === "suspended" ? "var(--text-secondary)" : "var(--text-primary)",
+            }}>
               <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{u.email}</span>
               {u.is_system ? <SystemBadge /> : null}
+              {u.status === "suspended" ? <SuspendedBadge /> : null}
             </div>
-            <div style={{ width: "120px", fontSize: "13px", color: u.display_name ? "var(--text-primary)" : "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.display_name || "—"}</div>
+            <div style={{ width: "120px", fontSize: "13px", color: u.display_name ? (u.status === "suspended" ? "var(--text-secondary)" : "var(--text-primary)") : "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.display_name || "—"}</div>
             <div title={u.admin_remark ?? ""} style={{ width: "180px", fontSize: "12px", color: u.admin_remark ? "var(--text-primary)" : "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.admin_remark || "—"}</div>
             <div style={{ width: "100px" }}>
               <RoleBadge role={u.role} />
@@ -189,6 +196,26 @@ function SourceBadge({ source }: { source?: string }) {
       }}
     >
       {label}
+    </span>
+  );
+}
+
+function SuspendedBadge() {
+  return (
+    <span
+      data-testid="user-suspended-badge"
+      style={{
+        flexShrink: 0,
+        fontSize: 10,
+        fontWeight: 600,
+        padding: "2px 7px",
+        borderRadius: 999,
+        background: "var(--bg-page)",
+        color: "var(--text-secondary)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      {i18n.t("settings.users.status.suspended") || "已禁用"}
     </span>
   );
 }
