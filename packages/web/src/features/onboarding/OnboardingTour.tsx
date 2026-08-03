@@ -10,6 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../shared/api/client.js";
 import { i18n } from "../../shared/i18n/index.js";
 import { useSystemStatus } from "../auth/hooks/useSystemStatus.js";
+import { useEdition } from "../../shared/hooks/useEdition.js";
 
 type Step = {
   anchor: string;
@@ -42,6 +43,7 @@ export function OnboardingTour({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
+  const { isSaas } = useEdition();
   const [step, setStep] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [fallback, setFallback] = useState(false);
@@ -110,7 +112,11 @@ export function OnboardingTour({
 
   const isLast = step >= STEPS.length - 1;
   const title = i18n.t(STEPS[step]?.titleKey ?? "onboarding.step1Title");
-  const body = i18n.t(STEPS[step]?.bodyKey ?? "onboarding.step1Body");
+  const bodyKey =
+    step === 0 && isSaas
+      ? "onboarding.step1BodySaas"
+      : (STEPS[step]?.bodyKey ?? "onboarding.step1Body");
+  const body = i18n.t(bodyKey);
   const stepLabel = i18n.t("onboarding.stepOf").replace("{n}", String(step + 1));
 
   // Spotlight hole geometry

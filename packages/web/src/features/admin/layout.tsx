@@ -6,20 +6,36 @@ import { i18n } from "../../shared/i18n/index.js";
 import { theme } from "../../shared/theme/index.js";
 import { Icon, type IconName } from "../../shared/components/Icon.js";
 import { useSystemStatus } from "../auth/hooks/useSystemStatus.js";
+import { useEdition } from "../../shared/hooks/useEdition.js";
 
-const NAV: Array<{ to: string; icon: IconName; labelKey: string; testid: string }> = [
+type NavItem = {
+  to: string;
+  icon: IconName;
+  labelKey: string;
+  testid: string;
+  /** When set, item only shows for matching edition tier. */
+  when?: "saas" | "enterprise+";
+};
+
+const NAV: NavItem[] = [
   { to: "/admin/users", icon: "users", labelKey: "admin.nav.users", testid: "admin-nav-users" },
   { to: "/admin/smtp", icon: "mail", labelKey: "admin.nav.smtp", testid: "admin-nav-smtp" },
-  { to: "/admin/feedback", icon: "send", labelKey: "admin.nav.feedback", testid: "admin-nav-feedback" },
+  { to: "/admin/feedback", icon: "send", labelKey: "admin.nav.feedback", testid: "admin-nav-feedback", when: "saas" },
   { to: "/admin/system", icon: "sliders", labelKey: "admin.nav.system", testid: "admin-nav-system" },
-  { to: "/admin/license", icon: "key", labelKey: "admin.nav.license", testid: "admin-nav-license" },
-  { to: "/admin/credits", icon: "gift", labelKey: "admin.nav.credits", testid: "admin-nav-credits" },
+  { to: "/admin/license", icon: "key", labelKey: "admin.nav.license", testid: "admin-nav-license", when: "enterprise+" },
+  { to: "/admin/credits", icon: "gift", labelKey: "admin.nav.credits", testid: "admin-nav-credits", when: "saas" },
 ];
 
 export function AdminLayout() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { data: status } = useSystemStatus();
+  const { isSaas, isEnterpriseOrAbove } = useEdition();
+  const navItems = NAV.filter((item) => {
+    if (item.when === "saas") return isSaas;
+    if (item.when === "enterprise+") return isEnterpriseOrAbove;
+    return true;
+  });
   const [, tick] = useState(0);
   useEffect(() => {
     const u1 = i18n.onChange(() => tick((n) => n + 1));
@@ -97,7 +113,7 @@ export function AdminLayout() {
         </div>
 
         <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
-          {NAV.map((item) => (
+          {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

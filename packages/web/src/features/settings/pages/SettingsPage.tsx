@@ -11,6 +11,7 @@ import { ProfileSection } from "../components/ProfileSection.js";
 import { CloudRouterPromo, CredentialsEmptyNotice } from "../components/CloudRouterPromo.js";
 import { CloudRouterBalanceGlance, CloudRouterBalanceStrip } from "../components/CloudRouterBalance.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
+import { useEdition } from "../../../shared/hooks/useEdition.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Design tokens mirroring the prototype.                                    */
@@ -302,6 +303,7 @@ export function SettingsPage() {
 
   // Must be declared before any useEffect that references sysStatus
   const { data: sysStatus } = useSystemStatus();
+  const { isSaas } = useEdition();
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [cred, setCred] = useState<LlmCredential | null>(null);
   const [loading, setLoading] = useState(true);
@@ -834,7 +836,7 @@ export function SettingsPage() {
             {credentials.length === 0 && !isNewDraft ? (
               <CredentialsEmptyNotice onAdd={newCredential} />
             ) : null}
-            <CloudRouterPromo />
+            {isSaas ? <CloudRouterPromo /> : null}
             {(() => {
               // Form body JSX — captured once; rendered inside draft row + editing rows.
               const FORM_BODY = (
@@ -1374,7 +1376,7 @@ export function SettingsPage() {
                         borderTop: "1px solid var(--divider)",
                       }}
                     >
-                      {!isDraft && c ? <CloudRouterBalanceStrip baseUrl={c.base_url} /> : null}
+                      {!isDraft && c && isSaas ? <CloudRouterBalanceStrip baseUrl={c.base_url} /> : null}
                       {FORM_BODY}
                       <div
                         style={{
@@ -1541,7 +1543,7 @@ export function SettingsPage() {
                       {c.credential_health === "key_unavailable" ? "⚠ key 未配置" : "⚠ 无法解密"}
                     </span>
                   )}
-                  <CloudRouterBalanceGlance baseUrl={c.base_url} />
+                  {isSaas ? <CloudRouterBalanceGlance baseUrl={c.base_url} /> : null}
                   <Icon
                     name="chevron-down"
                     size={14}
