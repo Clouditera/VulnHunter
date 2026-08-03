@@ -10,17 +10,32 @@ import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { formatBalanceAmount, isCloudrouterBaseUrl } from "./CloudRouterPromo.js";
 
-type BalancePayload = {
-  available?: boolean;
-  remaining?: number | null;
-  unit?: string | null;
-  mode?: string | null;
-  updated_at?: string | null;
-  planName?: string | null;
+/** API union from `api.promo.cloudrouter.balance()`. */
+export type CloudRouterBalanceResult =
+  | {
+      available: true;
+      remaining: number | null;
+      unit: string | null;
+      planName: string | null;
+      mode: string | null;
+      updated_at: string;
+    }
+  | { available: false };
+
+/** Narrowed available result with a finite remaining figure. */
+export type CloudRouterBalanceReal = {
+  available: true;
+  remaining: number;
+  unit: string | null;
+  planName: string | null;
+  mode: string | null;
+  updated_at: string;
 };
 
-/** True only when we have a real finite balance figure to show. */
-export function hasRealCloudRouterBalance(data: BalancePayload | null | undefined): boolean {
+/** Type predicate: only true when UI should render a balance figure. */
+export function hasRealCloudRouterBalance(
+  data: CloudRouterBalanceResult | null | undefined,
+): data is CloudRouterBalanceReal {
   if (!data || data.available !== true) return false;
   if (data.mode === "unlimited") return false;
   return typeof data.remaining === "number" && Number.isFinite(data.remaining);
@@ -45,7 +60,7 @@ export function CloudRouterBalanceGlance({ baseUrl }: { baseUrl?: string | null 
   if (!enabled) return null;
   if (!hasRealCloudRouterBalance(data)) return null;
 
-  const amount = formatBalanceAmount(data!.remaining, data!.unit);
+  const amount = formatBalanceAmount(data.remaining, data.unit);
 
   return (
     <span
@@ -110,7 +125,7 @@ export function CloudRouterBalanceStrip({ baseUrl }: { baseUrl?: string | null }
             fontVariantNumeric: "tabular-nums",
           }}
         >
-          {formatBalanceAmount(data!.remaining, data!.unit)}
+          {formatBalanceAmount(data.remaining, data.unit)}
         </strong>
         {updated ? (
           <span style={{ marginLeft: 8, fontSize: 11.5 }}>
