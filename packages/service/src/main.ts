@@ -17,6 +17,7 @@ import { initInstallation } from "./features/system/index.js";
 import { provisionSystemAdmin } from "./features/auth/system-admin.js";
 
 type EnterpriseModule = typeof import("@vulnhunter/enterprise");
+type SaasModule = typeof import("@vulnhunter/saas");
 
 function resolveServiceRole(): ServiceRole {
   const raw = (process.env.SERVICE_ROLE ?? "business").toLowerCase();
@@ -30,6 +31,16 @@ async function loadEnterpriseModule(): Promise<EnterpriseModule> {
     if ((err as NodeJS.ErrnoException).code !== "ERR_MODULE_NOT_FOUND") throw err;
     const enterprisePath = "../../enterprise/dist/index.js";
     return await import(enterprisePath) as EnterpriseModule;
+  }
+}
+
+async function loadSaasModule(): Promise<SaasModule> {
+  try {
+    return await import("@vulnhunter/saas");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ERR_MODULE_NOT_FOUND") throw err;
+    const saasPath = "../../saas/dist/index.js";
+    return await import(saasPath) as SaasModule;
   }
 }
 
@@ -57,7 +68,8 @@ async function main(): Promise<void> {
 
   const app = createApp(role);
   let tickEnterpriseLicense: (() => Promise<void>) | null = null;
-  if (config.edition === "enterprise") {
+  // saas is a superset of enterprise (license + multi-user + SaaS ops).
+  if (config.edition === "enterprise" || config.edition === "saas") {
     try {
       const enterpriseModule = await loadEnterpriseModule();
       const enterprise = await enterpriseModule.initEnterprise(app, config, role);
@@ -66,7 +78,16 @@ async function main(): Promise<void> {
         tickEnterpriseLicense = enterprise.tickLicense;
       }
     } catch (err) {
-      logger.warn({ err }, "Enterprise module not found — running community edition");
+      logger.warn({ err }, "Enterprise module not found — running without enterprise features");
+    }
+  }
+
+  if (config.edition === "saas") {
+    try {
+      const saasModule = await loadSaasModule();
+      await saasModule.initSaas(app, config, role);
+    } catch (err) {
+      logger.warn({ err }, "SaaS module not found — running without SaaS features");
     }
   }
 

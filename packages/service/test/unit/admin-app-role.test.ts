@@ -77,3 +77,36 @@ describe("admin console backend wiring", () => {
     expect(ent).not.toMatch(/app\.route\("\/api\/users"/);
   });
 });
+
+describe("edition / saas seam (split A1)", () => {
+  const mainSrc = readFileSync(resolve(__dirname, "../../src/main.ts"), "utf8");
+  const configSrc = readFileSync(resolve(__dirname, "../../src/infra/config.ts"), "utf8");
+  const serverSrc = readFileSync(resolve(__dirname, "../../src/server.ts"), "utf8");
+  const entApi = readFileSync(resolve(__dirname, "../../src/enterprise-api.ts"), "utf8");
+  const sharedSys = readFileSync(resolve(__dirname, "../../../shared/src/api/system.ts"), "utf8");
+
+  it("config and shared Edition accept saas", () => {
+    expect(configSrc).toMatch(/"community" \| "enterprise" \| "saas"/);
+    expect(sharedSys).toMatch(/"community" \| "enterprise" \| "saas"/);
+  });
+
+  it("main loads enterprise for enterprise|saas and saas module when saas", () => {
+    expect(mainSrc).toMatch(/loadSaasModule/);
+    expect(mainSrc).toMatch(/@vulnhunter\/saas/);
+    expect(mainSrc).toMatch(/initSaas/);
+    expect(mainSrc).toMatch(/edition === "enterprise" \|\| config\.edition === "saas"/);
+  });
+
+  it("admin mounts community users only for community edition", () => {
+    expect(serverSrc).toMatch(/mountCommunityUsers: edition === "community"/);
+  });
+
+  it("enterprise-api exports A2-A4 surface", () => {
+    expect(entApi).toMatch(/requireAuth/);
+    expect(entApi).toMatch(/licenseGuard/);
+    expect(entApi).toMatch(/queryContextFromUser/);
+    expect(entApi).toMatch(/getDefaultCredential/);
+    expect(entApi).toMatch(/listCredentials/);
+    expect(entApi).toMatch(/getCredentialById/);
+  });
+});

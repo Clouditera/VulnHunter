@@ -3,10 +3,15 @@ export { getVersionInfo } from "./infra/version.js";
 export type { ServiceConfig } from "./infra/config.js";
 export { getDb } from "./infra/db/client.js";
 export { setLicenseGuard } from "./middleware/license-guard.js";
-export { requireAdmin } from "./middleware/auth.js";
+export { requireAdmin, requireAuth } from "./middleware/auth.js";
 export { getInstallationId } from "./features/system/installation.js";
 export { setLicenseStatusGetter } from "./features/system/license-status.js";
 export type { CoreLicenseStatus } from "./features/system/license-status.js";
 export { createUserAccount } from "./features/auth/service.js";
 export { listUsers, findUserByEmail, getUserById, updateUser, countAdmins, deleteUser, deleteAllSessionsForUser } from "./features/auth/storage.js";
 export { countTasksForUser } from "./features/tasks/storage.js";
+
+export { licenseGuard } from "./middleware/license-guard.js";
+export { queryContextFromUser } from "./infra/query-context.js";
+export type { QueryContext } from "./infra/query-context.js";
+export { getDefaultCredential, listCredentials, getCredentialById } from "./features/settings/storage.js";

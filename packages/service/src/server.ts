@@ -71,7 +71,8 @@ export function createApp(role: ServiceRole = "business"): Hono {
     app.route("/api/auth", adminAuthRouter);
     // community users mounted here; enterprise attaches /api/admin/users in initEnterprise
     const edition = (process.env.EDITION ?? "community").toLowerCase();
-    mountAdminRoutes(app, { mountCommunityUsers: edition !== "enterprise" });
+    // community only: saas/enterprise use enterprise multi-user routes
+    mountAdminRoutes(app, { mountCommunityUsers: edition === "community" });
     app.onError(errorHandler);
     return app;
   }

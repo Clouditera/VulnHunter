@@ -13,7 +13,7 @@ function optionalEnv(key: string, defaultValue: string): string {
 export interface ServiceConfig {
   port: number;
   dataDir: string;
-  edition: "community" | "enterprise";
+  edition: "community" | "enterprise" | "saas";
   db: {
     url: string;
   };
@@ -51,10 +51,11 @@ export interface ServiceConfig {
 }
 
 export function loadConfig(): ServiceConfig {
-  const edition = optionalEnv("EDITION", "community");
-  if (edition !== "community" && edition !== "enterprise") {
-    throw new Error(`Invalid EDITION: ${edition}`);
+  const editionRaw = optionalEnv("EDITION", "community").toLowerCase();
+  if (editionRaw !== "community" && editionRaw !== "enterprise" && editionRaw !== "saas") {
+    throw new Error(`Invalid EDITION: ${editionRaw}`);
   }
+  const edition = editionRaw as ServiceConfig["edition"];
 
   return {
     port: Number(optionalEnv("PORT", "28080")),
