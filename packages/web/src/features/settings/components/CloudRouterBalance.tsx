@@ -1,5 +1,7 @@
 /**
  * CloudRouter balance on credential rows (collapsed glance + expanded strip).
+ * Only render when API returns a finite remaining number (fish 2026-08-03):
+ * keys without quota / unlimited plans / errors → hide entirely.
  */
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,6 +9,22 @@ import { api } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { formatBalanceAmount, isCloudrouterBaseUrl } from "./CloudRouterPromo.js";
+
+type BalancePayload = {
+  available?: boolean;
+  remaining?: number | null;
+  unit?: string | null;
+  mode?: string | null;
+  updated_at?: string | null;
+  planName?: string | null;
+};
+
+/** True only when we have a real finite balance figure to show. */
+export function hasRealCloudRouterBalance(data: BalancePayload | null | undefined): boolean {
+  if (!data || data.available !== true) return false;
+  if (data.mode === "unlimited") return false;
+  return typeof data.remaining === "number" && Number.isFinite(data.remaining);
+}
 
 export function useCloudrouterBalance(enabled: boolean) {
   return useQuery({
@@ -25,16 +43,14 @@ export function CloudRouterBalanceGlance({ baseUrl }: { baseUrl?: string | null 
   const [, tick] = useState(0);
   useEffect(() => i18n.onChange(() => tick((n) => n + 1)), []);
   if (!enabled) return null;
+  if (!hasRealCloudRouterBalance(data)) return null;
 
-  const unavailable = !data || data.available === false;
-  const text = unavailable
-    ? i18n.t("settings.creds.cloudRouter.balanceUnavailableShort")
-    : `${i18n.t("settings.creds.cloudRouter.balanceLabel")} ${formatBalanceAmount(data.remaining, data.unit)}`;
+  const amount = formatBalanceAmount(data!.remaining, data!.unit);
 
   return (
     <span
       data-testid="cloudrouter-balance-glance"
-      title={text}
+      title={`${i18n.t("settings.creds.cloudRouter.balanceLabel")} ${amount}`}
       style={{
         fontSize: 11,
         color: "var(--text-secondary)",
@@ -43,16 +59,8 @@ export function CloudRouterBalanceGlance({ baseUrl }: { baseUrl?: string | null 
         opacity: isFetching ? 0.7 : 1,
       }}
     >
-      {unavailable ? (
-        text
-      ) : (
-        <>
-          <span style={{ fontWeight: 500 }}>{i18n.t("settings.creds.cloudRouter.balanceLabel")} </span>
-          <span style={{ fontWeight: 650, color: "var(--text-primary)" }}>
-            {formatBalanceAmount(data.remaining, data.unit)}
-          </span>
-        </>
-      )}
+      <span style={{ fontWeight: 500 }}>{i18n.t("settings.creds.cloudRouter.balanceLabel")} </span>
+      <span style={{ fontWeight: 650, color: "var(--text-primary)" }}>{amount}</span>
     </span>
   );
 }
@@ -61,14 +69,14 @@ export function CloudRouterBalanceGlance({ baseUrl }: { baseUrl?: string | null 
 export function CloudRouterBalanceStrip({ baseUrl }: { baseUrl?: string | null }) {
   const enabled = isCloudrouterBaseUrl(baseUrl);
   const qc = useQueryClient();
-  const { data, isFetching, refetch, isError } = useCloudrouterBalance(enabled);
+  const { data, isFetching, refetch } = useCloudrouterBalance(enabled);
   const [, tick] = useState(0);
   useEffect(() => i18n.onChange(() => tick((n) => n + 1)), []);
   if (!enabled) return null;
+  if (!hasRealCloudRouterBalance(data)) return null;
 
-  const unavailable = !data || data.available === false || isError;
   const updated =
-    data && data.available && data.updated_at
+    data?.updated_at
       ? new Date(data.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       : null;
 
@@ -90,32 +98,26 @@ export function CloudRouterBalanceStrip({ baseUrl }: { baseUrl?: string | null }
       }}
     >
       <Icon name="wallet" size={16} style={{ color: "var(--brand)", flexShrink: 0 }} />
-      {unavailable ? (
-        <span style={{ flex: 1 }} data-testid="cloudrouter-balance-unavailable">
-          {i18n.t("settings.creds.cloudRouter.balanceUnavailable")}
+      <span style={{ flex: 1, minWidth: 0 }} data-testid="cloudrouter-balance-value">
+        <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>
+          {i18n.t("settings.creds.cloudRouter.balanceTitle")}{" "}
         </span>
-      ) : (
-        <span style={{ flex: 1, minWidth: 0 }} data-testid="cloudrouter-balance-value">
-          <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>
-            {i18n.t("settings.creds.cloudRouter.balanceTitle")}{" "}
+        <strong
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: "var(--text-primary)",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {formatBalanceAmount(data!.remaining, data!.unit)}
+        </strong>
+        {updated ? (
+          <span style={{ marginLeft: 8, fontSize: 11.5 }}>
+            · {i18n.t("settings.creds.cloudRouter.balanceUpdated").replace("{t}", updated)}
           </span>
-          <strong
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: "var(--text-primary)",
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {formatBalanceAmount(data.remaining, data.unit)}
-          </strong>
-          {updated ? (
-            <span style={{ marginLeft: 8, fontSize: 11.5 }}>
-              · {i18n.t("settings.creds.cloudRouter.balanceUpdated").replace("{t}", updated)}
-            </span>
-          ) : null}
-        </span>
-      )}
+        ) : null}
+      </span>
       <button
         type="button"
         data-testid="cloudrouter-balance-refresh"
@@ -145,9 +147,7 @@ export function CloudRouterBalanceStrip({ baseUrl }: { baseUrl?: string | null }
             animation: isFetching ? "va-spin 0.8s linear infinite" : undefined,
           }}
         />
-        {unavailable
-          ? i18n.t("settings.creds.cloudRouter.balanceRetry")
-          : i18n.t("settings.creds.cloudRouter.balanceRefresh")}
+        {i18n.t("settings.creds.cloudRouter.balanceRefresh")}
       </button>
     </div>
   );
