@@ -14,4 +14,4 @@ export { countTasksForUser } from "./features/tasks/storage.js";
 export { licenseGuard } from "./middleware/license-guard.js";
 export { queryContextFromUser } from "./infra/query-context.js";
 export type { QueryContext } from "./infra/query-context.js";
-export { getDefaultCredential, listCredentials, getCredentialById } from "./features/settings/storage.js";
+export { getDefaultCredential, listCredentials, getCredentialById, getSystemConfig } from "./features/settings/storage.js";
