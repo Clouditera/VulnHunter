@@ -64,7 +64,8 @@ export type IconName =
   | "mail"
   | "help-circle"
   | "target"
-  | "wallet";
+  | "wallet"
+  | "edit";
 
 interface IconProps {
   name: IconName;
@@ -404,6 +405,11 @@ const PATHS: Record<IconName, JSX.Element> = {
       <rect x="2" y="6" width="20" height="14" rx="2" />
       <path d="M2 10h20" />
       <circle cx="16" cy="14" r="1.2" fill="currentColor" stroke="none" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
     </>
   ),
 };

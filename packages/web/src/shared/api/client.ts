@@ -1459,6 +1459,14 @@ export interface DashboardData {
     total_tokens?: { value: number; delta: string };
   };
   severity_dist: Record<string, number>;
+  review_status_dist?: { pending: number; confirmed: number; false_positive: number; ignored: number };
   vulnerability_type_top5: Array<{ vuln_type: string; count: number }>;
-  recent_scans: Task[];
+  recent_scans: Array<{
+    id: string;
+    project_name: string;
+    state: string;
+    severity_counts: { h: number; m: number; l: number; i: number };
+    duration_ms: number | null;
+    created_at: string;
+  }>;
 }
