@@ -1091,6 +1091,23 @@ const ZH: Record<string, string> = {
   "review.report.includedFindings": "包含漏洞",
   "review.report.generate": "生成报告",
   "review.dashboard.title": "审核进度",
+
+  /* 统一错误模块（E1-web）——注册表种子文案 */
+  "errors.fallback": "操作失败，请稍后重试",
+  "errors.diagnostics": "技术细节",
+  "errors.action.go": "前往处理",
+  "errors.action.retry": "重试",
+  "errors.ERR_PREPARE_FAILED": "环境准备失败，请重试；若持续失败请查看任务日志",
+  "errors.ERR_MODEL_UPSTREAM": "模型服务返回错误，请检查凭证的地址与密钥",
+  "errors.ERR_CREDENTIAL_TEST_FAILED": "凭证测试未通过，请查看测试报告",
+  "errors.ERR_SANDBOX_NOT_CONFIGURED": "未配置沙箱服务，动态验证能力不可用",
+  "errors.ERR_AUTH_LOCKED": "尝试次数过多，请稍后再试",
+  "errors.ERR_TASK_NAME_CONFLICT": "已存在同名任务，请修改名称",
+  "errors.ERR_PROTECTED_ACCOUNT": "系统保护账号不可执行此操作",
+  "errors.ERR_SOURCE_ARCHIVE_UNSAFE_PATH": "源码包含不安全路径，已拒绝上传",
+  "errors.ERR_LICENSE_INVALID": "许可证无效，请重新激活",
+  "errors.ERR_LICENSE_EXPIRED": "许可证已过期，请更新授权",
+  "errors.ERR_INTERNAL": "内部错误，请联系支持并提供编号",
 };
 
 const EN: Record<string, string> = {
@@ -2179,6 +2196,23 @@ const EN: Record<string, string> = {
   "review.report.includedFindings": "Included Findings",
   "review.report.generate": "Generate Report",
   "review.dashboard.title": "Review Progress",
+
+  /* Unified error module (E1-web) — registry seed copy */
+  "errors.fallback": "Something went wrong. Please try again.",
+  "errors.diagnostics": "Technical details",
+  "errors.action.go": "Resolve",
+  "errors.action.retry": "Retry",
+  "errors.ERR_PREPARE_FAILED": "Environment preparation failed. Retry, or check the task log if it persists.",
+  "errors.ERR_MODEL_UPSTREAM": "The model service returned an error. Check the credential URL and key.",
+  "errors.ERR_CREDENTIAL_TEST_FAILED": "Credential test failed. See the test report for details.",
+  "errors.ERR_SANDBOX_NOT_CONFIGURED": "No sandbox configured — dynamic verification is unavailable.",
+  "errors.ERR_AUTH_LOCKED": "Too many attempts. Please try again later.",
+  "errors.ERR_TASK_NAME_CONFLICT": "A task with this name already exists. Please rename it.",
+  "errors.ERR_PROTECTED_ACCOUNT": "This is a protected system account.",
+  "errors.ERR_SOURCE_ARCHIVE_UNSAFE_PATH": "The source archive contains unsafe paths and was rejected.",
+  "errors.ERR_LICENSE_INVALID": "The license is invalid. Please reactivate.",
+  "errors.ERR_LICENSE_EXPIRED": "The license has expired. Please update it.",
+  "errors.ERR_INTERNAL": "Internal error. Contact support with the reference ID.",
 };
 
 const CATALOGS: Record<string, Record<string, string>> = { zh: ZH, en: EN };
