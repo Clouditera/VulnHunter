@@ -16,6 +16,8 @@ import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../inf
 import { diagnoseModelRuntimeCredential } from "./runtime-diagnostics.js";
 import { runPiDiagnostics, type DiagnosticEvent } from "./pi-diagnostics.js";
 import { lookupModelMeta } from "./pi-model-catalog.js";
+import { updateDeepVerifiedStatus } from "./storage.js";
+import { runL4Check } from "./l4-agent-check.js";
 import { getDiagnosticRun, startDiagnosticRun } from "./diagnostic-runs.js";
 import { loadConfig } from "../../infra/config.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
@@ -30,6 +32,41 @@ function parseContextWindowTokens(value: unknown): number {
   const tokens = Math.trunc(value);
   if (tokens < 1000 || tokens > 10000000) throw new Error("invalid context_window_tokens");
   return tokens;
+}
+
+/**
+ * Async L4 deep verification — fires after credential save (L1-L3 passed).
+ * Sets pending → running → passed/failed; fire-and-forget.
+ */
+async function triggerL4DeepVerification(
+  credentialId: string,
+  cred: {
+    proto_type: string;
+    base_url: string;
+    model_id: string;
+    api_key: string;
+    thinking_effort?: string;
+  },
+): Promise<void> {
+  await updateDeepVerifiedStatus(credentialId, "pending");
+  // Fire-and-forget — don't await, don't block the save response.
+  void (async () => {
+    try {
+      await updateDeepVerifiedStatus(credentialId, "running");
+      const result = await runL4Check({
+        baseUrl: cred.base_url,
+        apiKey: cred.api_key,
+        modelId: cred.model_id,
+        protoType: cred.proto_type,
+        thinkingEffort: cred.thinking_effort,
+      });
+      await updateDeepVerifiedStatus(credentialId, result.status === "pass" ? "passed" : "failed");
+      logger.info({ credentialId, status: result.status, durationMs: result.durationMs }, "L4 deep verification completed");
+    } catch (err) {
+      await updateDeepVerifiedStatus(credentialId, "failed").catch(() => {});
+      logger.warn({ err, credentialId }, "L4 deep verification error");
+    }
+  })();
 }
 
 export const settingsRouter = new Hono();
@@ -176,6 +213,16 @@ settingsRouter.put("/credential", async (c) => {
   }
 
   if (body.id && !id) throw new AppError("ERR_NOT_FOUND");
+
+  // ── Async L4 deep verification (fire-and-forget, doesn't block save) ──
+  triggerL4DeepVerification(id, {
+    proto_type: body.proto_type,
+    base_url: body.base_url!,
+    model_id: body.model_id,
+    api_key: body.api_key,
+    thinking_effort: body.thinking_effort,
+  }).catch((err) => logger.warn({ err, credentialId: id }, "L4 deep verification failed to start"));
+
   return c.json({ id });
 });
 

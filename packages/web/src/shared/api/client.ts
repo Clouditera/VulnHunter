@@ -946,6 +946,8 @@ export interface LlmCredential {
   owner_id?: string | null;
   scope?: "global" | "personal";
   can_edit?: boolean;
+  deep_verified_status?: string | null;
+  deep_verified_at?: string | null;
 }
 
 export interface SaveCredentialPayload {
