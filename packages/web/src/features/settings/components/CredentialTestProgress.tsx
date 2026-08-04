@@ -7,8 +7,7 @@
  * Transport: SSE event contract (architect-pinned, shared with B核-B):
  *   { type: "check_started|check_passed|check_failed|report", check: {...} }
  * Endpoint: POST /api/settings/credential/diagnose-stream.
- * Consumed via `streamCredentialTest` below; falls back to the legacy
- * run_id polling when the SSE endpoint is not deployed yet (404).
+ * Consumed via `streamCredentialTest` below.
  */
 
 import { useEffect, useState } from "react";
@@ -158,7 +157,7 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
 }
 
 /* ------------------------------------------------------------------ */
-/* SSE transport with legacy-poll fallback                              */
+/* SSE transport                              */
 /* ------------------------------------------------------------------ */
 
 export type TestStreamEvent =
@@ -167,15 +166,12 @@ export type TestStreamEvent =
 
 export interface TestStreamHandlers {
   onEvent: (ev: TestStreamEvent) => void;
-  /** Fallback to legacy polling when SSE endpoint absent. */
-  onLegacy: () => void;
   onError: (err: unknown) => void;
 }
 
 /**
  * POST the credential test with SSE streaming. Requires fetch streaming
- * (all supported browsers). On HTTP 404 (endpoint not deployed) calls
- * `onLegacy` so the caller can run the existing run_id poll loop.
+ * (all supported browsers).
  */
 export async function streamCredentialTest(
   payload: Record<string, unknown>,
@@ -191,10 +187,6 @@ export async function streamCredentialTest(
     });
   } catch (err) {
     handlers.onError(err);
-    return;
-  }
-  if (res.status === 404) {
-    handlers.onLegacy();
     return;
   }
   if (!res.ok || !res.body) {

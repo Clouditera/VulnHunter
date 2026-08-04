@@ -717,42 +717,8 @@ export function SettingsPage() {
         };
 
     /** Legacy path: run_id polling; each tick feeds the same progressive UI. */
-    const runLegacyPoll = async () => {
-      try {
-        const resp = await api.settings.testModel(payload as Parameters<typeof api.settings.testModel>[0]);
-        if (resp.run_id) {
-          let finalResp = resp;
-          for (let i = 0; i < 100; i++) {
-            const run = await api.settings.getModelTestRun(resp.run_id);
-            setTestChecks(run.checks ?? []);
-            if (run.status !== "running") {
-              finalResp = { ok: run.ok, message: run.summary, error: run.ok ? undefined : run.summary, diagnostics: run };
-              break;
-            }
-            await new Promise((r) => setTimeout(r, 1000));
-          }
-          if (finalResp.ok) setTestState({ kind: "ok", msg: finalResp.message, diagnostics: finalResp.diagnostics });
-          else setTestState({ kind: "err", msg: finalResp.error ?? i18n.t("settings.model.testFail"), diagnostics: finalResp.diagnostics });
-          return;
-        }
-        if (resp.ok) {
-          setTestChecks(resp.diagnostics?.checks ?? []);
-          setTestState({ kind: "ok", msg: resp.message, diagnostics: resp.diagnostics });
-        } else {
-          setTestChecks(resp.diagnostics?.checks ?? []);
-          setTestState({
-            kind: "err",
-            msg: resp.error ?? i18n.t("settings.model.testFail"),
-            diagnostics: resp.diagnostics,
-          });
-        }
-      } catch (err) {
-        const code = (err as Error)?.message ?? "ERR_INTERNAL";
-        setTestState({ kind: "err", msg: code });
-      }
-    };
 
-    /** Stream-first: SSE endpoint when deployed, legacy poll otherwise. */
+    /** Stream-first: SSE endpoint. */
     await streamCredentialTest(payload as Record<string, unknown>, {
       onEvent: (ev) => {
         if (ev.type === "report") {
@@ -775,12 +741,8 @@ export function SettingsPage() {
           return [...prev, next];
         });
       },
-      onLegacy: () => {
-        void runLegacyPoll();
-      },
       onError: () => {
-        // Transport failure → try legacy once before surfacing an error.
-        void runLegacyPoll();
+        setTestState({ kind: "err", msg: i18n.t("settings.model.testFail") });
       },
     });
   }

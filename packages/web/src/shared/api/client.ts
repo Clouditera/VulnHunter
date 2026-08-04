@@ -4,9 +4,9 @@ import { i18n } from "../i18n/index.js";
 
 const BASE = "";
 
-type ApiErrorShape = { error?: { code?: string; detail?: string; message?: string; used?: number; limit?: number }; diagnostics?: ModelDiagnosticResult };
+type ApiErrorShape = { error?: { code?: string; detail?: string; message?: string; used?: number; limit?: number } };
 
-type ClientError = Error & { code: string; used?: number; limit?: number; diagnostics?: ModelDiagnosticResult };
+type ClientError = Error & { code: string; used?: number; limit?: number };
 
 function buildApiError(status: number, body?: ApiErrorShape | null): ClientError {
   const error = body?.error;
@@ -19,8 +19,6 @@ function buildApiError(status: number, body?: ApiErrorShape | null): ClientError
   err.code = code;
   err.used = error?.used;
   err.limit = error?.limit;
-  // Save-gate 422 carries the diagnostic report — keep it for inline render.
-  err.diagnostics = body?.diagnostics;
   return err;
 }
 
@@ -540,32 +538,6 @@ export const api = {
         "/api/settings/models",
         { method: "POST", body: JSON.stringify(params ?? {}) },
       ),
-    /**
-     * Test connection.
-     *  - Pass `credential_id` to test against a stored credential using
-     *    the already-saved API key (backend decrypts it). Use this when
-     *    editing a credential the user hasn't typed the key for again.
-     *  - Pass `proto_type/base_url/model_id/api_key` explicitly for a
-     *    brand-new draft credential before it's saved.
-     */
-    testModel: (
-      params:
-        | { credential_id: string; context_window_tokens?: number; async?: boolean }
-        | {
-            proto_type: string;
-            base_url?: string;
-            model_id: string;
-            api_key: string;
-            thinking_effort?: string;
-            context_window_tokens?: number;
-            async?: boolean;
-          },
-    ) =>
-      request<{ ok: boolean; message?: string; error?: string; run_id?: string; diagnostics?: ModelDiagnosticResult }>("/api/settings/credential/test", {
-        method: "POST",
-        body: JSON.stringify(params),
-      }),
-    getModelTestRun: (id: string) => request<ModelDiagnosticResult & { id: string; status: "running" | "done" | "failed" }>(`/api/settings/credential/test-runs/${id}`),
   },
   users: {
     list: () => request<{ users: UserApi[] }>("/api/admin/users"),
