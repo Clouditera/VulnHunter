@@ -45,14 +45,6 @@ RUN mkdir -p /app/node_modules/@vulnhunter && \
 RUN printf '{\n  "product": "vulnhunter",\n  "version": "%s",\n  "buildTime": "%s",\n  "gitCommit": "%s",\n  "youngflowVersion": "%s",\n  "licenseSchema": "v1"\n}\n' "$VULNHUNTER_VERSION" "$VULNHUNTER_BUILD_TIME" "$VULNHUNTER_GIT_COMMIT" "$YOUNGFLOW_VERSION" > /app/VERSION.json && \
     chown vulnhunter:nodejs /app/VERSION.json
 
-# DeVeye toolkit files for user download (~190MB: 3 platform binaries + extension)
-COPY --chown=vulnhunter:nodejs submodules/DevEye/packages/cli/binaries/index-linux /opt/deveye-toolkits/binaries/index-linux
-COPY --chown=vulnhunter:nodejs submodules/DevEye/packages/cli/binaries/index-win.exe /opt/deveye-toolkits/binaries/index-win.exe
-COPY --chown=vulnhunter:nodejs submodules/DevEye/packages/cli/binaries/index-macos /opt/deveye-toolkits/binaries/index-macos
-COPY --chown=vulnhunter:nodejs submodules/DevEye/packages/chrome-extension/dist /opt/deveye-toolkits/extension-dist
-COPY --chown=vulnhunter:nodejs worker-assets/deveye-toolkit/setup.sh /opt/deveye-toolkits/setup/setup.sh
-COPY --chown=vulnhunter:nodejs worker-assets/deveye-toolkit/setup.bat /opt/deveye-toolkits/setup/setup.bat
-
 # Customer runtime images should not expose TypeScript declarations or sourcemaps.
 RUN find /app/packages -type f \( -name "*.map" -o -name "*.d.ts" -o -name "*.d.ts.map" \) -delete && \
     find /app/packages -type f -name "*.js" -exec sed -i '/^\/\/# sourceMappingURL=/d' {} + && \
