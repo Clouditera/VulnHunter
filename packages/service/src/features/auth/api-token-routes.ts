@@ -7,10 +7,11 @@ import { licenseGuard, requireAuth } from "../../middleware/index.js";
 import {
   API_TOKEN_EXPIRY_DAYS,
   API_TOKEN_LIMIT,
+  deleteApiTokenForUser,
   issueApiToken,
   listApiTokens,
   renameApiToken,
-  revokeApiTokenForUser,
+  setApiTokenStatus,
 } from "./api-token-storage.js";
 import type { SessionUser } from "./types.js";
 
@@ -85,13 +86,33 @@ meApiTokensRouter.patch("/api-tokens/:id", async (c) => {
   }
 });
 
-/** DELETE /api/me/api-tokens/:id — revoke */
+/** PATCH /api/me/api-tokens/:id/status  body: { status: "active"|"disabled" } */
+meApiTokensRouter.patch("/api-tokens/:id/status", async (c) => {
+  const user = c.get("user") as SessionUser;
+  const id = c.req.param("id");
+  const body = (await c.req.json().catch(() => ({}))) as { status?: unknown };
+  const status = body.status;
+  if (status !== "active" && status !== "disabled") {
+    return c.json({ error: { code: "ERR_VALIDATION", detail: "status must be active|disabled" } }, 400);
+  }
+  try {
+    const token = await setApiTokenStatus(user.userId, id, status);
+    return c.json({ token });
+  } catch (err) {
+    const code = errCode(err);
+    if (code === "ERR_API_TOKEN_NOT_FOUND") return c.json({ error: { code } }, 404);
+    if (code === "ERR_API_TOKEN_REVOKED") return c.json({ error: { code } }, 400);
+    throw err;
+  }
+});
+
+/** DELETE /api/me/api-tokens/:id — hard delete */
 meApiTokensRouter.delete("/api-tokens/:id", async (c) => {
   const user = c.get("user") as SessionUser;
   const id = c.req.param("id");
   try {
-    const token = await revokeApiTokenForUser(user.userId, id);
-    return c.json({ token });
+    await deleteApiTokenForUser(user.userId, id);
+    return c.json({ ok: true });
   } catch (err) {
     const code = errCode(err);
     if (code === "ERR_API_TOKEN_NOT_FOUND") return c.json({ error: { code } }, 404);

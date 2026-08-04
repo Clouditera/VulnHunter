@@ -1151,6 +1151,7 @@ export const ZH: Record<string, string> = {
   "errors.ERR_PROMO_DISABLED": "推广活动未开启",
   "errors.ERR_API_TOKEN_LIMIT": "令牌数量已达上限",
   "errors.ERR_API_TOKEN_NOT_FOUND": "令牌不存在或无权操作",
+  "errors.ERR_API_TOKEN_REVOKED": "已吊销的令牌不能重新启用",
   "errors.ERR_API_TOKEN_NAME_REQUIRED": "请填写令牌名称",
   "errors.ERR_ADMIN_SINGLETON": "不允许创建额外管理员",
   "errors.ERR_SOURCE_ARCHIVE_TOO_LARGE": "源码包超过大小限制",

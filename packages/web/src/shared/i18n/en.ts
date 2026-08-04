@@ -1150,6 +1150,7 @@ export const EN: Record<string, string> = {
   "errors.ERR_PROMO_DISABLED": "The promotion is not enabled on this deployment.",
   "errors.ERR_API_TOKEN_LIMIT": "API token limit reached.",
   "errors.ERR_API_TOKEN_NOT_FOUND": "Token not found or not permitted.",
+  "errors.ERR_API_TOKEN_REVOKED": "A revoked token cannot be re-enabled.",
   "errors.ERR_API_TOKEN_NAME_REQUIRED": "Please provide a token name.",
   "errors.ERR_ADMIN_SINGLETON": "Creating additional admins is not allowed.",
   "errors.ERR_SOURCE_ARCHIVE_TOO_LARGE": "The source archive exceeds the size limit.",
