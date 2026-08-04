@@ -300,13 +300,54 @@ release_write_checksums() {
 
 release_tar_and_sha() {
   local out="${1:-$OUT}"
-  tar -C "$(dirname "$out")" -czf "$out.tar.gz" "$(basename "$out")"
+  local final="$out.tar.gz"
+  local tmp="$final.tmp.$$"
+  # Atomic pack: write to a temp name first so a killed/interrupted tar never
+  # leaves a complete-looking truncated artifact at the final path.
+  rm -f "$tmp"
+  tar -C "$(dirname "$out")" -czf "$tmp" "$(basename "$out")" \
+    || { rm -f "$tmp"; release_die "tar failed for $out"; }
+
+  # Self-verification hard gate: a pack that cannot prove itself is a build failure.
+  release_verify_pack "$tmp" "$out"
+  mv "$tmp" "$final"
+
   (
     cd "$(dirname "$out")"
     sha256sum "$(basename "$out").tar.gz"
   ) > "$out.tar.gz.sha256"
   echo "release package: $out.tar.gz"
   echo "release checksum: $out.tar.gz.sha256"
+}
+
+# Verify a built pack: gzip integrity + full re-extract + internal checksums
+# + key file presence. Any failure aborts the release (P0 lesson 2026-08-04:
+# a truncated 2.3.3 pack with missing docker-compose.yml nearly shipped).
+release_verify_pack() {
+  local pack="$1" out="${2:-$OUT}"
+  echo "release: verifying pack integrity $(basename "$pack")"
+  gzip -t "$pack" || release_die "pack gzip integrity check failed: $pack"
+
+  local verify_dir
+  verify_dir="$(mktemp -d "${TMPDIR:-/tmp}/release-verify.XXXXXX")"
+  tar -xzf "$pack" -C "$verify_dir" \
+    || { rm -rf "$verify_dir"; release_die "pack re-extract failed: $pack"; }
+
+  local extracted="$verify_dir/$(basename "$out")"
+  [[ -d "$extracted" ]] \
+    || { rm -rf "$verify_dir"; release_die "pack missing top dir $(basename "$out")"; }
+
+  local f
+  for f in docker-compose.yml .env.example install.sh upgrade.sh doctor.sh uninstall.sh VERSION.json checksums.sha256; do
+    [[ -f "$extracted/$f" ]] \
+      || { rm -rf "$verify_dir"; release_die "pack missing key file: $f"; }
+  done
+
+  ( cd "$extracted" && sha256sum -c checksums.sha256 >/dev/null ) \
+    || { rm -rf "$verify_dir"; release_die "pack internal checksums mismatch after re-extract"; }
+
+  rm -rf "$verify_dir"
+  echo "release: pack self-verification passed"
 }
 
 # ── Private monorepo: core submodule pin == OSS v$VERSION tag ────────
