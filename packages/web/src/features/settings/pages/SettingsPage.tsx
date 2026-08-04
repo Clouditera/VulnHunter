@@ -19,6 +19,7 @@ import {
   CredentialTestProgress,
   streamCredentialTest,
 } from "../components/CredentialTestProgress.js";
+import { DeepVerifiedBadge } from "../components/DeepVerifiedBadge.js";
 import { CloudRouterBalanceGlance, CloudRouterBalanceStrip } from "../components/CloudRouterBalance.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 import { useEdition } from "../../../shared/hooks/useEdition.js";
@@ -1697,6 +1698,10 @@ export function SettingsPage() {
                           </span>
                         ) : null;
                       })()}
+                      <DeepVerifiedBadge
+                        status={c.deep_verified_status}
+                        at={c.deep_verified_at}
+                      />
                     </div>
                     <div
                       style={{

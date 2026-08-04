@@ -673,6 +673,9 @@ const ZH: Record<string, string> = {
   "settings.creds.preset.anthropic": "Anthropic Claude",
   "settings.creds.preset.openai": "OpenAI",
   "settings.creds.preset.cloudrouter": "CloudRouter",
+  "settings.creds.deepVerified.passed": "深度验证",
+  "settings.creds.deepVerified.failed": "深度验证未过",
+  "settings.creds.deepVerified.running": "深度验证中…",
   // Appearance
   "settings.appearance.title": "语言与外观",
   "settings.appearance.desc": "界面语言与视觉主题",
@@ -1839,6 +1842,9 @@ const EN: Record<string, string> = {
   "settings.creds.preset.anthropic": "Anthropic Claude",
   "settings.creds.preset.openai": "OpenAI",
   "settings.creds.preset.cloudrouter": "CloudRouter",
+  "settings.creds.deepVerified.passed": "Deep-verified",
+  "settings.creds.deepVerified.failed": "Deep verification failed",
+  "settings.creds.deepVerified.running": "Deep verifying…",
   // Appearance
   "settings.appearance.title": "Language & Appearance",
   "settings.appearance.desc": "Interface language and visual theme",
