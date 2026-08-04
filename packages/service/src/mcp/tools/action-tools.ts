@@ -155,54 +155,6 @@ export async function generateReport(args: { task_id: string; skill_id?: string;
   );
 }
 
-// ─── generate-poc ───
-
-export const generatePocSchema = {
-  task_id: z.string().describe("The task ID"),
-  finding_keys: z.array(z.string()).describe("Finding keys to generate POC for"),
-  target_url: z.string().describe("Target application URL"),
-  custom_instructions: z.string().optional().describe("Custom instructions for POC generation"),
-};
-
-export async function generatePoc(args: {
-  task_id: string;
-  finding_keys: string[];
-  target_url: string;
-  custom_instructions?: string;
-}, ctx: McpContext): Promise<ToolResult> {
-  const task = await taskStorage.getTaskById(toQueryContext(ctx), args.task_id);
-  if (!task) return text("Task not found.");
-  if (!args.finding_keys.length) return text("No finding keys provided.");
-
-  try {
-    const { assertNoActiveOperation } = await import("../../features/tasks/operation-lock.js");
-    await assertNoActiveOperation(task.id, "poc");
-  } catch (err: any) {
-    if (err.code === "ERR_TASK_BUSY") return text(`Task is busy: ${err.message}`);
-    throw err;
-  }
-
-  const pocStorage = await import("../../features/poc/storage.js");
-  const job = await pocStorage.createPocJob({
-    taskId: task.id,
-    targetMode: "provided",
-    targetUrl: args.target_url,
-    customInstructions: args.custom_instructions,
-    browserTool: "none",
-    findingKeys: args.finding_keys,
-    createdBy: ctx.userId,
-  });
-
-  return text([
-    `POC generation started.`,
-    `- **Job ID**: ${job.id}`,
-    `- **Task**: ${task.project_name}`,
-    `- **Target**: ${args.target_url}`,
-    `- **Findings**: ${args.finding_keys.length}`,
-    ``,
-    `Use \`get-task-detail\` to check POC status.`,
-  ].join("\n"));
-}
 
 // ─── present-artifact ───
 

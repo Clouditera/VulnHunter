@@ -28,7 +28,6 @@ export interface ServiceConfig {
   docker: {
     socketPath: string;
     workerImage: string;
-    evalWorkerImage: string;
     network: string;
     workerServiceUrl: string;
   };
@@ -75,7 +74,6 @@ export function loadConfig(): ServiceConfig {
     docker: {
       socketPath: optionalEnv("DOCKER_SOCKET", "/var/run/docker.sock"),
       workerImage: optionalEnv("WORKER_IMAGE", "vulnhunter-worker:latest"),
-      evalWorkerImage: optionalEnv("EVAL_WORKER_IMAGE", "vulnhunter-eval-worker:latest"),
       network: optionalEnv("DOCKER_NETWORK", "vulnhunter-internal"),
       workerServiceUrl: optionalEnv("WORKER_SERVICE_URL", "http://service:28080"),
     },

@@ -113,7 +113,6 @@ check_shell "DATA_DIR/db initialized files readable by postgres uid" check_db_in
 check_shell "db mount source is DATA_DIR/db" check_mount_source vulnhunter-db /var/lib/postgresql/data "$DATA_DIR/db"
 check_shell "minio mount source is DATA_DIR/minio" check_mount_source vulnhunter-minio /data "$DATA_DIR/minio"
 check_shell "worker image present" docker image inspect "${WORKER_IMAGE:-vulnhunter-worker:latest}"
-check_shell "eval worker image present" docker image inspect "${EVAL_WORKER_IMAGE:-vulnhunter-eval-worker:latest}"
 check_shell "service docker socket access" check_service_socket
 
 # Optional SandboxPlane reachability (WARN only — remote plane may be in maintenance)

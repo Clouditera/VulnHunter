@@ -232,9 +232,6 @@ export async function deleteUser(id: string): Promise<void> {
     // Review history: drop actor rows / clear reviewed_by
     await tx`DELETE FROM finding_review_events WHERE user_id = ${id}`;
     await tx`UPDATE findings_meta SET reviewed_by = NULL WHERE reviewed_by = ${id}`;
-    // POC artifacts owned by user
-    await tx`DELETE FROM poc_runs WHERE created_by = ${id}`;
-    await tx`DELETE FROM poc_jobs WHERE created_by = ${id}`;
     // User-generated reports
     await tx`DELETE FROM user_reports WHERE created_by = ${id}`;
     // Report skills: owner CASCADE covers most; delete any leftover uploaded_by rows

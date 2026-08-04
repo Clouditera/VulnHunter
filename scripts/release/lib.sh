@@ -48,7 +48,6 @@ release_write_version_json() {
     "service": "vulnhunter-service:$VERSION",
     "web": "vulnhunter-web:$VERSION",
     "worker": "vulnhunter-worker:$VERSION",
-    "evalWorker": "vulnhunter-eval-worker:$VERSION",
     "postgres": "$POSTGRES_IMAGE",
     "minio": "$MINIO_IMAGE"
   }
@@ -101,7 +100,6 @@ release_docker_save_platform() {
   docker save "vulnhunter-service:$VERSION" -o "$out/images/vulnhunter-service.tar"
   docker save "vulnhunter-web:$VERSION" -o "$out/images/vulnhunter-web.tar"
   docker save "vulnhunter-worker:$VERSION" -o "$out/images/vulnhunter-worker.tar"
-  docker save "vulnhunter-eval-worker:$VERSION" -o "$out/images/vulnhunter-eval-worker.tar"
   docker save "$POSTGRES_IMAGE" -o "$out/images/postgres-16-alpine.tar"
   docker save "$MINIO_IMAGE" -o "$out/images/minio.tar"
 }
@@ -126,7 +124,6 @@ release_patch_env_example() {
   sed -i "s|^SERVICE_IMAGE=.*|SERVICE_IMAGE=vulnhunter-service:$VERSION|" "$env_file"
   sed -i "s|^WEB_IMAGE=.*|WEB_IMAGE=vulnhunter-web:$VERSION|" "$env_file"
   sed -i "s|^WORKER_IMAGE=.*|WORKER_IMAGE=vulnhunter-worker:$VERSION|" "$env_file"
-  sed -i "s|^EVAL_WORKER_IMAGE=.*|EVAL_WORKER_IMAGE=vulnhunter-eval-worker:$VERSION|" "$env_file"
   if grep -q "^EDITION=" "$env_file"; then
     sed -i "s|^EDITION=.*|EDITION=$edition|" "$env_file"
   else

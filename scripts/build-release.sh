@@ -107,7 +107,6 @@ docker build -f deploy/dockerfiles/web.Dockerfile -t "vulnhunter-web:$VERSION" -
 VULNFORGE_VERSION="$VULNFORGE_VERSION" VULNFORGE_COMMIT="$VULNFORGE_COMMIT" \
   scripts/build-worker-image.sh "vulnhunter-worker:$VERSION"
 docker tag "vulnhunter-worker:$VERSION" vulnhunter-worker:latest
-docker build -f deploy/dockerfiles/eval-worker.Dockerfile -t "vulnhunter-eval-worker:$VERSION" -t vulnhunter-eval-worker:latest .
 docker pull "$POSTGRES_IMAGE"
 docker pull "$MINIO_IMAGE"
 

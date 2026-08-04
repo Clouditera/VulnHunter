@@ -52,7 +52,6 @@ vi.mock("../../src/features/events/event-tail.js", () => ({ startTailing: vi.fn(
 vi.mock("../../src/features/findings/indexer.js", () => ({ indexFindings: vi.fn() }));
 vi.mock("../../src/features/workers/sync-outputs.js", () => ({ syncOutputsToMinio: vi.fn(), downloadOutputsFromMinio: vi.fn() }));
 vi.mock("../../src/infra/minio/client.js", () => ({ getMinio: () => ({ statObject: vi.fn(async () => true) }) }));
-vi.mock("../../src/features/poc/scheduler.js", () => ({ tickPocScheduler: vi.fn(async () => undefined), onEvalContainerDie: vi.fn(), onPocRunContainerDie: vi.fn() }));
 vi.mock("../../src/features/chat/chat-session.js", () => ({ onChatContainerDie: vi.fn() }));
 vi.mock("../../src/features/reports/report-worker.js", () => ({ onReportContainerDie: vi.fn() }));
 vi.mock("../../src/features/notifications/index.js", () => ({ notify: m.notify }));

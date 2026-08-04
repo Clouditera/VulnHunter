@@ -403,35 +403,6 @@ export const api = {
         body: JSON.stringify(params ?? {}),
       }),
     delete: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}`, { method: "DELETE" }),
-    poc: (id: string) => request<{ poc_files: PocFile[] }>(`/api/tasks/${id}/poc`),
-    pocContent: (id: string, filename: string, key: string) =>
-      request<{ filename: string; content: string }>(`/api/tasks/${id}/poc/${filename}?key=${encodeURIComponent(key)}`),
-    pocSummary: (id: string) => request<PocSummary>(`/api/tasks/${id}/poc`),
-    pocGenerate: (id: string, opts: {
-      finding_keys: string[];
-      target_mode: string;
-      target_url?: string;
-      custom_instructions?: string;
-      browser_tool?: string;
-      deveye_server?: string;
-      deveye_token?: string;
-    }) => request<{ job: PocJob }>(`/api/tasks/${id}/poc/generate`, {
-      method: "POST",
-      body: JSON.stringify(opts),
-    }),
-    pocFindingDetail: (id: string, findingKey: string) =>
-      request<{ result: PocResult; runs: PocRun[] }>(`/api/tasks/${id}/poc/${findingKey}`),
-    pocScript: (id: string, findingKey: string) =>
-      fetch(`/api/tasks/${id}/poc/${findingKey}/script`, { credentials: "include" }).then((r) => r.text()),
-    pocLog: (id: string, findingKey: string) =>
-      fetch(`/api/tasks/${id}/poc/${findingKey}/log`, { credentials: "include" }).then((r) => r.text()),
-    pocRun: (id: string, findingKey: string, opts?: {
-      target_url?: string;
-      custom_instructions?: string;
-    }) => request<{ run: PocRun }>(`/api/tasks/${id}/poc/${findingKey}/run`, {
-      method: "POST",
-      body: JSON.stringify(opts ?? {}),
-    }),
     workspaceTree: (id: string) =>
       request<{ tree: WorkspaceTreeNode[] }>(`/api/tasks/${id}/workspace/tree`),
     workspaceFile: (id: string, path: string, line?: number) =>
@@ -1020,62 +991,6 @@ export interface ChatMessage {
   created_at: string;
 }
 
-export interface PocFile {
-  key: string;
-  name: string;
-  size: number;
-}
-
-export interface PocJob {
-  id: string;
-  task_id: string;
-  state: string;
-  target_mode: string;
-  target_url: string | null;
-  custom_instructions: string | null;
-  browser_tool: string;
-  finding_keys: string[];
-  failure_reason: string | null;
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-  duration_ms: number | null;
-}
-
-export interface PocResult {
-  id: string;
-  task_id: string;
-  job_id: string;
-  finding_key: string;
-  status: string;
-  poc_script_minio_key: string | null;
-  result_json_minio_key: string | null;
-  run_log_minio_key: string | null;
-  screenshots_prefix: string | null;
-  target_url: string | null;
-  exit_code: number | null;
-  summary: string | null;
-  evidence: Record<string, unknown> | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PocRun {
-  id: string;
-  task_id: string;
-  finding_key: string;
-  state: string;
-  target_url: string | null;
-  exit_code: number | null;
-  run_log_minio_key: string | null;
-  events_minio_key: string | null;
-  failure_reason: string | null;
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-  duration_ms: number | null;
-}
-
 export interface UserApi {
   id: string;
   email: string;
@@ -1136,30 +1051,6 @@ export interface SmtpConfigView {
   encryption?: "none" | "ssl" | "starttls" | string;
   last_tested_at?: string | null;
   last_test_ok?: boolean | null;
-}
-
-export interface PocSettingsApi {
-  default_target_mode: string;
-  default_browser_tool: string;
-  deveye_server_url: string | null;
-  deveye_token: string | null;
-  default_concurrency: number;
-  poc_timeout_s: number;
-  container_network_mode: string;
-}
-
-export interface PocSummary {
-  results: PocResult[];
-  latest_job: PocJob | null;
-  summary: {
-    total: number;
-    reproduced: number;
-    partial: number;
-    not_reproduced: number;
-    error: number;
-    skipped: number;
-    pending: number;
-  };
 }
 
 export interface WorkspaceTreeNode {

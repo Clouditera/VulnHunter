@@ -23,7 +23,6 @@ import { notify } from "../notifications/index.js";
 import { logger } from "../../infra/logger.js";
 import { getTaskById, type DbTask } from "../tasks/storage.js";
 import { countFindingsBySeverity, countFindingsByItemType } from "../findings/storage.js";
-import { listPocResults } from "../poc/storage.js";
 import { getDb } from "../../infra/db/client.js";
 import type { ServiceConfig } from "../../infra/config.js";
 import { resolveArchiveIdentity } from "../source-archives/detect.js";
@@ -103,11 +102,9 @@ async function materializeReportContext(params: {
   const bucket = config.minio.bucket;
   const findingsDir = join(contextDir, "findings");
   const wikiDir = join(contextDir, "wiki");
-  const pocDir = join(contextDir, "poc");
   const reviewedDir = join(contextDir, "reviewed");
   mkdirSync(findingsDir, { recursive: true });
   mkdirSync(wikiDir, { recursive: true });
-  mkdirSync(pocDir, { recursive: true });
   mkdirSync(reviewedDir, { recursive: true });
 
   const findingsMeta = await db<Array<{
@@ -190,29 +187,6 @@ async function materializeReportContext(params: {
     logger.warn({ err, taskId: task.id }, "Failed to materialize wiki/profiler context");
   }
 
-  const pocResults = await listPocResults(task.id).catch((err) => {
-    logger.warn({ err, taskId: task.id }, "Failed to list POC results for report context");
-    return [];
-  });
-  writeFileSync(join(pocDir, "results.json"), JSON.stringify(pocResults, null, 2));
-  for (const result of pocResults) {
-    const base = safeContextFilename(result.finding_key);
-    writeFileSync(join(pocDir, `${base}.json`), JSON.stringify(result, null, 2));
-    const artifacts = [
-      ["poc.sh", result.poc_script_minio_key],
-      ["result.json", result.result_json_minio_key],
-      ["run.log", result.run_log_minio_key],
-    ] as const;
-    for (const [suffix, key] of artifacts) {
-      if (!key) continue;
-      try {
-        await getMinio().fGetObject(bucket, key, join(pocDir, `${base}-${suffix}`));
-      } catch (err) {
-        logger.warn({ err, taskId: task.id, findingKey: result.finding_key, key }, "Failed to materialize POC artifact");
-      }
-    }
-  }
-
   try {
     const reviewedPrefix = `scan-outputs/${task.id}/reviewed/`;
     const reviewedKeys = await listMinioKeys(bucket, reviewedPrefix);
@@ -282,7 +256,7 @@ async function materializeReportContext(params: {
       "Read each /workspace/context/findings/<finding_key>.yaml for full CWE/CVSS/code/data_flow/attack/remediation/anchors/reviewed details.",
       "Use /workspace/context/task-metadata.json for project configuration and execution summary.",
       "Use /workspace/context/wiki/*.md and /workspace/context/profiler.yaml for project knowledge/profile.",
-      "Use /workspace/context/poc/ and /workspace/context/reviewed/ for POC/reviewed artifacts when present.",
+      "Use /workspace/context/reviewed/ for reviewed artifacts when present.",
       "Use /workspace/source as the read-only source tree for file:line verification and code snippets when present.",
     ],
     paths: {
@@ -291,7 +265,6 @@ async function materializeReportContext(params: {
       findings_dir: "/workspace/context/findings",
       wiki_dir: "/workspace/context/wiki",
       profiler: existsSync(join(contextDir, "profiler.yaml")) ? "/workspace/context/profiler.yaml" : null,
-      poc_dir: "/workspace/context/poc",
       reviewed_dir: "/workspace/context/reviewed",
       source_dir: source.available ? "/workspace/source" : null,
     },
@@ -300,7 +273,6 @@ async function materializeReportContext(params: {
       risks: findingIndex.filter((f) => f.item_type === "risk").length,
       total_items: findingIndex.length,
       wiki_pages: wikiPages,
-      poc_results: pocResults.length,
     },
     source,
   };

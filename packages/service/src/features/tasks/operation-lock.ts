@@ -1,11 +1,11 @@
 /**
- * Per-task operation lock — prevents concurrent scan/report/poc operations.
+ * Per-task operation lock — prevents concurrent scan/report operations.
  */
 
 import { getDb } from "../../infra/db/client.js";
 
 export interface ActiveOperation {
-  type: "scan" | "report" | "poc";
+  type: "scan" | "report";
   id: string;
   state: string;
 }
@@ -25,24 +25,12 @@ export async function getActiveTaskOperation(taskId: string): Promise<ActiveOper
   `;
   if (report) return { type: "report", id: report.id, state: report.status };
 
-  // Check POC job active
-  const [pocJob] = await db<{ id: string; state: string }[]>`
-    SELECT id, state FROM poc_jobs WHERE task_id = ${taskId} AND state IN ('queued', 'preparing', 'running')
-  `;
-  if (pocJob) return { type: "poc", id: pocJob.id, state: pocJob.state };
-
-  // Check POC run active
-  const [pocRun] = await db<{ id: string; state: string }[]>`
-    SELECT id, state FROM poc_runs WHERE task_id = ${taskId} AND state IN ('queued', 'running')
-  `;
-  if (pocRun) return { type: "poc", id: pocRun.id, state: pocRun.state };
-
   return null;
 }
 
 export async function assertNoActiveOperation(
   taskId: string,
-  requested: "scan" | "report" | "poc",
+  requested: "scan" | "report",
 ): Promise<void> {
   const active = await getActiveTaskOperation(taskId);
   if (!active) return;
