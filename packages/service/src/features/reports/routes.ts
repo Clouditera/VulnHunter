@@ -5,6 +5,7 @@
 import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
+import { AppError } from "../../infra/app-error.js";
 import { loadConfig } from "../../infra/config.js";
 import { withUtf8Charset } from "../../infra/http-text.js";
 import { decodeTextFileContent } from "../source-archives/charset.js";
@@ -33,7 +34,7 @@ reportsRouter.use("*", async (c, next) => {
 reportsRouter.get("/tasks/:taskId/reports", async (c) => {
   const { taskId } = c.req.param();
   const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
-  if (!task) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  if (!task) throw new AppError("ERR_NOT_FOUND");
   const reports = await reportStorage.listReports(taskId);
   return c.json({ reports });
 });
@@ -42,14 +43,14 @@ reportsRouter.get("/tasks/:taskId/reports", async (c) => {
 reportsRouter.post("/tasks/:taskId/reports/generate", async (c) => {
   const { taskId } = c.req.param();
   const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
-  if (!task) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  if (!task) throw new AppError("ERR_NOT_FOUND");
   const user = c.get("user");
 
   try {
     const { assertNoActiveOperation } = await import("../tasks/operation-lock.js");
     await assertNoActiveOperation(taskId, "report");
   } catch (err: any) {
-    if (err.code === "ERR_TASK_BUSY") return c.json({ error: { code: "ERR_TASK_BUSY", message: err.message, active: err.active } }, 409);
+    if (err.code === "ERR_TASK_BUSY") throw new AppError("ERR_TASK_BUSY", { details: { active: err.active } });
     throw err;
   }
 
@@ -60,13 +61,13 @@ reportsRouter.post("/tasks/:taskId/reports/generate", async (c) => {
   if (skillId) {
     const owned = await reportStorage.getOwnedSkill(skillId, user.userId);
     if (!owned) {
-      return c.json({ error: { code: "ERR_VALIDATION", detail: "skill_id must refer to a skill you own" } }, 400);
+      throw new AppError("ERR_VALIDATION", { details: { field: "skill_id" } });
     }
   }
 
   // If finding_keys explicitly empty array → reject
   if (body.finding_keys && body.finding_keys.length === 0) {
-    return c.json({ error: { code: "ERR_VALIDATION", detail: "finding_keys cannot be empty when provided" } }, 400);
+    throw new AppError("ERR_VALIDATION", { details: { field: "finding_keys" } });
   }
 
   // If finding_keys not provided, default to pending + confirmed
@@ -107,7 +108,7 @@ reportsRouter.post("/tasks/:taskId/reports/generate", async (c) => {
 // GET /api/tasks/:taskId/reports/:reportId
 reportsRouter.get("/tasks/:taskId/reports/:reportId", async (c) => {
   const report = await reportStorage.getReport(c.req.param("reportId"));
-  if (!report) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  if (!report) throw new AppError("ERR_NOT_FOUND");
   return c.json({ report });
 });
 
@@ -115,7 +116,7 @@ reportsRouter.get("/tasks/:taskId/reports/:reportId", async (c) => {
 reportsRouter.get("/tasks/:taskId/reports/:reportId/file", async (c) => {
   const report = await reportStorage.getReport(c.req.param("reportId"));
   if (!report || !report.primary_minio_key) {
-    return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+    throw new AppError("ERR_NOT_FOUND");
   }
 
   const config = loadConfig();
@@ -158,7 +159,7 @@ reportsRouter.get("/tasks/:taskId/reports/:reportId/file", async (c) => {
       },
     });
   } catch {
-    return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+    throw new AppError("ERR_NOT_FOUND");
   }
 });
 
@@ -166,7 +167,7 @@ reportsRouter.get("/tasks/:taskId/reports/:reportId/file", async (c) => {
 reportsRouter.get("/tasks/:taskId/reports/:reportId/download", async (c) => {
   const report = await reportStorage.getReport(c.req.param("reportId"));
   if (!report || !report.bundle_minio_key) {
-    return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+    throw new AppError("ERR_NOT_FOUND");
   }
 
   const config = loadConfig();
@@ -188,14 +189,14 @@ reportsRouter.get("/tasks/:taskId/reports/:reportId/download", async (c) => {
       },
     });
   } catch {
-    return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+    throw new AppError("ERR_NOT_FOUND");
   }
 });
 
 // DELETE /api/tasks/:taskId/reports/:reportId
 reportsRouter.delete("/tasks/:taskId/reports/:reportId", async (c) => {
   const report = await reportStorage.getReport(c.req.param("reportId"));
-  if (!report) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  if (!report) throw new AppError("ERR_NOT_FOUND");
 
   const config = loadConfig();
   const minio = getMinio();

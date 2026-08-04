@@ -1146,6 +1146,9 @@ const ZH: Record<string, string> = {
   "errors.ERR_SOURCE_ARCHIVE_CORRUPT": "源码包已损坏，无法读取",
   "errors.ERR_VALIDATION": "请求参数有误",
   "errors.ERR_NOT_FOUND": "请求的资源不存在",
+  "errors.ERR_CREDENTIAL_KEY_UNAVAILABLE": "凭证加密密钥未配置，请联系管理员",
+  "errors.ERR_CREDENTIAL_DECRYPT_FAILED": "凭证无法解密，请重新输入 API Key",
+  "errors.ERR_UPLOAD_TOO_LARGE": "上传文件过大",
 
   "errors.ERR_INVALID_STATE": "任务当前状态不支持此操作",
   "errors.ERR_INVALID_SCAN_OPTIONS": "扫描参数有误",
