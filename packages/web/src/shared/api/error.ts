@@ -8,6 +8,7 @@
  * error registry (seed table below → shared registry once E1-core lands).
  */
 
+import { ERROR_REGISTRY } from "@vulnhunter/shared";
 import { i18n } from "../i18n/index.js";
 
 /** Declarative action reference attached to an error code. */
@@ -26,35 +27,16 @@ export interface ErrorSpec {
 }
 
 /**
- * Seed registry — mirrors architect spec §3. Shape matches the upcoming
- * `@vulnhunter/shared` errors registry 1:1 so the swap is a one-line change
- * (E1-core dependency). Keys use `errors.<code>` i18n namespace.
+ * Registry lookup: shared `ERROR_REGISTRY` (E1-core) is the single source of
+ * truth; unregistered codes fall back to generic copy so raw codes never
+ * render as the primary message.
  */
-const ERROR_SPECS: Record<string, ErrorSpec> = {
-  ERR_PREPARE_FAILED: { i18nKey: "errors.ERR_PREPARE_FAILED", retriable: true },
-  ERR_MODEL_UPSTREAM: {
-    i18nKey: "errors.ERR_MODEL_UPSTREAM",
-    action: { kind: "navigate", to: "/settings?tab=credentials" },
-  },
-  ERR_CREDENTIAL_TEST_FAILED: { i18nKey: "errors.ERR_CREDENTIAL_TEST_FAILED" },
-  ERR_SANDBOX_NOT_CONFIGURED: {
-    i18nKey: "errors.ERR_SANDBOX_NOT_CONFIGURED",
-    action: { kind: "navigate", to: "/settings" },
-  },
-  ERR_AUTH_LOCKED: { i18nKey: "errors.ERR_AUTH_LOCKED", retriable: true },
-  ERR_TASK_NAME_CONFLICT: { i18nKey: "errors.ERR_TASK_NAME_CONFLICT" },
-  ERR_PROTECTED_ACCOUNT: { i18nKey: "errors.ERR_PROTECTED_ACCOUNT" },
-  ERR_SOURCE_ARCHIVE_UNSAFE_PATH: { i18nKey: "errors.ERR_SOURCE_ARCHIVE_UNSAFE_PATH" },
-  ERR_LICENSE_INVALID: {
-    i18nKey: "errors.ERR_LICENSE_INVALID",
-    action: { kind: "navigate", to: "/activate" },
-  },
-  ERR_LICENSE_EXPIRED: {
-    i18nKey: "errors.ERR_LICENSE_EXPIRED",
-    action: { kind: "navigate", to: "/activate" },
-  },
-  ERR_INTERNAL: { i18nKey: "errors.ERR_INTERNAL" },
-};
+export function resolveErrorSpec(code: string): ErrorSpec {
+  const entry = (ERROR_REGISTRY as Record<string, ErrorRegistryEntryLike | undefined>)[code];
+  return entry ?? { i18nKey: "errors.fallback" };
+}
+
+type ErrorRegistryEntryLike = { i18nKey: string; action?: ErrorAction; retriable?: boolean };
 
 export interface StructuredErrorBody {
   error: { code: string; traceId?: string; details?: Record<string, unknown> };
@@ -142,10 +124,6 @@ export class ApiError extends Error {
   }
 }
 
-/** Registry lookup with fallback (unregistered codes must never surface raw). */
-export function resolveErrorSpec(code: string): ErrorSpec {
-  return ERROR_SPECS[code] ?? { i18nKey: "errors.fallback" };
-}
 
 /** `{placeholder}` interpolation from details. */
 function interpolate(template: string, details?: Record<string, unknown>): string {

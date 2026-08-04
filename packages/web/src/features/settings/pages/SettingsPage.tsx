@@ -9,6 +9,16 @@ import { SkillsSection } from "../components/SkillsSection.js";
 import { ApiTokensSection } from "../components/ApiTokensSection.js";
 import { ProfileSection } from "../components/ProfileSection.js";
 import { CloudRouterPromo, CredentialsEmptyNotice } from "../components/CloudRouterPromo.js";
+import {
+  CREDENTIAL_PRESETS,
+  detectPreset,
+  resolveModelCapabilities,
+  type ModelCapabilities,
+} from "../components/credential-presets.js";
+import {
+  CredentialTestProgress,
+  streamCredentialTest,
+} from "../components/CredentialTestProgress.js";
 import { CloudRouterBalanceGlance, CloudRouterBalanceStrip } from "../components/CloudRouterBalance.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 import { useEdition } from "../../../shared/hooks/useEdition.js";
@@ -329,6 +339,13 @@ export function SettingsPage() {
 
   // Model enhancements
   const [modelOptions, setModelOptions] = useState<string[] | null>(null);
+  /** Raw model items (may carry reasoning/thinking_levels once backend is capability-aware). */
+  const [modelCapsMap, setModelCapsMap] = useState<Record<string, ModelCapabilities>>({});
+  /** Two-type credential draft: preset vendor vs custom endpoint. */
+  const [credType, setCredType] = useState<"preset" | "custom">("custom");
+  const [presetId, setPresetId] = useState<string | null>(null);
+  /** Progressive credential test checks (SSE/poll unified render state). */
+  const [testChecks, setTestChecks] = useState<import("../../../shared/api/client").ModelDiagnosticCheck[]>([]);
   const [modelFetchState, setModelFetchState] = useState<
     { kind: "idle" | "loading" } | { kind: "error"; msg: string }
   >({ kind: "idle" });
@@ -407,6 +424,26 @@ export function SettingsPage() {
     setApiKey("");
     setTestState({ kind: "idle" });
     setToast(null);
+    setCredType("custom");
+    setPresetId(null);
+    setTestChecks([]);
+  }
+
+  /** Pick a vendor preset in a new draft: pin protocol + prefill base URL. */
+  function applyPreset(id: string) {
+    const preset = CREDENTIAL_PRESETS.find((p) => p.id === id);
+    if (!preset) return;
+    setPresetId(id);
+    setCredType("preset");
+    setProtoType(preset.protoType);
+    setBaseUrl(preset.defaultBaseUrl);
+    setModelOptions(null);
+    setModelCapsMap({});
+  }
+
+  function pickCustomType() {
+    setCredType("custom");
+    setPresetId(null);
   }
 
   async function handleDeleteCredential(c: LlmCredential) {
@@ -565,6 +602,13 @@ export function SettingsPage() {
       setTimeout(() => setToast(null), 2200);
     } catch (err) {
       const code = (err as Error)?.message ?? "";
+      const errCode = (err as { code?: string })?.code;
+      const diagnostics = (err as { diagnostics?: import("../../../shared/api/client").ModelDiagnosticResult })?.diagnostics;
+      // Save-gate: tests failed → show the per-check report inline (not just a toast).
+      if (errCode === "ERR_CREDENTIAL_TEST_FAILED" && diagnostics) {
+        setTestChecks(diagnostics.checks ?? []);
+        setTestState({ kind: "err", msg: diagnostics.summary || i18n.t("settings.model.testFail"), diagnostics });
+      }
       const msg =
         code === "NEEDS_API_KEY"
           ? i18n.t("settings.model.apiKey") + " — " + i18n.t("settings.saveError")
@@ -594,6 +638,9 @@ export function SettingsPage() {
           : undefined,
       );
       const ids = (resp.models ?? []).map((m) => m.id);
+      const caps: Record<string, ModelCapabilities> = {};
+      for (const m of resp.models ?? []) caps[m.id] = resolveModelCapabilities(m);
+      setModelCapsMap(caps);
       if (ids.length === 0) {
         setModelOptions([]);
         setModelFetchState({ kind: "error", msg: i18n.t("settings.model.fetchNone") });
@@ -609,6 +656,25 @@ export function SettingsPage() {
       });
     }
   }
+
+  /** Capabilities of the currently selected model (from last model fetch). */
+  const activeModelCaps: ModelCapabilities | null = modelId ? (modelCapsMap[modelId] ?? null) : null;
+  /** Thinking levels for the UI: model-specific when known, standard five otherwise. */
+  const thinkingLevelsForUi: string[] = activeModelCaps?.thinkingLevels ?? [...THINKING_VALUES];
+
+  /** Clamp thinking when the selected model's supported levels change. */
+  useEffect(() => {
+    if (!activeModelCaps) return;
+    if (!activeModelCaps.reasoning) {
+      if (thinking !== "off") setThinking("off");
+      return;
+    }
+    if (!activeModelCaps.thinkingLevels.includes(thinking)) {
+      const preferred = ["medium", "low", "high"].find((l) => activeModelCaps.thinkingLevels.includes(l));
+      setThinking((preferred ?? activeModelCaps.thinkingLevels[0] ?? "medium") as ThinkingValue);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId, activeModelCaps?.reasoning, activeModelCaps?.thinkingLevels?.join("|")]);
 
   /** Send a small chat-completion ping using the current form values.
    *  The backend endpoint always requires an `api_key` in the body (for
@@ -637,48 +703,86 @@ export function SettingsPage() {
     }
     setFieldErrors({});
     setTestState({ kind: "loading" });
-    try {
-      const resp = await api.settings.testModel(
-        useStored
-          ? { credential_id: editingCredentialId as string, context_window_tokens: contextWindowTokens, async: true }
-          : {
-              proto_type: protoType,
-              base_url: baseUrl || undefined,
-              model_id: modelId,
-              api_key: apiKey,
-              thinking_effort: thinking,
-              context_window_tokens: contextWindowTokens,
-              async: true,
-            },
-      );
-      if (resp.run_id) {
-        let finalResp = resp;
-        for (let i = 0; i < 100; i++) {
-          const run = await api.settings.getModelTestRun(resp.run_id);
-          setTestState({ kind: "loading", diagnostics: run });
-          if (run.status !== "running") {
-            finalResp = { ok: run.ok, message: run.summary, error: run.ok ? undefined : run.summary, diagnostics: run };
-            break;
+    setTestChecks([]);
+    const payload = useStored
+      ? { credential_id: editingCredentialId as string, context_window_tokens: contextWindowTokens, async: true }
+      : {
+          proto_type: protoType,
+          base_url: baseUrl || undefined,
+          model_id: modelId,
+          api_key: apiKey,
+          thinking_effort: thinking,
+          context_window_tokens: contextWindowTokens,
+          async: true,
+        };
+
+    /** Legacy path: run_id polling; each tick feeds the same progressive UI. */
+    const runLegacyPoll = async () => {
+      try {
+        const resp = await api.settings.testModel(payload as Parameters<typeof api.settings.testModel>[0]);
+        if (resp.run_id) {
+          let finalResp = resp;
+          for (let i = 0; i < 100; i++) {
+            const run = await api.settings.getModelTestRun(resp.run_id);
+            setTestChecks(run.checks ?? []);
+            if (run.status !== "running") {
+              finalResp = { ok: run.ok, message: run.summary, error: run.ok ? undefined : run.summary, diagnostics: run };
+              break;
+            }
+            await new Promise((r) => setTimeout(r, 1000));
           }
-          await new Promise((r) => setTimeout(r, 1000));
+          if (finalResp.ok) setTestState({ kind: "ok", msg: finalResp.message, diagnostics: finalResp.diagnostics });
+          else setTestState({ kind: "err", msg: finalResp.error ?? i18n.t("settings.model.testFail"), diagnostics: finalResp.diagnostics });
+          return;
         }
-        if (finalResp.ok) setTestState({ kind: "ok", msg: finalResp.message, diagnostics: finalResp.diagnostics });
-        else setTestState({ kind: "err", msg: finalResp.error ?? i18n.t("settings.model.testFail"), diagnostics: finalResp.diagnostics });
-        return;
+        if (resp.ok) {
+          setTestChecks(resp.diagnostics?.checks ?? []);
+          setTestState({ kind: "ok", msg: resp.message, diagnostics: resp.diagnostics });
+        } else {
+          setTestChecks(resp.diagnostics?.checks ?? []);
+          setTestState({
+            kind: "err",
+            msg: resp.error ?? i18n.t("settings.model.testFail"),
+            diagnostics: resp.diagnostics,
+          });
+        }
+      } catch (err) {
+        const code = (err as Error)?.message ?? "ERR_INTERNAL";
+        setTestState({ kind: "err", msg: code });
       }
-      if (resp.ok) {
-        setTestState({ kind: "ok", msg: resp.message, diagnostics: resp.diagnostics });
-      } else {
-        setTestState({
-          kind: "err",
-          msg: resp.error ?? i18n.t("settings.model.testFail"),
-          diagnostics: resp.diagnostics,
+    };
+
+    /** Stream-first: SSE endpoint when deployed, legacy poll otherwise. */
+    await streamCredentialTest(payload as Record<string, unknown>, {
+      onEvent: (ev) => {
+        if (ev.type === "report") {
+          const report = ev.report;
+          setTestChecks(report.checks ?? []);
+          if (report.ok) setTestState({ kind: "ok", msg: report.summary, diagnostics: report });
+          else setTestState({ kind: "err", msg: report.summary || i18n.t("settings.model.testFail"), diagnostics: report });
+          return;
+        }
+        const incoming = ev.check;
+        setTestChecks((prev) => {
+          const status = ev.type === "check_started" ? "running" : incoming.status;
+          const next = { ...incoming, status } as typeof incoming;
+          const idx = prev.findIndex((c) => c.id === incoming.id);
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = { ...copy[idx], ...next };
+            return copy;
+          }
+          return [...prev, next];
         });
-      }
-    } catch (err) {
-      const code = (err as Error)?.message ?? "ERR_INTERNAL";
-      setTestState({ kind: "err", msg: code });
-    }
+      },
+      onLegacy: () => {
+        void runLegacyPoll();
+      },
+      onError: () => {
+        // Transport failure → try legacy once before surfacing an error.
+        void runLegacyPoll();
+      },
+    });
   }
 
   const SUB_NAV_SECTIONS: Array<{ id: string; labelKey: string }> = [
@@ -841,6 +945,71 @@ export function SettingsPage() {
               // Form body JSX — captured once; rendered inside draft row + editing rows.
               const FORM_BODY = (
                 <>
+            {/* Credential type picker — new drafts only. Editing keeps the
+                credential's existing shape; the preset badge on collapsed
+                rows is derived from base_url (detectPreset). */}
+            {isNewDraft ? (
+              <div style={{ marginBottom: "16px" }} data-testid="credential-type-picker">
+                <label style={FIELD_LABEL}>{i18n.t("settings.creds.type.label")}</label>
+                <div style={{ display: "flex", gap: "8px", marginBottom: credType === "preset" ? "10px" : 0 }}>
+                  {(["preset", "custom"] as const).map((t) => {
+                    const active = credType === t;
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        data-testid={`credential-type-${t}`}
+                        onClick={() => (t === "preset" ? (presetId ? applyPreset(presetId) : setCredType("preset")) : pickCustomType())}
+                        style={{
+                          flex: 1,
+                          padding: "9px 12px",
+                          borderRadius: 8,
+                          border: `1px solid ${active ? "var(--brand)" : "var(--border)"}`,
+                          background: active ? "var(--brand-soft)" : "var(--bg-card)",
+                          color: active ? "var(--brand)" : "var(--text-secondary)",
+                          fontSize: 12.5,
+                          fontWeight: active ? 650 : 500,
+                          cursor: "pointer",
+                          textAlign: "center",
+                        }}
+                      >
+                        {i18n.t(t === "preset" ? "settings.creds.type.preset" : "settings.creds.type.custom")}
+                      </button>
+                    );
+                  })}
+                </div>
+                {credType === "preset" ? (
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }} data-testid="credential-preset-picker">
+                    {CREDENTIAL_PRESETS.map((p) => {
+                      const active = presetId === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          data-testid={`credential-preset-${p.id}`}
+                          onClick={() => applyPreset(p.id)}
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: 6,
+                            border: `1px solid ${active ? "var(--brand)" : "var(--border)"}`,
+                            background: active ? "var(--bg-active-filter)" : "var(--bg-page)",
+                            color: active ? "var(--brand)" : "var(--text-primary)",
+                            fontSize: 12,
+                            fontWeight: active ? 650 : 500,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {i18n.t(p.nameKey)}
+                        </button>
+                      );
+                    })}
+                    <p style={{ width: "100%", margin: "6px 0 0", fontSize: 11.5, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                      {i18n.t("settings.creds.type.presetHint")}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {/* Label (optional, used to distinguish credentials in list) */}
             <Field
               label={i18n.t("settings.model.labelLabel")}
@@ -894,6 +1063,7 @@ export function SettingsPage() {
                 <Select
                   testid="settings-protocol-select"
                   value={protoType}
+                  disabled={credType === "preset" && isNewDraft}
                   onChange={(v) => {
                     setProtoType(v);
                     // Keep model id user-controlled; new credentials should not
@@ -1091,12 +1261,18 @@ export function SettingsPage() {
               <Select
                 testid="settings-thinking-select"
                 value={thinking}
+                disabled={activeModelCaps !== null && !activeModelCaps.reasoning}
                 onChange={(v) => setThinking(v as ThinkingValue)}
-                options={THINKING_VALUES.map((v) => ({
+                options={thinkingLevelsForUi.map((v) => ({
                   value: v,
                   label: i18n.t(`settings.model.thinking.${v}`),
                 }))}
               />
+              {activeModelCaps && !activeModelCaps.reasoning ? (
+                <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--text-secondary)" }}>
+                  {i18n.t("settings.model.thinking.notSupported")}
+                </p>
+              ) : null}
             </Field>
 
             <Field
@@ -1172,60 +1348,45 @@ export function SettingsPage() {
                   );
                 })()}
               </div>
-              {(testState.kind === "ok" || testState.kind === "err") && (
-                <div
-                  data-testid="settings-test-result"
-                  data-kind={testState.kind}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: "6px",
-                    fontSize: "12px",
-                    lineHeight: 1.5,
-                    fontFamily:
-                      testState.kind === "err"
-                        ? "'SF Mono', Menlo, Consolas, monospace"
-                        : undefined,
-                    background:
-                      testState.kind === "ok"
-                        ? "var(--bg-success)"
-                        : "var(--bg-error)",
-                    color:
-                      testState.kind === "ok"
-                        ? "var(--bg-success-text)"
-                        : "var(--brand)",
-                    border: `1px solid ${
-                      testState.kind === "ok"
-                        ? "var(--bg-success-border)"
-                        : "rgba(194,40,40,0.28)"
-                    }`,
-                    wordBreak: "break-word",
-                  }}
-                >
-                  <strong style={{ marginRight: "6px", fontWeight: 700 }}>
-                    {testState.kind === "ok"
-                      ? i18n.t("settings.model.testOk")
-                      : i18n.t("settings.model.testFail")}
-                  </strong>
-                  {testState.kind === "ok"
-                    ? testState.msg ?? ""
-                    : testState.msg}
-                  {testState.diagnostics && (
-                    <div style={{ marginTop: "10px", display: "grid", gap: "6px", fontFamily: "inherit" }}>
-                      {testState.diagnostics.checks.map((check) => (
-                        <details key={check.id} style={{ borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: "6px" }}>
-                          <summary style={{ cursor: "pointer", fontWeight: 600 }}>
-                            [{check.status}] {check.label}{check.category ? ` · ${check.category}` : ""} — {check.message}
-                          </summary>
-                          <div style={{ marginTop: "6px", fontFamily: "'SF Mono', Menlo, Consolas, monospace", whiteSpace: "pre-wrap" }}>
-                            {check.suggestion ? `建议：${check.suggestion}\n` : ""}
-                            {check.httpStatus ? `HTTP：${check.httpStatus}\n` : ""}
-                            {check.endpoint ? `Endpoint：${check.endpoint}\n` : ""}
-                            {check.detail ?? ""}
-                          </div>
-                        </details>
-                      ))}
+              {(testState.kind === "ok" || testState.kind === "err" || (testState.kind === "loading" && testChecks.length > 0)) && (
+                <div data-testid="settings-test-result" data-kind={testState.kind}>
+                  {testChecks.length > 0 ? (
+                    <CredentialTestProgress
+                      checks={testChecks}
+                      report={testState.diagnostics ?? null}
+                      running={testState.kind === "loading"}
+                    />
+                  ) : testState.kind !== "loading" ? (
+                    <div
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                        lineHeight: 1.5,
+                        background:
+                          testState.kind === "ok"
+                            ? "var(--bg-success)"
+                            : "var(--bg-error)",
+                        color:
+                          testState.kind === "ok"
+                            ? "var(--bg-success-text)"
+                            : "var(--danger)",
+                        border: `1px solid ${
+                          testState.kind === "ok"
+                            ? "var(--bg-success-border)"
+                            : "rgba(194,40,40,0.28)"
+                        }`,
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      <strong style={{ marginRight: "6px", fontWeight: 700 }}>
+                        {testState.kind === "ok"
+                          ? i18n.t("settings.model.testOk")
+                          : i18n.t("settings.model.testFail")}
+                      </strong>
+                      {(testState.kind === "ok" || testState.kind === "err") ? (testState.msg ?? "") : ""}
                     </div>
-                  )}
+                  ) : null}
                 </div>
               )}
             </div>
@@ -1507,9 +1668,35 @@ export function SettingsPage() {
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
                       }}
                     >
-                      {c.label || c.provider}
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {c.label || c.provider}
+                      </span>
+                      {(() => {
+                        const preset = detectPreset(c.base_url);
+                        return preset ? (
+                          <span
+                            data-testid="credential-preset-badge"
+                            style={{
+                              flexShrink: 0,
+                              fontSize: 10,
+                              fontWeight: 600,
+                              padding: "1px 6px",
+                              borderRadius: 4,
+                              border: "1px solid var(--brand-border)",
+                              background: "var(--brand-soft)",
+                              color: "var(--brand)",
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {i18n.t(preset.nameKey)}
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
                     <div
                       style={{
@@ -1700,16 +1887,19 @@ function Select({
   onChange,
   options,
   testid,
+  disabled,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: Array<{ value: string; label: string }>;
   testid?: string;
+  disabled?: boolean;
 }) {
   return (
     <select
       data-testid={testid}
       value={value}
+      disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
       style={{
         ...FIELD_INPUT,
@@ -1719,7 +1909,8 @@ function Select({
         backgroundRepeat: "no-repeat",
         backgroundPosition: "right 12px center",
         paddingRight: "32px",
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.55 : 1,
       }}
     >
       {options.map((o) => (
