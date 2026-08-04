@@ -1129,6 +1129,7 @@ export const EN: Record<string, string> = {
   "errors.ERR_PREPARE_FAILED": "Environment preparation failed. Retry, or check the task log if it persists.",
   "errors.ERR_MODEL_UPSTREAM": "The model service returned an error. Check the credential URL and key.",
   "errors.ERR_CREDENTIAL_TEST_FAILED": "Credential test failed. See the test report for details.",
+  "errors.ERR_CREDENTIAL_CORE_FIELD_REQUIRES_TEST": "Core fields (protocol/URL/model) require a passing connection test before saving.",
   "errors.ERR_SANDBOX_NOT_CONFIGURED": "No sandbox configured — dynamic verification is unavailable.",
   "errors.ERR_AUTH_LOCKED": "Too many attempts. Please try again later.",
   "errors.ERR_TASK_NAME_CONFLICT": "A task with this name already exists. Please rename it.",

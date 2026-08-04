@@ -44,6 +44,10 @@ export const ERROR_REGISTRY = {
   },
 
   // Credentials
+  ERR_CREDENTIAL_CORE_FIELD_REQUIRES_TEST: {
+    i18nKey: "errors.ERR_CREDENTIAL_CORE_FIELD_REQUIRES_TEST",
+    httpStatus: 400,
+  },
   ERR_CREDENTIAL_TEST_FAILED: {
     i18nKey: "errors.ERR_CREDENTIAL_TEST_FAILED",
     httpStatus: 422,

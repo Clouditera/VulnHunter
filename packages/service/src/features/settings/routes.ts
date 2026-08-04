@@ -209,6 +209,15 @@ settingsRouter.patch("/credential/:id", async (c) => {
     owner_id?: string | null;
   }>();
 
+  // Single-gate rule (fish 2026-08-04 P1): core fields are refused here —
+  // they must go through PUT /credential which enforces the L1-L3 gate.
+  // PATCH serves optional metadata only (label/thinking/context window).
+  for (const field of ["proto_type", "base_url", "model_id"] as const) {
+    if (body[field] !== undefined) {
+      throw new AppError("ERR_CREDENTIAL_CORE_FIELD_REQUIRES_TEST", { details: { field } });
+    }
+  }
+
   if (body.proto_type !== undefined && !VALID_PROTO_TYPES.has(body.proto_type)) {
     throw new AppError("ERR_VALIDATION", { details: { field: "proto_type" } });
   }
