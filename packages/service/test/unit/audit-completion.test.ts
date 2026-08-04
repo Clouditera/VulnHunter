@@ -266,3 +266,13 @@ describe("audit completion C14-C18 and security", () => {
     expect(sanitized.reason).toBe("缺口");
   });
 });
+
+describe("isTimeoutCompletion (fish 2026-08-04)", () => {
+  it("incomplete engine status => timeout", async () => {
+    const { isTimeoutCompletion } = await import("../../src/features/workers/audit-completion.js");
+    expect(isTimeoutCompletion({ status: "incomplete" } as never)).toBe(true);
+    expect(isTimeoutCompletion({ status: "complete" } as never)).toBe(false);
+    expect(isTimeoutCompletion({ status: "missing" } as never)).toBe(false);
+    expect(isTimeoutCompletion({ status: "legacy_observed" } as never)).toBe(false);
+  });
+});

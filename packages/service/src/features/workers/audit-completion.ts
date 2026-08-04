@@ -287,6 +287,16 @@ export function mapAuditCompletionFinalState(
   };
 }
 
+/**
+ * Timeout-finalized scan predicate (fish 2026-08-04): the engine's timeout
+ * path writes completion.yaml with status=incomplete + a time-limit reason
+ * (enforced by worker-assets/timeout-finalize-artifacts.py); that is the only
+ * producer of "incomplete" in the pipeline.
+ */
+export function isTimeoutCompletion(completion: TaskAuditCompletion): boolean {
+  return completion.status === "incomplete";
+}
+
 export function mergeExecutionWarnings(existing: unknown, completion: TaskAuditCompletion): string | undefined {
   const existingWarning = typeof existing === "string" ? existing.trim() : "";
   if (completion.status !== "incomplete" || !completion.reason) {
