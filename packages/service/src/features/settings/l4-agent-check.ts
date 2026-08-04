@@ -106,7 +106,7 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
           ...process.env,
           PI_CODING_AGENT_DIR: agentDir,
         },
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: ["ignore", "pipe", "pipe"],
       });
 
       const timer = setTimeout(() => {
