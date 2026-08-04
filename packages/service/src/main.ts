@@ -94,18 +94,21 @@ async function main(): Promise<void> {
   // Vault needed by both (SMTP password decrypt on admin; credentials on business)
   initVault(config.dataDir);
 
+  // MinIO is dual-role infrastructure since the storage sweeper (admin-api)
+  // needs it too — keep the catch-warn-continue shape so either role still
+  // boots when MinIO is down (sweep reports per-prefix errors instead).
+  await initMinio(config.minio).catch((err) => {
+    logger.warn({ err, role }, "MinIO not available — continuing");
+  });
+
   if (role === "admin") {
-    // admin-api: no minio, no docker, no scheduler, no reconciler
+    // admin-api: no docker, no scheduler, no reconciler
     process.on("SIGTERM", () => process.exit(0));
     startServer(config.port, app);
     return;
   }
 
   // ── business-only infra ────────────────────────────────────────
-  await initMinio(config.minio).catch((err) => {
-    logger.warn({ err }, "MinIO not available — continuing (workers will fail)");
-  });
-
   const credentialHealth = await checkCredentialHealth().catch((err) => {
     logger.warn({ err }, "Credential decrypt health check failed");
     return null;

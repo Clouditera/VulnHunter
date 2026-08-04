@@ -90,6 +90,12 @@ services:
       VULNHUNTER_LICENSE_PUBLIC_KEY_FILE: "${VULNHUNTER_LICENSE_PUBLIC_KEY_FILE:-/run/secrets/license-public.pem}"
       VULNHUNTER_ADMIN_EMAIL: "${VULNHUNTER_ADMIN_EMAIL:-}"
       VULNHUNTER_ADMIN_PASSWORD: "${VULNHUNTER_ADMIN_PASSWORD:-}"
+      MINIO_ENDPOINT: "minio"
+      MINIO_PORT: "9000"
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin}"
+      MINIO_BUCKET: "artifact-store"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
     volumes:
       - "${DATA_DIR:-/opt/vulnhunter/data}:${DATA_DIR:-/opt/vulnhunter/data}"
