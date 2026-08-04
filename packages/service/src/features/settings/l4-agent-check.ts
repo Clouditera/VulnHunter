@@ -7,11 +7,15 @@
  * Design: subprocess isolation (agent crash doesn't affect service), same pi
  * binary as worker, JSON event stream for programmatic assertion.
  *
+ * models.json is placed at `<workDir>/agent/models.json` and pi is pointed
+ * there via `PI_CODING_AGENT_DIR` env (pi CLI reads models.json by convention,
+ * not via a CLI flag).
+ *
  * Spec: architecture/llm-layer-unify-pi-version-native-credential-test-v1.0.md §3 L4
  */
 
 import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PI_VERSION } from "@vulnhunter/shared";
@@ -35,27 +39,17 @@ export type L4CheckResult = {
   events?: unknown[];
 };
 
-const L4_TIMEOUT_MS = 30_000;
-const L4_TOOL_NAME = "diagnostic_echo";
+const L4_TIMEOUT_MS = 60_000;
 
 /**
- * Provider name for pi CLI — maps proto_type to pi provider.
- * pi uses provider name to pick the API protocol.
- */
-function piProviderName(protoType: string): string {
-  if (protoType === "anthropic" || protoType === "anthropic-messages") return "anthropic";
-  return "openai";
-}
-
-/**
- * Build a minimal models.json that declares our diagnostic tool, so pi CLI
- * registers it and the model can call it.
+ * Build a minimal models.json for pi CLI convention path
+ * (`<agentDir>/models.json`). Declares a "platform" provider with the user's
+ * real baseUrl + API key (via env template). pi reads this on startup.
  */
 async function writeModelsJson(
-  dir: string,
+  agentDir: string,
   input: L4CheckInput,
-): Promise<string> {
-  const provider = piProviderName(input.protoType);
+): Promise<void> {
   const apiType =
     input.protoType === "anthropic" || input.protoType === "anthropic-messages"
       ? "anthropic-messages"
@@ -81,56 +75,13 @@ async function writeModelsJson(
     },
   };
 
-  const path = join(dir, "models.json");
-  await writeFile(path, JSON.stringify(models, null, 2) + "\n", "utf-8");
-  void provider;
-  return path;
+  await mkdir(agentDir, { recursive: true });
+  await writeFile(join(agentDir, "models.json"), JSON.stringify(models, null, 2) + "\n", "utf-8");
 }
 
 /**
- * Build a minimal MCP-style tool extension that pi CLI can execute.
- * The tool echoes back its input — proves the agent loop closes.
- */
-async function writeToolExtension(dir: string): Promise<string> {
-  const extDir = join(dir, "diag-tool");
-  const ext = {
-    name: L4_TOOL_NAME,
-    version: "1.0.0",
-    description: "Diagnostic echo tool for credential verification",
-    tools: [
-      {
-        name: L4_TOOL_NAME,
-        description: "Echo back the input text. Used for credential verification.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            text: { type: "string", description: "Text to echo back" },
-          },
-          required: ["text"],
-        },
-      },
-    ],
-  };
-  await writeFile(join(extDir, "extension.json"), JSON.stringify(ext, null, 2), "utf-8");
-
-  // Tool handler as a JS file pi can require
-  await writeFile(
-    join(extDir, "index.js"),
-    `export default {
-  tools: {
-    ${L4_TOOL_NAME}: async (args) => {
-      return { content: [{ type: "text", text: "echo: " + (args.text || "") }] };
-    }
-  }
-};\n`,
-    "utf-8",
-  );
-  return extDir;
-}
-
-/**
- * Run L4 check: spawn pi CLI headless, give it a prompt that requires tool use,
- * parse JSON events, assert the agent completed with a tool call + result.
+ * Run L4 check: spawn pi CLI headless, parse JSON events, assert agent settled
+ * with non-error assistant output.
  */
 export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
   const start = Date.now();
@@ -138,77 +89,55 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
 
   try {
     workDir = await mkdtemp(join(tmpdir(), "pi-l4-"));
-    await writeModelsJson(workDir, input);
-    // Tool extension is prepared but pi CLI extension installation in headless
-    // mode is complex; L4 verifies the full agent stack path (model → pi agent
-    // → response) which is the same code path as worker. Tool execution
-    // assertion is a future enhancement.
-    void writeToolExtension;
-
-    // Prompt that almost certainly triggers tool use
-    const prompt = `Call the ${L4_TOOL_NAME} tool with text "circuit-ok" and then reply with the result.`;
-
-    const provider = piProviderName(input.protoType);
-    const model = `platform/${input.modelId}`;
+    const agentDir = join(workDir, "agent");
+    await writeModelsJson(agentDir, input);
 
     const args = [
       "-p",
       "--mode", "json",
       "--no-session",
-      "--provider", provider,
-      "--model", model,
-      "--api-key", input.apiKey,
-      "--models-json", join(workDir, "models.json"),
-      prompt,
+      "--provider", "platform",
+      "--model", input.modelId,
+      "Reply with the single word: ok",
     ];
-
-    // Install tool extension
-    // pi CLI loads extensions from settings; we use --append-system-prompt to guide
-    // Actually pi extensions need to be installed. For L4 we simplify: just check
-    // that pi can reach the model and get a response. Tool execution in headless
-    // mode requires extension installation which is complex for a subprocess.
-    // Practical approach: verify model responds in agent mode (turn_start → turn_end
-    // with non-error stopReason). This proves the credential works end-to-end
-    // through the full pi agent stack (same path as worker).
 
     const events: unknown[] = [];
     let stderr = "";
 
-    await new Promise<void>((resolve, reject) => {
+    await new Promise<void>((resolve) => {
       const child = spawn("pi", args, {
         cwd: workDir!,
         env: {
           ...process.env,
+          PI_CODING_AGENT_DIR: agentDir,
           PLATFORM_API_KEY: input.apiKey,
         },
         stdio: ["pipe", "pipe", "pipe"],
-        timeout: L4_TIMEOUT_MS,
       });
 
       const timer = setTimeout(() => {
         child.kill("SIGTERM");
-        reject(new Error(`L4 timeout after ${L4_TIMEOUT_MS}ms`));
       }, L4_TIMEOUT_MS);
 
       input.signal?.addEventListener("abort", () => {
         clearTimeout(timer);
         child.kill("SIGTERM");
-        reject(new Error("L4 aborted"));
       });
+
+      let settled = false;
 
       let stdoutBuf = "";
       child.stdout.on("data", (chunk: Buffer) => {
         stdoutBuf += chunk.toString();
-        // Parse complete JSON lines
         const lines = stdoutBuf.split("\n");
         stdoutBuf = lines.pop() ?? "";
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed) continue;
+          if (!trimmed || trimmed.startsWith("Warning:")) continue;
           try {
             events.push(JSON.parse(trimmed));
           } catch {
-            // Non-JSON line (warning etc.) — skip
+            // Non-JSON line — skip
           }
         }
       });
@@ -217,31 +146,49 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
         stderr += chunk.toString();
       });
 
-      child.on("close", (code) => {
-        clearTimeout(timer);
-        // Parse any remaining stdout
-        if (stdoutBuf.trim()) {
-          try { events.push(JSON.parse(stdoutBuf.trim())); } catch { /* skip */ }
+      child.on("close", () => {
+        if (!settled) {
+          clearTimeout(timer);
+          // Parse any remaining stdout
+          if (stdoutBuf.trim()) {
+            try { events.push(JSON.parse(stdoutBuf.trim())); } catch { /* skip */ }
+          }
+          settled = true;
+          resolve();
         }
-        void code;
-        resolve();
       });
 
-      child.on("error", (err) => {
-        clearTimeout(timer);
-        reject(err);
+      // Early exit on non-zero code (e.g. unknown args) — don't wait for timeout
+      child.on("exit", (code) => {
+        if (code !== 0 && code !== null && !settled) {
+          clearTimeout(timer);
+          if (stdoutBuf.trim()) {
+            try { events.push(JSON.parse(stdoutBuf.trim())); } catch { /* skip */ }
+          }
+          settled = true;
+          resolve();
+        }
+      });
+
+      child.on("error", () => {
+        if (!settled) {
+          clearTimeout(timer);
+          settled = true;
+          resolve();
+        }
       });
     });
 
     const durationMs = Date.now() - start;
 
-    // Assert: agent settled + at least one assistant message with non-error stopReason
-    const settled = events.some(
+    // Assert: agent settled + assistant message with non-error stopReason
+    const agentSettled = events.some(
       (e) => (e as { type?: string }).type === "agent_settled",
     );
 
     const assistantMessages = events.filter(
-      (e) => (e as { type?: string }).type === "message_end" &&
+      (e) =>
+        (e as { type?: string }).type === "message_end" &&
         (e as { message?: { role?: string } }).message?.role === "assistant",
     );
 
@@ -254,7 +201,15 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
       return Array.isArray(content) && content.length > 0;
     });
 
-    if (!settled) {
+    if (!agentSettled && events.length === 0) {
+      return {
+        status: "fail",
+        durationMs,
+        detail: stderr.trim().slice(0, 300) || "pi CLI produced no output",
+      };
+    }
+
+    if (!agentSettled) {
       return {
         status: "fail",
         durationMs,
@@ -267,7 +222,9 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
       const errMsg = assistantMessages.find(
         (e) => (e as { message?: { errorMessage?: string } }).message?.errorMessage,
       );
-      const detail = (errMsg as { message?: { errorMessage?: string } })?.message?.errorMessage ?? "upstream error";
+      const detail =
+        (errMsg as { message?: { errorMessage?: string } })?.message?.errorMessage ??
+        "upstream error";
       return {
         status: "fail",
         durationMs,

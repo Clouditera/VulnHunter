@@ -135,9 +135,9 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 
 async function runL1Basic(cred: DecryptedLlmCredential, emit: DiagnosticEmitter): Promise<DiagnosticCheck> {
   const id: DiagnosticCheckId = "basic";
-  const label = "基础文本生成";
+  const label = "basic";
   const t0 = Date.now();
-  emit({ type: "check_started", check: { id, label, layer: "L1", status: "pass", message: "测试中…" } });
+  emit({ type: "check_started", check: { id, label, layer: "L1", status: "pass", message: "testing" } });
 
   try {
     const model = buildModel(cred);
@@ -167,7 +167,7 @@ async function runL1Basic(cred: DecryptedLlmCredential, emit: DiagnosticEmitter)
 
     const check: DiagnosticCheck = {
       id, label, layer: "L1", status: "pass",
-      message: "模型响应正常",
+      message: "model_responded",
       durationMs: Date.now() - t0,
     };
     emit({ type: "check_passed", check });
@@ -188,7 +188,7 @@ async function runL1Basic(cred: DecryptedLlmCredential, emit: DiagnosticEmitter)
 
 async function runL2Thinking(cred: DecryptedLlmCredential, emit: DiagnosticEmitter): Promise<DiagnosticCheck> {
   const id: DiagnosticCheckId = "thinking";
-  const label = "模型思考";
+  const label = "thinking";
   const t0 = Date.now();
 
   // Non-reasoning models → N/A
@@ -196,13 +196,13 @@ async function runL2Thinking(cred: DecryptedLlmCredential, emit: DiagnosticEmitt
   if (!isReasoning) {
     const check: DiagnosticCheck = {
       id, label, layer: "L2", status: "na",
-      message: "非推理模型（thinking_effort=off），跳过思考测试",
+      message: "not_reasoning",
     };
     emit({ type: "check_passed", check });
     return check;
   }
 
-  emit({ type: "check_started", check: { id, label, layer: "L2", status: "pass", message: "测试中…" } });
+  emit({ type: "check_started", check: { id, label, layer: "L2", status: "pass", message: "testing" } });
 
   try {
     const model = buildModel(cred);
@@ -233,7 +233,7 @@ async function runL2Thinking(cred: DecryptedLlmCredential, emit: DiagnosticEmitt
     const check: DiagnosticCheck = {
       id, label, layer: "L2",
       status: result.thinking ? "pass" : "na",
-      message: result.thinking ? "思考内容已确认" : "未观察到思考内容块（模型可能不支持 thinking 输出）",
+      message: result.thinking ? "thinking_confirmed" : "thinking_not_observed",
       durationMs: Date.now() - t0,
     };
     emit({ type: "check_passed", check });
@@ -253,9 +253,9 @@ async function runL2Thinking(cred: DecryptedLlmCredential, emit: DiagnosticEmitt
 
 async function runL3Tool(cred: DecryptedLlmCredential, emit: DiagnosticEmitter): Promise<DiagnosticCheck> {
   const id: DiagnosticCheckId = "tool";
-  const label = "工具调用";
+  const label = "tool";
   const t0 = Date.now();
-  emit({ type: "check_started", check: { id, label, layer: "L3", status: "pass", message: "测试中…" } });
+  emit({ type: "check_started", check: { id, label, layer: "L3", status: "pass", message: "testing" } });
 
   try {
     const model = buildModel(cred);
@@ -285,7 +285,7 @@ async function runL3Tool(cred: DecryptedLlmCredential, emit: DiagnosticEmitter):
     const check: DiagnosticCheck = {
       id, label, layer: "L3",
       status: result.tool ? "pass" : "fail",
-      message: result.tool ? "模型发出了工具调用" : "模型未发出工具调用（Agent 功能可能受限）",
+      message: result.tool ? "tool_call_observed" : "tool_call_not_observed",
       durationMs: Date.now() - t0,
     };
     emit({ type: result.tool ? "check_passed" : "check_failed", check });
