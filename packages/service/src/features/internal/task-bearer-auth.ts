@@ -50,9 +50,6 @@ export function makeTaskBearerAuth(allowedStates: ReadonlySet<TaskState>) {
 /** P2 sandbox-plane proxy: prepare phase only. */
 export const taskBearerAuth = makeTaskBearerAuth(new Set<TaskState>(["preparing"]));
 
-/** P0 model-proxy: prepare (preparing) + scan (running) workers. */
-export const modelProxyTaskBearerAuth = makeTaskBearerAuth(new Set<TaskState>(["preparing", "running"]));
-
 /** Retrieve the task resolved by the middleware (undefined if not run). */
 export function getInternalTask(c: Context): DbTask | undefined {
   return c.get(TASK_BEARER_KEY) as DbTask | undefined;

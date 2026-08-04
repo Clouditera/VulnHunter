@@ -88,33 +88,33 @@ export interface SpawnPrepareWorkerOptions {
 }
 
 /**
- * Generate the prepare flow's models.json so pi/youngflow resolves its model
- * against the credential-free internal model proxy (P0 design §4). The file
- * contains no secret: apiKey is the worker's own (non-secret) task id, which
- * youngflow expands from the $TASK_ID env template; baseUrl points at the
- * internal proxy. The real LLM key stays in the service process.
+ * Generate the prepare flow's models.json with the task's **real LLM credential**
+ * written directly (fish 2026-08-04 decision: model-proxy removed; workers carry
+ * user-owned keys — user bears the risk of scanning untrusted code).
  *
- * Per pi's models.json schema, the model `id` is "the identifier passed to the
- * API" — so it must be the task's real model_id (the proxy forwards the request
- * body's `model` verbatim to the upstream provider). `api` is mapped from the
- * task's proto_type.
+ * - baseUrl = credential base_url **as-is** (trailing-slash trim only, no path
+ *   manipulation — pi SDK conventions: Anthropic SDK appends /v1/messages, so
+ *   baseURL should NOT contain /v1; OpenAI SDK expects /v1 in baseURL).
+ * - apiKey = decrypted real key (no task-id proxy).
+ * - model id = the task's real model_id (forwarded verbatim by pi SDK).
+ * - api type = mapped from proto_type.
  */
-export async function resolvePrepareModel(task: DbTask, serviceUrl: string): Promise<{ modelsJson: string; modelString: string }> {
+export async function resolvePrepareModel(task: DbTask): Promise<{ modelsJson: string; modelString: string }> {
   const cred = task.credential_id ? await getCredentialById(task.credential_id) : await getDefaultCredential();
   if (!cred || !cred.model_id) throw new Error("Prepare 需要可用模型凭证，请在任务或 Settings 中配置模型");
   const api = cred.proto_type.startsWith("anthropic") ? "anthropic-messages" : "openai-completions";
-  const baseUrl = `${serviceUrl.replace(/\/+$/, "")}/internal/model-proxy`;
+  const baseUrl = (cred.base_url ?? "").replace(/\/+$/, "");
   const models = {
     providers: {
-      internal: {
+      platform: {
         api,
         baseUrl,
-        apiKey: "$TASK_ID",
+        apiKey: cred.api_key,
         models: [{ id: cred.model_id }],
       },
     },
   };
-  return { modelsJson: JSON.stringify(models, null, 2) + "\n", modelString: `internal/${cred.model_id}` };
+  return { modelsJson: JSON.stringify(models, null, 2) + "\n", modelString: `platform/${cred.model_id}` };
 }
 
 /**
@@ -133,10 +133,9 @@ export async function createPrepareWorker(opts: SpawnPrepareWorkerOptions): Prom
   await rm(sandboxTypesDir, { recursive: true, force: true });
   await mkdir(sandboxTypesDir, { recursive: true });
 
-  // Credential-free model config (P0): generate models.json pointing at the
-  // internal model proxy and mount it over the flow's shipped empty file. The
-  // resolved model_id selects the model string; no secret is written.
-  const { modelsJson, modelString } = await resolvePrepareModel(task, config.docker.workerServiceUrl);
+  // Direct credential: models.json now carries the real LLM key + base_url
+  // as-is (fish 2026-08-04: model-proxy removed).
+  const { modelsJson, modelString } = await resolvePrepareModel(task);
   const modelsJsonHostPath = join(sandboxTypesDir, "models.json");
   await writeFile(modelsJsonHostPath, modelsJson, { mode: 0o644 });
 
@@ -209,6 +208,18 @@ export async function runPrepareWorker(opts: SpawnPrepareWorkerOptions): Promise
   } finally {
     clearTimeout(cap);
   }
+
+  // Extract engine error tail BEFORE removing the container (spec §5).
+  let errorDetail = "";
+  if (!timedOut && statusCode !== 0) {
+    try {
+      const logStream = await container.logs({ stdout: true, stderr: true, tail: 50 });
+      const lines = logStream.toString("utf8").split("\n");
+      const hit = lines.find((l) => /error|Error|\b[45]\d\d\b/i.test(l));
+      if (hit) errorDetail = hit.trim().slice(0, 300);
+    } catch { /* ignore */ }
+  }
+
   await container.remove({ force: true }).catch(() => undefined);
 
   if (timedOut) {
@@ -216,7 +227,11 @@ export async function runPrepareWorker(opts: SpawnPrepareWorkerOptions): Promise
   }
   const outputDir = getPrepareOutputDir(hostWorkDir);
   if (statusCode !== 0) {
-    throw new Error(`Prepare 失败（退出码 ${statusCode ?? "?"}）`);
+    throw new Error(
+      errorDetail
+        ? `Prepare 失败（退出码 ${statusCode ?? "?"}）：${errorDetail}`
+        : `Prepare 失败（退出码 ${statusCode ?? "?"}）`,
+    );
   }
   const result = await readPrepareResult(outputDir);
   logger.info({ taskId: task.id, claimToken, result }, "Prepare worker completed");

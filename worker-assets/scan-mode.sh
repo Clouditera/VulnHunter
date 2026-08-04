@@ -219,13 +219,12 @@ LLM_BASE_URL="${LLM_BASE_URL:-}"
 MODEL_EFFORT="${MODEL_EFFORT:-off}"
 LLM_CONTEXT_WINDOW_TOKENS="${LLM_CONTEXT_WINDOW_TOKENS:-128000}"
 
-# Credential-free model access: the scan worker calls the platform's internal
-# model-proxy with its own (non-secret) task id; the real LLM key never enters
-# this container. SERVICE_URL + TASK_ID are injected by the service at spawn.
-MODEL_PROXY_URL="${SERVICE_URL%/}/internal/model-proxy"
+# Direct credential: the worker uses the real LLM credential (LLM_BASE_URL +
+# LLM_API_KEY) injected by the service. Model-proxy removed (fish 2026-08-04).
+LLM_DIRECT_BASE_URL="${LLM_BASE_URL:-}"
 
-if [ -z "$LLM_MODEL_NAME" ] || [ -z "$TASK_ID" ] || [ -z "$SERVICE_URL" ]; then
-  echo "[scan] FATAL: model credential not configured (LLM_MODEL_NAME / TASK_ID / SERVICE_URL missing). Configure a model in Settings before scanning." >&2
+if [ -z "$LLM_MODEL_NAME" ] || [ -z "$LLM_API_KEY" ]; then
+  echo "[scan] FATAL: model credential not configured (LLM_MODEL_NAME / LLM_API_KEY missing). Configure a model in Settings before scanning." >&2
   exit 1
 fi
 
@@ -234,7 +233,7 @@ fi
 V_DEFAULT_MODEL="$(
   MODEL_PROTO_TYPE="$MODEL_PROTO_TYPE" \
   LLM_MODEL_NAME="$LLM_MODEL_NAME" \
-  MODEL_PROXY_URL="$MODEL_PROXY_URL" \
+  MODEL_PROXY_URL="$LLM_DIRECT_BASE_URL" \
   LLM_CONTEXT_WINDOW_TOKENS="$LLM_CONTEXT_WINDOW_TOKENS" \
   MODEL_EFFORT="$MODEL_EFFORT" \
   python3 - "$FLOW_DIR/models.json" <<'PY'
@@ -269,7 +268,7 @@ if not api_type:
     sys.exit(1)
 
 PROVIDER = "platform"
-API_KEY_ENV = "TASK_ID"
+API_KEY_ENV = "LLM_API_KEY"
 
 lo = f"{model_id}".lower()
 is_deepseek = "deepseek" in lo
@@ -296,9 +295,7 @@ provider_cfg = {
     "api": api_type,
     "apiKey": f"${API_KEY_ENV}",
     "models": [model_entry],
-    # Credential-free: model calls go to the platform's internal model-proxy,
-    # which holds the real key server-side. apiKey above is the worker's own
-    # (non-secret) task id, expanded by youngflow from the $TASK_ID env.
+    # Direct credential: real base_url + real key (model-proxy removed).
     "baseUrl": proxy_url,
 }
 
@@ -319,9 +316,8 @@ if [ -z "$V_DEFAULT_MODEL" ]; then
   exit 1
 fi
 
-# Write .env for youngflow: model selection + engine tuning. No API key here —
-# the worker authenticates to the internal model-proxy with its own task id,
-# and the real key stays in the service process.
+# Write .env for youngflow: model selection + engine tuning. API key lives in
+# the container env (LLM_API_KEY), expanded by youngflow via $LLM_API_KEY.
 cat > "$FLOW_DIR/.env" << EOF
 V_DEFAULT_MODEL=${V_DEFAULT_MODEL}
 V_STRONG_MODEL=${V_DEFAULT_MODEL}
