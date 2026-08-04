@@ -661,23 +661,23 @@ function TimeoutBanner({ onContinue }: { onContinue: () => void }) {
         gap: "12px",
         alignItems: "flex-start",
         padding: "12px 14px",
-        background: "rgba(255, 115, 60, 0.08)",
-        border: "1px solid rgba(255, 115, 60, 0.30)",
-        borderLeft: "3px solid var(--sev-high)",
+        background: "rgba(202, 138, 4, 0.08)",
+        border: "1px solid rgba(202, 138, 4, 0.30)",
+        borderLeft: "3px solid #ca8a04",
         borderRadius: "8px",
       }}
     >
       <Icon
         name="clock"
         size={18}
-        style={{ color: "var(--sev-high)", marginTop: "1px" }}
+        style={{ color: "var(--sev-medium)", marginTop: "1px" }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
             fontSize: "13px",
             fontWeight: 600,
-            color: "var(--sev-high)",
+            color: "var(--sev-medium)",
             marginBottom: "4px",
             lineHeight: 1.3,
           }}
@@ -701,9 +701,9 @@ function TimeoutBanner({ onContinue }: { onContinue: () => void }) {
           flexShrink: 0,
           padding: "6px 12px",
           background: "transparent",
-          border: "1px solid var(--sev-high)",
+          border: "1px solid var(--sev-medium)",
           borderRadius: "6px",
-          color: "var(--sev-high)",
+          color: "var(--sev-medium)",
           fontSize: "12px",
           fontWeight: 600,
           cursor: "pointer",
