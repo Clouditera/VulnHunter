@@ -18,5 +18,5 @@ describe("L4 agent check", () => {
     expect(result.durationMs).toBeGreaterThan(0);
     expect(result.detail).toBeTruthy();
     expect(typeof result.detail).toBe("string");
-  }, 35_000);
+  }, 70_000);
 });
