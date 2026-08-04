@@ -940,6 +940,9 @@ export interface LlmCredential {
    */
   masked_key?: string;
   credential_health?: "ok" | "decrypt_failed" | "key_unavailable" | "unknown";
+  /** L4 deep verification (agent-loop) state — present once B核-B/B4 wiring lands. */
+  deep_verified_status?: "pending" | "running" | "passed" | "failed" | null;
+  deep_verified_at?: string | null;
   key_fingerprint?: string | null;
   current_key_fingerprint?: string;
   context_window_tokens: number;
