@@ -309,6 +309,18 @@ export function ApiTokensSection() {
                   >
                     {t.name}
                   </div>
+                  {t.token_prefix ? (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontFamily: "ui-monospace, Menlo, Consolas, monospace",
+                        color: "var(--text-tertiary, var(--text-secondary))",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {t.token_prefix}…
+                    </div>
+                  ) : null}
                   <div
                     style={{
                       fontSize: 11,
