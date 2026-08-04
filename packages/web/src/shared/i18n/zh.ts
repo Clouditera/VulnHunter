@@ -449,6 +449,7 @@ export const ZH: Record<string, string> = {
   "feedback.submit": "提交反馈",
   "feedback.submitting": "提交中…",
   "feedback.thanks": "感谢反馈！我们会认真阅读。",
+  "modal.closeConfirm": "内容还未提交，确定要关闭吗？",
   "feedback.err.satisfaction": "请选择满意度",
   "feedback.err.content": "请填写反馈意见",
   "feedback.err.submit": "提交失败，请稍后重试",

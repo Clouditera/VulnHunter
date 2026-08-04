@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { api, type LlmCredential, type SourceArchivePolicy, type SandboxCapacity } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { toast } from "../../../shared/toast/toast.js";
+import { useConfirmClose } from "../../../shared/hooks/useConfirmClose.js";
 
 interface Props {
   onClose: () => void;
@@ -235,6 +236,13 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   // happens to release on the overlay does NOT close the modal.
   // Only close when BOTH mousedown AND mouseup happen on the overlay itself.
   const overlayMouseDownRef = useRef(false);
+  // Guard against losing a filled-in form on accidental overlay click (fish 2026-08-04).
+  const isDirty =
+    file != null ||
+    gitUrl.trim() !== "" ||
+    displayName.trim() !== "" ||
+    auditFocus.trim() !== "";
+  const requestClose = useConfirmClose(onClose, isDirty);
 
   return (
     <div
@@ -258,7 +266,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
           overlayMouseDownRef.current &&
           e.target === e.currentTarget
         ) {
-          onClose();
+          requestClose();
         }
         overlayMouseDownRef.current = false;
       }}
@@ -289,7 +297,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         >
           <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>{i18n.t("newTask.title")}</h2>
           <button
-            onClick={onClose}
+            onClick={requestClose}
             style={{
               background: "none",
               border: "none",
