@@ -127,4 +127,5 @@ export const ERROR_CATALOG = {
   },
 } as const;
 
-export type ErrorCode = keyof typeof ERROR_CATALOG;
+/** Legacy type — prefer ErrorCode from registry.ts. Kept during migration. */
+export type LegacyErrorCode = keyof typeof ERROR_CATALOG;
