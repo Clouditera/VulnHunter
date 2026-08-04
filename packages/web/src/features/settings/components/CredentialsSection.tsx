@@ -12,7 +12,6 @@ import {
   CredentialTestProgress,
   streamCredentialTest,
 } from "./CredentialTestProgress.js";
-import { DeepVerifiedBadge } from "./DeepVerifiedBadge.js";
 import { CloudRouterBalanceGlance, CloudRouterBalanceStrip } from "./CloudRouterBalance.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 import { useEdition } from "../../../shared/hooks/useEdition.js";
@@ -1241,10 +1240,6 @@ export function CredentialsSection() {
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
                         {c.label || c.provider}
                       </span>
-                      <DeepVerifiedBadge
-                        status={c.deep_verified_status}
-                        at={c.deep_verified_at}
-                      />
                     </div>
                     <div
                       style={{

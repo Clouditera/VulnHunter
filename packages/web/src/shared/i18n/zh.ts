@@ -672,9 +672,6 @@ export const ZH: Record<string, string> = {
   "diagnostics.check.tool": "工具调用",
   "diagnostics.check.agent": "Agent 回路",
   "settings.model.testProgress.suggestion": "建议",
-  "settings.creds.deepVerified.passed": "深度验证",
-  "settings.creds.deepVerified.failed": "深度验证未过",
-  "settings.creds.deepVerified.running": "深度验证中…",
   // Appearance
   "settings.appearance.title": "语言与外观",
   "settings.appearance.desc": "界面语言与视觉主题",
