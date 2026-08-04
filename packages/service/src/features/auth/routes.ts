@@ -3,6 +3,7 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { isStrongPassword, PASSWORD_RULE_MESSAGE } from "@vulnhunter/shared";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
+import { AppError } from "../../infra/app-error.js";
 import * as authService from "./service.js";
 import * as authStorage from "./storage.js";
 import * as emailCodes from "./email-codes.js";
@@ -97,8 +98,8 @@ authRouter.post("/login", licenseGuard, async (c) => {
         },
       }, 403);
     }
-    const code = result.error === "locked" ? "ERR_AUTH_LOCKED" : "ERR_AUTH_INVALID_CREDENTIALS";
-    return c.json({ error: { code } }, result.error === "locked" ? 429 : 401);
+    if (result.error === "locked") throw new AppError("ERR_AUTH_LOCKED");
+    throw new AppError("ERR_AUTH_INVALID_CREDENTIALS");
   }
 
   // Business service: reject admin accounts without leaking console existence.
@@ -106,7 +107,7 @@ authRouter.post("/login", licenseGuard, async (c) => {
   const serviceRole = (process.env.SERVICE_ROLE ?? "business").toLowerCase();
   if (serviceRole !== "admin" && result.user.role === "admin") {
     await authService.logout(result.sessionId);
-    return c.json({ error: { code: "ERR_AUTH_INVALID_CREDENTIALS" } }, 401);
+    throw new AppError("ERR_AUTH_INVALID_CREDENTIALS");
   }
 
   setSessionCookie(c, result.sessionId);
@@ -125,7 +126,7 @@ authRouter.get("/agreements", licenseGuard, async (c) => {
 // GET /api/auth/agreements/:id — full HTML body for in-product viewer
 authRouter.get("/agreements/:id", licenseGuard, async (c) => {
   const found = getAgreementHtml(c.req.param("id"));
-  if (!found) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  if (!found) throw new AppError("ERR_NOT_FOUND");
   const format = c.req.query("format");
   if (format === "json") {
     return c.json({
@@ -307,7 +308,7 @@ authRouter.post("/change-password", licenseGuard, requireAuth, async (c) => {
 
   const result = await authService.changePassword(user.userId, body.old_password, body.new_password);
   if ("error" in result) {
-    return c.json({ error: { code: "ERR_AUTH_INVALID_CREDENTIALS", message: result.error } }, 401);
+    throw new AppError("ERR_AUTH_INVALID_CREDENTIALS");
   }
 
   return c.json({ ok: true });
@@ -422,8 +423,8 @@ adminAuthRouter.post("/login", licenseGuard, async (c) => {
         },
       }, 403);
     }
-    const code = result.error === "locked" ? "ERR_AUTH_LOCKED" : "ERR_AUTH_INVALID_CREDENTIALS";
-    return c.json({ error: { code } }, result.error === "locked" ? 429 : 401);
+    if (result.error === "locked") throw new AppError("ERR_AUTH_LOCKED");
+    throw new AppError("ERR_AUTH_INVALID_CREDENTIALS");
   }
 
   setSessionCookie(c, result.sessionId);
@@ -443,7 +444,7 @@ adminAuthRouter.post("/change-password", licenseGuard, requireAuth, async (c) =>
 
   const result = await authService.changePassword(user.userId, body.old_password, body.new_password);
   if ("error" in result) {
-    return c.json({ error: { code: "ERR_AUTH_INVALID_CREDENTIALS", message: result.error } }, 401);
+    throw new AppError("ERR_AUTH_INVALID_CREDENTIALS");
   }
   return c.json({ ok: true });
 });

@@ -1133,7 +1133,17 @@ const ZH: Record<string, string> = {
   "errors.ERR_SOURCE_ARCHIVE_CORRUPT": "源码包已损坏，无法读取",
   "errors.ERR_VALIDATION": "请求参数有误",
   "errors.ERR_NOT_FOUND": "请求的资源不存在",
-};
+
+  "errors.ERR_INVALID_STATE": "任务当前状态不支持此操作",
+  "errors.ERR_INVALID_SCAN_OPTIONS": "扫描参数有误",
+  "errors.ERR_INVALID_GIT_URL": "Git 地址格式不正确",
+  "errors.ERR_GIT_REMOTE_UNREACHABLE": "无法访问源码仓库，请检查地址和分支",
+  "errors.ERR_NO_LLM_CREDENTIAL": "尚未配置模型凭证",
+  "errors.ERR_SELF_SUSPEND": "不能停用自己的账号",
+  "errors.ERR_SELF_DELETE": "不能删除自己的账号",
+  "errors.ERR_LAST_ADMIN": "不能删除最后一位管理员",
+  "errors.ERR_SOURCE_ARCHIVE_NOT_AVAILABLE": "原始上传包不适用于此任务",
+  "errors.ERR_SOURCE_ARCHIVE_NOT_FOUND": "原始上传包缺失",};
 
 const EN: Record<string, string> = {
   // Nav

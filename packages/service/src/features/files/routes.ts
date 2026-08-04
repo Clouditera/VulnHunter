@@ -2,6 +2,7 @@ import { getDefaultOrFirstAvailableCredential, getCredentialById } from "../sett
 import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
+import { AppError } from "../../infra/app-error.js";
 import { uploadFile } from "../../infra/minio/client.js";
 import { checkTaskLimit, createTask, updateTaskState, hasTaskNameConflict } from "../tasks/storage.js";
 import { randomUUID } from "node:crypto";
@@ -106,7 +107,7 @@ filesRouter.get("/git/branches", async (c) => {
     if (err instanceof GitRemoteError) {
       return c.json({ error: { code: err.code, detail: err.message } }, err.status);
     }
-    return c.json({ error: { code: "ERR_GIT_REMOTE_UNREACHABLE", detail: "无法访问该源码仓库，请检查仓库地址和分支是否正确，或改用上传 ZIP 压缩包的方式创建任务。" } }, 502);
+    throw new AppError("ERR_GIT_REMOTE_UNREACHABLE");
   }
 });
 
@@ -161,7 +162,7 @@ filesRouter.post("/tasks", async (c) => {
   const config = loadConfig();
   const limit = await checkTaskLimit(ctx);
   if (!limit.allowed) {
-    return c.json({ error: { code: "ERR_TASK_LIMIT_EXCEEDED", message: `Task limit reached (${limit.used}/${limit.limit})`, used: limit.used, limit: limit.limit } }, 403);
+    throw new AppError("ERR_TASK_LIMIT_EXCEEDED", { details: { used: limit.used, limit: limit.limit } });
   }
 
   const contentType = c.req.header("content-type") ?? "";
@@ -171,20 +172,20 @@ filesRouter.post("/tasks", async (c) => {
     const policy = await getSourceArchivePolicy();
     const contentLength = Number(c.req.header("content-length") ?? 0);
     if (Number.isFinite(contentLength) && contentLength > policy.max_bytes + 1024 * 1024) {
-      return c.json({ error: { code: "ERR_SOURCE_ARCHIVE_TOO_LARGE", message: `Source archive exceeds ${policy.max_mb} MB`, limit_mb: policy.max_mb } }, 413);
+      throw new AppError("ERR_SOURCE_ARCHIVE_TOO_LARGE", { details: { limit_mb: policy.max_mb } });
     }
 
     const formData = await c.req.formData();
     const file = formData.get("file") as File | null;
-    if (!file) return c.json({ error: { code: "ERR_INTERNAL", detail: "file required" } }, 400);
+    if (!file) throw new AppError("ERR_VALIDATION");
 
     if (file.size > policy.max_bytes) {
-      return c.json({ error: { code: "ERR_SOURCE_ARCHIVE_TOO_LARGE", message: `Source archive exceeds ${policy.max_mb} MB`, limit_mb: policy.max_mb } }, 413);
+      throw new AppError("ERR_SOURCE_ARCHIVE_TOO_LARGE", { details: { limit_mb: policy.max_mb } });
     }
 
     const detected = detectSourceArchive(file.name);
     if (!detected) {
-      return c.json({ error: { code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_FORMAT", message: `Unsupported source archive format. Supported: ${policy.extensions.join(", ")}`, extensions: policy.extensions } }, 400);
+      throw new AppError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_FORMAT", { details: { extensions: policy.extensions } });
     }
 
     const credentialId = (formData.get("credential_id") as string | null) || undefined;
@@ -193,7 +194,7 @@ filesRouter.post("/tasks", async (c) => {
     try {
       agentMaxParallel = parseAgentMaxParallel(formData.get("agent_max_parallel"));
     } catch (err) {
-      return c.json({ error: { code: "ERR_VALIDATION", detail: err instanceof Error ? err.message : String(err) } }, 400);
+      throw new AppError("ERR_VALIDATION", { details: { reason: err instanceof Error ? err.message : String(err) } });
     }
     const taskId = randomUUID();
     const minioKey = `code-packages/${taskId}${detected.storageExtension}`;
@@ -217,7 +218,7 @@ filesRouter.post("/tasks", async (c) => {
     try {
       scanMeta = scanMetaFromForm(formData);
     } catch (err) {
-      return c.json({ error: { code: "ERR_INVALID_SCAN_OPTIONS", detail: err instanceof Error ? err.message : String(err) } }, 400);
+      throw new AppError("ERR_INVALID_SCAN_OPTIONS", { details: { reason: err instanceof Error ? err.message : String(err) } });
     }
 
     if (scanMeta.dynamic_enabled || scanMeta.enable_poc || scanMeta.enable_exp || scanMeta.enable_chain) {
@@ -278,7 +279,7 @@ filesRouter.post("/tasks", async (c) => {
   }>();
 
   if (!body.git_url) {
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "git_url required" } }, 400);
+    throw new AppError("ERR_VALIDATION");
   }
 
   let safeGitUrl: string;
@@ -299,7 +300,7 @@ filesRouter.post("/tasks", async (c) => {
       enableDynamicExploit: body.enable_dynamic_exploit,
     });
   } catch (err) {
-    return c.json({ error: { code: "ERR_INVALID_SCAN_OPTIONS", detail: err instanceof Error ? err.message : String(err) } }, 400);
+    throw new AppError("ERR_INVALID_SCAN_OPTIONS", { details: { reason: err instanceof Error ? err.message : String(err) } });
   }
 
   if (gitScanMeta.dynamic_enabled || gitScanMeta.enable_poc || gitScanMeta.enable_exp || gitScanMeta.enable_chain) {
@@ -318,7 +319,7 @@ filesRouter.post("/tasks", async (c) => {
   try {
     agentMaxParallel = parseAgentMaxParallel(body.agent_max_parallel);
   } catch (err) {
-    return c.json({ error: { code: "ERR_VALIDATION", detail: err instanceof Error ? err.message : String(err) } }, 400);
+    throw new AppError("ERR_VALIDATION", { details: { reason: err instanceof Error ? err.message : String(err) } });
   }
 
   const credRes = await resolveCreateCredentialId(ctx, body.credential_id);

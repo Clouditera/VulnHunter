@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { requireAdmin } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
+import { AppError } from "../../infra/app-error.js";
 import { logger } from "../../infra/logger.js";
 import * as authStorage from "./storage.js";
 import { countTasksForUser } from "../tasks/storage.js";
@@ -69,7 +70,7 @@ adminUsersRouter.patch("/:id", async (c) => {
     display_name?: string;
   }>();
   const user = await authStorage.getUserById(id);
-  if (!user) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  if (!user) throw new AppError("ERR_NOT_FOUND");
 
   const me = c.get("user");
   const ip = clientIp(c);
@@ -119,12 +120,12 @@ adminUsersRouter.patch("/:id", async (c) => {
 
   if (body.status === "suspended") {
     if (me.userId === id) {
-      return c.json({ error: { code: "ERR_SELF_SUSPEND", message: "Cannot disable yourself" } }, 400);
+      throw new AppError("ERR_SELF_SUSPEND");
     }
     if (user.role === "admin") {
       const adminCount = await authStorage.countAdmins();
       if (adminCount <= 1) {
-        return c.json({ error: { code: "ERR_LAST_ADMIN", message: "Cannot disable the last admin" } }, 400);
+        throw new AppError("ERR_LAST_ADMIN");
       }
     }
   }
@@ -135,7 +136,7 @@ adminUsersRouter.patch("/:id", async (c) => {
     } catch (err) {
       const code = (err as { code?: string }).code;
       if (code === "ERR_PROTECTED_ACCOUNT") {
-        return c.json({ error: { code, message: "系统管理员账号受保护，请通过部署配置管理" } }, 400);
+        throw new AppError("ERR_PROTECTED_ACCOUNT");
       }
       throw err;
     }
@@ -151,7 +152,7 @@ adminUsersRouter.patch("/:id", async (c) => {
 adminUsersRouter.delete("/:id", async (c) => {
   const id = c.req.param("id");
   const user = await authStorage.getUserById(id);
-  if (!user) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  if (!user) throw new AppError("ERR_NOT_FOUND");
 
   const me = c.get("user");
   const ip = clientIp(c);
@@ -170,12 +171,12 @@ adminUsersRouter.delete("/:id", async (c) => {
   }
 
   if (me.userId === id) {
-    return c.json({ error: { code: "ERR_SELF_DELETE", message: "Cannot delete yourself" } }, 400);
+    throw new AppError("ERR_SELF_DELETE");
   }
   if (user.role === "admin") {
     const adminCount = await authStorage.countAdmins();
     if (adminCount <= 1) {
-      return c.json({ error: { code: "ERR_LAST_ADMIN", message: "Cannot delete the last admin" } }, 400);
+      throw new AppError("ERR_LAST_ADMIN");
     }
   }
 
@@ -184,7 +185,7 @@ adminUsersRouter.delete("/:id", async (c) => {
   } catch (err) {
     const code = (err as { code?: string }).code;
     if (code === "ERR_PROTECTED_ACCOUNT") {
-      return c.json({ error: { code, message: "系统管理员账号受保护，请通过部署配置管理" } }, 400);
+      throw new AppError("ERR_PROTECTED_ACCOUNT");
     }
     throw err;
   }
