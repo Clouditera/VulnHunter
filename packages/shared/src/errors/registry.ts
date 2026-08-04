@@ -215,7 +215,13 @@ export const ERROR_REGISTRY = {
   },
   ERR_GIT_REMOTE_UNREACHABLE: {
     i18nKey: "errors.ERR_GIT_REMOTE_UNREACHABLE",
-    httpStatus: 502,
+    httpStatus: 503,
+    action: { kind: "navigate", to: "/settings?tab=credentials" },
+  },
+  ERR_MODEL_CREDENTIAL_UNAVAILABLE: {
+    i18nKey: "errors.ERR_MODEL_CREDENTIAL_UNAVAILABLE",
+    httpStatus: 503,
+    action: { kind: "navigate", to: "/settings?tab=credentials" },
   },
   ERR_NO_LLM_CREDENTIAL: {
     i18nKey: "errors.ERR_NO_LLM_CREDENTIAL",
