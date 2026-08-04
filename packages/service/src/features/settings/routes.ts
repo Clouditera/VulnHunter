@@ -14,6 +14,7 @@ import {
 import { logger } from "../../infra/logger.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { runPiDiagnostics, type DiagnosticEvent } from "./pi-diagnostics.js";
+import { coreFieldsChanged, effectiveApiKey } from "./credential-core-fields.js";
 import { lookupModelMeta } from "./pi-model-catalog.js";
 import { loadConfig } from "../../infra/config.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
@@ -120,8 +121,20 @@ settingsRouter.put("/credential", async (c) => {
 
   const ctx = queryContextFromUser(c.get("user"));
 
+  // ── Edit gate refinement (fish 2026-08-04): core-field changes
+  // (proto/base_url/api_key/model_id) require a fresh L1-L3 pass;
+  // optional-only edits (label etc.) save directly. ──
+  let coreChanged = true;
+  let effectiveKey = body.api_key;
+  if (body.id) {
+    const existing = await getCredentialById(ctx, body.id).catch(() => null);
+    if (!existing) throw new AppError("ERR_NOT_FOUND");
+    effectiveKey = effectiveApiKey(existing, body);
+    coreChanged = coreFieldsChanged(existing, body);
+  }
+
   // ── Save gate: run L1-L3 before persisting (fish 2026-08-04) ──
-  {
+  if (coreChanged) {
     const gateCred = {
       id: body.id ?? "gate",
       provider: body.provider,
@@ -129,7 +142,7 @@ settingsRouter.put("/credential", async (c) => {
       base_url: body.base_url!,
       model_id: body.model_id,
       thinking_effort: body.thinking_effort,
-      api_key: body.api_key,
+      api_key: effectiveKey,
       context_window_tokens: contextWindowTokens,
       is_default: false,
       created_at: new Date(),
