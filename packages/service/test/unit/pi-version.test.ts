@@ -6,10 +6,16 @@ describe("pi version pin", () => {
     expect(PI_VERSION).toMatch(/^\d+\.\d+\.\d+/);
   });
 
-  it("PI_VERSION matches worker + eval-worker Dockerfile ARG defaults", async () => {
+  it("PI_VERSION matches all Dockerfiles ARG defaults", async () => {
     const { readFile } = await import("node:fs/promises");
     const { resolve } = await import("node:path");
-    for (const df of ["worker.Dockerfile", "eval-worker.Dockerfile"]) {
+    const dockerfiles = [
+      "worker.Dockerfile",
+      "eval-worker.Dockerfile",
+      "service.Dockerfile",
+      "service.community.Dockerfile",
+    ];
+    for (const df of dockerfiles) {
       const dockerfile = await readFile(
         resolve(__dirname, `../../../../deploy/dockerfiles/${df}`),
         "utf8",
