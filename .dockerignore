@@ -1,5 +1,35 @@
-**/node_modules
+# ── VCS / local scratch ─────────────────────────────────────────────
 **/.git
+.worktrees/
 **/.turbo
-packages/service/dist
-release
+.bossmode-attachments/
+
+# ── Dependencies (reinstalled inside image) ─────────────────────────
+**/node_modules
+
+# ── Build outputs (rebuilt in-image or prebuilt on host) ────────────
+# web + worker-bridge dist are built on host BEFORE docker build and
+# COPYed from context — keep those, drop everything else.
+**/dist
+!packages/web/dist-business
+!packages/web/dist-admin
+!packages/worker-bridge/dist
+**/*.tsbuildinfo
+
+# ── Release artifacts / runtime data / secrets ──────────────────────
+release/
+**/.data
+*.pem
+.env
+.env.*
+!.env.example
+
+# ── Not needed by any Dockerfile ────────────────────────────────────
+docs/
+**/*.log
+.DS_Store
+
+# ── DevEye: eval-worker needs only the linux CLI binary ─────────────
+submodules/DevEye/packages/chrome-extension
+submodules/DevEye/packages/cli/binaries/index-win.exe
+submodules/DevEye/packages/cli/binaries/index-macos
