@@ -196,10 +196,27 @@ chatRouter.post("/sessions/:id/prompt", async (c) => {
     return c.json({ ok: true });
   } catch (err) {
     logger.error({ err, sessionId }, "Failed to send prompt");
-    if (err instanceof ChatCredentialUnavailableError) {
-      return c.json({ error: { code: err.code, detail: err.message } }, 409);
+    const unavailable = err instanceof ChatCredentialUnavailableError;
+    const code = unavailable ? (err as ChatCredentialUnavailableError).code : "ERR_INTERNAL";
+    const detail = unavailable ? (err as ChatCredentialUnavailableError).message : String(err);
+    // Persist + broadcast the same line the client renders ephemerally
+    // ("code: detail") so the persisted row dedupes it (task-d9b94859).
+    const content = `${code}: ${detail}`;
+    const row = await chatStorage
+      .appendMessage({ sessionId, role: "system", content })
+      .catch((persistErr) => {
+        logger.warn({ err: persistErr, sessionId }, "Failed to persist prompt-failure system notice");
+        return null;
+      });
+    if (row) {
+      getOrCreateSession(sessionId).broadcastSystemMessage({
+        id: row.id,
+        seq: row.seq,
+        content,
+        created_at: row.created_at.toISOString(),
+      });
     }
-    return c.json({ error: { code: "ERR_INTERNAL", detail: String(err) } }, 503);
+    return c.json({ error: { code, detail } }, unavailable ? 409 : 503);
   }
 });
 
