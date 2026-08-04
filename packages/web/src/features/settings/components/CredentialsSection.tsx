@@ -132,6 +132,10 @@ export function CredentialsSection() {
   const [modelOptions, setModelOptions] = useState<string[] | null>(null);
   /** Raw model items (may carry reasoning/thinking_levels once backend is capability-aware). */
   const [modelCapsMap, setModelCapsMap] = useState<Record<string, ModelCapabilities>>({});
+  /** Which form fetched the suggestion list ("new" draft or credential id).
+   *  Render is owner-gated so a list fetched on credential A never bleeds
+   *  into credential B's form (task-aaf8ac15, fish screenshot). */
+  const [modelListOwner, setModelListOwner] = useState<string | null>(null);
   /** Progressive credential test checks (SSE/poll unified render state). */
   const [testChecks, setTestChecks] = useState<import("../../../shared/api/client").ModelDiagnosticCheck[]>([]);
   const [modelFetchState, setModelFetchState] = useState<
@@ -183,6 +187,15 @@ export function CredentialsSection() {
     setApiKey(""); // always require re-entry for security
     setTestState({ kind: "idle" });
     setToast(null);
+    resetModelList();
+  }
+
+  /** Reset the model suggestion list (switch of edit target — spec ①). */
+  function resetModelList() {
+    setModelOptions(null);
+    setModelCapsMap({});
+    setModelFetchState({ kind: "idle" });
+    setModelListOwner(null);
   }
 
   /** Collapse the current expanded row (no draft, no editing). */
@@ -193,6 +206,7 @@ export function CredentialsSection() {
     setApiKey("");
     setTestState({ kind: "idle" });
     setToast(null);
+    resetModelList();
   }
 
   /** Open the "+ New credential" draft row at the top of the list. */
@@ -211,6 +225,7 @@ export function CredentialsSection() {
     setTestState({ kind: "idle" });
     setToast(null);
     setTestChecks([]);
+    resetModelList();
   }
 
   async function handleDeleteCredential(c: LlmCredential) {
@@ -391,6 +406,10 @@ export function CredentialsSection() {
 
   /** Pull `/v1/models` using current form values (or saved credential as fallback). */
   async function fetchModels() {
+    // Owner tag at fetch start: if the user switches edit target while the
+    // request is in flight, the late response stays hidden (owner-gate in render).
+    const ownerKey = isNewDraft ? "new" : editingCredentialId;
+    setModelListOwner(ownerKey);
     setModelFetchState({ kind: "loading" });
     try {
       // Pass current form values so user can fetch models before saving
@@ -425,6 +444,10 @@ export function CredentialsSection() {
 
   /** Capabilities of the currently selected model (from last model fetch). */
   const activeModelCaps: ModelCapabilities | null = modelId ? (modelCapsMap[modelId] ?? null) : null;
+  /** Identity of the form currently being edited — suggestions/fetch errors
+   *  render only when the list's owner matches (spec ② owner-gate). */
+  const currentFormKey = isNewDraft ? "new" : editingCredentialId;
+  const modelListVisible = modelListOwner === currentFormKey;
   /** Thinking levels for the UI: model-specific when known, standard five otherwise. */
   const thinkingLevelsForUi: string[] = activeModelCaps?.thinkingLevels ?? [...THINKING_VALUES];
 
@@ -678,8 +701,8 @@ export function CredentialsSection() {
                     </span>
                   </button>
                 </div>
-                {/* Suggestions popover */}
-                {modelOptions && modelOptions.length > 0 ? (
+                {/* Suggestions popover — owner-gated (task-aaf8ac15) */}
+                {modelListVisible && modelOptions && modelOptions.length > 0 ? (
                   <div
                     data-testid="settings-model-suggestions"
                     style={{
@@ -724,7 +747,7 @@ export function CredentialsSection() {
                       );
                     })}
                   </div>
-                ) : modelFetchState.kind === "error" ? (
+                ) : modelListVisible && modelFetchState.kind === "error" ? (
                   <div
                     data-testid="settings-model-fetch-error"
                     style={{
