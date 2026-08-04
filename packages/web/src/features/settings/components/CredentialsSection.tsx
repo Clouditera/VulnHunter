@@ -456,7 +456,13 @@ export function CredentialsSection() {
       normUrl(baseUrl) !== normUrl(editCoreSnap.baseUrl) ||
       modelId.trim() !== editCoreSnap.modelId ||
       apiKey.trim() !== "");
-  const saveGateBlocked = coreChanged && testedFingerprint !== coreFingerprint();
+  /** Un-gate ONLY when the last test run PASSED against the current form
+   *  values. Fingerprint alone is not enough: a stale pass fingerprint can
+   *  outlive a later FAILED run on the same values (QA round 2: dead-host
+   *  test showed red yet the button un-gated). testState.kind === "err"
+   *  must always keep the gate closed. */
+  const testPassedForCurrent = testState.kind === "ok" && testedFingerprint === coreFingerprint();
+  const saveGateBlocked = coreChanged && !testPassedForCurrent;
 
   /** Fetch-models button needs URL + a usable key (typed, or the stored one
    *  when editing) — fish: 模型列表依赖 key/url，排在其后且未填禁用. */
