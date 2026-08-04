@@ -20,6 +20,9 @@ FROM base AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends \
       unzip zip ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
+# pi CLI for L4 deep verification (credential save lifecycle)
+ARG PI_VERSION=0.83.0
+RUN npm install -g @earendil-works/pi-coding-agent@$PI_VERSION
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 vulnhunter
 WORKDIR /app
