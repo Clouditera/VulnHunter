@@ -302,7 +302,7 @@ function StageStatusCard({
       <div style={{ marginBottom: "4px" }}>
         {derived ? (
           <StateBadge
-            color={derived === "env_lost" ? "var(--danger)" : derived === "timed_out" ? "var(--sev-high)" : "#737373"}
+            color={derived === "env_lost" ? "var(--danger)" : derived === "timed_out" ? "var(--sev-medium)" : "#737373"}
             icon="clock"
             label={i18n.t(`finding.cards.${derivedLabelKey}`)}
           />
