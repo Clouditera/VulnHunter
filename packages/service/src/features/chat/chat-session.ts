@@ -476,6 +476,13 @@ export class ChatSession {
       if (this.state === "active") this.state = "ready";
     }
 
+    // Bridge error events: persist as a low-key system notice (task-d9b94859)
+    // and notify clients via system_message so the ephemeral copy dedupes.
+    if (event.type === "error") {
+      const content = typeof event.error === "string" && event.error ? event.error : "ERR_INTERNAL";
+      void this.persistSystemNotice(content);
+    }
+
     // Serialize with session_id envelope
     const serialized = JSON.stringify({ session_id: this.sessionId, ...event });
     this.broadcastToClients(serialized);
@@ -496,6 +503,30 @@ export class ChatSession {
         client.send(data);
       }
     }
+  }
+
+  /** Persist a system notice and broadcast it (not buffered — persisted rows
+   *  are re-fetched via GET messages; only in-flight turn events replay). */
+  private persistSystemNotice(content: string): Promise<void> {
+    return appendMessage({ sessionId: this.sessionId, role: "system", content })
+      .then((row) => {
+        this.broadcastSystemMessage({
+          id: row.id,
+          seq: row.seq,
+          content,
+          created_at: row.created_at.toISOString(),
+        });
+      })
+      .catch((err) => logger.warn({ err, sessionId: this.sessionId }, "Failed to persist system notice"));
+  }
+
+  /** Broadcast a service-persisted system notice to connected clients. */
+  broadcastSystemMessage(msg: { id: string; seq: number; content: string; created_at: string }): void {
+    this.broadcastToClients(JSON.stringify({
+      session_id: this.sessionId,
+      type: "system_message",
+      ...msg,
+    }));
   }
 
   private async forwardPrompt(message: string, images?: unknown[]): Promise<void> {

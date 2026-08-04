@@ -38,7 +38,7 @@ export interface DbChatSession {
 export interface DbChatMessage {
   id: string;
   session_id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   seq: number;
   tool_calls: unknown[] | null;
@@ -153,7 +153,7 @@ export async function updateSessionTitleIfDefault(id: string, title: string, def
 
 export async function appendMessage(params: {
   sessionId: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   toolCalls?: unknown[];
 }): Promise<DbChatMessage> {
