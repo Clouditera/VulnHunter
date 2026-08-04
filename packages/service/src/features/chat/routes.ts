@@ -3,6 +3,8 @@ import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import * as chatStorage from "./storage.js";
 import { getOrCreateSession, destroySession } from "./chat-session.js";
+import { removePrefixBestEffort } from "../../infra/minio/cleanup.js";
+import { rm } from "node:fs/promises";
 import { logger } from "../../infra/logger.js";
 import { loadConfig } from "../../infra/config.js";
 import { isTextualMime, withUtf8Charset } from "../../infra/http-text.js";
@@ -134,6 +136,14 @@ chatRouter.delete("/sessions/:id", async (c) => {
   if (!session) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   await destroySession(session.id);
   await chatStorage.deleteSession(session.id);
+  // Artifact cleanup after DB commit (best-effort; sweeper is the backstop):
+  // MinIO chat-artifacts/<sid>/ + chat-sessions/<sid>/, host workdir.
+  const config = loadConfig();
+  void removePrefixBestEffort(config.minio.bucket, `chat-artifacts/${session.id}/`, `chat-session:${session.id}`);
+  void removePrefixBestEffort(config.minio.bucket, `chat-sessions/${session.id}/`, `chat-session:${session.id}`);
+  void rm(join(config.dataDir, "chat-sessions", session.id), { recursive: true, force: true }).catch((err) =>
+    logger.warn({ err, sessionId: session.id }, "Chat session workdir cleanup failed (best-effort)"),
+  );
   return c.json({ ok: true });
 });
 

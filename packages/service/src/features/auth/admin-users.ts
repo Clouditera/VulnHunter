@@ -3,6 +3,9 @@ import { requireAdmin } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { AppError } from "../../infra/app-error.js";
 import { logger } from "../../infra/logger.js";
+import { getDb } from "../../infra/db/client.js";
+import { loadConfig } from "../../infra/config.js";
+import { removeKeysBestEffort } from "../../infra/minio/cleanup.js";
 import * as authStorage from "./storage.js";
 import { countTasksForUser } from "../tasks/storage.js";
 import { listAcceptancesForUsers } from "./agreements.js";
@@ -180,6 +183,11 @@ adminUsersRouter.delete("/:id", async (c) => {
     }
   }
 
+  // Collect the user's MinIO artifact keys BEFORE the DB transaction removes
+  // the rows (reports + chat attachments). Deletion happens after commit,
+  // best-effort — anything missed is the storage sweeper's job.
+  const orphanKeys = await collectUserArtifactKeys(id);
+
   try {
     await authStorage.deleteUser(id);
   } catch (err) {
@@ -189,6 +197,23 @@ adminUsersRouter.delete("/:id", async (c) => {
     }
     throw err;
   }
+  if (orphanKeys.length > 0) {
+    const config = loadConfig();
+    void removeKeysBestEffort(config.minio.bucket, orphanKeys, `user-delete:${id}`);
+  }
   logger.warn({ actor: me.userId, target: id, action: "delete", result: "ok", ip });
   return c.json({ ok: true });
 });
+
+/** Report file keys + chat attachment keys owned by the user (pre-delete snapshot). */
+async function collectUserArtifactKeys(userId: string): Promise<string[]> {
+  const db = getDb();
+  const rows = await db<{ key: string }[]>`
+    SELECT primary_minio_key AS key FROM user_reports WHERE created_by = ${userId} AND primary_minio_key IS NOT NULL
+    UNION ALL
+    SELECT bundle_minio_key AS key FROM user_reports WHERE created_by = ${userId} AND bundle_minio_key IS NOT NULL
+    UNION ALL
+    SELECT minio_key AS key FROM chat_artifacts WHERE user_id = ${userId} AND minio_key IS NOT NULL
+  `;
+  return rows.map((r) => r.key).filter(Boolean);
+}
