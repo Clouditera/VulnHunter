@@ -37,7 +37,7 @@ export function AuthLanguageSelect() {
   );
 }
 
-export function AuthSplitLayout({ children, testid }: { children: ReactNode; testid?: string }) {
+export function AuthSplitLayout({ children, testid, footer }: { children: ReactNode; testid?: string; footer?: ReactNode }) {
   return (
     <div
       data-testid={testid}
@@ -96,7 +96,12 @@ export function AuthSplitLayout({ children, testid }: { children: ReactNode; tes
           overflow: "auto",
         }}
       >
-        <div style={{ width: "340px", maxWidth: "100%" }}>{children}</div>
+        <div style={{ width: "340px", maxWidth: "100%", display: "flex", flexDirection: "column", minHeight: "min(520px, 80vh)" }}>
+          <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+            <div style={{ width: "100%" }}>{children}</div>
+          </div>
+          {footer ? <div style={{ paddingTop: 16 }}>{footer}</div> : null}
+        </div>
       </div>
     </div>
   );

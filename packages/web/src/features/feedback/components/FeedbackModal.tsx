@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { api } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
+import { SupportContactInline } from "../../../shared/components/SupportContact.js";
 
 type Props = { open: boolean; onClose: () => void };
 
@@ -130,6 +131,7 @@ export function FeedbackModal({ open, onClose }: Props) {
             <button data-testid="feedback-submit" type="submit" disabled={loading} style={SUBMIT}>
               {loading ? i18n.t("feedback.submitting") : i18n.t("feedback.submit")}
             </button>
+            <SupportContactInline />
           </form>
         )}
       </div>

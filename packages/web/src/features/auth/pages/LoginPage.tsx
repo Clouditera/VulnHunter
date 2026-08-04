@@ -4,6 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { AuthSplitLayout } from "../../../shared/components/AuthSplitLayout.js";
+import { SupportContactFooterLine } from "../../../shared/components/SupportContact.js";
+import { useEdition } from "../../../shared/hooks/useEdition.js";
 import { isStrongPassword } from "../../../shared/lib/password.js";
 
 type Panel = "login" | "register" | "forgot";
@@ -125,9 +127,13 @@ export function LoginPage() {
   const [panel, setPanel] = useState<Panel>("login");
   const [, forceI18n] = useState(0);
   useEffect(() => i18n.onChange(() => forceI18n((n) => n + 1)), []);
+  const { isSaas } = useEdition();
 
   return (
-    <AuthSplitLayout testid="login-page">
+    <AuthSplitLayout
+      testid="login-page"
+      footer={isSaas ? <SupportContactFooterLine /> : null}
+    >
       {panel === "login" && <LoginPanel onGoRegister={() => setPanel("register")} onGoForgot={() => setPanel("forgot")} />}
       {panel === "register" && <RegisterPanel onBack={() => setPanel("login")} />}
       {panel === "forgot" && <ForgotPanel onBack={() => setPanel("login")} />}

@@ -13,6 +13,7 @@ import { useNotifications } from "../shared/hooks/useNotifications.js";
 import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
 import { SessionSearchModal } from "../features/chat/components/SessionSearchModal.js";
 import { FeedbackModal } from "../features/feedback/components/FeedbackModal.js";
+import { SupportContactCard } from "../shared/components/SupportContact.js";
 import { OnboardingHost } from "../features/onboarding/OnboardingTour.js";
 import { useEdition } from "../shared/hooks/useEdition.js";
 
@@ -50,6 +51,7 @@ export function AppLayout() {
   const [showChangelogDrawer, setShowChangelogDrawer] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const { isSaas } = useEdition();
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -388,6 +390,36 @@ export function AppLayout() {
         <div data-testid="nav-bottom" style={collapsed ? FOOTER_COLLAPSED : FOOTER_EXPANDED}>
           {isSaas ? (!collapsed ? (
             <>
+            <div style={{ position: "relative", marginBottom: 4 }}>
+              <button
+                type="button"
+                data-testid="sidebar-contact-support"
+                className="va-sidebar-button"
+                onClick={() => setSupportOpen((v) => !v)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  width: "100%",
+                  padding: "8px 10px",
+                  border: "none",
+                  borderRadius: 8,
+                  background: "transparent",
+                  color: "rgba(255,255,255,0.7)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <Icon name="mail" size={14} />
+                <span>{i18n.t("nav.contactSupport")}</span>
+              </button>
+              {supportOpen ? (
+                <div style={{ position: "absolute", left: 0, right: 0, bottom: "110%", zIndex: 40 }} data-testid="sidebar-support-popover">
+                  <SupportContactCard dense />
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               data-testid="sidebar-feedback"
@@ -415,6 +447,24 @@ export function AppLayout() {
             </>
           ) : (
             <>
+            <button
+              type="button"
+              data-testid="sidebar-contact-support"
+              className="va-sidebar-button"
+              title={i18n.t("nav.contactSupport")}
+              onClick={() => setSupportOpen((v) => !v)}
+              style={{
+                width: 40, height: 40, border: "none", borderRadius: 10, background: "transparent",
+                color: "rgba(255,255,255,0.7)", cursor: "pointer", display: "grid", placeItems: "center", margin: "0 auto 6px",
+              }}
+            >
+              <Icon name="mail" size={15} />
+            </button>
+            {supportOpen ? (
+              <div style={{ position: "fixed", left: 72, bottom: 120, zIndex: 40, width: 260 }} data-testid="sidebar-support-popover">
+                <SupportContactCard dense />
+              </div>
+            ) : null}
             <button
               type="button"
               data-testid="sidebar-feedback"
