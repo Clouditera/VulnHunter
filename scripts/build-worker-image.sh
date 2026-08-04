@@ -9,6 +9,7 @@ if [[ $# -gt 0 ]]; then shift; fi
 
 VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0-5-g1782ef6}"
 VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-1782ef6d99db58fda74c8e1524b9237ca39cad2c}"
+PI_VERSION="${PI_VERSION:-$(node -p "require('$ROOT/packages/shared/src/pi.version')")}"
 
 # A clean checkout does not contain generated YoungFlow/worker-bridge outputs.
 # Build both exclusively from committed sources before Docker reads its context.
@@ -42,6 +43,7 @@ docker build "$@" \
   -f deploy/dockerfiles/worker.Dockerfile \
   --build-arg VULNFORGE_VERSION="$VULNFORGE_VERSION" \
   --build-arg VULNFORGE_COMMIT="$VULNFORGE_COMMIT" \
+  --build-arg PI_VERSION="$PI_VERSION" \
   -t "$IMAGE_TAG" \
   .
 

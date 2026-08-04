@@ -59,6 +59,7 @@ BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 YOUNGFLOW_VERSION="${YOUNGFLOW_VERSION:-0.3.8}"
 VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0-5-g1782ef6}"
 VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-1782ef6d99db58fda74c8e1524b9237ca39cad2c}"
+PI_VERSION="${PI_VERSION:-$(node -p "require('./packages/shared/src/pi.version')")}"
 
 release_require_cmd docker
 release_require_cmd pnpm

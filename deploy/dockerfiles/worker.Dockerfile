@@ -2,6 +2,9 @@ FROM node:22-slim AS base
 ENV HOME=/root
 WORKDIR /opt/vulnhunter
 
+# pi version pin (single source: packages/shared/src/pi.version.ts)
+ARG PI_VERSION=0.83.0
+
 # System dependencies (python3 + pyyaml needed by feature-aggregator, project-profiler;
 # pandoc + openpyxl for report docx/xlsx export — fish 2026-07-27)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -15,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && python3 -c "import openpyxl"
 
 # pi CLI (youngflow spawns it for each stage). Pin the fork validated by VulnForge.
-RUN npm install -g @earendil-works/pi-coding-agent@0.79.6 \
+RUN npm install -g @earendil-works/pi-coding-agent@$PI_VERSION \
     && pi install npm:pi-mcp-adapter
 
 # youngflow — self-contained release binary (v0.7.0)
@@ -36,17 +39,17 @@ RUN printf '{\n  "version": "%s",\n  "commit": "%s"\n}\n' \
       > /opt/vulnhunter/VULNFORGE_VERSION.json
 RUN cd /opt/vulnhunter/flows/vulnforge/extensions/output-contract \
     && npm install --omit=dev --no-audit --no-fund \
-    && npm install --omit=dev --no-audit --no-fund @earendil-works/pi-coding-agent@0.79.6
+    && npm install --omit=dev --no-audit --no-fund @earendil-works/pi-coding-agent@$PI_VERSION
 RUN cd /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-viewer \
     && npm init -y >/dev/null \
     && npm install --omit=dev --no-audit --no-fund \
-      @mariozechner/pi-coding-agent@npm:@earendil-works/pi-coding-agent@0.79.6 \
-      @mariozechner/pi-ai@npm:@earendil-works/pi-ai@0.79.6
+      @mariozechner/pi-coding-agent@npm:@earendil-works/pi-coding-agent@$PI_VERSION \
+      @mariozechner/pi-ai@npm:@earendil-works/pi-ai@$PI_VERSION
 RUN cd /opt/vulnhunter/flows/vulnforge/extensions/workspace-diff \
     && npm init -y >/dev/null \
     && npm install --omit=dev --no-audit --no-fund \
-      @earendil-works/pi-coding-agent@0.79.6 \
-      @earendil-works/pi-ai@0.79.6
+      @earendil-works/pi-coding-agent@$PI_VERSION \
+      @earendil-works/pi-ai@$PI_VERSION
 COPY flows/prepare /opt/vulnhunter/flows/prepare
 COPY packages/service/src/features/prepare/schemas/source-manifest-v1.schema.json /opt/vulnhunter/flows/prepare/schemas/source-manifest-v1.schema.json
 RUN youngflow /opt/vulnhunter/flows/prepare/flow.prepare.yaml --list-stages >/tmp/prepare-stages.txt \
