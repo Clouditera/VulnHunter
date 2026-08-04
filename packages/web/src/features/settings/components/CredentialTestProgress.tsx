@@ -23,6 +23,17 @@ export interface TestProgressProps {
   running: boolean;
 }
 
+/**
+ * Resolve a check's display label via i18n (check.id is the stable key).
+ * Backend payloads carry a raw label only as fallback — user-facing copy
+ * always resolves locally (registry principle: server stays language-neutral).
+ */
+function checkLabel(check: ModelDiagnosticCheck): string {
+  const key = `diagnostics.check.${check.id}`;
+  const translated = i18n.t(key);
+  return translated && translated !== key ? translated : check.label;
+}
+
 function StatusIcon({ status }: { status: string }) {
   if (status === "pass")
     return <Icon name="check-circle" size={14} style={{ color: "var(--status-completed)" }} />;
@@ -92,7 +103,7 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
             >
               <StatusIcon status={c.status} />
               <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontWeight: 600 }}>{c.label}</span>
+                <span style={{ fontWeight: 600 }}>{checkLabel(c)}</span>
                 <span style={{ color: "var(--text-secondary)" }}>
                   {" "}
                   {active
