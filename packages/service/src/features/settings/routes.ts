@@ -433,7 +433,19 @@ settingsRouter.post("/models", async (c) => {
     }
 
     const data = await res.json() as { data?: Array<{ id: string; owned_by?: string }> };
-    const models = (data.data ?? []).map((m) => ({ id: m.id, owned_by: m.owned_by }));
+    const { getSupportedThinkingLevels } = await import("@earendil-works/pi-ai");
+    const models = (data.data ?? []).map((m) => {
+      // Heuristic: known reasoning model patterns get reasoning=true + standard levels.
+      const lo = m.id.toLowerCase();
+      const isReasoning = /r1|o1|o3|o4|thinking|reason|claude.*sonnet|claude.*opus|grok-4|k3|qwen3/.test(lo);
+      const fakeModel = { id: m.id, name: m.id, api: "openai-completions", provider: "custom", baseUrl: "", reasoning: isReasoning } as any;
+      return {
+        id: m.id,
+        owned_by: m.owned_by,
+        reasoning: isReasoning,
+        thinking_levels: getSupportedThinkingLevels(fakeModel),
+      };
+    });
     return c.json({ models });
   } catch (err) {
     logger.warn({ err }, "Failed to list models");
