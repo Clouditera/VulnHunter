@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { api } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { SupportContactInline } from "../../../shared/components/SupportContact.js";
+import { useConfirmClose } from "../../../shared/hooks/useConfirmClose.js";
 
 type Props = { open: boolean; onClose: () => void };
 
@@ -15,6 +16,9 @@ export function FeedbackModal({ open, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
+  // Guard against losing unsubmitted content on overlay click / ESC / X.
+  const isDirty = !done && (satisfaction != null || content.trim() !== "" || email.trim() !== "");
+  const requestClose = useConfirmClose(onClose, isDirty, open);
   useEffect(() => {
     if (!open) return;
     setSatisfaction(null);
@@ -60,7 +64,7 @@ export function FeedbackModal({ open, onClose }: Props) {
   if (!open) return null;
 
   return (
-    <div data-testid="feedback-modal" role="dialog" aria-modal="true" style={OVERLAY} onClick={onClose}>
+    <div data-testid="feedback-modal" role="dialog" aria-modal="true" style={OVERLAY} onClick={requestClose}>
       <div style={MODAL} onClick={(e) => e.stopPropagation()}>
         {done ? (
           <div style={{ textAlign: "center", padding: "36px 20px" }} data-testid="feedback-success">
@@ -71,7 +75,7 @@ export function FeedbackModal({ open, onClose }: Props) {
           <form onSubmit={submit}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>{i18n.t("feedback.title")}</h2>
-              <button type="button" onClick={onClose} style={X_BTN} aria-label="close">×</button>
+              <button type="button" onClick={requestClose} style={X_BTN} aria-label="close">×</button>
             </div>
 
             <div style={{ marginBottom: 14 }}>

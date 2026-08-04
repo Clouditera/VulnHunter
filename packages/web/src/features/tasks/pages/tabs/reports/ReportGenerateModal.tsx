@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type FindingReviewStatus } from "../../../../../shared/api/client.js";
 import { i18n } from "../../../../../shared/i18n/index.js";
 import { ReviewStatusBadge } from "../../../components/FindingReviewControls.js";
+import { useConfirmClose } from "../../../../../shared/hooks/useConfirmClose.js";
 
 const SEV_COLORS: Record<string, string> = {
   high: "var(--sev-high)",
@@ -36,6 +37,7 @@ export function ReportGenerateModal({
 }) {
   const [selectedSkillId, setSelectedSkillId] = useState<string>(skills[0]?.id ?? ""); // empty => builtin
 
+
   // Fetch all findings for this task
   const { data: findingsData } = useQuery({
     queryKey: ["findings", taskId, "all-for-report"],
@@ -45,6 +47,9 @@ export function ReportGenerateModal({
 
   // Default: select pending + confirmed
   const [selectedKeys, setSelectedKeys] = useState<Set<string> | null>(null);
+  // Dirty = user touched skill or finding selection — guard accidental overlay close.
+  const isDirty = selectedKeys !== null || selectedSkillId !== (skills[0]?.id ?? "");
+  const requestClose = useConfirmClose(onClose, isDirty);
 
   const effectiveSelected = useMemo(() => {
     if (selectedKeys !== null) return selectedKeys;
@@ -83,7 +88,7 @@ export function ReportGenerateModal({
   return (
     <div
       style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
     >
       <div style={{ width: 560, maxHeight: "80vh", display: "flex", flexDirection: "column", borderRadius: 10, background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
         {/* Header */}
@@ -214,7 +219,7 @@ export function ReportGenerateModal({
         {/* Footer */}
         <div style={{ padding: "12px 20px", borderTop: "1px solid var(--divider)", display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <button
-            onClick={onClose}
+            onClick={requestClose}
             style={{ padding: "7px 16px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-primary)", fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}
           >
             {i18n.t("review.action.cancel")}

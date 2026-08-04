@@ -8,6 +8,7 @@ import { api, type ApiToken } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { toast } from "../../../shared/toast/toast.js";
+import { useConfirmClose } from "../../../shared/hooks/useConfirmClose.js";
 import { copyText } from "../../../shared/lib/copy-text.js";
 import { formatRelativeTime } from "../../../shared/utils/format.js";
 
@@ -441,7 +442,8 @@ function ghostBtn(disabled: boolean): CSSProperties {
   };
 }
 
-function Overlay({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+function Overlay({ children, onClose, dirty = false }: { children: ReactNode; onClose: () => void; dirty?: boolean }) {
+  const requestClose = useConfirmClose(onClose, dirty);
   return (
     <div
       role="dialog"
@@ -456,7 +458,7 @@ function Overlay({ children, onClose }: { children: ReactNode; onClose: () => vo
         padding: 16,
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) requestClose();
       }}
     >
       {children}
@@ -475,8 +477,9 @@ function CreateTokenModal({
 }) {
   const [name, setName] = useState("");
   const [days, setDays] = useState<number | null>(90);
+  const requestClose = useConfirmClose(onClose, name.trim() !== "");
   return (
-    <Overlay onClose={onClose}>
+    <Overlay onClose={requestClose}>
       <div
         data-testid="settings-token-create-modal"
         style={{
@@ -541,7 +544,7 @@ function CreateTokenModal({
           {i18n.t("settings.tokens.expiryHint")}
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" onClick={onClose} style={ghostBtn(false)}>
+          <button type="button" onClick={requestClose} style={ghostBtn(false)}>
             {i18n.t("settings.tokens.cancel")}
           </button>
           <button
@@ -771,8 +774,9 @@ function RenameTokenModal({
   onSubmit: (name: string) => void;
 }) {
   const [name, setName] = useState(token.name);
+  const requestClose = useConfirmClose(onClose, name !== token.name);
   return (
-    <Overlay onClose={onClose}>
+    <Overlay onClose={requestClose}>
       <div
         data-testid="settings-token-rename-modal"
         style={{
@@ -794,7 +798,7 @@ function RenameTokenModal({
           style={inputStyle}
         />
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-          <button type="button" onClick={onClose} style={ghostBtn(false)}>
+          <button type="button" onClick={requestClose} style={ghostBtn(false)}>
             {i18n.t("settings.tokens.cancel")}
           </button>
           <button

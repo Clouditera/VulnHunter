@@ -448,6 +448,7 @@ export const EN: Record<string, string> = {
   "feedback.submit": "Submit",
   "feedback.submitting": "Submitting…",
   "feedback.thanks": "Thanks! We’ll read this carefully.",
+  "modal.closeConfirm": "You have unsubmitted content. Close anyway?",
   "feedback.err.satisfaction": "Please pick a satisfaction score",
   "feedback.err.content": "Please enter your feedback",
   "feedback.err.submit": "Submit failed. Try again later.",
