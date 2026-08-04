@@ -265,6 +265,14 @@ set_env_key "$instance_dir/.env" LICENSE_PUBLIC_KEY_FILE "$license_key_file"
 set_env_key "$instance_dir/.env" PROJECT_NAME "$project_name"
 set_env_key "$instance_dir/.env" COMPOSE_PROJECT_NAME "$project_name"
 
+# System admin (singleton, protected): provisioned from env on every boot.
+# Fresh installs get a generated password; operators may pre-set
+# VULNHUNTER_ADMIN_EMAIL / VULNHUNTER_ADMIN_PASSWORD to override.
+admin_email="${VULNHUNTER_ADMIN_EMAIL:-admin@vulnhunter.local}"
+admin_password="${VULNHUNTER_ADMIN_PASSWORD:-$(rand_hex 12)}"
+set_env_key "$instance_dir/.env" VULNHUNTER_ADMIN_EMAIL "$admin_email"
+set_env_key "$instance_dir/.env" VULNHUNTER_ADMIN_PASSWORD "$admin_password"
+
 if [[ "$(id -u)" == "0" ]]; then
   set_env_key "$instance_dir/.env" SERVICE_UID "1001"
   set_env_key "$instance_dir/.env" SERVICE_GID "1001"
@@ -442,6 +450,7 @@ echo "PROJECT_NAME: $project_name"
 echo "URL: http://${host_ip:-127.0.0.1}:${web_port}/"
 echo "Local URL: http://127.0.0.1:${web_port}/"
 echo "Admin console: http://${admin_addr}:${admin_port}/admin  (default localhost-only; remote: ADMIN_LISTEN_ADDR=0.0.0.0 or ssh -L)"
+echo "System admin: ${VULNHUNTER_ADMIN_EMAIL:-admin@vulnhunter.local}  (password in $instance_dir/.env — VULNHUNTER_ADMIN_PASSWORD; account is protected: cannot be disabled/deleted)"
 [[ -n "$install_id" ]] && echo "Machine code: $install_id"
 echo ""
 echo "Day-2 commands (package may be deleted):"

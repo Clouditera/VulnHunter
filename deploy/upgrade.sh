@@ -169,6 +169,38 @@ sync_release_env() {
   fi
 
   add_missing_env_from_example
+
+  ensure_system_admin_env
+}
+
+# System admin (singleton, protected) — provisioned from env every boot.
+# Upgrades: adopt the existing admin's email (discovered from the running DB)
+# but never invent a password — the password line is added commented, so
+# protection activates only once the operator sets it and restarts.
+discover_admin_email() {
+  local db_container
+  db_container="$(docker ps --format '{{.Names}}' | grep -E '(^|-)db$|vulnhunter-db|vulnagent-db' | head -n 1 || true)"
+  [[ -n "$db_container" ]] || return 0
+  docker exec "$db_container" psql -U vulnhunter -d vulnhunter -tAc \
+    "SELECT email FROM users WHERE role='admin' ORDER BY created_at LIMIT 1" 2>/dev/null | head -n 1 || true
+}
+ensure_system_admin_env() {
+  [[ -f .env ]] || return 0
+  if ! grep -qE '^VULNHUNTER_ADMIN_EMAIL=' .env; then
+    local admin_email
+    admin_email="$(discover_admin_email || true)"
+    if [[ -n "$admin_email" ]]; then
+      printf 'VULNHUNTER_ADMIN_EMAIL=%s\n' "$admin_email" >> .env
+      echo "[upgrade] system admin email adopted from existing admin: $admin_email"
+    else
+      printf '# VULNHUNTER_ADMIN_EMAIL=admin@example.com\n' >> .env
+      echo "[upgrade] NOTE: no admin email discoverable; set VULNHUNTER_ADMIN_EMAIL in .env"
+    fi
+  fi
+  if ! grep -qE '^VULNHUNTER_ADMIN_PASSWORD=' .env; then
+    printf '# VULNHUNTER_ADMIN_PASSWORD=set-a-strong-password-here\n' >> .env
+    echo "[upgrade] NOTE: set VULNHUNTER_ADMIN_PASSWORD in .env and restart to activate protected system admin (cannot be disabled/deleted)"
+  fi
 }
 validate_upgrade_preconditions() {
   if [[ ! -f .env ]]; then
