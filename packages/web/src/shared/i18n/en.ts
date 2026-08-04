@@ -650,7 +650,7 @@ export const EN: Record<string, string> = {
   "settings.model.contextWindow.short": "Context {value}",
   "settings.model.fetch": "Fetch list",
   "settings.model.fetchNeedUrlKey": "Fill in the API URL and API key first",
-  "settings.creds.gate.coreModified": "Core settings changed — pass the connection test before saving",
+  "settings.creds.gate.coreModified": "Model configuration updated — run the connection test first",
   "settings.model.fetching": "Fetching…",
   "settings.model.fetchError": "Could not fetch model list — please type manually.",
   "settings.model.fetchNone": "Endpoint returned no models.",
