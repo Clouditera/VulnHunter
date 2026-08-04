@@ -272,6 +272,19 @@ set_env_key "$instance_dir/.env" LICENSE_PUBLIC_KEY_FILE "$license_key_file"
 set_env_key "$instance_dir/.env" PROJECT_NAME "$project_name"
 set_env_key "$instance_dir/.env" COMPOSE_PROJECT_NAME "$project_name"
 
+# Chat/worker containers must join THIS stack's network — single-point derive
+# from the project name (23130 lesson: hardcoded vulnhunter-internal spawned
+# chat workers onto another stack's network). Legacy upgrades keep their
+# existing DOCKER_NETWORK via the .env merge; fresh installs derive.
+docker_network="${DOCKER_NETWORK:-${project_name}-internal}"
+set_env_key "$instance_dir/.env" DOCKER_NETWORK "$docker_network"
+if [[ -z "${DOCKER_SUBNET:-}" ]]; then
+  # Derive a /24 third octet from the project name (1..250) so multiple
+  # derived stacks don't fight over the legacy 10.177.0.0/24 pool.
+  octet=$(( $(printf '%s' "$project_name" | cksum | cut -d' ' -f1) % 250 + 1 ))
+  set_env_key "$instance_dir/.env" DOCKER_SUBNET "10.177.${octet}.0/24"
+fi
+
 # System admin (singleton, protected): provisioned from env on every boot.
 # Fresh installs get a generated password; operators may pre-set
 # VULNHUNTER_ADMIN_EMAIL / VULNHUNTER_ADMIN_PASSWORD to override.

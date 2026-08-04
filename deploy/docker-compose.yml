@@ -36,7 +36,7 @@ services:
       MINIO_BUCKET: "artifact-store"
       DOCKER_SOCKET: "/var/run/docker.sock"
       WORKER_IMAGE: "${WORKER_IMAGE:-vulnhunter-worker:latest}"
-      DOCKER_NETWORK: "vulnhunter-internal"
+      DOCKER_NETWORK: "${DOCKER_NETWORK:-vulnhunter-internal}"
       WORKER_SERVICE_URL: "${WORKER_SERVICE_URL:-http://service:28080}"
       UPLOAD_GATEWAY_LIMIT_MB: "${UPLOAD_GATEWAY_LIMIT_MB:-2048}"
       DATA_DIR: "${DATA_DIR:-/opt/vulnhunter/data}"
@@ -164,7 +164,9 @@ services:
 networks:
   vulnhunter-internal:
     driver: bridge
-    name: vulnhunter-internal
+    # Single source of truth: .env DOCKER_NETWORK (install derives it from
+    # PROJECT_NAME). Default keeps the legacy shared name for old installs.
+    name: ${DOCKER_NETWORK:-vulnhunter-internal}
     # Pin the Docker bridge subnet to avoid collisions with customer LAN/VPN routes.
     # Override DOCKER_SUBNET in .env if 10.177.0.0/24 conflicts in the target environment.
     ipam:
