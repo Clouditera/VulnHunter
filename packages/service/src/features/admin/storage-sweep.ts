@@ -31,6 +31,8 @@ export interface PrefixReport {
   orphanBytes: number;
   samples: string[];
   deleted?: number;
+  /** Set when the prefix could not be listed — never report zero on failure. */
+  error?: string;
 }
 
 /** Pure: is this key an orphan under its prefix? (null = not an orphan) */
@@ -84,20 +86,23 @@ function isYoung(obj: BucketObject, now: number): boolean {
   return now - obj.lastModified.getTime() < YOUNG_EXEMPTION_MS;
 }
 
-export async function sweepStorage(dry: boolean): Promise<{ dry: boolean; prefixes: PrefixReport[] }> {
+export async function sweepStorage(dry: boolean): Promise<{ dry: boolean; partial: boolean; prefixes: PrefixReport[] }> {
   const config = loadConfig();
   const bucket = config.minio.bucket;
   const ids = await loadIdSets();
   const now = Date.now();
   const reports: PrefixReport[] = [];
+  let partial = false;
 
   for (const prefix of SWEEP_PREFIXES) {
     let objects: BucketObject[] = [];
     try {
       objects = await listBucketObjects(bucket, prefix);
     } catch (err) {
-      logger.warn({ err, prefix }, "sweep: list failed; skipping prefix");
-      reports.push({ prefix, objects: 0, bytes: 0, young: 0, orphans: 0, orphanBytes: 0, samples: [] });
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn({ err, prefix }, "sweep: list failed; prefix reported as error, not zero");
+      reports.push({ prefix, objects: 0, bytes: 0, young: 0, orphans: 0, orphanBytes: 0, samples: [], error: message.slice(0, 200) });
+      partial = true;
       continue;
     }
     const orphanKeys: string[] = [];
@@ -133,7 +138,7 @@ export async function sweepStorage(dry: boolean): Promise<{ dry: boolean; prefix
     }
     reports.push(report);
   }
-  return { dry, prefixes: reports };
+  return { dry, partial, prefixes: reports };
 }
 
 export const storageSweepRouter = new Hono();
