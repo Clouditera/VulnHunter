@@ -15,8 +15,9 @@ RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.
     && mkdir -p /usr/local/lib/docker/cli-plugins \
     && ln -s /usr/local/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 
-# pi CLI (youngflow spawns it for each stage)
-RUN npm install -g @mariozechner/pi-coding-agent \
+# pi CLI (youngflow spawns it for each stage) — pinned via PI_VERSION
+ARG PI_VERSION=0.83.0
+RUN npm install -g @mariozechner/pi-coding-agent@npm:@earendil-works/pi-coding-agent@$PI_VERSION \
     && pi install npm:pi-mcp-adapter
 
 # youngflow — self-contained release binary (v0.2.3)

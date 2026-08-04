@@ -6,16 +6,18 @@ describe("pi version pin", () => {
     expect(PI_VERSION).toMatch(/^\d+\.\d+\.\d+/);
   });
 
-  it("PI_VERSION matches worker Dockerfile ARG default", async () => {
+  it("PI_VERSION matches worker + eval-worker Dockerfile ARG defaults", async () => {
     const { readFile } = await import("node:fs/promises");
     const { resolve } = await import("node:path");
-    const dockerfile = await readFile(
-      resolve(__dirname, "../../../../deploy/dockerfiles/worker.Dockerfile"),
-      "utf8",
-    );
-    const m = dockerfile.match(/ARG PI_VERSION=(\S+)/);
-    expect(m, "worker.Dockerfile must have ARG PI_VERSION").not.toBeNull();
-    expect(m![1]).toBe(PI_VERSION);
+    for (const df of ["worker.Dockerfile", "eval-worker.Dockerfile"]) {
+      const dockerfile = await readFile(
+        resolve(__dirname, `../../../../deploy/dockerfiles/${df}`),
+        "utf8",
+      );
+      const m = dockerfile.match(/ARG PI_VERSION=(\S+)/);
+      expect(m, `${df} must have ARG PI_VERSION`).not.toBeNull();
+      expect(m![1]).toBe(PI_VERSION);
+    }
   });
 
   it("pi-ai is importable (smoke)", async () => {
