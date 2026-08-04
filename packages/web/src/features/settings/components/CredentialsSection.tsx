@@ -5,11 +5,9 @@ import { Icon } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential } from "../../../shared/api/client.js";
 import { CloudRouterPromo, CredentialsEmptyNotice } from "./CloudRouterPromo.js";
 import {
-  CREDENTIAL_PRESETS,
-  detectPreset,
   resolveModelCapabilities,
   type ModelCapabilities,
-} from "./credential-presets.js";
+} from "./model-capabilities.js";
 import {
   CredentialTestProgress,
   streamCredentialTest,
@@ -134,9 +132,6 @@ export function CredentialsSection() {
   const [modelOptions, setModelOptions] = useState<string[] | null>(null);
   /** Raw model items (may carry reasoning/thinking_levels once backend is capability-aware). */
   const [modelCapsMap, setModelCapsMap] = useState<Record<string, ModelCapabilities>>({});
-  /** Two-type credential draft: preset vendor vs custom endpoint. */
-  const [credType, setCredType] = useState<"preset" | "custom">("custom");
-  const [presetId, setPresetId] = useState<string | null>(null);
   /** Progressive credential test checks (SSE/poll unified render state). */
   const [testChecks, setTestChecks] = useState<import("../../../shared/api/client").ModelDiagnosticCheck[]>([]);
   const [modelFetchState, setModelFetchState] = useState<
@@ -215,26 +210,7 @@ export function CredentialsSection() {
     setApiKey("");
     setTestState({ kind: "idle" });
     setToast(null);
-    setCredType("custom");
-    setPresetId(null);
     setTestChecks([]);
-  }
-
-  /** Pick a vendor preset in a new draft: pin protocol + prefill base URL. */
-  function applyPreset(id: string) {
-    const preset = CREDENTIAL_PRESETS.find((p) => p.id === id);
-    if (!preset) return;
-    setPresetId(id);
-    setCredType("preset");
-    setProtoType(preset.protoType);
-    setBaseUrl(preset.defaultBaseUrl);
-    setModelOptions(null);
-    setModelCapsMap({});
-  }
-
-  function pickCustomType() {
-    setCredType("custom");
-    setPresetId(null);
   }
 
   async function handleDeleteCredential(c: LlmCredential) {
@@ -580,71 +556,6 @@ export function CredentialsSection() {
               // Form body JSX — captured once; rendered inside draft row + editing rows.
               const FORM_BODY = (
                 <>
-            {/* Credential type picker — new drafts only. Editing keeps the
-                credential's existing shape; the preset badge on collapsed
-                rows is derived from base_url (detectPreset). */}
-            {isNewDraft ? (
-              <div style={{ marginBottom: "16px" }} data-testid="credential-type-picker">
-                <label style={FIELD_LABEL}>{i18n.t("settings.creds.type.label")}</label>
-                <div style={{ display: "flex", gap: "8px", marginBottom: credType === "preset" ? "10px" : 0 }}>
-                  {(["preset", "custom"] as const).map((t) => {
-                    const active = credType === t;
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        data-testid={`credential-type-${t}`}
-                        onClick={() => (t === "preset" ? (presetId ? applyPreset(presetId) : setCredType("preset")) : pickCustomType())}
-                        style={{
-                          flex: 1,
-                          padding: "9px 12px",
-                          borderRadius: 8,
-                          border: `1px solid ${active ? "var(--brand)" : "var(--border)"}`,
-                          background: active ? "var(--brand-soft)" : "var(--bg-card)",
-                          color: active ? "var(--brand)" : "var(--text-secondary)",
-                          fontSize: 12.5,
-                          fontWeight: active ? 650 : 500,
-                          cursor: "pointer",
-                          textAlign: "center",
-                        }}
-                      >
-                        {i18n.t(t === "preset" ? "settings.creds.type.preset" : "settings.creds.type.custom")}
-                      </button>
-                    );
-                  })}
-                </div>
-                {credType === "preset" ? (
-                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }} data-testid="credential-preset-picker">
-                    {CREDENTIAL_PRESETS.map((p) => {
-                      const active = presetId === p.id;
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          data-testid={`credential-preset-${p.id}`}
-                          onClick={() => applyPreset(p.id)}
-                          style={{
-                            padding: "6px 12px",
-                            borderRadius: 6,
-                            border: `1px solid ${active ? "var(--brand)" : "var(--border)"}`,
-                            background: active ? "var(--bg-active-filter)" : "var(--bg-page)",
-                            color: active ? "var(--brand)" : "var(--text-primary)",
-                            fontSize: 12,
-                            fontWeight: active ? 650 : 500,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {i18n.t(p.nameKey)}
-                        </button>
-                      );
-                    })}
-                    <p style={{ width: "100%", margin: "6px 0 0", fontSize: 11.5, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-                      {i18n.t("settings.creds.type.presetHint")}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
             {/* Label (optional, used to distinguish credentials in list) */}
             <Field
               label={i18n.t("settings.model.labelLabel")}
@@ -698,7 +609,6 @@ export function CredentialsSection() {
                 <Select
                   testid="settings-protocol-select"
                   value={protoType}
-                  disabled={credType === "preset" && isNewDraft}
                   onChange={(v) => {
                     setProtoType(v);
                     // Keep model id user-controlled; new credentials should not
@@ -1308,27 +1218,6 @@ export function CredentialsSection() {
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
                         {c.label || c.provider}
                       </span>
-                      {(() => {
-                        const preset = detectPreset(c.base_url);
-                        return preset ? (
-                          <span
-                            data-testid="credential-preset-badge"
-                            style={{
-                              flexShrink: 0,
-                              fontSize: 10,
-                              fontWeight: 600,
-                              padding: "1px 6px",
-                              borderRadius: 4,
-                              border: "1px solid var(--brand-border)",
-                              background: "var(--brand-soft)",
-                              color: "var(--brand)",
-                              lineHeight: 1.5,
-                            }}
-                          >
-                            {i18n.t(preset.nameKey)}
-                          </span>
-                        ) : null;
-                      })()}
                       <DeepVerifiedBadge
                         status={c.deep_verified_status}
                         at={c.deep_verified_at}
