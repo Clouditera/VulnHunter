@@ -18,7 +18,6 @@ import { reportsRouter } from "./features/reports/routes.js";
 import { wikiRouter } from "./features/wiki/routes.js";
 import { notificationRouter } from "./features/notifications/index.js";
 import { pocRouter } from "./features/poc/routes.js";
-import { downloadsRouter } from "./features/downloads/routes.js";
 import { sandboxPlaneInternalRouter } from "./features/sandbox-plane/routes.js";
 import { mountAdminRoutes } from "./features/admin/index.js";
 import { setupWsRouter } from "./ws-router.js";
@@ -39,7 +38,6 @@ const ADMIN_FORBIDDEN_PREFIXES = [
   "/api/chat",
   "/api/feedback",
   "/api/notifications",
-  "/api/downloads",
   "/api/sandbox",
   "/api/promo",
   "/api/me",
@@ -101,7 +99,6 @@ export function createApp(role: ServiceRole = "business"): Hono {
   app.route("/api/tasks", pocRouter);
   app.route("/api", notificationRouter);
   // POC settings routes removed (dead config offline; live fields → env)
-  app.route("/api/downloads", downloadsRouter);
 
   app.route("/internal/sandbox-plane", sandboxPlaneInternalRouter);
   app.route("/mcp", mcpRouter);

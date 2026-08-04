@@ -21,7 +21,7 @@ describe("admin console backend wiring", () => {
     expect(serverSrc).toMatch(/role === "admin"/);
   });
 
-  it("business role mounts forbidAdmin on 9 prefixes and not /api/admin", () => {
+  it("business role mounts forbidAdmin on 8 prefixes and not /api/admin", () => {
     for (const p of [
       "/api/tasks",
       "/api/git",
@@ -30,7 +30,6 @@ describe("admin console backend wiring", () => {
       "/api/chat",
       "/api/feedback",
       "/api/notifications",
-      "/api/downloads",
       "/api/sandbox",
     ]) {
       expect(serverSrc).toContain(`"${p}"`);
