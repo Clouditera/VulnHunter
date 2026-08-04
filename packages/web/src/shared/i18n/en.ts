@@ -671,9 +671,6 @@ export const EN: Record<string, string> = {
   "diagnostics.check.tool": "Tool invocation",
   "diagnostics.check.agent": "Agent loop",
   "settings.model.testProgress.suggestion": "Suggestion",
-  "settings.creds.deepVerified.passed": "Deep-verified",
-  "settings.creds.deepVerified.failed": "Deep verification failed",
-  "settings.creds.deepVerified.running": "Deep verifying…",
   // Appearance
   "settings.appearance.title": "Language & Appearance",
   "settings.appearance.desc": "Interface language and visual theme",
