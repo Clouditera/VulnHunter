@@ -57,13 +57,13 @@ async function writeModelsJson(
         ? "openai-responses"
         : "openai-completions";
 
-  // Match prepare-worker's proven format (simple nested providers structure).
+  // Match prepare-worker's proven format. apiKey omitted — pi CLI gets it
+  // via --api-key flag (models.json ${ENV} templates are NOT supported by pi).
   const models = {
     providers: {
       platform: {
         api: apiType,
         baseUrl: input.baseUrl.replace(/\/$/, ""),
-        apiKey: "${PLATFORM_API_KEY}",
         models: [{ id: input.modelId }],
       },
     },
@@ -104,7 +104,6 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
         env: {
           ...process.env,
           PI_CODING_AGENT_DIR: agentDir,
-          PLATFORM_API_KEY: input.apiKey,
         },
         stdio: ["pipe", "pipe", "pipe"],
       });
