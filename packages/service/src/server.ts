@@ -20,7 +20,6 @@ import { notificationRouter } from "./features/notifications/index.js";
 import { pocRouter } from "./features/poc/routes.js";
 import { downloadsRouter } from "./features/downloads/routes.js";
 import { sandboxPlaneInternalRouter } from "./features/sandbox-plane/routes.js";
-import { modelProxyInternalRouter } from "./features/model-proxy/routes.js";
 import { mountAdminRoutes } from "./features/admin/index.js";
 import { setupWsRouter } from "./ws-router.js";
 import { mcpRouter } from "./mcp/index.js";
@@ -105,7 +104,6 @@ export function createApp(role: ServiceRole = "business"): Hono {
   app.route("/api/downloads", downloadsRouter);
 
   app.route("/internal/sandbox-plane", sandboxPlaneInternalRouter);
-  app.route("/internal/model-proxy", modelProxyInternalRouter);
   app.route("/mcp", mcpRouter);
 
   app.onError(errorHandler);

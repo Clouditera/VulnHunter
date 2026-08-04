@@ -496,12 +496,10 @@ export class TaskScheduler {
       }
       if (!cred) throw new Error(missingCredentialFailureReason(credId));
       await this.assertSchedulerOwnership(task.id, token);
-      // Scan worker model access goes through the credential-free internal
-      // model-proxy (task-id bearer); the real LLM key must NOT be injected
-      // into the worker env. Keep only the non-secret model selection vars.
-      const { LLM_API_KEY: _omitted, ...scanCredEnv } = credentialToWorkerEnv(cred);
+      // Scan worker gets the real LLM credential directly (fish 2026-08-04:
+      // model-proxy removed — workers carry user-owned keys).
       const llmEnv = {
-        ...scanCredEnv,
+        ...credentialToWorkerEnv(cred),
         YOUNGFLOW_MAX_PARALLEL: String(task.agent_max_parallel ?? 3),
       };
 
