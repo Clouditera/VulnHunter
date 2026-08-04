@@ -24,34 +24,6 @@ set_env_key() {
   fi
   export "$key=$value"
 }
-image_exists() {
-  docker image inspect "$1" >/dev/null 2>&1
-}
-required_images() {
-  printf '%s\n' \
-    "${SERVICE_IMAGE:-vulnhunter-service:latest}" \
-    "${WEB_IMAGE:-vulnhunter-web:latest}" \
-    "${WORKER_IMAGE:-vulnhunter-worker:latest}" \
-    "${EVAL_WORKER_IMAGE:-vulnhunter-eval-worker:latest}" \
-    "${POSTGRES_IMAGE:-postgres:16-alpine}" \
-    "${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}" \
-    | awk 'NF && !seen[$0]++'
-}
-validate_local_images() {
-  local missing=()
-  while IFS= read -r image; do
-    [[ -n "$image" ]] || continue
-    if ! image_exists "$image"; then
-      missing+=("$image")
-    fi
-  done < <(required_images)
-  if (( ${#missing[@]} > 0 )); then
-    echo "[upgrade] required Docker images are missing locally; refusing to contact external registries." >&2
-    printf '[upgrade] missing image: %s\n' "${missing[@]}" >&2
-    echo "[upgrade] Ensure the offline release images/*.tar files are present and rerun ./upgrade.sh." >&2
-    exit 1
-  fi
-}
 compose_up_detached() {
   if docker compose version >/dev/null 2>&1; then
     docker compose up -d --pull never
@@ -173,37 +145,31 @@ sync_release_env() {
   ensure_system_admin_env
 }
 
-# System admin (singleton, protected) — provisioned from env every boot.
-# Upgrades: adopt the existing admin's email (discovered from the running DB)
-# but never invent a password — the password line is added commented, so
-# protection activates only once the operator sets it and restarts.
-discover_admin_email() {
-  local db_container
-  db_container="$(docker ps --format '{{.Names}}' | grep -E '(^|-)db$|vulnhunter-db|vulnagent-db' | head -n 1 || true)"
-  [[ -n "$db_container" ]] || return 0
-  docker exec "$db_container" psql -U vulnhunter -d vulnhunter -tAc \
-    "SELECT email FROM users WHERE role='admin' ORDER BY created_at LIMIT 1" 2>/dev/null | head -n 1 || true
-}
-ensure_system_admin_env() {
-  [[ -f .env ]] || return 0
-  if ! grep -qE '^VULNHUNTER_ADMIN_EMAIL=' .env; then
-    local admin_email
-    admin_email="$(discover_admin_email || true)"
-    if [[ -n "$admin_email" ]]; then
-      printf 'VULNHUNTER_ADMIN_EMAIL=%s\n' "$admin_email" >> .env
-      echo "[upgrade] system admin email adopted from existing admin: $admin_email"
-    else
-      printf '# VULNHUNTER_ADMIN_EMAIL=admin@example.com\n' >> .env
-      echo "[upgrade] NOTE: no admin email discoverable; set VULNHUNTER_ADMIN_EMAIL in .env"
-    fi
-  fi
-  if ! grep -qE '^VULNHUNTER_ADMIN_PASSWORD=' .env; then
-    printf '# VULNHUNTER_ADMIN_PASSWORD=set-a-strong-password-here\n' >> .env
-    echo "[upgrade] NOTE: set VULNHUNTER_ADMIN_PASSWORD in .env and restart to activate protected system admin (cannot be disabled/deleted)"
-  fi
-}
+# Self-contained instance upgrade entry: when the package dir is pristine (no .env),
+# delegate to the instance upgrade path (batch 2). INSTANCE_DIR via --dir/env/default.
+INSTANCE_DIR_ARG=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dir) INSTANCE_DIR_ARG="${2:-}"; shift 2 || true ;;
+    --dir=*) INSTANCE_DIR_ARG="${1#*=}"; shift ;;
+    --force) FORCE=1; shift ;;
+    --with-running) WITH_RUNNING=1; shift ;;
+    *) echo "[upgrade] unknown arg: $1" >&2; exit 2 ;;
+  esac
+done
+
 validate_upgrade_preconditions() {
   if [[ ! -f .env ]]; then
+    local instance_dir="${INSTANCE_DIR_ARG:-${INSTANCE_DIR:-${DATA_DIR:-/opt/vulnhunter/data}}}"
+    if [[ -f "$instance_dir/.version" ]]; then
+      echo "[upgrade] self-contained instance detected at $instance_dir — instance upgrade mode"
+      # shellcheck source=lib/instance-dir.sh
+      source "$ROOT/lib/instance-dir.sh"
+      # shellcheck source=lib/instance-upgrade.sh
+      source "$ROOT/lib/instance-upgrade.sh"
+      run_instance_upgrade "$ROOT" "$instance_dir"
+      exit $?
+    fi
     echo "[upgrade] no .env found; upgrade.sh is only for existing installations." >&2
     echo "[upgrade] For a clean first install, run ./install.sh. If this is an old install, restore .env from backup before upgrading." >&2
     exit 1
