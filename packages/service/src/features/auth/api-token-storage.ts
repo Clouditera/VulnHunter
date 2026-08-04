@@ -26,6 +26,7 @@ export type ApiTokenStatus = "active" | "expired" | "revoked";
 export interface ApiTokenRow {
   id: string;
   name: string;
+  token_prefix: string | null;
   created_at: Date;
   expires_at: Date | null;
   last_used_at: Date | null;
@@ -35,6 +36,7 @@ export interface ApiTokenRow {
 export interface ApiTokenView {
   id: string;
   name: string;
+  token_prefix: string | null;
   created_at: string;
   expires_at: string | null;
   last_used_at: string | null;
@@ -72,6 +74,7 @@ function toView(row: ApiTokenRow): ApiTokenView {
   return {
     id: row.id,
     name: row.name,
+    token_prefix: row.token_prefix ?? null,
     created_at: toIso(row.created_at) ?? new Date(0).toISOString(),
     expires_at: toIso(row.expires_at),
     last_used_at: toIso(row.last_used_at),
@@ -95,6 +98,7 @@ export async function issueApiToken(
   const db = getDb();
   const token = TOKEN_PREFIX + randomBytes(32).toString("base64url");
   const tokenHash = hashToken(token);
+  const tokenPrefix = token.slice(0, 12);  // e.g. "vht_a1b2c3d4" — non-secret
   const trimmed = name.trim();
   if (!trimmed) {
     throw Object.assign(new Error("name required"), { code: "ERR_API_TOKEN_NAME_REQUIRED" });
@@ -119,11 +123,11 @@ export async function issueApiToken(
   }
 
   const rows = await db<ApiTokenRow[]>`
-    INSERT INTO user_api_tokens (tenant_id, user_id, name, token_hash, expires_at)
-    SELECT u.tenant_id, u.id, ${trimmed}, ${tokenHash}, ${expiresAt}
+    INSERT INTO user_api_tokens (tenant_id, user_id, name, token_hash, token_prefix, expires_at)
+    SELECT u.tenant_id, u.id, ${trimmed}, ${tokenHash}, ${tokenPrefix}, ${expiresAt}
     FROM users u
     WHERE u.id = ${userId}
-    RETURNING id, name, created_at, expires_at, last_used_at, revoked_at
+    RETURNING id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at
   `;
   const row = rows[0];
   if (!row) {
@@ -136,7 +140,7 @@ export async function issueApiToken(
 export async function listApiTokens(userId: string): Promise<{ tokens: ApiTokenView[]; limit: number; count: number }> {
   const db = getDb();
   const rows = await db<ApiTokenRow[]>`
-    SELECT id, name, created_at, expires_at, last_used_at, revoked_at
+    SELECT id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at
     FROM user_api_tokens
     WHERE user_id = ${userId}
     ORDER BY created_at DESC
@@ -157,7 +161,7 @@ export async function renameApiToken(userId: string, id: string, name: string): 
     UPDATE user_api_tokens
     SET name = ${trimmed}
     WHERE id = ${id} AND user_id = ${userId}
-    RETURNING id, name, created_at, expires_at, last_used_at, revoked_at
+    RETURNING id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at
   `;
   const row = rows[0];
   if (!row) {
@@ -173,7 +177,7 @@ export async function revokeApiTokenForUser(userId: string, id: string): Promise
     UPDATE user_api_tokens
     SET revoked_at = COALESCE(revoked_at, now())
     WHERE id = ${id} AND user_id = ${userId}
-    RETURNING id, name, created_at, expires_at, last_used_at, revoked_at
+    RETURNING id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at
   `;
   const row = rows[0];
   if (!row) {

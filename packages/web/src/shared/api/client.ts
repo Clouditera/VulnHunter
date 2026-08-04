@@ -260,6 +260,7 @@ export type ApiTokenStatus = "active" | "expired" | "revoked";
 export interface ApiToken {
   id: string;
   name: string;
+  token_prefix: string | null;
   created_at: string;
   expires_at: string | null;
   last_used_at: string | null;

@@ -7,6 +7,7 @@ interface TokenRow {
   tenant_id: string;
   name: string;
   token_hash: string;
+  token_prefix: string | null;
   created_at: Date;
   expires_at: Date | null;
   last_used_at: Date | null;
@@ -44,7 +45,8 @@ vi.mock("../../src/infra/db/client.js", () => ({
 
       // issueApiToken INSERT ... RETURNING full row
       if (sql.includes("INSERT INTO user_api_tokens")) {
-        const [name, tokenHash, expiresAt, userId] = values as [
+        const [name, tokenHash, tokenPrefix, expiresAt, userId] = values as [
+          string,
           string,
           string,
           Date | null,
@@ -58,6 +60,7 @@ vi.mock("../../src/infra/db/client.js", () => ({
           tenant_id: user.tenant_id,
           name,
           token_hash: tokenHash,
+          token_prefix: tokenPrefix,
           created_at: new Date(),
           expires_at: expiresAt ?? null,
           last_used_at: null,
@@ -78,7 +81,7 @@ vi.mock("../../src/infra/db/client.js", () => ({
 
       // list
       if (
-        sql.includes("SELECT id, name, created_at, expires_at, last_used_at, revoked_at") &&
+        sql.includes("SELECT id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at") &&
         sql.includes("FROM user_api_tokens") &&
         sql.includes("ORDER BY")
       ) {
@@ -89,6 +92,7 @@ vi.mock("../../src/infra/db/client.js", () => ({
           .map((t) => ({
             id: t.id,
             name: t.name,
+            token_prefix: t.token_prefix,
             created_at: t.created_at,
             expires_at: t.expires_at,
             last_used_at: t.last_used_at,
@@ -106,6 +110,7 @@ vi.mock("../../src/infra/db/client.js", () => ({
           {
             id: tok.id,
             name: tok.name,
+            token_prefix: tok.token_prefix,
             created_at: tok.created_at,
             expires_at: tok.expires_at,
             last_used_at: tok.last_used_at,
