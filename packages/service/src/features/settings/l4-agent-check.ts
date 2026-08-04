@@ -57,20 +57,14 @@ async function writeModelsJson(
         ? "openai-responses"
         : "openai-completions";
 
+  // Match prepare-worker's proven format (simple nested providers structure).
   const models = {
     providers: {
       platform: {
         api: apiType,
-        apiKey: "${PLATFORM_API_KEY}",
         baseUrl: input.baseUrl.replace(/\/$/, ""),
-        models: [
-          {
-            id: input.modelId,
-            input: ["text"],
-            contextWindow: 128000,
-            maxTokens: 4096,
-          },
-        ],
+        apiKey: "${PLATFORM_API_KEY}",
+        models: [{ id: input.modelId }],
       },
     },
   };
