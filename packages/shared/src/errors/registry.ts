@@ -200,6 +200,19 @@ export const ERROR_REGISTRY = {
     i18nKey: "errors.ERR_VALIDATION",
     httpStatus: 400,
   },
+  // E3 wave — credential/settings specific codes
+  ERR_CREDENTIAL_KEY_UNAVAILABLE: {
+    i18nKey: "errors.ERR_CREDENTIAL_KEY_UNAVAILABLE",
+    httpStatus: 409,
+  },
+  ERR_CREDENTIAL_DECRYPT_FAILED: {
+    i18nKey: "errors.ERR_CREDENTIAL_DECRYPT_FAILED",
+    httpStatus: 409,
+  },
+  ERR_UPLOAD_TOO_LARGE: {
+    i18nKey: "errors.ERR_UPLOAD_TOO_LARGE",
+    httpStatus: 413,
+  },
   // E4 wave — codes used in sandbox/auth/tasks that need registry entries
   ERR_INVALID_STATE: {
     i18nKey: "errors.ERR_INVALID_STATE",

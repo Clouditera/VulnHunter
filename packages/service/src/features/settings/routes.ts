@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
+import { AppError } from "../../infra/app-error.js";
 import {
   getDefaultCredential,
   listCredentials,
@@ -67,7 +68,7 @@ async function handleDeleteCredential(c: any) {
   const ctx = queryContextFromUser(c.get("user"));
   const id = c.req.param("id");
   const ok = await deleteCredential(ctx, id);
-  if (!ok) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  if (!ok) throw new AppError("ERR_NOT_FOUND");
   return c.json({ ok: true });
 }
 
@@ -109,14 +110,14 @@ settingsRouter.put("/credential", async (c) => {
     );
   }
   if (!VALID_PROTO_TYPES.has(body.proto_type)) {
-    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "invalid proto_type" } }, 400);
+    throw new AppError("ERR_VALIDATION", { details: { field: "proto_type" } });
   }
 
   let contextWindowTokens: number;
   try {
     contextWindowTokens = parseContextWindowTokens(body.context_window_tokens);
   } catch {
-    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "invalid context_window_tokens" } }, 400);
+    throw new AppError("ERR_VALIDATION", { details: { field: "context_window_tokens" } });
   }
 
   const ctx = queryContextFromUser(c.get("user"));
@@ -169,12 +170,12 @@ settingsRouter.put("/credential", async (c) => {
     });
   } catch (err) {
     if (err instanceof CredentialKeyUnavailableError) {
-      return c.json({ error: { code: "ERR_CREDENTIAL_KEY_UNAVAILABLE", message: "凭证加密 key 未配置。请管理员设置 VULNHUNTER_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" } }, 409);
+      throw new AppError("ERR_CREDENTIAL_KEY_UNAVAILABLE");
     }
     throw err;
   }
 
-  if (body.id && !id) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  if (body.id && !id) throw new AppError("ERR_NOT_FOUND");
   return c.json({ id });
 });
 
@@ -193,7 +194,7 @@ settingsRouter.patch("/credential/:id", async (c) => {
   }>();
 
   if (body.proto_type !== undefined && !VALID_PROTO_TYPES.has(body.proto_type)) {
-    return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "invalid proto_type" } }, 400);
+    throw new AppError("ERR_VALIDATION", { details: { field: "proto_type" } });
   }
 
   let contextWindowTokens: number | undefined;
@@ -201,7 +202,7 @@ settingsRouter.patch("/credential/:id", async (c) => {
     try {
       contextWindowTokens = parseContextWindowTokens(body.context_window_tokens);
     } catch {
-      return c.json({ error: { code: "ERR_BAD_REQUEST", detail: "invalid context_window_tokens" } }, 400);
+      throw new AppError("ERR_VALIDATION", { details: { field: "context_window_tokens" } });
     }
   }
 
@@ -220,7 +221,7 @@ settingsRouter.patch("/credential/:id", async (c) => {
     ctx,
   });
 
-  if (!ok) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  if (!ok) throw new AppError("ERR_NOT_FOUND");
   return c.json({ ok: true });
 });
 
@@ -304,7 +305,7 @@ settingsRouter.post("/credential/test", async (c) => {
 
 settingsRouter.get("/credential/test-runs/:id", async (c) => {
   const run = getDiagnosticRun(c.req.param("id"));
-  if (!run) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  if (!run) throw new AppError("ERR_NOT_FOUND");
   return c.json(run);
 });
 
@@ -329,7 +330,7 @@ settingsRouter.post("/credential/diagnose-stream", async (c) => {
   if (body.credential_id) {
     const ctx = queryContextFromUser(c.get("user"));
     const saved = await getCredentialById(ctx, body.credential_id);
-    if (!saved) return c.json({ error: { code: "ERR_NOT_FOUND", message: "Credential not found" } }, 404);
+    if (!saved) throw new AppError("ERR_NOT_FOUND");
     protoType = protoType || saved.proto_type;
     baseUrl = baseUrl || (saved.base_url ?? "").replace(/\/+$/, "");
     modelId = modelId || saved.model_id;
@@ -467,11 +468,11 @@ settingsRouter.post("/skills", async (c) => {
   const user = c.get("user");
   const formData = await c.req.formData();
   const file = formData.get("file") as File | null;
-  if (!file) return c.json({ error: { code: "ERR_VALIDATION", detail: "file required" } }, 400);
+  if (!file) throw new AppError("ERR_VALIDATION");
 
   const maxBytes = 50 * 1024 * 1024; // 50MB
   if (file.size > maxBytes) {
-    return c.json({ error: { code: "ERR_UPLOAD_TOO_LARGE" } }, 413);
+    throw new AppError("ERR_UPLOAD_TOO_LARGE");
   }
 
   const config = loadConfig();
@@ -484,7 +485,7 @@ settingsRouter.post("/skills", async (c) => {
     await uploadFile(config.minio.bucket, minioKey, buf, buf.length);
   } catch (err) {
     logger.error({ err }, "skill upload to MinIO failed");
-    return c.json({ error: { code: "ERR_INTERNAL", detail: "upload failed" } }, 500);
+    throw new AppError("ERR_INTERNAL", { details: { phase: "upload" } });
   }
 
   const skill = await reportStorage.createSkill({
@@ -505,7 +506,7 @@ settingsRouter.delete("/skills/:id", async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
   const skill = await reportStorage.deleteOwnedSkill(id, user.userId);
-  if (!skill) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+  if (!skill) throw new AppError("ERR_NOT_FOUND");
 
   const config = loadConfig();
   try {
