@@ -75,6 +75,21 @@ release_write_version_json "$OUT"
 pnpm turbo run build --filter=@vulnhunter/service --filter=@vulnhunter/web
 pnpm --filter @vulnhunter/worker-bridge build
 
+# Guard: docker build context must contain every prebuilt/source input the
+# Dockerfiles COPY (a .dockerignore over-exclusion fails here, not mid-build).
+for required in \
+  pnpm-lock.yaml \
+  packages/web/dist-business/index.html \
+  packages/web/dist-admin/index.html \
+  packages/worker-bridge/dist/bundle.js \
+  submodules/youngflow/release/youngflow-linux-x64 \
+  flows/vulnforge \
+  worker-assets/entrypoint.sh \
+  deploy/nginx.conf \
+  scripts/ops/vulnforge-schema-migration.mjs; do
+  [[ -e "$required" ]] || release_die "build context missing required path: $required"
+done
+
 if [[ "$EDITION" == "community" ]]; then
   SERVICE_DOCKERFILE=deploy/dockerfiles/service.community.Dockerfile
   [[ -f "$SERVICE_DOCKERFILE" ]] || SERVICE_DOCKERFILE=deploy/dockerfiles/service.Dockerfile
