@@ -253,7 +253,7 @@ export interface FindingReviewEvent {
 }
 
 
-export type ApiTokenStatus = "active" | "expired" | "revoked";
+export type ApiTokenStatus = "active" | "disabled" | "expired" | "revoked";
 
 export interface ApiToken {
   id: string;
@@ -815,8 +815,14 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ name }),
       }),
-    revoke: (id: string) =>
-      request<{ token: ApiToken }>(`/api/me/api-tokens/${id}`, { method: "DELETE" }),
+    setStatus: (id: string, status: "active" | "disabled") =>
+      request<{ token: ApiToken }>(`/api/me/api-tokens/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
+    /** Hard delete (row removed, quota released). Was soft-revoke pre-2.3.4. */
+    remove: (id: string) =>
+      request<{ ok: boolean }>(`/api/me/api-tokens/${id}`, { method: "DELETE" }),
   },
   reports: {
     list: (taskId: string) =>

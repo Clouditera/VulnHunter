@@ -105,6 +105,12 @@ while [[ $# -gt 0 ]]; do
     --web-port=*)
       WEB_PORT_ARG="${1#*=}"; shift
       ;;
+    --force)
+      FORCE=1; shift
+      ;;
+    --with-running)
+      WITH_RUNNING=1; shift
+      ;;
     -h|--help)
       usage; exit 0
       ;;
@@ -180,11 +186,13 @@ if ! [[ "$web_port" =~ ^[0-9]+$ ]] || (( web_port < 1 || web_port > 65535 )); th
   exit 1
 fi
 
-# Existing self-contained instance → refuse (upgrade = batch 2)
+# Existing self-contained instance → upgrade mode (batch 2: install.sh doubles as upgrader)
 if instance_is_present "$instance_dir"; then
-  echo "[install] existing instance detected: $instance_dir/.version" >&2
-  echo "[install] upgrade mode lands in batch 2; use the future install/upgrade path or restore from backup." >&2
-  exit 1
+  echo "[install] existing instance detected: $instance_dir — switching to upgrade mode"
+  # shellcheck source=lib/instance-upgrade.sh
+  source "$PKG_ROOT/lib/instance-upgrade.sh"
+  run_instance_upgrade "$PKG_ROOT" "$instance_dir"
+  exit $?
 fi
 
 # Refuse stomping live data without .version (old layout / partial install)

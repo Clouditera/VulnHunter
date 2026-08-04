@@ -67,16 +67,17 @@ else
   echo "[fail] install --help"; fail=1
 fi
 
-# Dry refuse: existing .version
+# Existing .version -> upgrade mode entry (batch 2): with an incomplete package
+# (deploy/ has no .env.example), the upgrader must fail BEFORE touching docker.
 mkdir -p "$tmp/existing"
 write_version_file "$tmp/existing" "2.3.1" "old"
-if INSTANCE_DIR="$tmp/existing" "$ROOT/install.sh" 2>"$tmp/err"; then
-  echo "[fail] should refuse existing .version"; fail=1
+if INSTANCE_DIR="$tmp/existing" "$ROOT/install.sh" >"$tmp/out" 2>"$tmp/err"; then
+  echo "[fail] upgrade mode should fail with incomplete package"; fail=1
 else
-  if grep -q 'existing instance' "$tmp/err"; then
-    echo "[ok] refuses existing instance"
+  if grep -q 'switching to upgrade mode' "$tmp/out" && grep -q 'incomplete' "$tmp/err"; then
+    echo "[ok] existing instance enters upgrade mode, fails safe on incomplete instance"
   else
-    echo "[fail] refuse message missing: $(cat "$tmp/err")"; fail=1
+    echo "[fail] upgrade-mode messages missing: out=$(cat "$tmp/out") err=$(cat "$tmp/err")"; fail=1
   fi
 fi
 

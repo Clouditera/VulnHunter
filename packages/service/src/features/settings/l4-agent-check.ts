@@ -41,10 +41,16 @@ export type L4CheckResult = {
 
 const L4_TIMEOUT_MS = 60_000;
 
+/** Env var that carries the credential into the pi subprocess (never on argv). */
+const L4_API_KEY_ENV = "VULNHUNTER_L4_API_KEY";
+
 /**
  * Build a minimal models.json for pi CLI convention path
  * (`<agentDir>/models.json`). Declares a "platform" provider with the user's
- * real baseUrl + API key (via env template). pi reads this on startup.
+ * real baseUrl. The API key is an env template (`$VULNHUNTER_L4_API_KEY`) —
+ * pi CLI's resolve-config-value interpolates $ENV_VAR references in
+ * models.json at runtime, and we feed that env var to the child process.
+ * This keeps the key out of the process argument list (ps-visible).
  */
 async function writeModelsJson(
   agentDir: string,
@@ -57,13 +63,14 @@ async function writeModelsJson(
         ? "openai-responses"
         : "openai-completions";
 
-  // Match prepare-worker's proven format. apiKey omitted — pi CLI gets it
-  // via --api-key flag (models.json ${ENV} templates are NOT supported by pi).
+  // Match prepare-worker's proven format. apiKey is an env template resolved
+  // by pi from the child env (L4_API_KEY_ENV) — never a literal.
   const models = {
     providers: {
       platform: {
         api: apiType,
         baseUrl: input.baseUrl.replace(/\/$/, ""),
+        apiKey: `$${L4_API_KEY_ENV}`,
         models: [{ id: input.modelId }],
       },
     },
@@ -92,7 +99,6 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
       "--no-session",
       "--provider", "platform",
       "--model", input.modelId,
-      "--api-key", input.apiKey,
       "Reply with the single word: ok",
     ];
 
@@ -105,6 +111,9 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
         env: {
           ...process.env,
           PI_CODING_AGENT_DIR: agentDir,
+          // Credential rides the env channel (invisible to ps), resolved by
+          // pi from the models.json $VULNHUNTER_L4_API_KEY template.
+          [L4_API_KEY_ENV]: input.apiKey,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
