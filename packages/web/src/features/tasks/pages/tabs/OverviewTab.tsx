@@ -128,12 +128,6 @@ export function OverviewTab() {
     // finishes, so no refetchInterval is needed.
   });
 
-  const { data: pocSummaryData } = useQuery({
-    queryKey: ["poc-summary", task.id],
-    queryFn: () => api.tasks.pocSummary(task.id),
-    retry: false,
-  });
-
   const { data: profilerData } = useQuery({
     queryKey: ["task-profiler", task.id],
     queryFn: () => api.tasks.profiler(task.id),
@@ -150,7 +144,9 @@ export function OverviewTab() {
   };
   const confirmedCount = findings.filter((f) => f.review_status === "confirmed").length;
   const falsePositiveCount = findings.filter((f) => f.review_status === "false_positive").length;
-  const reproducedCount = pocSummaryData?.summary?.reproduced ?? 0;
+  // POC reproduced count from findings_meta dynamic status — same source as
+  // the findings tab (task-1555f4d1: old poc_results job table diverged).
+  const reproducedCount = findings.filter((f) => f.poc_status === "reproduced").length;
   const exec = task.metadata?.execution ?? {};
 
   const tokenUsage = getTokenUsage(task);
