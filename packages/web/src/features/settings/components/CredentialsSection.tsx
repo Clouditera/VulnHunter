@@ -743,7 +743,7 @@ export function CredentialsSection() {
               </div>
             </Field>
 
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ marginBottom: "18px" }}>
               <label style={{ ...FIELD_LABEL, display: "inline-flex", alignItems: "center", minHeight: "16px" }}>{i18n.t("settings.model.model")}</label>
               <div style={{ display: "flex", gap: "8px" }}>
                 <input
