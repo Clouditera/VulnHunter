@@ -233,7 +233,7 @@ fi
 V_DEFAULT_MODEL="$(
   MODEL_PROTO_TYPE="$MODEL_PROTO_TYPE" \
   LLM_MODEL_NAME="$LLM_MODEL_NAME" \
-  MODEL_PROXY_URL="$LLM_DIRECT_BASE_URL" \
+  LLM_DIRECT_BASE_URL="$LLM_DIRECT_BASE_URL" \
   LLM_CONTEXT_WINDOW_TOKENS="$LLM_CONTEXT_WINDOW_TOKENS" \
   MODEL_EFFORT="$MODEL_EFFORT" \
   python3 - "$FLOW_DIR/models.json" <<'PY'
@@ -242,7 +242,7 @@ import json, os, sys
 out_path = sys.argv[1]
 proto = (os.environ.get("MODEL_PROTO_TYPE") or "openai-completions").strip()
 model_id = (os.environ.get("LLM_MODEL_NAME") or "").strip()
-proxy_url = (os.environ.get("MODEL_PROXY_URL") or "").strip().rstrip("/")
+direct_url = (os.environ.get("LLM_DIRECT_BASE_URL") or "").strip().rstrip("/")
 effort = (os.environ.get("MODEL_EFFORT") or "off").strip().lower()
 try:
     ctx = int(os.environ.get("LLM_CONTEXT_WINDOW_TOKENS") or "128000")
@@ -296,7 +296,7 @@ provider_cfg = {
     "apiKey": f"${API_KEY_ENV}",
     "models": [model_entry],
     # Direct credential: real base_url + real key (model-proxy removed).
-    "baseUrl": proxy_url,
+    "baseUrl": direct_url,
 }
 
 models = {"providers": {PROVIDER: provider_cfg}}

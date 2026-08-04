@@ -34,13 +34,17 @@ vi.mock("../../src/infra/minio/client.js", () => ({
   uploadFile: vi.fn(),
 }));
 vi.mock("../../src/infra/config.js", () => ({
-  loadConfig: vi.fn(() => ({ minio: { bucket: "artifact-store" } })),
+  loadConfig: vi.fn(() => ({ minio: { bucket: "artifact-store" }, sandboxPlane: { baseUrl: "", token: "", timeoutMs: 5000 } })),
 }));
 vi.mock("../../src/features/notifications/index.js", () => ({
   notify: vi.fn(),
 }));
 vi.mock("../../src/infra/logger.js", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock("../../src/features/sandbox-plane/client.js", () => ({
+  isSandboxPlaneConfigured: () => true,
+  SandboxPlaneUnavailableError: class extends Error {},
 }));
 vi.mock("../../src/infra/db/client.js", () => ({
   getDb: vi.fn(() => {
