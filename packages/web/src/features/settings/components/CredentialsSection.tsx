@@ -135,7 +135,11 @@ export function CredentialsSection() {
    *  Render is owner-gated so a list fetched on credential A never bleeds
    *  into credential B's form (task-aaf8ac15, fish screenshot). */
   const [modelListOwner, setModelListOwner] = useState<string | null>(null);
-  /** Progressive credential test checks (SSE/poll unified render state). */
+  /** Core-field snapshot of the credential being edited (edit-gate, fish
+   *  2026-08-04: 改核心字段必须先通过测试再保存，不许点了才报错). */
+  const [editCoreSnap, setEditCoreSnap] = useState<{ proto: string; baseUrl: string; modelId: string } | null>(null);
+  /** Fingerprint of the form values the last successful test ran against. */
+  const [testedFingerprint, setTestedFingerprint] = useState<string | null>(null);
   const [testChecks, setTestChecks] = useState<import("../../../shared/api/client").ModelDiagnosticCheck[]>([]);
   const [modelFetchState, setModelFetchState] = useState<
     { kind: "idle" | "loading" } | { kind: "error"; msg: string }
@@ -187,6 +191,12 @@ export function CredentialsSection() {
     setTestState({ kind: "idle" });
     setToast(null);
     resetModelList();
+    setEditCoreSnap({
+      proto: normalizeProtoType(c.proto_type),
+      baseUrl: c.base_url ?? "",
+      modelId: c.model_id,
+    });
+    setTestedFingerprint(null);
   }
 
   /** Reset the model suggestion list (switch of edit target — spec ①). */
@@ -206,6 +216,8 @@ export function CredentialsSection() {
     setTestState({ kind: "idle" });
     setToast(null);
     resetModelList();
+    setEditCoreSnap(null);
+    setTestedFingerprint(null);
   }
 
   /** Open the "+ New credential" draft row at the top of the list. */
@@ -225,6 +237,8 @@ export function CredentialsSection() {
     setToast(null);
     setTestChecks([]);
     resetModelList();
+    setEditCoreSnap(null);
+    setTestedFingerprint(null);
   }
 
   async function handleDeleteCredential(c: LlmCredential) {
@@ -426,6 +440,28 @@ export function CredentialsSection() {
    *  render only when the list's owner matches (spec ② owner-gate). */
   const currentFormKey = isNewDraft ? "new" : editingCredentialId;
   const modelListVisible = modelListOwner === currentFormKey;
+
+  /* --- Edit-mode save gate (fish 2026-08-04) ---
+   * Core fields (proto/baseUrl/modelId/Key) dirty → save disabled until the
+   * connection test passes against the CURRENT values. Optional-only edits
+   * save directly. Backend enforces the same rule; this gate keeps the user
+   * from ever seeing a click-then-fail. */
+  const normUrl = (u: string) => u.trim().replace(/\/+$/, "");
+  const coreFingerprint = () =>
+    [protoType, normUrl(baseUrl), modelId.trim(), apiKey.trim() ? "newkey" : "keep"].join("|");
+  const coreChanged =
+    !isNewDraft &&
+    editCoreSnap != null &&
+    (protoType !== editCoreSnap.proto ||
+      normUrl(baseUrl) !== normUrl(editCoreSnap.baseUrl) ||
+      modelId.trim() !== editCoreSnap.modelId ||
+      apiKey.trim() !== "");
+  const saveGateBlocked = coreChanged && testedFingerprint !== coreFingerprint();
+
+  /** Fetch-models button needs URL + a usable key (typed, or the stored one
+   *  when editing) — fish: 模型列表依赖 key/url，排在其后且未填禁用. */
+  const canFetchModels =
+    baseUrl.trim() !== "" && (apiKey.trim() !== "" || (!isNewDraft && editingCredentialId != null));
   /** Thinking levels for the UI: model-specific when known, standard five otherwise. */
   const thinkingLevelsForUi: string[] = activeModelCaps?.thinkingLevels ?? [...THINKING_VALUES];
 
@@ -493,8 +529,12 @@ export function CredentialsSection() {
         if (ev.type === "report") {
           const report = ev.report;
           setTestChecks(report.checks ?? []);
-          if (report.ok) setTestState({ kind: "ok", msg: report.summary, diagnostics: report });
-          else setTestState({ kind: "err", msg: report.summary || i18n.t("settings.model.testFail"), diagnostics: report });
+          if (report.ok) {
+            setTestState({ kind: "ok", msg: report.summary, diagnostics: report });
+            setTestedFingerprint(coreFingerprint());
+          } else {
+            setTestState({ kind: "err", msg: report.summary || i18n.t("settings.model.testFail"), diagnostics: report });
+          }
           return;
         }
         const incoming = ev.check;
@@ -525,11 +565,12 @@ export function CredentialsSection() {
           return;
         }
         const failed = latestChecks.some((c) => c.status === "fail");
-        setTestState(
-          failed
-            ? { kind: "err", msg: i18n.t("settings.model.testFail") }
-            : { kind: "ok" },
-        );
+        if (failed) {
+          setTestState({ kind: "err", msg: i18n.t("settings.model.testFail") });
+        } else {
+          setTestState({ kind: "ok" });
+          setTestedFingerprint(coreFingerprint());
+        }
       },
     });
   }
@@ -641,125 +682,6 @@ export function CredentialsSection() {
                   }))}
                 />
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <label style={{ ...FIELD_LABEL, display: "inline-flex", alignItems: "center", minHeight: "16px" }}>{i18n.t("settings.model.model")}</label>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <input
-                    data-testid="settings-model-input"
-                    type="text"
-                    value={modelId}
-                    onChange={(e) => { setModelId(e.target.value); setFieldErrors((prev) => ({ ...prev, modelId: "" })); }}
-                    placeholder="e.g. deepseek-v4-flash"
-                    list="settings-model-datalist"
-                    style={{ ...FIELD_INPUT, flex: 1, minWidth: 0 }}
-                  />
-                  <button
-                    type="button"
-                    data-testid="settings-fetch-models-btn"
-                    onClick={fetchModels}
-                    disabled={modelFetchState.kind === "loading"}
-                    title={i18n.t("settings.model.fetch")}
-                    style={{
-                      flexShrink: 0,
-                      height: "40px",
-                      padding: "0 12px",
-                      border: "1px solid var(--border)",
-                      borderRadius: "8px",
-                      background: "var(--bg-card)",
-                      color: "var(--text-secondary)",
-                      fontSize: "12px",
-                      fontWeight: 500,
-                      cursor: modelFetchState.kind === "loading" ? "wait" : "pointer",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      whiteSpace: "nowrap",
-                      lineHeight: 1,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (modelFetchState.kind !== "loading")
-                        e.currentTarget.style.background = "var(--bg-hover)";
-                    }}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-card)")}
-                  >
-                    <Icon
-                      name="search"
-                      size={12}
-                      style={{
-                        animation:
-                          modelFetchState.kind === "loading"
-                            ? "va-spin 0.9s linear infinite"
-                            : undefined,
-                      }}
-                    />
-                    <span>
-                      {modelFetchState.kind === "loading"
-                        ? i18n.t("settings.model.fetching")
-                        : i18n.t("settings.model.fetch")}
-                    </span>
-                  </button>
-                </div>
-                {/* Suggestions popover — owner-gated (task-aaf8ac15) */}
-                {modelListVisible && modelOptions && modelOptions.length > 0 ? (
-                  <div
-                    data-testid="settings-model-suggestions"
-                    style={{
-                      marginTop: "6px",
-                      padding: "6px",
-                      border: "1px solid var(--border)",
-                      borderRadius: "6px",
-                      background: "var(--bg-page)",
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "4px",
-                      maxHeight: "160px",
-                      overflowY: "auto",
-                    }}
-                  >
-                    {modelOptions.map((id) => {
-                      const active = id === modelId;
-                      return (
-                        <button
-                          key={id}
-                          type="button"
-                          data-testid="settings-model-suggestion"
-                          data-active={active || undefined}
-                          onClick={() => { setModelId(id); setFieldErrors((prev) => ({ ...prev, modelId: "" })); }}
-                          style={{
-                            padding: "4px 10px",
-                            fontSize: "11px",
-                            fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-                            border: `1px solid ${active ? "var(--brand)" : "var(--border)"}`,
-                            borderRadius: "4px",
-                            background: active
-                              ? "var(--bg-active-filter)"
-                              : "var(--bg-card)",
-                            color: active ? "var(--brand)" : "var(--text-primary)",
-                            cursor: "pointer",
-                            fontWeight: active ? 600 : 500,
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          {id}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : modelListVisible && modelFetchState.kind === "error" ? (
-                  <div
-                    data-testid="settings-model-fetch-error"
-                    style={{
-                      marginTop: "6px",
-                      fontSize: "11px",
-                      color: "var(--brand)",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {modelFetchState.msg}
-                  </div>
-                ) : null}
-                {fieldErrors.modelId && <div style={{ color: "var(--danger)", fontSize: "12px", marginTop: "4px" }}>{fieldErrors.modelId}</div>}
-              </div>
             </div>
 
             <Field label={i18n.t("settings.model.baseUrl")}>
@@ -819,6 +741,126 @@ export function CredentialsSection() {
                 </button>
               </div>
             </Field>
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <label style={{ ...FIELD_LABEL, display: "inline-flex", alignItems: "center", minHeight: "16px" }}>{i18n.t("settings.model.model")}</label>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <input
+                  data-testid="settings-model-input"
+                  type="text"
+                  value={modelId}
+                  onChange={(e) => { setModelId(e.target.value); setFieldErrors((prev) => ({ ...prev, modelId: "" })); }}
+                  placeholder="e.g. deepseek-v4-flash"
+                  list="settings-model-datalist"
+                  style={{ ...FIELD_INPUT, flex: 1, minWidth: 0 }}
+                />
+                <button
+                  type="button"
+                  data-testid="settings-fetch-models-btn"
+                  onClick={fetchModels}
+                  disabled={modelFetchState.kind === "loading" || !canFetchModels}
+                  title={canFetchModels ? i18n.t("settings.model.fetch") : i18n.t("settings.model.fetchNeedUrlKey")}
+                  style={{
+                    flexShrink: 0,
+                    height: "40px",
+                    padding: "0 12px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "8px",
+                    background: "var(--bg-card)",
+                    color: "var(--text-secondary)",
+                    fontSize: "12px",
+                    fontWeight: 500,
+                    cursor: modelFetchState.kind === "loading" ? "wait" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    whiteSpace: "nowrap",
+                    lineHeight: 1,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (modelFetchState.kind !== "loading")
+                      e.currentTarget.style.background = "var(--bg-hover)";
+                  }}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-card)")}
+                >
+                  <Icon
+                    name="search"
+                    size={12}
+                    style={{
+                      animation:
+                        modelFetchState.kind === "loading"
+                          ? "va-spin 0.9s linear infinite"
+                          : undefined,
+                    }}
+                  />
+                  <span>
+                    {modelFetchState.kind === "loading"
+                      ? i18n.t("settings.model.fetching")
+                      : i18n.t("settings.model.fetch")}
+                  </span>
+                </button>
+              </div>
+              {/* Suggestions popover — owner-gated (task-aaf8ac15) */}
+              {modelListVisible && modelOptions && modelOptions.length > 0 ? (
+                <div
+                  data-testid="settings-model-suggestions"
+                  style={{
+                    marginTop: "6px",
+                    padding: "6px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    background: "var(--bg-page)",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "4px",
+                    maxHeight: "160px",
+                    overflowY: "auto",
+                  }}
+                >
+                  {modelOptions.map((id) => {
+                    const active = id === modelId;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        data-testid="settings-model-suggestion"
+                        data-active={active || undefined}
+                        onClick={() => { setModelId(id); setFieldErrors((prev) => ({ ...prev, modelId: "" })); }}
+                        style={{
+                          padding: "4px 10px",
+                          fontSize: "11px",
+                          fontFamily: "'SF Mono', Menlo, Consolas, monospace",
+                          border: `1px solid ${active ? "var(--brand)" : "var(--border)"}`,
+                          borderRadius: "4px",
+                          background: active
+                            ? "var(--bg-active-filter)"
+                            : "var(--bg-card)",
+                          color: active ? "var(--brand)" : "var(--text-primary)",
+                          cursor: "pointer",
+                          fontWeight: active ? 600 : 500,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {id}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : modelListVisible && modelFetchState.kind === "error" ? (
+                <div
+                  data-testid="settings-model-fetch-error"
+                  style={{
+                    marginTop: "6px",
+                    fontSize: "11px",
+                    color: "var(--brand)",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {modelFetchState.msg}
+                </div>
+              ) : null}
+              {fieldErrors.modelId && <div style={{ color: "var(--danger)", fontSize: "12px", marginTop: "4px" }}>{fieldErrors.modelId}</div>}
+            </div>
 
             <Field
               label={i18n.t("settings.model.thinking")}
@@ -1141,20 +1183,21 @@ export function CredentialsSection() {
                         <button
                           type="button"
                           data-testid="settings-credential-save"
-                          disabled={saving || (!isDraft && c?.can_edit === false)}
+                          disabled={saving || (!isDraft && c?.can_edit === false) || saveGateBlocked}
+                          title={saveGateBlocked ? i18n.t("settings.creds.gate.coreModified") : undefined}
                           onClick={saveCredential}
                           style={{
                             padding: "6px 16px",
                             border: "none",
                             borderRadius: "6px",
-                            background: saving
+                            background: saving || saveGateBlocked
                               ? "var(--bg-disabled)"
                               : "var(--brand)",
                             color: "var(--btn-primary-text)",
                             fontSize: "12px",
                             fontWeight: 600,
                             cursor:
-                              saving ? "not-allowed" : "pointer",
+                              saving || saveGateBlocked ? "not-allowed" : "pointer",
                             opacity: 1,
                           }}
                         >
@@ -1166,6 +1209,24 @@ export function CredentialsSection() {
                                 ? "只读"
                                 : i18n.t("settings.credentials.update")}
                         </button>
+                        {saveGateBlocked ? (
+                          <div
+                            data-testid="settings-credential-gate-hint"
+                            style={{
+                              width: "100%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "flex-end",
+                              gap: "5px",
+                              fontSize: "11.5px",
+                              color: "var(--sev-medium)",
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            <Icon name="alert-triangle" size={12} />
+                            {i18n.t("settings.creds.gate.coreModified")}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </div>
