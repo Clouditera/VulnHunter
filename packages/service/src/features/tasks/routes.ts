@@ -337,7 +337,7 @@ tasksRouter.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-// NOTE: POC routes moved to features/poc/routes.ts (pocRouter)
+// NOTE: manual POC job routes retired 2026-08-04 (poc_jobs/eval-worker removal);
 // Old GET /:id/poc and GET /:id/poc/:filename removed to avoid route conflict.
 
 // GET /api/tasks/:id/events — live log events (archive + memory via event-archive)

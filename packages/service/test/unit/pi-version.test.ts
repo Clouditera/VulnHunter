@@ -11,7 +11,6 @@ describe("pi version pin", () => {
     const { resolve } = await import("node:path");
     const dockerfiles = [
       "worker.Dockerfile",
-      "eval-worker.Dockerfile",
       "service.Dockerfile",
       "service.community.Dockerfile",
     ];

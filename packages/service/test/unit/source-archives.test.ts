@@ -66,13 +66,12 @@ describe("source archive extraction", () => {
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
-  it("keeps scan, eval, and report callers on the absent-destination contract", () => {
+  it("keeps scan and report callers on the absent-destination contract", () => {
     const callers = [
       // The scheduler extracts into a fresh token-private staging dir
       // (.scheduler-prepare-<token>/src) that never pre-exists, then publishes
       // atomically by rename — the absent-destination contract is structural.
       ["src/features/workers/scheduler.ts", "extractSourceArchive(archivePath, archive.filename, stagedSourceDir"],
-      ["src/features/poc/eval-worker.ts", "prepareSourceArchiveDestination(subjectDir);"],
       ["src/features/reports/report-worker.ts", "prepareSourceArchiveDestination(sourceDir);"],
     ];
     for (const [file, call] of callers) expect(readFileSync(join(process.cwd(), file), "utf8")).toContain(call);

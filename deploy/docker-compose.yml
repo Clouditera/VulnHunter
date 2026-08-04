@@ -36,7 +36,6 @@ services:
       MINIO_BUCKET: "artifact-store"
       DOCKER_SOCKET: "/var/run/docker.sock"
       WORKER_IMAGE: "${WORKER_IMAGE:-vulnhunter-worker:latest}"
-      EVAL_WORKER_IMAGE: "${EVAL_WORKER_IMAGE:-vulnhunter-eval-worker:latest}"
       DOCKER_NETWORK: "vulnhunter-internal"
       WORKER_SERVICE_URL: "${WORKER_SERVICE_URL:-http://service:28080}"
       UPLOAD_GATEWAY_LIMIT_MB: "${UPLOAD_GATEWAY_LIMIT_MB:-2048}"

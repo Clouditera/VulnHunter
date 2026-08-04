@@ -120,7 +120,7 @@ prepare_data_dirs() {
 }
 sync_release_env() {
   [[ -f .env && -f .env.example ]] || return 0
-  for key in SERVICE_IMAGE WEB_IMAGE WORKER_IMAGE EVAL_WORKER_IMAGE; do
+  for key in SERVICE_IMAGE WEB_IMAGE WORKER_IMAGE; do
     local value
     value="$(env_value "$key" .env.example)"
     [[ -n "$value" ]] || continue
@@ -254,7 +254,6 @@ write_install_manifest() {
     "service": "$(json_escape "${SERVICE_IMAGE:-}")",
     "web": "$(json_escape "${WEB_IMAGE:-}")",
     "worker": "$(json_escape "${WORKER_IMAGE:-}")",
-    "evalWorker": "$(json_escape "${EVAL_WORKER_IMAGE:-}")"
   }
 }
 JSON

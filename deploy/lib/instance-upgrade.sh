@@ -172,7 +172,7 @@ run_instance_upgrade() {
   # .env: three-way merge, then sync release-owned keys (images / edition / license)
   merge_env_three_way "$pkg_root/.env.example" "$instance_dir/.env.template" "$instance_dir/.env"
   local key value
-  for key in SERVICE_IMAGE WEB_IMAGE WORKER_IMAGE EVAL_WORKER_IMAGE POSTGRES_IMAGE MINIO_IMAGE; do
+  for key in SERVICE_IMAGE WEB_IMAGE WORKER_IMAGE POSTGRES_IMAGE MINIO_IMAGE; do
     value="$(grep -E "^${key}=" "$pkg_root/.env.example" | tail -n 1 | cut -d= -f2-)"
     [[ -n "$value" ]] || continue
     if grep -qE "^${key}=" "$instance_dir/.env"; then

@@ -55,7 +55,6 @@ import { onChatContainerDie } from "../chat/chat-session.js";
 import { appendEvent } from "../events/event-store.js";
 import { broadcastEvent } from "../events/ws-live-log.js";
 import { onReportContainerDie } from "../reports/report-worker.js";
-import { onEvalContainerDie, onPocRunContainerDie, tickPocScheduler } from "../poc/scheduler.js";
 import { notify } from "../notifications/index.js";
 import type { ServiceConfig } from "../../infra/config.js";
 import { resolveArchiveIdentity } from "../source-archives/detect.js";
@@ -211,24 +210,6 @@ export class TaskScheduler {
       if (event.taskType === "report" && action === "die") {
         onReportContainerDie(taskId, exitCode).catch((err) =>
           logger.error({ err, taskId }, "Failed to handle report container die"),
-        );
-        return;
-      }
-
-      // Eval container lifecycle — POC generation
-      if (event.taskType === "eval" && action === "die") {
-        stopTailing(taskId);
-        onEvalContainerDie(taskId, exitCode, this.config).catch((err) =>
-          logger.error({ err, taskId }, "Failed to handle eval container die"),
-        );
-        return;
-      }
-
-      // POC run container lifecycle — lightweight re-execution
-      if (event.taskType === "poc-run" && action === "die") {
-        stopTailing(taskId);
-        onPocRunContainerDie(taskId, exitCode, this.config).catch((err) =>
-          logger.error({ err, taskId }, "Failed to handle poc-run container die"),
         );
         return;
       }
@@ -396,11 +377,6 @@ export class TaskScheduler {
 
   private async tick(): Promise<void> {
     await this.refreshConfig();
-
-    // POC job/run scheduling
-    await tickPocScheduler(this.config).catch((err) =>
-      logger.error({ err }, "POC scheduler tick error"),
-    );
 
     // Incremental findings indexing for running tasks (before the capacity
     // early-return, since running>=max means capacity<=0 yet we still want

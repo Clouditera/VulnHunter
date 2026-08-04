@@ -33,7 +33,6 @@ required_images() {
     "${SERVICE_IMAGE:-vulnhunter-service:latest}" \
     "${WEB_IMAGE:-vulnhunter-web:latest}" \
     "${WORKER_IMAGE:-vulnhunter-worker:latest}" \
-    "${EVAL_WORKER_IMAGE:-vulnhunter-eval-worker:latest}" \
     "${POSTGRES_IMAGE:-postgres:16-alpine}" \
     "${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}" \
     | awk 'NF && !seen[$0]++'
@@ -429,8 +428,7 @@ cat >"${manifest}.tmp" <<JSON
   "release_images": {
     "service": "$(json_escape "${SERVICE_IMAGE:-}")",
     "web": "$(json_escape "${WEB_IMAGE:-}")",
-    "worker": "$(json_escape "${WORKER_IMAGE:-}")",
-    "evalWorker": "$(json_escape "${EVAL_WORKER_IMAGE:-}")"
+    "worker": "$(json_escape "${WORKER_IMAGE:-}")"
   }
 }
 JSON

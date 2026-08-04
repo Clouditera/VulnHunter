@@ -32,8 +32,6 @@ import {
   readWiki,
   readReportSchema,
   readReport,
-  getPocResultsSchema,
-  getPocResults,
   emitReferenceSchema,
   emitReference,
 } from "./tools/query-tools.js";
@@ -42,8 +40,6 @@ import {
   controlTask,
   generateReportSchema,
   generateReport,
-  generatePocSchema,
-  generatePoc,
   presentArtifactSchema,
   presentArtifact,
 } from "./tools/action-tools.js";
@@ -71,7 +67,6 @@ export function registerChatTools(server: McpServer, ctx: McpContext): void {
   // P1 query tools
   server.tool("read-wiki", readWikiSchema, async (args) => readWiki(args as any, ctx));
   server.tool("read-report", readReportSchema, async (args) => readReport(args as any, ctx));
-  server.tool("get-poc-results", getPocResultsSchema, async (args) => getPocResults(args as any, ctx));
   server.tool(
     "emit-reference",
     "向用户呈现平台中已存在实体（任务 / 漏洞 / 知识库 Wiki / 报告）的可交互卡片。卡片可点击，用户点开后在右侧面板查看该实体的实时详情（状态、进展、漏洞分布、报告预览等）。" +
@@ -86,7 +81,6 @@ export function registerChatTools(server: McpServer, ctx: McpContext): void {
   server.tool("generate-report", generateReportSchema, async (args) =>
     generateReport(args as any, ctx),
   );
-  server.tool("generate-poc", generatePocSchema, async (args) => generatePoc(args as any, ctx));
   server.tool(
     "present-artifact",
     "向用户呈现你自己生成的自由内容（分析总结、对比表、自定义视图、导出的脚本/配置等平台中本不存在、由你创造的内容）的可预览文件卡片。用户可点开在右侧面板预览并下载。" +
