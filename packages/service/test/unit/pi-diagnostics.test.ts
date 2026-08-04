@@ -88,3 +88,29 @@ describe("pi-diagnostics", () => {
     expect(events.some((e) => e.type === "report")).toBe(true);
   });
 });
+
+describe("pi-diagnostics buildModel shape", () => {
+  it("buildModel output has all required Model fields", async () => {
+    // Re-import to get buildModel — it's not exported, so test indirectly
+    // via the stream: if input/cost/contextWindow/maxTokens are missing,
+    // pi-ai internals crash on .includes(). The mock below asserts the
+    // model object passed to streamSimple has all required fields.
+    const passedModel: any[] = [];
+    mockStreamSimple.mockImplementation((model: any) => {
+      passedModel.push(model);
+      return makeStream([{ type: "text_delta", delta: "ok", partial: {} }, { type: "done", reason: "stop", message: {} }]);
+    });
+    await runPiDiagnostics(FAKE_CRED, () => {});
+    const m = passedModel[0];
+    expect(m).toBeDefined();
+    expect(Array.isArray(m.input)).toBe(true);
+    expect(m.input).toContain("text");
+    expect(m.cost).toBeDefined();
+    expect(typeof m.contextWindow).toBe("number");
+    expect(typeof m.maxTokens).toBe("number");
+    expect(m.baseUrl).toBeDefined();
+    expect(m.api).toBeDefined();
+    expect(m.provider).toBeDefined();
+    expect(typeof m.reasoning).toBe("boolean");
+  });
+});
