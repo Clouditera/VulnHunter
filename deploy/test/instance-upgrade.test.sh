@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Unit tests for deploy/lib/instance-upgrade.sh (batch 2: semver + .env three-way merge)
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../lib/common.sh
+source "$ROOT/lib/common.sh"
+# shellcheck source=../lib/instance-dir.sh
+source "$ROOT/lib/instance-dir.sh"
+# shellcheck source=../lib/instance-upgrade.sh
+source "$ROOT/lib/instance-upgrade.sh"
+
+fail=0
+assert_eq() {
+  local name="$1" got="$2" want="$3"
+  if [[ "$got" == "$want" ]]; then
+    echo "[ok] $name"
+  else
+    echo "[fail] $name: got='$got' want='$want'" >&2
+    fail=1
+  fi
+}
+assert_true() {
+  local name="$1"; shift
+  if "$@" >/dev/null 2>&1; then echo "[ok] $name"; else echo "[fail] $name" >&2; fail=1; fi
+}
+assert_false() {
+  local name="$1"; shift
+  if "$@" >/dev/null 2>&1; then echo "[fail] $name (expected false)" >&2; fail=1; else echo "[ok] $name"; fi
+}
+
+echo "== semver_lt =="
+assert_true  "2.3.3 < 2.3.4"   semver_lt 2.3.3 2.3.4
+assert_true  "2.3.3 < 2.10.0"  semver_lt 2.3.3 2.10.0
+assert_true  "2.3.3 < 3.0.0"   semver_lt 2.3.3 3.0.0
+assert_false "2.3.4 !< 2.3.3"  semver_lt 2.3.4 2.3.3
+assert_false "2.3.3 !< 2.3.3"  semver_lt 2.3.3 2.3.3
+assert_false "2.10.0 !< 2.3.3" semver_lt 2.10.0 2.3.3
+assert_false "same major"      semver_lt 3.0.0 2.3.3
+
+echo "== merge_env_three_way (design §3 six rules) =="
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+# old template: snapshot from previous install
+cat > "$tmp/old.tpl" << 'EOF'
+WEB_PORT=23000
+DB_PASSWORD=change-me-in-production
+OLD_DEFAULT=old-value
+DEPRECATED_KEY=legacy
+# COMMENTED_KEY=off
+EOF
+
+# new template: OLD_DEFAULT changed, DEPRECATED_KEY removed, NEW_KEY added
+cat > "$tmp/new.tpl" << 'EOF'
+WEB_PORT=23000
+DB_PASSWORD=change-me-in-production
+OLD_DEFAULT=new-value
+NEW_KEY=fresh-default
+EOF
+
+# current .env: user changed DB_PASSWORD (rule 3 keep), OLD_DEFAULT untouched (rule 2 update),
+# DEPRECATED_KEY active (rule 4 comment), PRIVATE_KEY user-added (rule 5 keep)
+cat > "$tmp/.env" << 'EOF'
+WEB_PORT=23000
+DB_PASSWORD=my-real-password-123
+OLD_DEFAULT=old-value
+DEPRECATED_KEY=legacy
+PRIVATE_KEY=mine
+EOF
+
+merge_env_three_way "$tmp/new.tpl" "$tmp/old.tpl" "$tmp/.env" >/dev/null
+
+assert_eq "rule1: new key appended"        "$(grep -c '^NEW_KEY=fresh-default$' "$tmp/.env")" "1"
+assert_eq "rule2: untouched default updated" "$(grep -c '^OLD_DEFAULT=new-value$' "$tmp/.env")" "1"
+assert_eq "rule3: user value kept"         "$(grep -c '^DB_PASSWORD=my-real-password-123$' "$tmp/.env")" "1"
+assert_eq "rule3: user value not replaced" "$(grep -c '^DB_PASSWORD=change-me-in-production$' "$tmp/.env")" "0"
+assert_eq "rule4: deprecated commented"    "$(grep -c '^# deprecated: DEPRECATED_KEY=legacy$' "$tmp/.env")" "1"
+assert_eq "rule4: no active deprecated"    "$(grep -c '^DEPRECATED_KEY=' "$tmp/.env")" "0"
+assert_eq "rule5: private key kept"        "$(grep -c '^PRIVATE_KEY=mine$' "$tmp/.env")" "1"
+assert_eq "unchanged key left alone"       "$(grep -c '^WEB_PORT=23000$' "$tmp/.env")" "1"
+
+echo "== merge degraded mode (no old template -> add-only) =="
+cat > "$tmp/.env2" << 'EOF'
+DB_PASSWORD=my-real-password-123
+OLD_DEFAULT=old-value
+EOF
+merge_env_three_way "$tmp/new.tpl" "$tmp/missing.tpl" "$tmp/.env2" >/dev/null
+assert_eq "degraded: new key appended"  "$(grep -c '^NEW_KEY=fresh-default$' "$tmp/.env2")" "1"
+assert_eq "degraded: nothing updated"   "$(grep -c '^OLD_DEFAULT=old-value$' "$tmp/.env2")" "1"
+assert_eq "degraded: user value kept"   "$(grep -c '^DB_PASSWORD=my-real-password-123$' "$tmp/.env2")" "1"
+
+if [[ "$fail" == "0" ]]; then
+  echo "ALL PASSED"
+else
+  echo "FAILURES" >&2
+  exit 1
+fi
