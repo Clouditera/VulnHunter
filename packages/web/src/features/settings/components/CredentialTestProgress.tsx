@@ -178,6 +178,13 @@ export type TestStreamEvent =
 export interface TestStreamHandlers {
   onEvent: (ev: TestStreamEvent) => void;
   onError: (err: unknown) => void;
+  /**
+   * Stream ended. `sawReport=false` means no terminal report frame arrived
+   * (truncation/close-race/proxy-drop) — caller must finalize the UI from
+   * the accumulated checks instead of hanging in "loading" forever
+   * (fish 2026-08-04: 三项全绿但按钮卡在「测试中…」).
+   */
+  onComplete?: (sawReport: boolean) => void;
 }
 
 /**
@@ -207,7 +214,29 @@ export async function streamCredentialTest(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = "";
+  let sawReport = false;
   // Minimal SSE frame parser (data: lines, blank-line delimited)
+  const handleFrame = (frame: string) => {
+    const dataLines = frame
+      .split("\n")
+      .filter((l) => l.startsWith("data:"))
+      .map((l) => l.slice(5).trimStart());
+    if (dataLines.length === 0) return;
+    try {
+      const parsed = JSON.parse(dataLines.join("\n")) as TestStreamEvent & {
+        check?: ModelDiagnosticCheck;
+        report?: ModelDiagnosticResult;
+      };
+      if (parsed.type === "report") {
+        sawReport = true;
+        handlers.onEvent({ type: "report", report: (parsed as { report: ModelDiagnosticResult }).report ?? (parsed as unknown as ModelDiagnosticResult) });
+      } else if (parsed.check) {
+        handlers.onEvent({ type: parsed.type, check: parsed.check } as TestStreamEvent);
+      }
+    } catch {
+      /* ignore malformed frame */
+    }
+  };
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -216,24 +245,11 @@ export async function streamCredentialTest(
     while ((idx = buf.indexOf("\n\n")) >= 0) {
       const frame = buf.slice(0, idx);
       buf = buf.slice(idx + 2);
-      const dataLines = frame
-        .split("\n")
-        .filter((l) => l.startsWith("data:"))
-        .map((l) => l.slice(5).trimStart());
-      if (dataLines.length === 0) continue;
-      try {
-        const parsed = JSON.parse(dataLines.join("\n")) as TestStreamEvent & {
-          check?: ModelDiagnosticCheck;
-          report?: ModelDiagnosticResult;
-        };
-        if (parsed.type === "report") {
-          handlers.onEvent({ type: "report", report: (parsed as { report: ModelDiagnosticResult }).report ?? (parsed as unknown as ModelDiagnosticResult) });
-        } else if (parsed.check) {
-          handlers.onEvent({ type: parsed.type, check: parsed.check } as TestStreamEvent);
-        }
-      } catch {
-        /* ignore malformed frame */
-      }
+      handleFrame(frame);
     }
   }
+  // Flush a trailing frame whose terminating blank line never arrived
+  // (server closed right after the final write).
+  if (buf.trim()) handleFrame(buf);
+  handlers.onComplete?.(sawReport);
 }

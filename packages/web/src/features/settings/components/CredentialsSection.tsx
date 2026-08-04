@@ -506,7 +506,9 @@ export function CredentialsSection() {
 
     /** Legacy path: run_id polling; each tick feeds the same progressive UI. */
 
-    /** Stream-first: SSE endpoint. */
+    /** Stream-first: SSE endpoint. Track checks locally so a stream that
+     *  ends without a report frame can still finalize (onComplete fallback). */
+    let latestChecks: import("../../../shared/api/client").ModelDiagnosticCheck[] = [];
     await streamCredentialTest(payload as Record<string, unknown>, {
       onEvent: (ev) => {
         if (ev.type === "report") {
@@ -524,13 +526,31 @@ export function CredentialsSection() {
           if (idx >= 0) {
             const copy = [...prev];
             copy[idx] = { ...copy[idx], ...next };
+            latestChecks = copy;
             return copy;
           }
-          return [...prev, next];
+          const appended = [...prev, next];
+          latestChecks = appended;
+          return appended;
         });
       },
       onError: () => {
         setTestState({ kind: "err", msg: i18n.t("settings.model.testFail") });
+      },
+      onComplete: (sawReport) => {
+        if (sawReport) return;
+        // Stream closed without a terminal report frame — finalize from the
+        // checks we did get instead of hanging on 「测试中…」 (fish report).
+        if (latestChecks.length === 0) {
+          setTestState({ kind: "err", msg: i18n.t("settings.model.testFail") });
+          return;
+        }
+        const failed = latestChecks.some((c) => c.status === "fail");
+        setTestState(
+          failed
+            ? { kind: "err", msg: i18n.t("settings.model.testFail") }
+            : { kind: "ok" },
+        );
       },
     });
   }
