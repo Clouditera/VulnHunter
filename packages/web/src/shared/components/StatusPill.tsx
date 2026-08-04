@@ -5,7 +5,7 @@ import { i18n } from "../i18n/index.js";
  * Matches prototype: soft-tinted bg + colored text, 2px·8px padding, 12px radius.
  * States with a running dot get a pulse.
  */
-type State = "running" | "preparing" | "completed" | "failed" | "queued" | "cancelled" | "paused";
+type State = "running" | "preparing" | "completed" | "failed" | "queued" | "cancelled" | "paused" | "timed_out";
 
 const STATE_STYLES: Record<State, { bg: string; fg: string; dot?: boolean }> = {
   running: { bg: "rgba(40, 209, 255, 0.14)", fg: "var(--text-primary)", dot: true },
@@ -15,6 +15,8 @@ const STATE_STYLES: Record<State, { bg: string; fg: string; dot?: boolean }> = {
   queued: { bg: "rgba(247, 197, 48, 0.14)", fg: "var(--text-primary)" },
   cancelled: { bg: "rgba(97, 109, 126, 0.14)", fg: "var(--text-secondary)" },
   paused: { bg: "rgba(255, 115, 60, 0.12)", fg: "var(--sev-high)" },
+  /** Virtual state — completed + completion_reason=timeout (see task-timeout.ts). */
+  timed_out: { bg: "rgba(255, 115, 60, 0.14)", fg: "var(--sev-high)" },
 };
 
 export function StatusPill({ state, size = "md" }: { state: string; size?: "sm" | "md" }) {

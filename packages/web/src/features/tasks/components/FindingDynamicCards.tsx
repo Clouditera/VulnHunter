@@ -268,7 +268,7 @@ function StageStatusCard({
   titleKey: "poc" | "exp";
   testid: string;
   isRisk: boolean;
-  derived: "not_enabled" | "env_lost" | null;
+  derived: "not_enabled" | "env_lost" | "timed_out" | null;
   derivedLabelKey: string;
   status: PocStatus | ExpStatus;
   displayMap: Record<string, CardStateDisplay>;
@@ -302,7 +302,7 @@ function StageStatusCard({
       <div style={{ marginBottom: "4px" }}>
         {derived ? (
           <StateBadge
-            color={derived === "env_lost" ? "var(--danger)" : "#737373"}
+            color={derived === "env_lost" ? "var(--danger)" : derived === "timed_out" ? "var(--sev-high)" : "#737373"}
             icon="clock"
             label={i18n.t(`finding.cards.${derivedLabelKey}`)}
           />
@@ -339,6 +339,11 @@ function StageStatusCard({
           {i18n.t(`finding.cards.${titleKey}.notEnabledHint`)}
         </div>
       ) : null}
+      {derived === "timed_out" ? (
+        <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.5, marginTop: "4px" }} data-testid={`${testid}-timeout-hint`}>
+          {i18n.t("finding.cards.timedOutHint")}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -356,14 +361,16 @@ export function FindingPocPanel({
   taskId,
   finding,
   dynamicEnabled,
+  timedOut = false,
 }: {
   taskId: string;
   finding: FindingMeta;
   dynamicEnabled: boolean;
+  timedOut?: boolean;
 }) {
   const findingId = finding.finding_key;
   const isRisk = finding.item_type === "risk" || finding.finding_class === "risk";
-  const poc = resolvePocCardState({ dynamicEnabled, pocStatus: finding.poc_status });
+  const poc = resolvePocCardState({ dynamicEnabled, pocStatus: finding.poc_status, timedOut });
   const { data: groups } = useFindingArtifacts(taskId, findingId, dynamicEnabled && !isRisk && poc.derived !== "not_enabled");
   const files = groups?.poc.files ?? [];
 
@@ -374,10 +381,10 @@ export function FindingPocPanel({
         testid="finding-card-poc"
         isRisk={isRisk}
         derived={poc.derived}
-        derivedLabelKey={poc.derived === "env_lost" ? "envLost" : "notEnabled"}
+        derivedLabelKey={poc.derived === "env_lost" ? "envLost" : poc.derived === "timed_out" ? "timedOut" : "notEnabled"}
         status={poc.status}
         displayMap={POC_STATE_DISPLAY}
-        showIncomplete={!isRisk && showIncompleteBanner(dynamicEnabled, poc.status)}
+        showIncomplete={!isRisk && poc.derived == null && showIncompleteBanner(dynamicEnabled, poc.status)}
       />
       {isRisk || poc.derived === "not_enabled" ? (
         isRisk ? (
@@ -395,10 +402,12 @@ export function FindingExpPanel({
   taskId,
   finding,
   dynamicEnabled,
+  timedOut = false,
 }: {
   taskId: string;
   finding: FindingMeta;
   dynamicEnabled: boolean;
+  timedOut?: boolean;
 }) {
   const findingId = finding.finding_key;
   const isRisk = finding.item_type === "risk" || finding.finding_class === "risk";
@@ -406,6 +415,7 @@ export function FindingExpPanel({
     dynamicEnabled,
     pocStatus: finding.poc_status,
     expStatus: finding.exp_status,
+    timedOut,
   });
   const { data: groups } = useFindingArtifacts(taskId, findingId, dynamicEnabled && !isRisk && exp.derived !== "not_enabled");
   const files = groups?.exp.files ?? [];
@@ -417,10 +427,10 @@ export function FindingExpPanel({
         testid="finding-card-exp"
         isRisk={isRisk}
         derived={exp.derived}
-        derivedLabelKey={exp.derived === "env_lost" ? "envLost" : "notEnabled"}
+        derivedLabelKey={exp.derived === "env_lost" ? "envLost" : exp.derived === "timed_out" ? "timedOut" : "notEnabled"}
         status={exp.status}
         displayMap={EXP_STATE_DISPLAY}
-        showIncomplete={!isRisk && showIncompleteBanner(dynamicEnabled, exp.status)}
+        showIncomplete={!isRisk && exp.derived == null && showIncompleteBanner(dynamicEnabled, exp.status)}
       />
       {isRisk || exp.derived === "not_enabled" ? (
         isRisk ? (

@@ -10,6 +10,7 @@ import {
   type Task,
 } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
+import { isTaskTimedOut } from "../../task-timeout.js";
 import { Icon } from "../../../../shared/components/Icon.js";
 import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
 import { ReviewStatusBadge, ReviewStatusSelect, ReviewHistoryTimeline, ReviewNoteModal, REVIEW_STATUS_META } from "../../components/FindingReviewControls.js";
@@ -37,6 +38,7 @@ function normalizePath(raw: string): string {
 export function FindingsTab() {
   const { task } = useOutletContext<{ task: Task }>();
   const dynamicEnabled = task.source_meta?.dynamic_enabled === true;
+  const timedOut = isTaskTimedOut(task);
   const [, forceUpdate] = useState(0);
   useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
 
@@ -552,9 +554,9 @@ export function FindingsTab() {
                 dynamicEnabled={dynamicEnabled}
               />
             ) : rightView === "poc" ? (
-              <FindingPocPanel taskId={task.id} finding={selectedFinding} dynamicEnabled={dynamicEnabled} />
+              <FindingPocPanel taskId={task.id} finding={selectedFinding} dynamicEnabled={dynamicEnabled} timedOut={timedOut} />
             ) : (
-              <FindingExpPanel taskId={task.id} finding={selectedFinding} dynamicEnabled={dynamicEnabled} />
+              <FindingExpPanel taskId={task.id} finding={selectedFinding} dynamicEnabled={dynamicEnabled} timedOut={timedOut} />
             )}
           </div>
         </div>
