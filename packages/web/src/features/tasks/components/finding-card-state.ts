@@ -43,32 +43,38 @@ export const EXP_STATE_DISPLAY: Record<ExpStatus, CardStateDisplay> = {
 };
 
 /** Derived (display) states that overlay the enum (SSOT §2/§3 派生态). */
-export type DerivedState = "not_enabled" | "env_lost" | null;
+export type DerivedState = "not_enabled" | "env_lost" | "timed_out" | null;
 
 /**
  * Resolve the POC card's effective display state (SSOT §4 priority):
- * not-enabled (task didn't open dynamic) > env-lost > poc_status enum.
+ * not-enabled (task didn't open dynamic) > env-lost > timed-out (scan hit its
+ * time budget with verification still pending, task-a3d095ad) > poc_status enum.
  */
 export function resolvePocCardState(input: {
   dynamicEnabled: boolean;
   envLost?: boolean;
   pocStatus: PocStatus | null;
+  timedOut?: boolean;
 }): { derived: DerivedState; status: PocStatus } {
   if (!input.dynamicEnabled) return { derived: "not_enabled", status: "pending" };
   if (input.envLost) return { derived: "env_lost", status: input.pocStatus ?? "unknown" };
+  if (input.timedOut && (input.pocStatus ?? "pending") === "pending") {
+    return { derived: "timed_out", status: "pending" };
+  }
   return { derived: null, status: input.pocStatus ?? "unknown" };
 }
 
 /**
  * Resolve the EXP card's effective display state (SSOT §4 priority):
- * not-enabled > env-lost > waiting-for-POC (poc not reproduced & exp pending)
- * > not-needed terminal > exp_status enum.
+ * not-enabled > env-lost > timed-out (exp still pending) > waiting-for-POC
+ * (poc not reproduced & exp pending) > not-needed terminal > exp_status enum.
  */
 export function resolveExpCardState(input: {
   dynamicEnabled: boolean;
   envLost?: boolean;
   pocStatus: PocStatus | null;
   expStatus: ExpStatus | null;
+  timedOut?: boolean;
 }): { derived: DerivedState; status: ExpStatus; waitingForPoc: boolean } {
   if (!input.dynamicEnabled) return { derived: "not_enabled", status: "pending", waitingForPoc: false };
   if (input.envLost) return { derived: "env_lost", status: input.expStatus ?? "unknown", waitingForPoc: false };
@@ -76,6 +82,9 @@ export function resolveExpCardState(input: {
   const poc = input.pocStatus ?? "unknown";
   // not-needed is a terminal state and is never overridden by the POC wait.
   if (exp === "not-needed") return { derived: null, status: exp, waitingForPoc: false };
+  if (input.timedOut && exp === "pending") {
+    return { derived: "timed_out", status: "pending", waitingForPoc: false };
+  }
   if (poc !== "reproduced" && exp === "pending") {
     return { derived: null, status: "pending", waitingForPoc: true };
   }

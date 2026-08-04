@@ -8,6 +8,7 @@ import { Icon } from "../../../shared/components/Icon.js";
 import { FilterDropdown } from "../../../shared/components/FilterDropdown.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
+import { effectiveTaskState, isTaskTimedOut } from "../task-timeout.js";
 import { SeverityBadges } from "../../../shared/components/SeverityBadges.js";
 import {
   formatDateTime,
@@ -100,7 +101,7 @@ export function TasksListPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["tasks", stateFilter, reviewStatusParam, selectedUserId, page, pageSize, searchDebounced, sortBy],
     queryFn: () => api.tasks.list({
-      state: stateFilter === "all" ? undefined : stateFilter,
+      state: stateFilter === "all" ? undefined : stateFilter === "timed_out" ? "completed" : stateFilter,
       reviewStatus: reviewStatusParam ?? undefined,
       userId: selectedUserId || undefined,
       paginate: true,
@@ -139,7 +140,12 @@ export function TasksListPage() {
   });
 
   const tasks = data?.tasks ?? [];
-  const filters = ["all", "running", "completed", "failed", "queued"] as const;
+  // "timed_out" filter: server doesn't know the virtual state yet — fetch the
+  // completed page and filter rows client-side (task-a3d095ad front-half).
+  // TODO(backend): once the list endpoint accepts state=timed_out, drop the
+  // client filter so totals/pagination are server-accurate.
+  const visibleTasks = stateFilter === "timed_out" ? tasks.filter(isTaskTimedOut) : tasks;
+  const filters = ["all", "running", "completed", "timed_out", "failed", "queued"] as const;
 
   return (
     <div data-testid="tasks-page" style={{ padding: "32px 40px 48px" }}>
@@ -394,7 +400,7 @@ export function TasksListPage() {
                   {i18n.t("tasks.loading")}
                 </td>
               </tr>
-            ) : tasks.length === 0 ? (
+            ) : visibleTasks.length === 0 ? (
               <tr>
                 <td
                   colSpan={isAdmin ? 7 : 6}
@@ -404,7 +410,7 @@ export function TasksListPage() {
                 </td>
               </tr>
             ) : (
-              tasks.map((task: Task) => {
+              visibleTasks.map((task: Task) => {
                 const title = task.display_name?.trim() || task.project_name;
                 const subtitle = task.display_name?.trim() ? task.project_name : null;
                 return (
@@ -438,7 +444,7 @@ export function TasksListPage() {
                     </td>
                     <td style={{ padding: "14px 20px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                        <StatusPill state={task.state} />
+                        <StatusPill state={effectiveTaskState(task)} />
                         {task.sandbox_queue?.waiting ? (
                           <span
                             data-testid="task-queue-badge"

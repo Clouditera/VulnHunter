@@ -6,6 +6,7 @@ import { LiveLog } from "../../live-log/components/LiveLog.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
+import { effectiveTaskState, isTaskTimedOut } from "../task-timeout.js";
 import { formatDateTime } from "../../../shared/utils/format.js";
 
 const TABS = [
@@ -102,6 +103,14 @@ export function TaskDetailPage() {
   const [continueDialogOpen, setContinueDialogOpen] = useState(false);
   const [continueFocus, setContinueFocus] = useState("");
   const [continueDuration, setContinueDuration] = useState("60");
+  /** Open the continue-scan dialog prefilled from the task's source metadata. */
+  function openContinueDialog() {
+    const meta = (task as Task & { source_meta?: Record<string, unknown> }).source_meta ?? {};
+    setContinueFocus(typeof meta.audit_focus === "string" ? meta.audit_focus : "");
+    const t = Number(meta.scan_timeout);
+    setContinueDuration(Number.isFinite(t) && t > 0 ? String(Math.round(t / 60)) : "60");
+    setContinueDialogOpen(true);
+  }
   const continueMut = useMutation({
     mutationFn: () => {
       const min = Number.parseInt(continueDuration, 10);
@@ -246,7 +255,7 @@ export function TaskDetailPage() {
                 </button>
               )}
               <span style={{ display: "inline-flex", alignItems: "center", lineHeight: 0, gap: "8px" }}>
-                <StatusPill state={task.state} />
+                <StatusPill state={effectiveTaskState(task)} />
               </span>
             </div>
             {task.display_name?.trim() ? (
@@ -383,13 +392,7 @@ export function TaskDetailPage() {
             {["failed", "cancelled", "completed"].includes(task.state) && (
               <button
                 data-testid="task-continue-btn"
-                onClick={() => {
-                  const meta = (task as Task & { source_meta?: Record<string, unknown> }).source_meta ?? {};
-                  setContinueFocus(typeof meta.audit_focus === "string" ? meta.audit_focus : "");
-                  const t = Number(meta.scan_timeout);
-                  setContinueDuration(Number.isFinite(t) && t > 0 ? String(Math.round(t / 60)) : "60");
-                  setContinueDialogOpen(true);
-                }}
+                onClick={openContinueDialog}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-error)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 style={{
@@ -412,6 +415,10 @@ export function TaskDetailPage() {
 
         {/* Failure banner (when state=failed) */}
         {task.state === "failed" && <FailureBanner task={task} />}
+
+        {/* Timeout banner — time budget exhausted, dynamic verification
+            didn't finish; nudge to continue-scan (task-a3d095ad). */}
+        {isTaskTimedOut(task) && <TimeoutBanner onContinue={openContinueDialog} />}
 
         {/* Continue-scan dialog */}
         {continueDialogOpen && (
@@ -544,7 +551,7 @@ export function TaskDetailPage() {
           padding: "20px 40px 32px",
         }}
       >
-        <Outlet context={{ task }} />
+        <Outlet context={{ task, openContinueDialog } satisfies TaskOutletContext} />
       </div>
     </div>
   );
@@ -628,6 +635,83 @@ function FailureBanner({ task }: { task: Task }) {
         }}
       >
         {i18n.t("taskDetail.failure.viewLog")}
+      </button>
+    </div>
+  );
+}
+
+/** Outlet context for task tabs: the task plus the continue-scan opener so
+ *  tab-level timeout nudges can raise the same dialog as the header button. */
+export interface TaskOutletContext {
+  task: Task;
+  openContinueDialog: () => void;
+}
+
+/**
+ * Timeout banner (task-a3d095ad): the scan hit its time budget — tell the user
+ * it's not "verification skipped", it's "time ran out", and offer continue-scan.
+ */
+function TimeoutBanner({ onContinue }: { onContinue: () => void }) {
+  return (
+    <div
+      data-testid="task-timeout-banner"
+      style={{
+        marginTop: "14px",
+        display: "flex",
+        gap: "12px",
+        alignItems: "flex-start",
+        padding: "12px 14px",
+        background: "rgba(255, 115, 60, 0.08)",
+        border: "1px solid rgba(255, 115, 60, 0.30)",
+        borderLeft: "3px solid var(--sev-high)",
+        borderRadius: "8px",
+      }}
+    >
+      <Icon
+        name="clock"
+        size={18}
+        style={{ color: "var(--sev-high)", marginTop: "1px" }}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: "13px",
+            fontWeight: 600,
+            color: "var(--sev-high)",
+            marginBottom: "4px",
+            lineHeight: 1.3,
+          }}
+        >
+          {i18n.t("taskDetail.timeout.title")}
+        </div>
+        <div
+          style={{
+            fontSize: "12px",
+            color: "var(--text-primary)",
+            lineHeight: 1.55,
+          }}
+        >
+          {i18n.t("taskDetail.timeout.body")}
+        </div>
+      </div>
+      <button
+        data-testid="task-timeout-continue"
+        onClick={onContinue}
+        style={{
+          flexShrink: 0,
+          padding: "6px 12px",
+          background: "transparent",
+          border: "1px solid var(--sev-high)",
+          borderRadius: "6px",
+          color: "var(--sev-high)",
+          fontSize: "12px",
+          fontWeight: 600,
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+          lineHeight: 1,
+        }}
+      >
+        {i18n.t("taskDetail.timeout.continue")}
       </button>
     </div>
   );
