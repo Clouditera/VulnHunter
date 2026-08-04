@@ -67,6 +67,10 @@ function buildModel(cred: DecryptedLlmCredential): Model<any> {
     provider: "custom",
     baseUrl: (cred.base_url ?? "").replace(/\/+$/, ""),
     reasoning: !!cred.thinking_effort && cred.thinking_effort !== "off" && cred.thinking_effort !== "none",
+    input: ["text"] as ("text" | "image")[],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    contextWindow: cred.context_window_tokens ?? 128000,
+    maxTokens: 16384,
   } as Model<any>;
 }
 
