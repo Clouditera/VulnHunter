@@ -2,9 +2,9 @@ import type { FindingDynamicMeta, SystemStatus, TaskMetadata as SharedTaskMetada
 
 const BASE = "";
 
-type ApiErrorShape = { error?: { code?: string; detail?: string; message?: string; used?: number; limit?: number } };
+type ApiErrorShape = { error?: { code?: string; detail?: string; message?: string; used?: number; limit?: number }; diagnostics?: ModelDiagnosticResult };
 
-type ClientError = Error & { code: string; used?: number; limit?: number };
+type ClientError = Error & { code: string; used?: number; limit?: number; diagnostics?: ModelDiagnosticResult };
 
 function buildApiError(status: number, body?: ApiErrorShape | null): ClientError {
   const error = body?.error;
@@ -14,6 +14,8 @@ function buildApiError(status: number, body?: ApiErrorShape | null): ClientError
   err.code = code;
   err.used = error?.used;
   err.limit = error?.limit;
+  // Save-gate 422 carries the diagnostic report — keep it for inline render.
+  err.diagnostics = body?.diagnostics;
   return err;
 }
 
