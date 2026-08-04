@@ -493,7 +493,7 @@ export const EN: Record<string, string> = {
   "auth.resetting": "Resetting…",
   "auth.resetDone": "Password reset. Please sign in.",
   "auth.backToLogin": "← Back to sign in",
-  "auth.err.smtpNotConfigured": "Mail service is not configured. Ask an admin to set it up under Settings → Mail.",
+  "auth.err.smtpNotConfigured": "Email verification code service is unavailable. Please try again later.",
   "auth.err.rateLimited": "Too many requests. Please try again later.",
   "auth.err.invalidCode": "Invalid verification code.",
   "auth.err.codeExpired": "Code expired. Please request a new one.",

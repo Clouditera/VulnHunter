@@ -494,7 +494,7 @@ export const ZH: Record<string, string> = {
   "auth.resetting": "重置中…",
   "auth.resetDone": "密码已重置，请返回登录",
   "auth.backToLogin": "← 返回登录",
-  "auth.err.smtpNotConfigured": "平台未配置邮件服务，无法发送验证码。请联系管理员在「设置 → 邮件服务」中完成配置后重试。",
+  "auth.err.smtpNotConfigured": "邮件验证码服务异常，暂时无法完成操作，请稍后重试。",
   "auth.err.rateLimited": "发送过于频繁，请稍后再试。",
   "auth.err.invalidCode": "验证码错误，请重试。",
   "auth.err.codeExpired": "验证码已过期，请重新发送。",

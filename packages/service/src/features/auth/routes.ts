@@ -4,6 +4,7 @@ import { isStrongPassword, PASSWORD_RULE_MESSAGE } from "@vulnhunter/shared";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { AppError } from "../../infra/app-error.js";
+import { logger } from "../../infra/logger.js";
 import * as authService from "./service.js";
 import * as authStorage from "./storage.js";
 import * as emailCodes from "./email-codes.js";
@@ -49,7 +50,8 @@ function isValidEmail(email: string): boolean {
 const SMTP_NOT_CONFIGURED = {
   error: {
     code: "smtp_not_configured",
-    message: "平台未配置邮件服务，请联系管理员",
+    // Unauthenticated surface: never expose backend config paths / admin hints.
+    message: "邮件验证码服务异常，请稍后重试",
   },
 };
 
@@ -179,7 +181,8 @@ authRouter.post("/register/request-code", licenseGuard, async (c) => {
   const { cooldownSeconds } = await emailCodes.insertCode(email, "register", code);
   const sent = await sendVerificationEmail({ to: email, code, purpose: "register" });
   if (!sent.ok) {
-    return c.json({ error: { code: "smtp_send_failed", message: sent.error } }, 502);
+    logger.warn({ to: email, error: sent.error }, "verification email send failed");
+    return c.json({ error: { code: "smtp_send_failed", message: "邮件验证码服务异常，请稍后重试" } }, 502);
   }
   recordIpSend(ip);
   return c.json({ ok: true, cooldown_seconds: cooldownSeconds });

@@ -60,6 +60,8 @@ function errMessage(err: unknown, fallback: string): string {
   if (code === "smtp_not_configured" || /smtp_not_configured/i.test(code) || /未配置邮件/.test(detail)) {
     return i18n.t("auth.err.smtpNotConfigured");
   }
+  // smtp_send_failed: server logs the real reason; users get neutral copy only.
+  if (code === "smtp_send_failed") return i18n.t("auth.err.sendFailed");
   if (code === "rate_limited" || code === "ERR_RATE_LIMITED") return i18n.t("auth.err.rateLimited");
   if (code === "invalid_code") return i18n.t("auth.err.invalidCode");
   if (code === "code_expired") return i18n.t("auth.err.codeExpired");
