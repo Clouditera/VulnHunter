@@ -2,7 +2,7 @@
  * Settings → API 令牌 self-service (PRD + design-spec v1.0).
  * Plaintext shown once at create; list never returns secrets.
  */
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ApiToken } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
@@ -45,13 +45,15 @@ function tokenMeta(t: ApiToken): string {
 
 function statusLabel(status: ApiToken["status"]): string {
   if (status === "active") return i18n.t("settings.tokens.status.active");
+  if (status === "disabled") return i18n.t("settings.tokens.status.disabled");
   if (status === "expired") return i18n.t("settings.tokens.status.expired");
   return i18n.t("settings.tokens.status.revoked");
 }
 
 function statusDot(status: ApiToken["status"]): string {
   if (status === "active") return "#3AD186";
-  return "var(--text-tertiary, var(--text-secondary))";
+  if (status === "disabled") return "var(--warn, #FF733C)";
+  return "var(--text-tertiary, #BBC3CC)";
 }
 
 export function ApiTokensSection() {
@@ -67,7 +69,7 @@ export function ApiTokensSection() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [reveal, setReveal] = useState<{ name: string; plaintext: string } | null>(null);
-  const [revokeTarget, setRevokeTarget] = useState<ApiToken | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ApiToken | null>(null);
   const [renameTarget, setRenameTarget] = useState<ApiToken | null>(null);
 
   const createMut = useMutation({
@@ -88,15 +90,29 @@ export function ApiTokensSection() {
     },
   });
 
-  const revokeMut = useMutation({
-    mutationFn: (id: string) => api.apiTokens.revoke(id),
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => api.apiTokens.remove(id),
     onSuccess: () => {
-      setRevokeTarget(null);
-      toast.success(i18n.t("settings.tokens.revokeOk"));
+      setDeleteTarget(null);
+      toast.success(i18n.t("settings.tokens.deleteOk"));
       qc.invalidateQueries({ queryKey: ["api-tokens"] });
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : i18n.t("settings.tokens.revokeFail"));
+      toast.error(err instanceof Error ? err.message : i18n.t("settings.tokens.deleteFail"));
+    },
+  });
+
+  const statusMut = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: "active" | "disabled" }) =>
+      api.apiTokens.setStatus(id, status),
+    onSuccess: (_data, vars) => {
+      toast.success(
+        i18n.t(vars.status === "disabled" ? "settings.tokens.disableOk" : "settings.tokens.enableOk"),
+      );
+      qc.invalidateQueries({ queryKey: ["api-tokens"] });
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : i18n.t("settings.tokens.statusFail"));
     },
   });
 
@@ -354,26 +370,17 @@ export function ApiTokensSection() {
                   />
                   {statusLabel(t.status)}
                 </div>
-                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  <button
-                    type="button"
-                    data-testid={`settings-token-rename-${t.id}`}
-                    disabled={inactive}
-                    onClick={() => setRenameTarget(t)}
-                    style={ghostBtn(inactive)}
-                  >
-                    {i18n.t("settings.tokens.rename")}
-                  </button>
-                  <button
-                    type="button"
-                    data-testid={`settings-token-revoke-${t.id}`}
-                    disabled={inactive}
-                    onClick={() => setRevokeTarget(t)}
-                    style={ghostBtn(inactive)}
-                  >
-                    {i18n.t("settings.tokens.revoke")}
-                  </button>
-                </div>
+                <TokenRowMenu
+                  token={t}
+                  onRename={() => setRenameTarget(t)}
+                  onToggleStatus={() =>
+                    statusMut.mutate({
+                      id: t.id,
+                      status: t.status === "disabled" ? "active" : "disabled",
+                    })
+                  }
+                  onDelete={() => setDeleteTarget(t)}
+                />
               </div>
             );
           })}
@@ -407,12 +414,12 @@ export function ApiTokensSection() {
           }}
         />
       ) : null}
-      {revokeTarget ? (
-        <RevokeConfirmModal
-          token={revokeTarget}
-          busy={revokeMut.isPending}
-          onClose={() => setRevokeTarget(null)}
-          onConfirm={() => revokeMut.mutate(revokeTarget.id)}
+      {deleteTarget ? (
+        <DeleteConfirmModal
+          token={deleteTarget}
+          busy={deleteMut.isPending}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={() => deleteMut.mutate(deleteTarget.id)}
         />
       ) : null}
       {renameTarget ? (
@@ -424,6 +431,145 @@ export function ApiTokensSection() {
         />
       ) : null}
     </section>
+  );
+}
+
+/** Row ⋯ menu: rename / disable|enable / delete. Available ops depend on status. */
+function TokenRowMenu({
+  token,
+  onRename,
+  onToggleStatus,
+  onDelete,
+}: {
+  token: ApiToken;
+  onRename: () => void;
+  onToggleStatus: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const canManage = token.status === "active" || token.status === "disabled";
+
+  const itemStyle = (danger = false): CSSProperties => ({
+    display: "block",
+    width: "100%",
+    textAlign: "left",
+    padding: "7px 12px",
+    border: "none",
+    background: "transparent",
+    color: danger ? "var(--danger, #dc2626)" : "var(--text-primary)",
+    fontSize: 12.5,
+    fontWeight: 500,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+  });
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        data-testid={`settings-token-menu-${token.id}`}
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          width: 28,
+          height: 28,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          background: "var(--bg-card)",
+          color: "var(--text-secondary)",
+          fontSize: 14,
+          lineHeight: 1,
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        ⋯
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          data-testid={`settings-token-menu-panel-${token.id}`}
+          style={{
+            position: "absolute",
+            right: 0,
+            top: "calc(100% + 4px)",
+            zIndex: 100,
+            minWidth: 120,
+            background: "var(--bg-card)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            boxShadow: "0 8px 24px rgba(15, 23, 42, 0.18)",
+            padding: 4,
+          }}
+        >
+          {canManage ? (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid={`settings-token-menu-rename-${token.id}`}
+                onClick={() => {
+                  setOpen(false);
+                  onRename();
+                }}
+                style={itemStyle()}
+              >
+                {i18n.t("settings.tokens.rename")}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid={`settings-token-menu-toggle-${token.id}`}
+                onClick={() => {
+                  setOpen(false);
+                  onToggleStatus();
+                }}
+                style={itemStyle()}
+              >
+                {i18n.t(
+                  token.status === "disabled" ? "settings.tokens.enable" : "settings.tokens.disable",
+                )}
+              </button>
+            </>
+          ) : null}
+          <button
+            type="button"
+            role="menuitem"
+            data-testid={`settings-token-menu-delete-${token.id}`}
+            onClick={() => {
+              setOpen(false);
+              onDelete();
+            }}
+            style={itemStyle(true)}
+          >
+            {i18n.t("settings.tokens.delete")}
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -690,7 +836,7 @@ function RevealTokenModal({
   );
 }
 
-function RevokeConfirmModal({
+function DeleteConfirmModal({
   token,
   busy,
   onClose,
@@ -704,7 +850,7 @@ function RevokeConfirmModal({
   return (
     <Overlay onClose={onClose}>
       <div
-        data-testid="settings-token-revoke-modal"
+        data-testid="settings-token-delete-modal"
         style={{
           width: 420,
           maxWidth: "100%",
@@ -715,7 +861,7 @@ function RevokeConfirmModal({
         }}
       >
         <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: "var(--text-primary)" }}>
-          {i18n.t("settings.tokens.revokeTitle")}
+          {i18n.t("settings.tokens.deleteTitle")}
         </div>
         <code
           style={{
@@ -731,7 +877,7 @@ function RevokeConfirmModal({
           {token.name}
         </code>
         <p style={{ fontSize: 13, color: "var(--danger, #dc2626)", lineHeight: 1.5, margin: "0 0 16px" }}>
-          {i18n.t("settings.tokens.revokeWarn")}
+          {i18n.t("settings.tokens.deleteWarn")}
         </p>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <button type="button" onClick={onClose} style={ghostBtn(false)}>
@@ -739,7 +885,7 @@ function RevokeConfirmModal({
           </button>
           <button
             type="button"
-            data-testid="settings-token-revoke-confirm"
+            data-testid="settings-token-delete-confirm"
             disabled={busy}
             onClick={onConfirm}
             style={{
@@ -754,7 +900,7 @@ function RevokeConfirmModal({
               opacity: busy ? 0.7 : 1,
             }}
           >
-            {i18n.t("settings.tokens.revokeConfirm")}
+            {i18n.t("settings.tokens.deleteConfirm")}
           </button>
         </div>
       </div>
