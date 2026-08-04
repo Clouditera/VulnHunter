@@ -158,9 +158,9 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
         }
       });
 
-      // Early exit on non-zero code (e.g. unknown args) — don't wait for timeout
+      // Early exit on any non-zero or null exit code (ENOENT, bad args, etc.)
       child.on("exit", (code) => {
-        if (code !== 0 && code !== null && !settled) {
+        if (!settled && code !== 0) {
           clearTimeout(timer);
           if (stdoutBuf.trim()) {
             try { events.push(JSON.parse(stdoutBuf.trim())); } catch { /* skip */ }
