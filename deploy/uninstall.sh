@@ -1,17 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$ROOT/lib/common.sh"
 cd "$ROOT"
-compose() {
-  if docker compose version >/dev/null 2>&1; then
-    docker compose "$@"
-  elif command -v docker-compose >/dev/null 2>&1; then
-    docker-compose "$@"
-  else
-    echo "[uninstall] Docker Compose is required: install Docker Compose v2 ('docker compose') or legacy docker-compose" >&2
-    return 127
-  fi
-}
 PURGE=0
 [[ "${1:-}" == "--purge" ]] && PURGE=1
 if [[ "$PURGE" == 1 ]]; then

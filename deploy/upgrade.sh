@@ -3,24 +3,9 @@
 # use ./sandbox/upgrade.sh for plane lifecycle. Keys SANDBOXPLANE_* are left intact.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$ROOT/lib/common.sh"
 cd "$ROOT"
-compose() {
-  if docker compose version >/dev/null 2>&1; then
-    docker compose "$@"
-  elif command -v docker-compose >/dev/null 2>&1; then
-    docker-compose "$@"
-  else
-    echo "[upgrade] Docker Compose is required: install Docker Compose v2 ('docker compose') or legacy docker-compose" >&2
-    return 127
-  fi
-}
-json_escape() {
-  local s="$1"
-  s="${s//\\/\\\\}"
-  s="${s//\"/\\\"}"
-  s="${s//$'\n'/\\n}"
-  printf '%s' "$s"
-}
 version_field() {
   local key="$1"
   [[ -f VERSION.json ]] || return 0
