@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Task } from "../../../shared/api/client.js";
 import { LiveLog } from "../../live-log/components/LiveLog.js";
 import { i18n } from "../../../shared/i18n/index.js";
-import { Icon } from "../../../shared/components/Icon.js";
+import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
 import { formatDateTime } from "../../../shared/utils/format.js";
 
@@ -633,7 +633,7 @@ function FailureBanner({ task }: { task: Task }) {
   );
 }
 
-function MetaItem({ icon, children }: { icon: "shield" | "clock" | "calendar"; children: React.ReactNode }) {
+function MetaItem({ icon, children }: { icon: IconName; children: React.ReactNode }) {
   // Important for midline alignment (fish #10 v3):
   //  - lineHeight 1 on the flex container collapses the line-box so
   //    text's visual glyph center coincides with its flex-item center.

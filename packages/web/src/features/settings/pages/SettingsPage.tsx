@@ -1266,9 +1266,7 @@ export function SettingsPage() {
               }}
             >
               <div>
-                {(() => {
-                  const canTest = true;
-                  return (
+                {
                 <button
                   type="button"
                   data-testid="settings-test-connection-btn"
@@ -1308,8 +1306,7 @@ export function SettingsPage() {
                     ? i18n.t("settings.model.testing")
                     : i18n.t("settings.model.test")}
                 </button>
-                  );
-                })()}
+                }
               </div>
               {(testState.kind === "ok" || testState.kind === "err" || (testState.kind === "loading" && testChecks.length > 0)) && (
                 <div data-testid="settings-test-result" data-kind={testState.kind}>

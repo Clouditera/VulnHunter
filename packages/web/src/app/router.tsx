@@ -65,7 +65,7 @@ function licenseTarget(status: ReturnType<typeof useSystemStatus>["data"]): stri
   return null;
 }
 
-function postAuthHome(status: NonNullable<ReturnType<typeof useSystemStatus>["data"]>): string {
+function postAuthHome(_status: NonNullable<ReturnType<typeof useSystemStatus>["data"]>): string {
   // Business bundle: admin sessions are invalid here (SessionInvalidPage via BusinessGuard)
   return "/chat";
 }
@@ -137,7 +137,7 @@ function BusinessGuard() {
   return <Outlet />;
 }
 
-export const router = createBrowserRouter([
+export const router: ReturnType<typeof createBrowserRouter> = createBrowserRouter([
   { path: "/", element: <RootGuard /> },
   { path: "/activate", element: <ActivateGuard /> },
   { path: "/expired", element: <ExpiredGuard /> },

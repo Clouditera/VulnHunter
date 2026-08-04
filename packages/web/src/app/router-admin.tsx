@@ -145,7 +145,7 @@ function AdminRoleGuard() {
   return <Outlet />;
 }
 
-export const router = createBrowserRouter([
+export const router: ReturnType<typeof createBrowserRouter> = createBrowserRouter([
   { path: "/", element: <RootGuard /> },
   { path: "/activate", element: <ActivateGuard /> },
   { path: "/expired", element: <ExpiredGuard /> },
