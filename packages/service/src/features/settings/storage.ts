@@ -64,6 +64,8 @@ export interface DbLlmCredential {
   key_fingerprint: string | null;
   context_window_tokens: number;
   owner_id: string | null;
+  deep_verified_status: string | null;
+  deep_verified_at: Date | null;
 }
 
 export interface DecryptedLlmCredential extends DbLlmCredential {
@@ -188,7 +190,7 @@ export async function listCredentials(ctx?: QueryContext): Promise<ListedLlmCred
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, deep_verified_status, deep_verified_at
       FROM llm_credentials
       WHERE owner_id IS NULL OR owner_id = ${ctx.userId}
       ORDER BY is_default DESC, owner_id NULLS FIRST, created_at DESC
@@ -199,7 +201,7 @@ export async function listCredentials(ctx?: QueryContext): Promise<ListedLlmCred
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, deep_verified_status, deep_verified_at
       FROM llm_credentials
       ORDER BY is_default DESC, owner_id NULLS FIRST, created_at DESC
     `;
@@ -224,6 +226,8 @@ export async function listCredentials(ctx?: QueryContext): Promise<ListedLlmCred
         credential_health: "key_unavailable",
         current_key_fingerprint: currentKeyFingerprint,
         owner_id: row.owner_id,
+        deep_verified_status: row.deep_verified_status ?? null,
+        deep_verified_at: row.deep_verified_at ?? null,
         scope: row.owner_id ? "personal" : "global",
         can_edit: !ctx || ctx.role === "admin" || row.owner_id === ctx.userId,
       } as ListedLlmCredential;
@@ -268,6 +272,8 @@ export async function listCredentials(ctx?: QueryContext): Promise<ListedLlmCred
       credential_health: health,
       current_key_fingerprint: currentKeyFingerprint,
       owner_id: row.owner_id,
+      deep_verified_status: row.deep_verified_status ?? null,
+      deep_verified_at: row.deep_verified_at ?? null,
       scope: row.owner_id ? "personal" : "global",
       can_edit: !ctx || ctx.role === "admin" || row.owner_id === ctx.userId,
     };
@@ -532,5 +538,20 @@ export async function updateSystemConfig(patch: Record<string, unknown>): Promis
   await db`
     UPDATE system_config SET config = ${db.json(merged as never)}::jsonb, updated_at = now()
     WHERE id = 1
+  `;
+}
+
+
+/** Update the L4 deep verification status for a credential. */
+export async function updateDeepVerifiedStatus(
+  credentialId: string,
+  status: "pending" | "running" | "passed" | "failed",
+): Promise<void> {
+  const db = getDb();
+  await db`
+    UPDATE llm_credentials
+    SET deep_verified_status = ${status},
+        deep_verified_at = CASE WHEN ${status} IN ('passed', 'failed') THEN now() ELSE deep_verified_at END
+    WHERE id = ${credentialId}
   `;
 }
