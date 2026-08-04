@@ -12,6 +12,7 @@ import type {
 } from "../types.js";
 import { ChatActivityBar } from "./ChatActivityBar.js";
 import { MessageBubble } from "./MessageBubble.js";
+import { SystemNotice } from "./SystemNotice.js";
 import { ChatInput } from "./ChatInput.js";
 
 /**
@@ -163,14 +164,18 @@ export function MessageFlow({
               .filter((m) => {
                 // Hide empty assistant messages — they appear as orphan avatar
                 // rows when the model returns no text (e.g. aborted call, tool
-                // loop, server error). User messages are never filtered.
+                // loop, server error). User/system messages are never filtered.
                 if (m.role !== "assistant") return true;
                 const text = (m.content ?? "").trim();
                 return text.length > 0;
               })
-              .map((m) => (
-                <MessageBubble key={m.id} message={m} onArtifactSelect={onArtifactSelect} sessionArtifacts={persistedArtifacts} />
-              ))}
+              .map((m) =>
+                m.role === "system" ? (
+                  <SystemNotice key={m.id} content={m.content} />
+                ) : (
+                  <MessageBubble key={m.id} message={m} onArtifactSelect={onArtifactSelect} sessionArtifacts={persistedArtifacts} />
+                ),
+              )}
             {streaming && messages[messages.length - 1]?.role !== "assistant" ? (
               <div
                 data-testid="chat-thinking-indicator"

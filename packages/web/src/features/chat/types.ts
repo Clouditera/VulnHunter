@@ -12,7 +12,7 @@
  * what the bridge emits to stdout.
  */
 
-export type ChatRole = "user" | "assistant";
+export type ChatRole = "user" | "assistant" | "system";
 
 /**
  * Image attachment on a user prompt.
@@ -74,6 +74,11 @@ export interface ChatMessage {
       with paste/drop/file-picker attachments. Session-lifetime only
       (not persisted — see ChatImageAttachment JSDoc). */
   images?: ChatImageAttachment[];
+  /** Ephemeral client-only notice (role "system"): shown immediately on a
+      send/connection failure before the service-persisted notice arrives
+      (or when the service is unreachable and cannot persist). Dropped on
+      refetch / replaced by the persisted row via `system_message` event. */
+  ephemeral?: boolean;
 }
 
 export type ChatActivityStatus = "running" | "success" | "warning" | "waiting" | "neutral";
