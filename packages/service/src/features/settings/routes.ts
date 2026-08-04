@@ -85,8 +85,7 @@ settingsRouter.post("/credentials/:id/default", async (c) => {
 });
 
 // PUT /api/settings/credential — save/update LLM credential
-// Save gate: L1-L3 pi-native diagnostics must pass before persisting.
-//   skip_test=true bypasses the gate (admin escape hatch for offline/broken upstream).
+// Save gate: L1-L3 pi-native diagnostics must pass before persisting (fish 2026-08-04).
 settingsRouter.put("/credential", async (c) => {
   const body = await c.req.json<{
     id?: string;
@@ -100,7 +99,6 @@ settingsRouter.put("/credential", async (c) => {
     is_default?: boolean;
     context_window_tokens?: number;
     owner_id?: string | null;
-    skip_test?: boolean;
   }>();
 
   if (!body.provider || !body.proto_type || !body.model_id || !body.base_url) {
@@ -123,8 +121,7 @@ settingsRouter.put("/credential", async (c) => {
   const ctx = queryContextFromUser(c.get("user"));
 
   // ── Save gate: run L1-L3 before persisting (fish 2026-08-04) ──
-  // skip_test is an admin escape hatch for offline/maintenance scenarios.
-  if (!body.skip_test) {
+  {
     const gateCred = {
       id: body.id ?? "gate",
       provider: body.provider,
