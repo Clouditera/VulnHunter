@@ -14,10 +14,12 @@
   "scripts": {
     "build": "rm -rf dist *.tsbuildinfo && tsc",
     "dev": "tsc --watch",
+    "test": "vitest run",
     "clean": "rm -rf dist"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
+    "vitest": "^2.1.9",
     "zod": "^3.24.1"
   },
   "license": "AGPL-3.0-only"

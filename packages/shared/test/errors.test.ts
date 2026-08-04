@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ERROR_REGISTRY, getErrorEntry, errorHttpStatus, type ErrorCode } from "../../src/errors/index.js";
+import { ERROR_REGISTRY, getErrorEntry, errorHttpStatus, type ErrorCode } from "../src/errors/index.js";
 
 describe("error registry", () => {
   it("every entry has i18nKey + httpStatus", () => {
