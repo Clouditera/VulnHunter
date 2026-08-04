@@ -92,6 +92,7 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
       "--no-session",
       "--provider", "platform",
       "--model", input.modelId,
+      "--api-key", input.apiKey,
       "Reply with the single word: ok",
     ];
 
