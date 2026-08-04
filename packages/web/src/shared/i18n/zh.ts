@@ -1130,6 +1130,7 @@ export const ZH: Record<string, string> = {
   "errors.ERR_PREPARE_FAILED": "环境准备失败，请重试；若持续失败请查看任务日志",
   "errors.ERR_MODEL_UPSTREAM": "模型服务返回错误，请检查凭证的地址与密钥",
   "errors.ERR_CREDENTIAL_TEST_FAILED": "凭证测试未通过，请查看测试报告",
+  "errors.ERR_CREDENTIAL_CORE_FIELD_REQUIRES_TEST": "核心字段（协议/地址/模型）修改后需通过连接测试才能保存",
   "errors.ERR_SANDBOX_NOT_CONFIGURED": "未配置沙箱服务，动态验证能力不可用",
   "errors.ERR_AUTH_LOCKED": "尝试次数过多，请稍后再试",
   "errors.ERR_TASK_NAME_CONFLICT": "已存在同名任务，请修改名称",

@@ -374,17 +374,32 @@ export async function upsertCredential(params: {
   const ownerId = params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : (params.ownerId ?? null);
 
   if (params.id) {
-    // Update existing credential
-    const rows = await db<{ id: string }[]>`
+    // Update existing credential. Blank apiKey on edit = keep the stored key
+    // material (single-gate rule: PUT is the only save path and must be safe
+    // for edits that don't re-enter the key).
+    const rows = encrypted
+      ? await db<{ id: string }[]>`
       UPDATE llm_credentials
       SET provider = ${params.provider}, proto_type = ${params.protoType},
           base_url = ${params.baseUrl ?? null}, model_id = ${params.modelId},
           thinking_effort = ${params.thinkingEffort ?? "off"},
           label = ${params.label ?? ""},
-          api_key_ciphertext = ${encrypted?.ciphertext ?? null},
-          api_key_iv = ${encrypted?.iv ?? null},
-          api_key_tag = ${encrypted?.tag ?? null},
-          key_fingerprint = ${vault?.fingerprint() ?? null},
+          api_key_ciphertext = ${encrypted.ciphertext},
+          api_key_iv = ${encrypted.iv},
+          api_key_tag = ${encrypted.tag},
+          key_fingerprint = ${vault!.fingerprint()},
+          context_window_tokens = ${contextWindowTokens},
+          owner_id = ${ownerId}
+      WHERE id = ${params.id}
+        AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
+      RETURNING id
+    `
+      : await db<{ id: string }[]>`
+      UPDATE llm_credentials
+      SET provider = ${params.provider}, proto_type = ${params.protoType},
+          base_url = ${params.baseUrl ?? null}, model_id = ${params.modelId},
+          thinking_effort = ${params.thinkingEffort ?? "off"},
+          label = ${params.label ?? ""},
           context_window_tokens = ${contextWindowTokens},
           owner_id = ${ownerId}
       WHERE id = ${params.id}

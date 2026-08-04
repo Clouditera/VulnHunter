@@ -302,49 +302,28 @@ export function CredentialsSection() {
       setFieldErrors({});
       const ops: Array<Promise<unknown>> = [];
 
-      const credChangedNoKey =
-        cred &&
-        apiKey.length === 0 &&
-        (normalizeProtoType(cred.proto_type) !== protoType ||
-          (cred.base_url ?? "") !== baseUrl ||
-          cred.model_id !== modelId ||
-          cred.thinking_effort !== thinking ||
-          (cred.context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS) !== contextWindowTokens ||
-          (cred.label ?? "") !== label);
-
-      if (apiKey.length > 0 || isNewDraft || !cred) {
-        ops.push(
-          api.settings.saveCredential({
-            // Include id when editing an existing credential; backend treats
-            // absence as "create new".
-            id: editingCredentialId ?? undefined,
-            // `provider` is kept as a vendor metadata string on the backend;
-            // we mirror proto_type so this stays consistent in the DB but
-            // is no longer user-configurable in the UI.
-            provider: protoType,
-            proto_type: protoType,
-            base_url: baseUrl || undefined,
-            model_id: modelId,
-            thinking_effort: thinking,
-            label: label || undefined,
-            context_window_tokens: contextWindowTokens,
-            api_key: apiKey,
-          }),
-        );
-      } else if (credChangedNoKey && cred) {
-        // PATCH: update metadata without re-entering API key
-        ops.push(
-          api.settings.patchCredential(editingCredentialId ?? cred.id, {
-            provider: protoType,
-            proto_type: protoType,
-            base_url: baseUrl || undefined,
-            model_id: modelId,
-            thinking_effort: thinking,
-            label: label || undefined,
-            context_window_tokens: contextWindowTokens,
-          }),
-        );
-      }
+      // Single save path (fish 2026-08-04 P1): every edit goes through PUT.
+      // Blank key = keep stored (backend preserves key material); the backend
+      // compares core fields and only enforces the L1-L3 gate when they
+      // changed. PATCH exists for optional metadata only.
+      ops.push(
+        api.settings.saveCredential({
+          // Include id when editing an existing credential; backend treats
+          // absence as "create new".
+          id: editingCredentialId ?? undefined,
+          // `provider` is kept as a vendor metadata string on the backend;
+          // we mirror proto_type so this stays consistent in the DB but
+          // is no longer user-configurable in the UI.
+          provider: protoType,
+          proto_type: protoType,
+          base_url: baseUrl || undefined,
+          model_id: modelId,
+          thinking_effort: thinking,
+          label: label || undefined,
+          context_window_tokens: contextWindowTokens,
+          api_key: apiKey,
+        }),
+      );
 
       if (ops.length === 0) {
         setSaving(false);
