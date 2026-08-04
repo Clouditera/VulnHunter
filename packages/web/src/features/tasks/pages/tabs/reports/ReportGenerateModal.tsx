@@ -49,7 +49,7 @@ export function ReportGenerateModal({
   const [selectedKeys, setSelectedKeys] = useState<Set<string> | null>(null);
   // Dirty = user touched skill or finding selection — guard accidental overlay close.
   const isDirty = selectedKeys !== null || selectedSkillId !== (skills[0]?.id ?? "");
-  const requestClose = useConfirmClose(onClose, isDirty);
+  const requestClose = useConfirmClose(onClose, isDirty, true);
 
   const effectiveSelected = useMemo(() => {
     if (selectedKeys !== null) return selectedKeys;
