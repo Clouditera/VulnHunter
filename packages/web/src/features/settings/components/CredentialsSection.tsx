@@ -479,16 +479,13 @@ export function CredentialsSection() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId, activeModelCaps?.reasoning, activeModelCaps?.thinkingLevels?.join("|")]);
 
-  /** Send a small chat-completion ping using the current form values.
-   *  The backend endpoint always requires an `api_key` in the body (for
-   *  Two modes (B1 fish request):
-   *   1. Editing a saved credential and user hasn't re-typed the key
-   *      — send `{credential_id}` so backend uses the already-stored key.
-   *   2. New draft, or user typed a fresh key — send the full param set
-   *      including `api_key`. */
+  /** Test the CURRENT form values against L1-L3 (SSE progressive).
+   *  Key fallback: in edit mode with the key left blank, credential_id lets
+   *  the backend reuse the stored key — but proto/URL/model ALWAYS come from
+   *  the form. (QA P1 2026-08-04: the old useStored branch sent ONLY
+   *  credential_id, so a dirty edit with blank key tested the STORED
+   *  credential — old good URL passed, save un-gated, "假绿".) */
   async function testConnection() {
-    const useStored =
-      editingCredentialId != null && !isNewDraft && apiKey.length === 0;
     const errors: Record<string, string> = {};
     if (!baseUrl.trim()) errors.baseUrl = i18n.t("settings.validation.baseUrlRequired");
     if (!modelId.trim()) errors.modelId = i18n.t("settings.validation.modelIdRequired");
@@ -507,17 +504,18 @@ export function CredentialsSection() {
     setFieldErrors({});
     setTestState({ kind: "loading" });
     setTestChecks([]);
-    const payload = useStored
-      ? { credential_id: editingCredentialId as string, context_window_tokens: contextWindowTokens, async: true }
-      : {
-          proto_type: protoType,
-          base_url: baseUrl || undefined,
-          model_id: modelId,
-          api_key: apiKey,
-          thinking_effort: thinking,
-          context_window_tokens: contextWindowTokens,
-          async: true,
-        };
+    const payload = {
+      // credential_id rides along ONLY for stored-key fallback (backend
+      // merges: form values win, key falls back to stored when blank).
+      credential_id: !isNewDraft && editingCredentialId ? editingCredentialId : undefined,
+      proto_type: protoType,
+      base_url: baseUrl || undefined,
+      model_id: modelId,
+      api_key: apiKey || undefined,
+      thinking_effort: thinking,
+      context_window_tokens: contextWindowTokens,
+      async: true,
+    };
 
     /** Legacy path: run_id polling; each tick feeds the same progressive UI. */
 
