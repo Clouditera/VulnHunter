@@ -527,7 +527,12 @@ export function CredentialsSection() {
 
     /** Stream-first: SSE endpoint. Track checks locally so a stream that
      *  ends without a report frame can still finalize (onComplete fallback). */
-    let latestChecks: import("../../../shared/api/client").ModelDiagnosticCheck[] = [];
+    /** Stream-first: SSE endpoint. The check accumulator MUST live outside
+     *  React state: updaters flush asynchronously, so when check_failed and
+     *  the stream close land in the same chunk, onComplete would read the
+     *  accumulator BEFORE the fail was flushed in — stamping "ok" on a red
+     *  test (QA round 3: dead host showed red ✗ yet save un-gated). */
+    const acc: import("../../../shared/api/client").ModelDiagnosticCheck[] = [];
     await streamCredentialTest(payload as Record<string, unknown>, {
       onEvent: (ev) => {
         if (ev.type === "report") {
@@ -542,20 +547,12 @@ export function CredentialsSection() {
           return;
         }
         const incoming = ev.check;
-        setTestChecks((prev) => {
-          const status = ev.type === "check_started" ? "running" : incoming.status;
-          const next = { ...incoming, status } as typeof incoming;
-          const idx = prev.findIndex((c) => c.id === incoming.id);
-          if (idx >= 0) {
-            const copy = [...prev];
-            copy[idx] = { ...copy[idx], ...next };
-            latestChecks = copy;
-            return copy;
-          }
-          const appended = [...prev, next];
-          latestChecks = appended;
-          return appended;
-        });
+        const status = ev.type === "check_started" ? "running" : incoming.status;
+        const next = { ...incoming, status } as typeof incoming;
+        const idx = acc.findIndex((c) => c.id === incoming.id);
+        if (idx >= 0) acc[idx] = { ...acc[idx], ...next };
+        else acc.push(next);
+        setTestChecks([...acc]);
       },
       onError: () => {
         setTestState({ kind: "err", msg: i18n.t("settings.model.testFail") });
@@ -564,11 +561,11 @@ export function CredentialsSection() {
         if (sawReport) return;
         // Stream closed without a terminal report frame — finalize from the
         // checks we did get instead of hanging on 「测试中…」 (fish report).
-        if (latestChecks.length === 0) {
+        if (acc.length === 0) {
           setTestState({ kind: "err", msg: i18n.t("settings.model.testFail") });
           return;
         }
-        const failed = latestChecks.some((c) => c.status === "fail");
+        const failed = acc.some((c) => c.status === "fail");
         if (failed) {
           setTestState({ kind: "err", msg: i18n.t("settings.model.testFail") });
         } else {
