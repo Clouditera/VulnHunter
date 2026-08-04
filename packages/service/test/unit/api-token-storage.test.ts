@@ -12,6 +12,7 @@ interface TokenRow {
   expires_at: Date | null;
   last_used_at: Date | null;
   revoked_at: Date | null;
+  status: string;
 }
 interface UserRow {
   id: string;
@@ -65,6 +66,7 @@ vi.mock("../../src/infra/db/client.js", () => ({
           expires_at: expiresAt ?? null,
           last_used_at: null,
           revoked_at: null,
+          status: "active",
         };
         tokens.push(row);
         return [
@@ -75,6 +77,7 @@ vi.mock("../../src/infra/db/client.js", () => ({
             expires_at: row.expires_at,
             last_used_at: row.last_used_at,
             revoked_at: row.revoked_at,
+            status: row.status,
           },
         ];
       }
@@ -97,6 +100,7 @@ vi.mock("../../src/infra/db/client.js", () => ({
             expires_at: t.expires_at,
             last_used_at: t.last_used_at,
             revoked_at: t.revoked_at,
+            status: t.status,
           }));
       }
 
@@ -115,6 +119,7 @@ vi.mock("../../src/infra/db/client.js", () => ({
             expires_at: tok.expires_at,
             last_used_at: tok.last_used_at,
             revoked_at: tok.revoked_at,
+            status: tok.status,
           },
         ];
       }
@@ -122,7 +127,7 @@ vi.mock("../../src/infra/db/client.js", () => ({
       // resolveApiToken
       if (sql.includes("FROM user_api_tokens t") && sql.includes("JOIN users u")) {
         const [tokenHash] = values as [string];
-        const tok = tokens.find((t) => t.token_hash === tokenHash && t.revoked_at === null);
+        const tok = tokens.find((t) => t.token_hash === tokenHash && t.revoked_at === null && t.status === "active");
         if (!tok) return [];
         if (tok.expires_at && tok.expires_at.getTime() <= Date.now()) return [];
         const user = users.get(tok.user_id);
@@ -147,6 +152,42 @@ vi.mock("../../src/infra/db/client.js", () => ({
         return [];
       }
 
+      // setApiTokenStatus: guard select
+      if (sql.includes("SELECT revoked_at FROM user_api_tokens")) {
+        const [id, userId] = values as [string, string];
+        const tok = tokens.find((t) => t.id === id && t.user_id === userId);
+        return tok ? [{ revoked_at: tok.revoked_at }] : [];
+      }
+
+      // setApiTokenStatus: update
+      if (sql.includes("SET status =") && sql.includes("user_api_tokens")) {
+        const [status, id, userId] = values as [string, string, string];
+        const tok = tokens.find((t) => t.id === id && t.user_id === userId);
+        if (!tok) return [];
+        tok.status = status;
+        return [
+          {
+            id: tok.id,
+            name: tok.name,
+            token_prefix: tok.token_prefix,
+            created_at: tok.created_at,
+            expires_at: tok.expires_at,
+            last_used_at: tok.last_used_at,
+            revoked_at: tok.revoked_at,
+            status: tok.status,
+          },
+        ];
+      }
+
+      // deleteApiTokenForUser
+      if (sql.includes("DELETE FROM user_api_tokens")) {
+        const [id, userId] = values as [string, string];
+        const idx = tokens.findIndex((t) => t.id === id && t.user_id === userId);
+        if (idx < 0) return [];
+        const [gone] = tokens.splice(idx, 1);
+        return [{ id: gone.id }];
+      }
+
       // revoke (scoped or unscoped)
       if (sql.includes("SET revoked_at") && sql.includes("user_api_tokens")) {
         if (sql.includes("user_id")) {
@@ -162,6 +203,7 @@ vi.mock("../../src/infra/db/client.js", () => ({
               expires_at: tok.expires_at,
               last_used_at: tok.last_used_at,
               revoked_at: tok.revoked_at,
+              status: tok.status,
             },
           ];
         }
@@ -180,6 +222,8 @@ const {
   resolveApiToken,
   revokeApiToken,
   revokeApiTokenForUser,
+  setApiTokenStatus,
+  deleteApiTokenForUser,
   listApiTokens,
   renameApiToken,
   API_TOKEN_LIMIT,
@@ -307,6 +351,66 @@ describe("api-token-storage", () => {
           expires_at: null,
         }),
       ).toBe("revoked");
+    });
+
+    it("classifies disabled (below revoked, above expired)", () => {
+      expect(computeTokenStatus({ revoked_at: null, expires_at: null, status: "disabled" })).toBe("disabled");
+      // revoked stays terminal even if status column says disabled
+      expect(computeTokenStatus({ revoked_at: new Date(), expires_at: null, status: "disabled" })).toBe("revoked");
+    });
+  });
+
+  describe("setApiTokenStatus", () => {
+    it("disabled token fails resolveApiToken; re-enable restores it", async () => {
+      const { id, token } = await issueApiToken("user-1", "gate");
+      await setApiTokenStatus("user-1", id, "disabled");
+      expect(await resolveApiToken(token)).toBeNull();
+      const v = await setApiTokenStatus("user-1", id, "active");
+      expect(v.status).toBe("active");
+      expect((await resolveApiToken(token))?.userId).toBe("user-1");
+    });
+
+    it("view reports disabled status", async () => {
+      const { id } = await issueApiToken("user-1", "badge");
+      const v = await setApiTokenStatus("user-1", id, "disabled");
+      expect(v.status).toBe("disabled");
+    });
+
+    it("re-enabling a revoked token throws ERR_API_TOKEN_REVOKED", async () => {
+      const { id } = await issueApiToken("user-1", "dead");
+      await revokeApiTokenForUser("user-1", id);
+      await expect(setApiTokenStatus("user-1", id, "active")).rejects.toMatchObject({
+        code: "ERR_API_TOKEN_REVOKED",
+      });
+    });
+
+    it("unknown id throws ERR_API_TOKEN_NOT_FOUND", async () => {
+      await expect(setApiTokenStatus("user-1", "nope", "disabled")).rejects.toMatchObject({
+        code: "ERR_API_TOKEN_NOT_FOUND",
+      });
+    });
+  });
+
+  describe("deleteApiTokenForUser", () => {
+    it("hard-deletes the row; token can never resolve again", async () => {
+      const { id, token } = await issueApiToken("user-1", "gone");
+      await deleteApiTokenForUser("user-1", id);
+      expect(await resolveApiToken(token)).toBeNull();
+      const { tokens: list } = await listApiTokens("user-1");
+      expect(list.find((t) => t.id === id)).toBeUndefined();
+    });
+
+    it("delete frees a slot against the per-user limit (unlike disable)", async () => {
+      const { id } = await issueApiToken("user-1", "slot");
+      await deleteApiTokenForUser("user-1", id);
+      const { count } = await listApiTokens("user-1");
+      expect(count).toBe(0);
+    });
+
+    it("unknown id throws ERR_API_TOKEN_NOT_FOUND", async () => {
+      await expect(deleteApiTokenForUser("user-1", "nope")).rejects.toMatchObject({
+        code: "ERR_API_TOKEN_NOT_FOUND",
+      });
     });
   });
 });

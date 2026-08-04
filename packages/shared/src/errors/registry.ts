@@ -168,6 +168,10 @@ export const ERROR_REGISTRY = {
     i18nKey: "errors.ERR_API_TOKEN_NAME_REQUIRED",
     httpStatus: 400,
   },
+  ERR_API_TOKEN_REVOKED: {
+    i18nKey: "errors.ERR_API_TOKEN_REVOKED",
+    httpStatus: 400,
+  },
 
   // Admin / accounts
   ERR_PROTECTED_ACCOUNT: {

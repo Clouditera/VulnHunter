@@ -21,7 +21,7 @@ export const API_TOKEN_LIMIT = 10;
 /** Allowed expiry presets from the settings UI (null = permanent). */
 export const API_TOKEN_EXPIRY_DAYS = [30, 90, 365] as const;
 
-export type ApiTokenStatus = "active" | "expired" | "revoked";
+export type ApiTokenStatus = "active" | "disabled" | "expired" | "revoked";
 
 export interface ApiTokenRow {
   id: string;
@@ -31,6 +31,7 @@ export interface ApiTokenRow {
   expires_at: Date | null;
   last_used_at: Date | null;
   revoked_at: Date | null;
+  status: string;
 }
 
 export interface ApiTokenView {
@@ -59,9 +60,11 @@ function toIso(d: Date | string | null | undefined): string | null {
 export function computeTokenStatus(row: {
   revoked_at: Date | string | null;
   expires_at: Date | string | null;
+  status?: string | null;
   now?: Date;
 }): ApiTokenStatus {
   if (row.revoked_at) return "revoked";
+  if (row.status === "disabled") return "disabled";
   if (row.expires_at) {
     const exp = row.expires_at instanceof Date ? row.expires_at : new Date(row.expires_at);
     const now = row.now ?? new Date();
@@ -127,7 +130,7 @@ export async function issueApiToken(
     SELECT u.tenant_id, u.id, ${trimmed}, ${tokenHash}, ${tokenPrefix}, ${expiresAt}
     FROM users u
     WHERE u.id = ${userId}
-    RETURNING id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at
+    RETURNING id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at, status
   `;
   const row = rows[0];
   if (!row) {
@@ -140,7 +143,7 @@ export async function issueApiToken(
 export async function listApiTokens(userId: string): Promise<{ tokens: ApiTokenView[]; limit: number; count: number }> {
   const db = getDb();
   const rows = await db<ApiTokenRow[]>`
-    SELECT id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at
+    SELECT id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at, status
     FROM user_api_tokens
     WHERE user_id = ${userId}
     ORDER BY created_at DESC
@@ -161,13 +164,56 @@ export async function renameApiToken(userId: string, id: string, name: string): 
     UPDATE user_api_tokens
     SET name = ${trimmed}
     WHERE id = ${id} AND user_id = ${userId}
-    RETURNING id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at
+    RETURNING id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at, status
   `;
   const row = rows[0];
   if (!row) {
     throw Object.assign(new Error("not found"), { code: "ERR_API_TOKEN_NOT_FOUND" });
   }
   return toView(row);
+}
+
+/**
+ * Enable/disable a token owned by userId. Disabled tokens fail authentication
+ * like invalid ones (resolveApiToken filters status<>'active') but stay listed
+ * and can be re-enabled. Revoked (legacy terminal) rows cannot be re-enabled.
+ */
+export async function setApiTokenStatus(
+  userId: string,
+  id: string,
+  status: "active" | "disabled",
+): Promise<ApiTokenView> {
+  const db = getDb();
+  const existing = await db<{ revoked_at: Date | null }[]>`
+    SELECT revoked_at FROM user_api_tokens
+    WHERE id = ${id} AND user_id = ${userId}
+  `;
+  if (!existing[0]) {
+    throw Object.assign(new Error("not found"), { code: "ERR_API_TOKEN_NOT_FOUND" });
+  }
+  if (status === "active" && existing[0].revoked_at) {
+    throw Object.assign(new Error("revoked tokens cannot be re-enabled"), { code: "ERR_API_TOKEN_REVOKED" });
+  }
+  const rows = await db<ApiTokenRow[]>`
+    UPDATE user_api_tokens
+    SET status = ${status}
+    WHERE id = ${id} AND user_id = ${userId}
+    RETURNING id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at, status
+  `;
+  return toView(rows[0]);
+}
+
+/** Hard-delete a token owned by userId. Gone is gone — the secret dies with the row. */
+export async function deleteApiTokenForUser(userId: string, id: string): Promise<void> {
+  const db = getDb();
+  const rows = await db<{ id: string }[]>`
+    DELETE FROM user_api_tokens
+    WHERE id = ${id} AND user_id = ${userId}
+    RETURNING id
+  `;
+  if (!rows[0]) {
+    throw Object.assign(new Error("not found"), { code: "ERR_API_TOKEN_NOT_FOUND" });
+  }
 }
 
 /** Revoke a token owned by userId (idempotent). */
@@ -177,7 +223,7 @@ export async function revokeApiTokenForUser(userId: string, id: string): Promise
     UPDATE user_api_tokens
     SET revoked_at = COALESCE(revoked_at, now())
     WHERE id = ${id} AND user_id = ${userId}
-    RETURNING id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at
+    RETURNING id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at, status
   `;
   const row = rows[0];
   if (!row) {
@@ -224,6 +270,7 @@ export async function resolveApiToken(rawToken: string): Promise<SessionUser | n
       JOIN users u ON u.id = t.user_id
       WHERE t.token_hash = ${tokenHash}
         AND t.revoked_at IS NULL
+        AND t.status = 'active'
         AND (t.expires_at IS NULL OR t.expires_at > now())
         AND u.status = 'active'
       LIMIT 1
