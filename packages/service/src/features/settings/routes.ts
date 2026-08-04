@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import {
@@ -7,10 +8,12 @@ import {
   deleteCredential,
   setDefaultCredential,
   upsertCredential,
+  getCredentialById,
 } from "./storage.js";
 import { logger } from "../../infra/logger.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { diagnoseModelRuntimeCredential } from "./runtime-diagnostics.js";
+import { runPiDiagnostics, type DiagnosticEvent } from "./pi-diagnostics.js";
 import { getDiagnosticRun, startDiagnosticRun } from "./diagnostic-runs.js";
 import { loadConfig } from "../../infra/config.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
@@ -82,6 +85,8 @@ settingsRouter.post("/credentials/:id/default", async (c) => {
 });
 
 // PUT /api/settings/credential — save/update LLM credential
+// Save gate: L1-L3 pi-native diagnostics must pass before persisting.
+//   skip_test=true bypasses the gate (admin escape hatch for offline/broken upstream).
 settingsRouter.put("/credential", async (c) => {
   const body = await c.req.json<{
     id?: string;
@@ -95,6 +100,7 @@ settingsRouter.put("/credential", async (c) => {
     is_default?: boolean;
     context_window_tokens?: number;
     owner_id?: string | null;
+    skip_test?: boolean;
   }>();
 
   if (!body.provider || !body.proto_type || !body.model_id || !body.base_url) {
@@ -115,6 +121,38 @@ settingsRouter.put("/credential", async (c) => {
   }
 
   const ctx = queryContextFromUser(c.get("user"));
+
+  // ── Save gate: run L1-L3 before persisting (fish 2026-08-04) ──
+  // skip_test is an admin escape hatch for offline/maintenance scenarios.
+  if (!body.skip_test) {
+    const gateCred = {
+      id: body.id ?? "gate",
+      provider: body.provider,
+      proto_type: body.proto_type,
+      base_url: body.base_url!,
+      model_id: body.model_id,
+      thinking_effort: body.thinking_effort,
+      api_key: body.api_key,
+      context_window_tokens: contextWindowTokens,
+      is_default: false,
+      created_at: new Date(),
+      updated_at: new Date(),
+    } as any;
+    const gateResult = await runPiDiagnostics(gateCred, () => {});
+    if (!gateResult.ok) {
+      return c.json(
+        {
+          error: {
+            code: "ERR_CREDENTIAL_TEST_FAILED",
+            message: "凭证测试未通过，未保存。",
+            checks: gateResult.checks,
+          },
+        },
+        422,
+      );
+    }
+  }
+
   let id: string;
   try {
     id = await upsertCredential({
@@ -270,6 +308,57 @@ settingsRouter.get("/credential/test-runs/:id", async (c) => {
   const run = getDiagnosticRun(c.req.param("id"));
   if (!run) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
   return c.json(run);
+});
+
+// POST /api/settings/credential/diagnose-stream — SSE pi-native diagnostics (L1-L3)
+settingsRouter.post("/credential/diagnose-stream", async (c) => {
+  const body = await c.req.json<{
+    credential_id?: string;
+    proto_type?: string;
+    base_url?: string;
+    model_id?: string;
+    api_key?: string;
+    thinking_effort?: string;
+  }>();
+
+  let protoType = body.proto_type ?? "";
+  let baseUrl = (body.base_url ?? "").replace(/\/+$/, "");
+  let modelId = body.model_id ?? "";
+  let apiKey = body.api_key ?? "";
+  let thinkingEffort = body.thinking_effort;
+
+  // Load saved credential if id provided
+  if (body.credential_id) {
+    const ctx = queryContextFromUser(c.get("user"));
+    const saved = await getCredentialById(ctx, body.credential_id);
+    if (!saved) return c.json({ error: { code: "ERR_NOT_FOUND", message: "Credential not found" } }, 404);
+    protoType = protoType || saved.proto_type;
+    baseUrl = baseUrl || (saved.base_url ?? "").replace(/\/+$/, "");
+    modelId = modelId || saved.model_id;
+    apiKey = apiKey || saved.api_key;
+    thinkingEffort = thinkingEffort ?? saved.thinking_effort;
+  }
+
+  const cred = {
+    id: body.credential_id ?? "diagnostic",
+    provider: "diagnostic",
+    proto_type: protoType,
+    base_url: baseUrl,
+    model_id: modelId,
+    thinking_effort: thinkingEffort,
+    api_key: apiKey,
+    context_window_tokens: 128000,
+    is_default: false,
+    created_at: new Date(),
+    updated_at: new Date(),
+  } as any;
+
+  return streamSSE(c, async (stream) => {
+    const emit = (event: DiagnosticEvent) => {
+      stream.writeSSE({ data: JSON.stringify(event) });
+    };
+    await runPiDiagnostics(cred, emit);
+  });
 });
 
 // POST /api/settings/models — list models using provided or saved credential
