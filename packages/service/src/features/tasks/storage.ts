@@ -36,6 +36,8 @@ export interface DbTask {
   credential_id: string | null;
   /** Per-task YoungFlow/pi agent concurrency (min 1, no upper bound). */
   agent_max_parallel: number;
+  /** 'natural' | 'timeout' — timeout = engine finalized at the scan-time limit. */
+  completion_reason: string;
 }
 
 function tenantIdOf(ctx?: QueryContext): string {
@@ -247,6 +249,7 @@ export async function updateTaskState(
     completedAt?: Date;
     durationMs?: number;
     failureReason?: string;
+    completionReason?: "natural" | "timeout";
   },
 ): Promise<void> {
   const db = getDb();
@@ -262,7 +265,8 @@ export async function updateTaskState(
       SET state = ${state},
           completed_at = ${extra.completedAt},
           duration_ms = ${extra.durationMs ?? null},
-          failure_reason = ${extra.failureReason ?? null}
+          failure_reason = ${extra.failureReason ?? null},
+          completion_reason = ${extra.completionReason ?? "natural"}
       WHERE id = ${id}
     `;
   } else {
