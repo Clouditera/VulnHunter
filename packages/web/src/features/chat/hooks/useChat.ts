@@ -1,3 +1,4 @@
+import { humanizeChatError } from "../components/SystemNotice.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
@@ -289,7 +290,10 @@ export function useChat() {
     ws.onerror = () => {
       // Idle historical sessions have no in-memory worker — server rejects WS (404).
       // History still loads via REST; only surface error while actively streaming.
-      if (streamingBySessionRef.current[activeId]) setLastError("WebSocket connection error");
+      if (streamingBySessionRef.current[activeId]) {
+        setLastError("WebSocket connection error");
+        appendSystemNotice(activeId, "chat.error.wsClosed");
+      }
     };
 
     return () => {
@@ -304,9 +308,56 @@ export function useChat() {
   /*  Event reducer                                                         */
   /* --------------------------------------------------------------------- */
 
+  /** Append a low-key system notice to a session (role "system").
+   *  Ephemeral client-side copy; dedupes against an identical trailing notice
+   *  and is replaced by the service-persisted row via `system_message`. */
+  const appendSystemNotice = useCallback((sid: string, content: string) => {
+    setMessagesBySession((prev) => {
+      const arr = prev[sid] ?? [];
+      const last = arr[arr.length - 1];
+      if (last?.role === "system" && last.content === content) return prev; // no spam
+      const msg: ChatMessage = {
+        id: `e-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        role: "system",
+        content,
+        seq: (last?.seq ?? arr.length) + 1,
+        created_at: new Date().toISOString(),
+        ephemeral: true,
+      };
+      return { ...prev, [sid]: [...arr, msg] };
+    });
+  }, []);
+
   const applyEvent = useCallback(
     (sid: string, evt: PiWsEvent) => {
       switch (evt.type) {
+        case "system_message": {
+          // Service-persisted system notice (task-d9b94859): append and drop
+          // any ephemeral notice with identical content (it has served its
+          // immediate-feedback purpose).
+          const content = typeof evt.content === "string" ? evt.content : "";
+          if (!content) return;
+          const id = typeof evt.id === "string" ? evt.id : `s-${Date.now()}`;
+          const createdAt = typeof evt.created_at === "string" ? evt.created_at : new Date().toISOString();
+          setMessagesBySession((prev) => {
+            const arr = prev[sid] ?? [];
+            if (arr.some((m) => m.id === id)) return prev; // dedupe
+            const filtered = arr.filter(
+              (m) => !(m.role === "system" && m.ephemeral && m.content === content),
+            );
+            const last = filtered[filtered.length - 1];
+            const msg: ChatMessage = {
+              id,
+              role: "system",
+              content,
+              seq: typeof evt.seq === "number" ? evt.seq : (last?.seq ?? filtered.length) + 1,
+              created_at: createdAt,
+            };
+            return { ...prev, [sid]: [...filtered, msg] };
+          });
+          return;
+        }
+
         case "session_title":
           if (typeof evt.title === "string" && evt.title.trim()) {
             setSessions((s) =>
@@ -504,6 +555,7 @@ export function useChat() {
 
         case "error": {
           pushActivity(sid, warningActivity());
+          appendSystemNotice(sid, evt.error ?? "ERR_INTERNAL");
           setLastError(evt.error ?? "pi error");
           setStreamingBySession((prev) => ({ ...prev, [sid]: false }));
           return;
@@ -513,7 +565,7 @@ export function useChat() {
           return; // agent_end, turn_start, thinking_* handled above or ignored
       }
     },
-    [expireActivities, pushActivity],
+    [expireActivities, pushActivity, appendSystemNotice],
   );
 
   /* --------------------------------------------------------------------- */
@@ -689,24 +741,15 @@ export function useChat() {
         // Sidebar filters empty sessions; refresh after first message so new chat appears (VULNHUN-152).
         window.dispatchEvent(new CustomEvent("vh:sessions-changed"));
       } catch (err) {
-        // Keep the user's message on screen. Append a visible error card
-        // so the retry affordance is obvious.
+        // Keep the user's message on screen. Append a low-key system notice
+        // (NOT an agent bubble — fish 2026-08-04). The service persists the
+        // same notice and broadcasts `system_message`; this ephemeral copy
+        // gives immediate feedback and is deduped when the persisted one
+        // arrives (or when the session refetches).
         const e = err as Error & { code?: string };
         const code = e.code ? `${e.code}: ${e.message}` : (e.message ?? "ERR_INTERNAL");
-        const userMessage = formatChatSendError(code);
-        const errMsg: ChatMessage = {
-          id: `e-${Date.now()}`,
-          role: "assistant",
-          content: userMessage,
-          seq: (messagesBySession[sid]?.length ?? 0) + 2,
-          created_at: new Date().toISOString(),
-          streaming: false,
-        };
-        setMessagesBySession((prev) => ({
-          ...prev,
-          [sid]: [...(prev[sid] ?? []), errMsg],
-        }));
-        pushActivity(sid, warningActivity(userMessage));
+        appendSystemNotice(sid, code);
+        pushActivity(sid, warningActivity(humanizeChatError(code).human));
         setStreamingBySession((prev) => ({ ...prev, [sid]: false }));
         setLastError(code);
       }
@@ -772,6 +815,10 @@ interface PiWsEvent {
   result?: string;
   error?: string;
   title?: string;
+  id?: string;
+  seq?: number;
+  content?: string;
+  created_at?: string;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -826,19 +873,6 @@ function toDomainMessage(m: ChatMessageApi): ChatMessage {
 }
 
 /** Build a ws:// or wss:// URL from a path. */
-function formatChatSendError(raw: string): string {
-  if (raw.includes("ERR_NO_LLM_CREDENTIAL") || raw.includes("没有可用模型凭证") || raw.includes("请先在设置中配置模型凭证") || raw.includes("请先配置")) {
-    return "请先在「设置 → 模型凭证」配置可用的模型凭证后再发送消息。";
-  }
-  if (raw.includes("VULNHUNTER_MASTER_KEY_FILE") || raw.includes("凭证加密 key 未配置")) {
-    return "Chat 暂时无法响应：模型凭证加密 key 未配置。请管理员检查服务端 master key 配置后重试。";
-  }
-  if (raw.includes("无法解密") || raw.includes("cannot be decrypted")) {
-    return "Chat 暂时无法响应：当前模型凭证无法解密。请在 Settings 重新保存模型凭证后重试。";
-  }
-  return raw;
-}
-
 function buildWsUrl(path: string): string {
   if (typeof window === "undefined") return path;
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";

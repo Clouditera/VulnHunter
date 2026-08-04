@@ -1330,7 +1330,7 @@ export interface ChatToolCallApi {
 
 export interface ChatMessageApi {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   seq: number;
   created_at: string;
