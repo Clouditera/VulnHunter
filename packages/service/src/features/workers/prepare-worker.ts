@@ -22,6 +22,7 @@ import type Dockerode from "dockerode";
 
 import type { ServiceConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
+import { AppError } from "../../infra/app-error.js";
 import {
   createWorkerContainer,
   getDocker,
@@ -101,7 +102,7 @@ export interface SpawnPrepareWorkerOptions {
  */
 export async function resolvePrepareModel(task: DbTask): Promise<{ modelsJson: string; modelString: string }> {
   const cred = task.credential_id ? await getCredentialById(task.credential_id) : await getDefaultCredential();
-  if (!cred || !cred.model_id) throw new Error("Prepare 需要可用模型凭证，请在任务或 Settings 中配置模型");
+  if (!cred || !cred.model_id) throw new AppError("ERR_MODEL_CREDENTIAL_UNAVAILABLE", { message: "Prepare 需要可用模型凭证，请在任务或 Settings 中配置模型" });
   const api = cred.proto_type.startsWith("anthropic") ? "anthropic-messages" : "openai-completions";
   const baseUrl = (cred.base_url ?? "").replace(/\/+$/, "");
   const models = {
@@ -223,15 +224,26 @@ export async function runPrepareWorker(opts: SpawnPrepareWorkerOptions): Promise
   await container.remove({ force: true }).catch(() => undefined);
 
   if (timedOut) {
-    throw new Error("Prepare 超时（超过 30 分钟平台上限）");
+    throw new AppError("ERR_PREPARE_FAILED", {
+      message: "Prepare 超时（超过 30 分钟平台上限）",
+      details: { phase: "prepare", timeoutMs: PREPARE_HARD_CAP_MS },
+    });
   }
   const outputDir = getPrepareOutputDir(hostWorkDir);
   if (statusCode !== 0) {
-    throw new Error(
-      errorDetail
+    throw new AppError("ERR_PREPARE_FAILED", {
+      message: errorDetail
         ? `Prepare 失败（退出码 ${statusCode ?? "?"}）：${errorDetail}`
         : `Prepare 失败（退出码 ${statusCode ?? "?"}）`,
-    );
+      details: {
+        phase: "prepare",
+        exitCode: statusCode,
+        engineError: errorDetail || undefined,
+        ...(errorDetail && /\b[45]\d\d\b/.test(errorDetail)
+          ? { upstreamError: true }
+          : {}),
+      },
+    });
   }
   const result = await readPrepareResult(outputDir);
   logger.info({ taskId: task.id, claimToken, result }, "Prepare worker completed");

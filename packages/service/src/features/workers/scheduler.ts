@@ -10,6 +10,7 @@ import { rm } from "node:fs/promises";
 import { load as yamlLoad } from "js-yaml";
 
 import { logger } from "../../infra/logger.js";
+import { AppError } from "../../infra/app-error.js";
 import { getDb } from "../../infra/db/client.js";
 import {
   claimQueuedScanTasks,
@@ -573,7 +574,11 @@ export class TaskScheduler {
         logger.warn({ taskId: task.id, token }, "Requeue failed (claim lost?); falling through to normal failure path");
       }
       logger.error({ err, taskId: task.id, token }, "Claimed scan task failed");
-      const failed = await failSchedulerClaim(task.id, token, String(err)).catch(() => false);
+      // Extract structured error info from AppError for the failure_reason.
+      const failReason = err instanceof AppError
+        ? JSON.stringify({ code: err.code, message: err.message, details: err.details })
+        : String(err);
+      const failed = await failSchedulerClaim(task.id, token, failReason).catch(() => false);
       if (failed) {
         await stopScanWorkerByClaim(task.id, token);
         await stopPrepareWorkerByClaim(task.id, token).catch((cleanupErr) =>
@@ -666,9 +671,10 @@ export class TaskScheduler {
         remediation,
       });
       logger.warn({ taskId: task.id, token }, "Source is incomplete (partial_source); interrupting task");
-      throw new Error(
-        `源码不完整：功能代码缺失，无法建立完整的代码功能语义。审计目标应是自洽完整的功能项目（如 web 应用、CLI 应用、库）。${remediation}。`,
-      );
+      throw new AppError("ERR_PREPARE_FAILED", {
+        message: `源码不完整：功能代码缺失，无法建立完整的代码功能语义。审计目标应是自洽完整的功能项目（如 web 应用、CLI 应用、库）。${remediation}。`,
+        details: { phase: "prepare", reason: "source_incomplete", remediation },
+      });
     }
 
     if (dynamicEnabled && result.sandbox_type === null) {
@@ -683,7 +689,10 @@ export class TaskScheduler {
         reason: "no_compatible_sandbox",
         remediation,
       });
-      throw new Error(`未找到兼容的沙箱类型（项目的主要运行方式没有可用的沙箱）。处理办法：${remediation}。`);
+      throw new AppError("ERR_PREPARE_FAILED", {
+        message: `未找到兼容的沙箱类型（项目的主要运行方式没有可用的沙箱）。处理办法：${remediation}。`,
+        details: { phase: "prepare", reason: "no_compatible_sandbox", remediation },
+      });
     }
     return result;
   }
