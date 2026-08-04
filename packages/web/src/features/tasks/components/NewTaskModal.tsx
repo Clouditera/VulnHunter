@@ -242,7 +242,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
     gitUrl.trim() !== "" ||
     displayName.trim() !== "" ||
     auditFocus.trim() !== "";
-  const requestClose = useConfirmClose(onClose, isDirty);
+  const requestClose = useConfirmClose(onClose, isDirty, true);
 
   return (
     <div

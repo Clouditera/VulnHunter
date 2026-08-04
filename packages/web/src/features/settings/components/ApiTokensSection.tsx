@@ -589,7 +589,7 @@ function ghostBtn(disabled: boolean): CSSProperties {
 }
 
 function Overlay({ children, onClose, dirty = false }: { children: ReactNode; onClose: () => void; dirty?: boolean }) {
-  const requestClose = useConfirmClose(onClose, dirty);
+  const requestClose = useConfirmClose(onClose, dirty, true);
   return (
     <div
       role="dialog"
