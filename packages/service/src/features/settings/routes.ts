@@ -13,12 +13,10 @@ import {
 } from "./storage.js";
 import { logger } from "../../infra/logger.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
-import { diagnoseModelRuntimeCredential } from "./runtime-diagnostics.js";
 import { runPiDiagnostics, type DiagnosticEvent } from "./pi-diagnostics.js";
 import { lookupModelMeta } from "./pi-model-catalog.js";
 import { updateDeepVerifiedStatus } from "./storage.js";
 import { runL4Check } from "./l4-agent-check.js";
-import { getDiagnosticRun, startDiagnosticRun } from "./diagnostic-runs.js";
 import { loadConfig } from "../../infra/config.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import * as reportStorage from "../reports/storage.js";
@@ -270,90 +268,6 @@ settingsRouter.patch("/credential/:id", async (c) => {
 
   if (!ok) throw new AppError("ERR_NOT_FOUND");
   return c.json({ ok: true });
-});
-
-// POST /api/settings/credential/test — test LLM connection
-settingsRouter.post("/credential/test", async (c) => {
-  const body = await c.req.json<{
-    credential_id?: string; // test using saved credential
-    proto_type?: string;
-    base_url?: string;
-    model_id?: string;
-    api_key?: string;
-    thinking_effort?: string;
-    context_window_tokens?: number;
-    async?: boolean;
-  }>();
-
-  let protoType = body.proto_type ?? "";
-  let baseUrl = (body.base_url ?? "").replace(/\/$/, "");
-  let modelId = body.model_id ?? "";
-  let apiKey = body.api_key ?? "";
-  let thinkingEffort = body.thinking_effort;
-  const hasContextWindowOverride = body.context_window_tokens !== undefined;
-  let contextWindowTokens: number;
-  try {
-    contextWindowTokens = parseContextWindowTokens(body.context_window_tokens);
-  } catch {
-    return c.json({ ok: false, error: "invalid context_window_tokens" }, 400);
-  }
-
-  // If credential_id provided, load saved credential
-  if (body.credential_id) {
-    const { getCredentialById } = await import("./storage.js");
-    try {
-      const ctx = queryContextFromUser(c.get("user"));
-      const cred = await getCredentialById(ctx, body.credential_id);
-      if (!cred) return c.json({ ok: false, error: "Credential not found" }, 404);
-      protoType = protoType || cred.proto_type;
-      baseUrl = baseUrl || (cred.base_url ?? "").replace(/\/$/, "");
-      modelId = modelId || cred.model_id;
-      apiKey = apiKey || cred.api_key;
-      thinkingEffort = thinkingEffort ?? cred.thinking_effort;
-      contextWindowTokens = hasContextWindowOverride ? contextWindowTokens : (cred.context_window_tokens ?? contextWindowTokens);
-    } catch (err) {
-      if (err instanceof CredentialKeyUnavailableError) {
-        return c.json({ ok: false, error: "凭证加密 key 未配置。请管理员设置 VULNHUNTER_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。" }, 409);
-      }
-      if (err instanceof CredentialDecryptError) {
-        return c.json({ ok: false, error: "Credential cannot be decrypted with current master key. Re-enter and save the API key." }, 409);
-      }
-      throw err;
-    }
-  }
-
-  const user = c.get("user");
-  const cred = {
-    id: body.credential_id ?? "diagnostic",
-    tenant_id: user.tenantId,
-    provider: "diagnostic",
-    proto_type: protoType,
-    base_url: baseUrl,
-    model_id: modelId,
-    thinking_effort: thinkingEffort,
-    api_key: apiKey,
-    context_window_tokens: contextWindowTokens,
-    is_default: false,
-    created_at: new Date(),
-    updated_at: new Date(),
-  } as any;
-  if (body.async) {
-    const runId = startDiagnosticRun(cred, loadConfig(), { userId: user.userId, tenantId: user.tenantId, role: user.role === "admin" ? "admin" : "member" });
-    return c.json({ ok: true, run_id: runId, diagnostics: getDiagnosticRun(runId) });
-  }
-  const diagnostics = await diagnoseModelRuntimeCredential(cred, loadConfig(), { userId: user.userId, tenantId: user.tenantId, role: user.role === "admin" ? "admin" : "member" });
-  return c.json({
-    ok: diagnostics.ok,
-    message: diagnostics.summary,
-    error: diagnostics.ok ? undefined : diagnostics.summary,
-    diagnostics,
-  });
-});
-
-settingsRouter.get("/credential/test-runs/:id", async (c) => {
-  const run = getDiagnosticRun(c.req.param("id"));
-  if (!run) throw new AppError("ERR_NOT_FOUND");
-  return c.json(run);
 });
 
 // POST /api/settings/credential/diagnose-stream — SSE pi-native diagnostics (L1-L3)
