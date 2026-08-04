@@ -7,6 +7,8 @@ set -euo pipefail
 PKG_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/instance-dir.sh
 source "$PKG_ROOT/lib/instance-dir.sh"
+# shellcheck source=lib/common.sh
+source "$PKG_ROOT/lib/common.sh"
 
 cd "$PKG_ROOT"
 
@@ -15,13 +17,6 @@ WEB_PORT_DEFAULT=23000
 
 rand_hex() { openssl rand -hex "$1"; }
 require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "[install] missing command: $1" >&2; exit 1; }; }
-json_escape() {
-  local s="$1"
-  s="${s//\\/\\\\}"
-  s="${s//\"/\\\"}"
-  s="${s//$'\n'/\\n}"
-  printf '%s' "$s"
-}
 version_field() {
   local key="$1"
   [[ -f "$PKG_ROOT/VERSION.json" ]] || return 0
