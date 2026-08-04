@@ -200,6 +200,48 @@ export const ERROR_REGISTRY = {
     i18nKey: "errors.ERR_VALIDATION",
     httpStatus: 400,
   },
+  // E4 wave — codes used in sandbox/auth/tasks that need registry entries
+  ERR_INVALID_STATE: {
+    i18nKey: "errors.ERR_INVALID_STATE",
+    httpStatus: 409,
+  },
+  ERR_INVALID_SCAN_OPTIONS: {
+    i18nKey: "errors.ERR_INVALID_SCAN_OPTIONS",
+    httpStatus: 400,
+  },
+  ERR_INVALID_GIT_URL: {
+    i18nKey: "errors.ERR_INVALID_GIT_URL",
+    httpStatus: 400,
+  },
+  ERR_GIT_REMOTE_UNREACHABLE: {
+    i18nKey: "errors.ERR_GIT_REMOTE_UNREACHABLE",
+    httpStatus: 502,
+  },
+  ERR_NO_LLM_CREDENTIAL: {
+    i18nKey: "errors.ERR_NO_LLM_CREDENTIAL",
+    httpStatus: 400,
+    action: { kind: "navigate", to: "/settings?tab=credentials" },
+  },
+  ERR_SELF_SUSPEND: {
+    i18nKey: "errors.ERR_SELF_SUSPEND",
+    httpStatus: 400,
+  },
+  ERR_SELF_DELETE: {
+    i18nKey: "errors.ERR_SELF_DELETE",
+    httpStatus: 400,
+  },
+  ERR_LAST_ADMIN: {
+    i18nKey: "errors.ERR_LAST_ADMIN",
+    httpStatus: 400,
+  },
+  ERR_SOURCE_ARCHIVE_NOT_AVAILABLE: {
+    i18nKey: "errors.ERR_SOURCE_ARCHIVE_NOT_AVAILABLE",
+    httpStatus: 404,
+  },
+  ERR_SOURCE_ARCHIVE_NOT_FOUND: {
+    i18nKey: "errors.ERR_SOURCE_ARCHIVE_NOT_FOUND",
+    httpStatus: 404,
+  },
 } as const satisfies Record<string, ErrorRegistryEntry>;
 
 /** Registered error codes — adding a code elsewhere is a tsc error. */

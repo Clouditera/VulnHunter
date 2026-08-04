@@ -1,4 +1,6 @@
 import type { FindingDynamicMeta, SystemStatus, TaskMetadata as SharedTaskMetadata } from "@vulnhunter/shared";
+import { ERROR_REGISTRY, type ErrorCode } from "@vulnhunter/shared";
+import { i18n } from "../i18n/index.js";
 
 const BASE = "";
 
@@ -9,7 +11,10 @@ type ClientError = Error & { code: string; used?: number; limit?: number };
 function buildApiError(status: number, body?: ApiErrorShape | null): ClientError {
   const error = body?.error;
   const code = error?.code ?? (status === 413 ? "ERR_UPLOAD_GATEWAY_LIMIT" : "ERR_INTERNAL");
-  const detail = error?.detail ?? error?.message ?? (status === 413 ? "HTTP 413" : code);
+  // Fallback chain: server detail → server message → registry i18n → status hint → code
+  const registryEntry = code in ERROR_REGISTRY ? ERROR_REGISTRY[code as ErrorCode] : undefined;
+  const registryMsg = registryEntry ? i18n.t(registryEntry.i18nKey) : undefined;
+  const detail = error?.detail ?? error?.message ?? registryMsg ?? (status === 413 ? "HTTP 413" : code);
   const err = new Error(detail) as ClientError;
   err.code = code;
   err.used = error?.used;
