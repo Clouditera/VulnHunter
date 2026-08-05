@@ -18,8 +18,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && python3 -c "import openpyxl"
 
 # pi CLI (youngflow spawns it for each stage). Pin the fork validated by VulnForge.
+# The mcp adapter is installed with build-time HOME=/root, then RELOCATED to a
+# neutral world-readable path: de-identified workers get HOME=/workspace/.home
+# and cannot read /root (700) — the bridge passes the extension explicitly via
+# `pi -e $PI_MCP_ADAPTER_PATH` (main.ts), so no pi-side registry needs updating.
+# The whole node_modules tree moves with it (sibling deps like @hono resolve
+# from the package's own tree).
 RUN npm install -g @earendil-works/pi-coding-agent@$PI_VERSION \
-    && pi install npm:pi-mcp-adapter
+    && pi install npm:pi-mcp-adapter \
+    && mkdir -p /opt/vulnhunter/pi-mcp-adapter \
+    && mv "$HOME/.pi/agent/npm/node_modules" /opt/vulnhunter/pi-mcp-adapter/node_modules
+ENV PI_MCP_ADAPTER_PATH=/opt/vulnhunter/pi-mcp-adapter/node_modules/pi-mcp-adapter
 
 # youngflow — self-contained release binary (v0.7.0)
 COPY submodules/youngflow/release/youngflow-linux-x64 /usr/local/bin/youngflow
