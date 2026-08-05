@@ -15,6 +15,20 @@ export interface SourceArchivePolicy {
   accept: string;
 }
 
+export const SOURCE_ARCHIVE_ACCEPT = [
+  ".zip",
+  ".tar",
+  // macOS file pickers match the final suffix of compound extensions, so .gz
+  // is needed to make .tar.gz selectable. Application validation still uses
+  // SUPPORTED_SOURCE_ARCHIVE_EXTENSIONS and rejects standalone .gz files.
+  ".gz",
+  ".tgz",
+  "application/zip",
+  "application/x-tar",
+  "application/gzip",
+  "application/x-gzip",
+].join(",");
+
 export function normalizeUploadMaxMb(config: Record<string, unknown>): number {
   return normalizeSourceArchiveUploadMaxMb(config);
 }
@@ -34,7 +48,7 @@ export function buildSourceArchivePolicy(config: Record<string, unknown>): Sourc
     source_archive_upload_ceiling_mb: gatewayMaxMb,
     formats: ["zip", "tar", "tar.gz"],
     extensions: [...SUPPORTED_SOURCE_ARCHIVE_EXTENSIONS],
-    accept: SUPPORTED_SOURCE_ARCHIVE_EXTENSIONS.join(","),
+    accept: SOURCE_ARCHIVE_ACCEPT,
   };
 }
 

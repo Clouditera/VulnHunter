@@ -15,7 +15,7 @@ const DEFAULT_SOURCE_ARCHIVE_POLICY: SourceArchivePolicy = {
   source_archive_upload_ceiling_mb: 2048,
   formats: ["zip", "tar", "tar.gz"],
   extensions: [".zip", ".tar", ".tar.gz", ".tgz"],
-  accept: ".zip,.tar,.tar.gz,.tgz",
+  accept: ".zip,.tar,.gz,.tgz,application/zip,application/x-tar,application/gzip,application/x-gzip",
 };
 
 function isValidHttpGitUrl(value: string): boolean {
