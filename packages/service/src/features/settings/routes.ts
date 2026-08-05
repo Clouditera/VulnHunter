@@ -71,6 +71,27 @@ async function handleDeleteCredential(c: any) {
   return c.json({ ok: true });
 }
 
+// GET /api/settings/credentials/:id/key — reveal a saved key on explicit user action.
+// getCredentialById applies the same admin/member visibility rules as editing.
+settingsRouter.get("/credentials/:id/key", async (c) => {
+  const ctx = queryContextFromUser(c.get("user"));
+  const id = c.req.param("id");
+  try {
+    const cred = await getCredentialById(ctx, id);
+    if (!cred) throw new AppError("ERR_NOT_FOUND");
+    logger.info({ credentialId: id, userId: ctx.userId }, "Credential API key revealed");
+    return c.json({ api_key: cred.api_key });
+  } catch (err) {
+    if (err instanceof CredentialKeyUnavailableError) {
+      throw new AppError("ERR_CREDENTIAL_KEY_UNAVAILABLE");
+    }
+    if (err instanceof CredentialDecryptError) {
+      throw new AppError("ERR_CREDENTIAL_DECRYPT_FAILED");
+    }
+    throw err;
+  }
+});
+
 // DELETE /api/settings/credentials/:id — delete a credential
 settingsRouter.delete("/credentials/:id", handleDeleteCredential);
 
