@@ -189,25 +189,28 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
     const durationMs = Date.now() - start;
 
     // Assert (fish 2026-08-05): the agent must actually close a real tool
-    // loop — bash tool call observed, tool result clean, agent settled.
-    // Schema: pi AgentEvent (pi-agent-core types.d.ts) — tool_execution_start
-    // carries toolName ("bash" built-in), tool_execution_end carries isError.
+    // loop — bash tool call observed, tool result present, agent settled.
+    // Schema (QA-verified on pi 0.83 --mode json): the RPC JSONL stream has
+    // NO tool_execution_* events; tool traces ride message_end/turn_end:
+    //   - message_end.message.content[]: ToolCall block { type:"toolCall",
+    //     name, arguments } (pi-ai types.d.ts:253)
+    //   - turn_end.toolResults[]: ToolResultMessage { toolName, content }
+    //     (pi-agent-core types.d.ts:100)
     const agentSettled = events.some(
       (e) => (e as { type?: string }).type === "agent_settled",
     );
 
-    const bashStarts = events.filter(
-      (e) =>
-        (e as { type?: string }).type === "tool_execution_start" &&
-        (e as { toolName?: string }).toolName === "bash",
-    );
-    const bashOkResults = events.filter(
-      (e) =>
-        (e as { type?: string }).type === "tool_execution_end" &&
-        (e as { toolName?: string }).toolName === "bash" &&
-        (e as { isError?: boolean }).isError === false,
-    );
-    const toolCallObserved = bashStarts.length > 0 && bashOkResults.length > 0;
+    const bashToolCalls = events.filter((e) => {
+      const ev = e as { type?: string; message?: { content?: Array<{ type?: string; name?: string }> } };
+      return ev.type === "message_end" && Array.isArray(ev.message?.content)
+        && ev.message!.content!.some((b) => b.type === "toolCall" && b.name === "bash");
+    });
+    const bashToolResults = events.filter((e) => {
+      const ev = e as { type?: string; toolResults?: Array<{ toolName?: string; content?: unknown[] }> };
+      return ev.type === "turn_end" && Array.isArray(ev.toolResults)
+        && ev.toolResults!.some((r) => r.toolName === "bash" && Array.isArray(r.content) && r.content.length > 0);
+    });
+    const toolCallObserved = bashToolCalls.length > 0 && bashToolResults.length > 0;
 
     const assistantMessages = events.filter(
       (e) =>
@@ -269,7 +272,7 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
       return {
         status: "fail",
         durationMs,
-        detail: `Agent completed without a clean bash tool call (bash_starts=${bashStarts.length}, bash_ok=${bashOkResults.length}) — the model may not honor tool instructions or the endpoint rejects tool requests`,
+        detail: `Agent completed without a clean bash tool call (bash_calls=${bashToolCalls.length}, bash_results=${bashToolResults.length}) — the model may not honor tool instructions or the endpoint rejects tool requests`,
         events: events.slice(0, 5),
       };
     }
