@@ -80,3 +80,24 @@ ensure_system_admin_env() {
     echo "[upgrade] NOTE: set VULNHUNTER_ADMIN_PASSWORD in $env_file and restart to activate protected system admin (cannot be disabled/deleted)"
   fi
 }
+
+# Worker de-identification (fish-approved 2026-08-05): workers now run as
+# SERVICE_UID, so legacy root-written files in task workspaces would wedge
+# continue-scan / cleanup. One-shot root helper chowns the worker-writable
+# data dirs. Probe first (fresh installs skip at zero cost); db/minio are
+# NEVER touched (postgres/minio uids). Rollback-safe: old root workers can
+# still write the chowned dirs.
+rehome_root_owned_workdirs() {
+  local data_dir="$1" uid="$2" gid="$3" image="$4"
+  local dirs=(workspaces chat-sessions report-workspaces diagnostics)
+  local d
+  for d in "${dirs[@]}"; do
+    [[ -d "$data_dir/$d" ]] || continue
+    if find "$data_dir/$d" -uid 0 -print -quit 2>/dev/null | grep -q .; then
+      echo "[upgrade] root-owned files found under $data_dir/$d — rehoming workdirs to $uid:$gid (worker de-identification)..."
+      docker run --rm --user 0:0 -v "$data_dir:/data" --entrypoint sh "$image" -c         "for d in ${dirs[*]}; do [ -d /data/\$d ] && chown -R $uid:$gid /data/\$d; done; echo rehomed"         && echo "[upgrade] workdir rehome done (${dirs[*]})"         || echo "[upgrade] warning: workdir rehome failed — legacy tasks may hit permission errors" >&2
+      return 0
+    fi
+  done
+  echo "[upgrade] workdir ownership: no root-owned files — rehome skipped"
+}

@@ -214,6 +214,9 @@ run_instance_upgrade() {
   set -a; source "$instance_dir/.env"; set +a
   validate_local_images || return 1
 
+  # One-time workdir rehome for worker de-identification (probe-gated, no-op on fresh installs)
+  rehome_root_owned_workdirs "${DATA_DIR:-$instance_dir/data}" "${SERVICE_UID:-1001}" "${SERVICE_GID:-1001}" "${SERVICE_IMAGE:-vulnhunter-service:latest}"
+
   local project_name="${PROJECT_NAME:-$(project_name_from_dir "$instance_dir")}"
   echo "[upgrade] restarting stack (project=$project_name)..."
   instance_compose "$instance_dir" "$project_name" up -d --pull never || \

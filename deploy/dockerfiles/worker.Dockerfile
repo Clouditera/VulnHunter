@@ -18,8 +18,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && python3 -c "import openpyxl"
 
 # pi CLI (youngflow spawns it for each stage). Pin the fork validated by VulnForge.
+# The mcp adapter is installed with build-time HOME=/root, then RELOCATED to a
+# neutral world-readable path: de-identified workers get HOME=/workspace/.home
+# and cannot read /root (700) — the bridge passes the extension explicitly via
+# `pi -e $PI_MCP_ADAPTER_PATH` (main.ts), so no pi-side registry needs updating.
+# The whole node_modules tree moves with it (sibling deps like @hono resolve
+# from the package's own tree).
 RUN npm install -g @earendil-works/pi-coding-agent@$PI_VERSION \
-    && pi install npm:pi-mcp-adapter
+    && pi install npm:pi-mcp-adapter \
+    && mkdir -p /opt/vulnhunter/pi-mcp-adapter \
+    && mv "$HOME/.pi/agent/npm/node_modules" /opt/vulnhunter/pi-mcp-adapter/node_modules
+ENV PI_MCP_ADAPTER_PATH=/opt/vulnhunter/pi-mcp-adapter/node_modules/pi-mcp-adapter
 
 # youngflow — self-contained release binary (v0.7.0)
 COPY submodules/youngflow/release/youngflow-linux-x64 /usr/local/bin/youngflow
@@ -73,6 +82,24 @@ RUN test -f /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-tracker/ind
     && grep -q -- '--user-instr <value>' /tmp/vulnforge-help.txt \
     && grep -q -- '--sandbox-cfg <value>' /tmp/vulnforge-help.txt
 COPY flows/vulnhunter-report /opt/vulnhunter/flows/vulnhunter-report
+
+# De-identified workers (non-root) treat flow dirs as per-run scratch:
+# scan/report regenerate models.json + .env there, and youngflow materializes
+# .pi-agent/ (PI_CODING_AGENT_DIR) under flowDir for EVERY flow — prepare and
+# vulnforge-timeout included (QA-caught: prepare EACCES mkdir .pi-agent).
+# The youngflow flowDir anchor is engine-owned (dist/model-config.js), so the
+# in-repo fix is uniform writability. Containers are single-use; nothing
+# secret persists in the image.
+RUN chmod 0777 /opt/vulnhunter/flows/vulnforge /opt/vulnhunter/flows/vulnforge-timeout \
+    /opt/vulnhunter/flows/prepare /opt/vulnhunter/flows/vulnhunter-report
+
+# Bake the ssh drop-in at build time: it is a static one-liner (Include the
+# tmpfs config), so runtime injection never touches /etc — de-identified
+# workers (uid != 0) can't write there (QA-caught continue-scan EACCES).
+# ssh silently skips the Include when the tmpfs config is absent (static
+# tasks) — verified: ssh -G exit 0 both ways.
+RUN mkdir -p /etc/ssh/ssh_config.d \
+    && printf 'Include /run/vulnhunter/ssh/config\n' > /etc/ssh/ssh_config.d/99-vulnhunter.conf
 
 # Worker bridge (for chat/report modes)
 COPY packages/worker-bridge/dist/bundle.js /opt/bridge/bundle.js

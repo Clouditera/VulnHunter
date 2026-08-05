@@ -31,7 +31,8 @@ describe("prepare-worker helpers", () => {
     const provider = parsed.providers.platform;
     expect(provider.baseUrl).toBe("https://api.example.com/v1"); // as-is, trailing slash trimmed
     expect(provider.apiKey).toBe("sk-REAL"); // real key, not task-id proxy
-    expect(provider.models).toEqual([{ id: "glm-4-plus" }]);
+    // fish 2026-08-05: completions endpoints default supportsDeveloperRole=false
+    expect(provider.models).toEqual([{ id: "glm-4-plus", compat: { supportsDeveloperRole: false } }]);
     expect(provider.api).toBe("openai-completions");
     expect(modelString).toBe("platform/glm-4-plus");
   });
@@ -39,7 +40,9 @@ describe("prepare-worker helpers", () => {
   it("resolvePrepareModel maps anthropic proto to anthropic-messages api", async () => {
     getDefaultCredentialMock.mockResolvedValue({ id: "c2", proto_type: "anthropic", model_id: "claude-4", api_key: "sk-REAL", base_url: "https://api.anthropic.com" });
     const { modelsJson, modelString } = await resolvePrepareModel({ credential_id: null } as any);
-    expect(JSON.parse(modelsJson).providers.platform.api).toBe("anthropic-messages");
+    const parsed = JSON.parse(modelsJson).providers.platform;
+    expect(parsed.api).toBe("anthropic-messages");
+    expect(parsed.models[0]).toEqual({ id: "claude-4" }); // no compat for anthropic
     expect(modelString).toBe("platform/claude-4");
     expect(getDefaultCredentialMock).toHaveBeenCalled();
   });

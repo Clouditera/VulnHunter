@@ -278,8 +278,11 @@ is_zai = (not is_deepseek) and ("glm" in lo or "bigmodel" in lo or "zhipu" in lo
 THINKING_LEVELS = {"low", "medium", "high", "xhigh"}
 is_thinking = effort in THINKING_LEVELS
 
-# DeepSeek custom endpoints need explicit compat (developer role unsupported);
-# zai/glm reasoning models also flag reasoning.
+# fish 2026-08-05: openai-completions endpoints get the conservative default
+# `supportsDeveloperRole: False` — system is understood by every gateway,
+# developer only matters on OpenAI o-series (which accept system too).
+# responses protocol keeps developer (native there). zai/glm/deepseek are
+# flagged reasoning for effort handling.
 model_entry = {
     "id": model_id,
     "input": ["text"],
@@ -288,7 +291,7 @@ model_entry = {
 }
 if is_thinking or is_deepseek or is_zai:
     model_entry["reasoning"] = True
-if is_deepseek:
+if api_type == "openai-completions":
     model_entry["compat"] = {"supportsDeveloperRole": False}
 
 provider_cfg = {

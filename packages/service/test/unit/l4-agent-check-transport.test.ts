@@ -18,6 +18,8 @@ interface SpawnCall {
 
 const spawnCalls: SpawnCall[] = [];
 const modelsJsonSnapshots: string[] = [];
+/** When true the mock child emits NO tool events (assertion must fail). */
+let noToolCall = false;
 
 vi.mock("node:child_process", () => ({
   spawn: (command: string, args: string[], options: SpawnCall["options"]) => {
@@ -41,6 +43,30 @@ vi.mock("node:child_process", () => ({
     child.stderr = new EventEmitter();
     child.kill = () => {};
     queueMicrotask(() => {
+      // fish 2026-08-05: L4 asserts a REAL bash tool loop (pi AgentEvent
+      // schema: tool_execution_start/end) — the mock must close one.
+      if (noToolCall) {
+        child.stdout.emit("data", Buffer.from(JSON.stringify({ type: "agent_settled" }) + "\n"));
+        child.stdout.emit("data", Buffer.from(JSON.stringify({
+          type: "message_end",
+          message: { role: "assistant", stopReason: "stop", content: [{ type: "text", text: "ok" }] },
+        }) + "\n"));
+        child.emit("close", 0);
+        return;
+      }
+      child.stdout.emit("data", Buffer.from(JSON.stringify({
+        type: "tool_execution_start",
+        toolCallId: "c1",
+        toolName: "bash",
+        args: { command: "ls" },
+      }) + "\n"));
+      child.stdout.emit("data", Buffer.from(JSON.stringify({
+        type: "tool_execution_end",
+        toolCallId: "c1",
+        toolName: "bash",
+        result: "out.txt\n",
+        isError: false,
+      }) + "\n"));
       child.stdout.emit("data", Buffer.from(JSON.stringify({ type: "agent_settled" }) + "\n"));
       child.stdout.emit("data", Buffer.from(JSON.stringify({
         type: "message_end",
@@ -69,6 +95,14 @@ describe("L4 credential transport (no argv leak)", () => {
   afterEach(() => {
     spawnCalls.length = 0;
     modelsJsonSnapshots.length = 0;
+    noToolCall = false;
+  });
+
+  it("fails when the agent never closes a bash tool call (fish 2026-08-05 assertion)", async () => {
+    noToolCall = true;
+    const result = await runL4Check(input());
+    expect(result.status).toBe("fail");
+    expect(result.detail).toContain("bash tool call");
   });
 
   it("passes and never places the API key on the command line", async () => {

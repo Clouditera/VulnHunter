@@ -1,5 +1,5 @@
 /** Credentials section (extracted from SettingsPage): unified list + inline editor. */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential } from "../../../shared/api/client.js";
@@ -149,6 +149,37 @@ export function CredentialsSection() {
     | { kind: "ok"; msg?: string; diagnostics?: import("../../../shared/api/client").ModelDiagnosticResult }
     | { kind: "err"; msg: string; diagnostics?: import("../../../shared/api/client").ModelDiagnosticResult }
   >({ kind: "idle" });
+  /**
+   * L4 agent-loop verdict row (fish 2026-08-05: L4 restored, badge stays
+   * gone — verdict shows as a fourth row in the test panel). Fired by the
+   * backend after a gated save; we poll listCredentials until the status
+   * settles (passed/failed) or the poll budget runs out.
+   */
+  const [l4, setL4] = useState<{ credId: string; status: "running" | "passed" | "failed" } | null>(null);
+  const l4PollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopL4Poll = () => {
+    if (l4PollRef.current) { clearInterval(l4PollRef.current); l4PollRef.current = null; }
+  };
+  useEffect(() => () => stopL4Poll(), []);
+  const startL4Tracking = (credId: string) => {
+    stopL4Poll();
+    setL4({ credId, status: "running" });
+    let tries = 0;
+    l4PollRef.current = setInterval(async () => {
+      tries += 1;
+      try {
+        const list = await api.settings.listCredentials();
+        const row = list.credentials.find((c) => c.id === credId);
+        const st = row?.deep_verified_status;
+        if (st === "passed" || st === "failed") {
+          setL4({ credId, status: st });
+          stopL4Poll();
+          return;
+        }
+      } catch { /* transient — keep polling */ }
+      if (tries >= 40) stopL4Poll(); // ~2min budget; row stays "running" otherwise
+    }, 3000);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -187,7 +218,8 @@ export function CredentialsSection() {
     setThinking((c.thinking_effort as ThinkingValue) ?? "medium");
     setContextWindow(formatContextWindow(c.context_window_tokens));
     setLabel(c.label ?? "");
-    setApiKey(""); // always require re-entry for security
+    setApiKey(""); // loaded only after an explicit reveal action
+    setShowKey(false);
     setTestState({ kind: "idle" });
     setToast(null);
     resetModelList();
@@ -197,6 +229,19 @@ export function CredentialsSection() {
       modelId: c.model_id,
     });
     setTestedFingerprint(null);
+    // Backfill the L4 row from the stored status (QA P2: reopening the edit
+    // view must surface deep verification — fish: 保存时就暴露). A settled
+    // status renders statically; pending/running resumes polling.
+    const dv = c.deep_verified_status;
+    if (dv === "passed" || dv === "failed") {
+      stopL4Poll();
+      setL4({ credId: c.id, status: dv });
+    } else if (dv === "pending" || dv === "running") {
+      startL4Tracking(c.id);
+    } else {
+      stopL4Poll();
+      setL4(null);
+    }
   }
 
   /** Reset the model suggestion list (switch of edit target — spec ①). */
@@ -218,6 +263,8 @@ export function CredentialsSection() {
     resetModelList();
     setEditCoreSnap(null);
     setTestedFingerprint(null);
+    stopL4Poll();
+    setL4(null);
   }
 
   /** Open the "+ New credential" draft row at the top of the list. */
@@ -239,6 +286,27 @@ export function CredentialsSection() {
     resetModelList();
     setEditCoreSnap(null);
     setTestedFingerprint(null);
+    stopL4Poll();
+    setL4(null);
+  }
+
+  async function toggleApiKeyVisibility() {
+    if (showKey) {
+      setShowKey(false);
+      return;
+    }
+    if (apiKey || isNewDraft || !editingCredentialId) {
+      setShowKey(true);
+      return;
+    }
+    try {
+      const { api_key } = await api.settings.revealCredentialKey(editingCredentialId);
+      setApiKey(api_key);
+      setShowKey(true);
+    } catch (err) {
+      setToast({ kind: "err", msg: String((err as Error).message || err) });
+      setTimeout(() => setToast(null), 2800);
+    }
   }
 
   async function handleDeleteCredential(c: LlmCredential) {
@@ -347,11 +415,16 @@ export function CredentialsSection() {
       await Promise.all(ops);
 
       // Refresh credential state so UI shows "saved" masked view.
-      const savedId = editingCredentialId;
+      // wasNewDraft/savedCredId are SYNCHRONOUS captures — the setState calls
+      // below are async, so the state vars still read pre-save values here
+      // (QA P2: new-save path lost L4 tracking by reading them).
+      const wasNewDraft = isNewDraft;
+      let savedCredId: string | null = editingCredentialId;
       const fresh = await api.settings.getCredential().catch(() => ({ credential: cred }));
-      if (fresh?.credential && (!savedId || fresh.credential.id === savedId)) {
+      if (fresh?.credential && (!savedCredId || fresh.credential.id === savedCredId)) {
         setCred(fresh.credential);
         setEditingCredentialId(fresh.credential.id);
+        savedCredId = fresh.credential.id;
       }
       // After save, the draft row (if any) becomes a real row.
       setIsNewDraft(false);
@@ -360,7 +433,7 @@ export function CredentialsSection() {
         .listCredentials()
         .catch(() => ({ credentials: [] as LlmCredential[] }));
       setCredentials(freshList.credentials);
-      if (isNewDraft) {
+      if (wasNewDraft) {
         const created = freshList.credentials.find((item) =>
           item.model_id === modelId &&
           normalizeProtoType(item.proto_type) === protoType &&
@@ -369,9 +442,13 @@ export function CredentialsSection() {
         if (created) {
           setCred(created);
           setEditingCredentialId(created.id);
+          savedCredId = created.id;
         }
       }
       setApiKey("");
+      // L4 now runs inside the test stream as the 4th layer (fish 2026-08-05)
+      // — the panel already showed its verdict live before this save; no
+      // post-save polling needed.
       setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
       setTimeout(() => setToast(null), 2200);
     } catch (err) {
@@ -509,6 +586,8 @@ export function CredentialsSection() {
     }
     setFieldErrors({});
     setTestState({ kind: "loading" });
+    stopL4Poll();
+    setL4(null);
     setTestChecks([]);
     const payload = {
       // credential_id rides along ONLY for stored-key fallback (backend
@@ -719,7 +798,7 @@ export function CredentialsSection() {
                   type="button"
                   data-testid="settings-api-key-toggle"
                   aria-label={showKey ? "Hide key" : "Show key"}
-                  onClick={() => setShowKey((s) => !s)}
+                  onClick={toggleApiKeyVisibility}
                   style={{
                     position: "absolute",
                     right: "8px",
@@ -954,13 +1033,14 @@ export function CredentialsSection() {
                 </button>
                 }
               </div>
-              {(testState.kind === "ok" || testState.kind === "err" || (testState.kind === "loading" && testChecks.length > 0)) && (
+              {(testState.kind === "ok" || testState.kind === "err" || (testState.kind === "loading" && testChecks.length > 0) || l4 != null) && (
                 <div data-testid="settings-test-result" data-kind={testState.kind}>
-                  {testChecks.length > 0 ? (
+                  {testChecks.length > 0 || l4 != null ? (
                     <CredentialTestProgress
                       checks={testChecks}
                       report={testState.diagnostics ?? null}
                       running={testState.kind === "loading"}
+                      l4={l4 ? { status: l4.status } : null}
                     />
                   ) : testState.kind !== "loading" ? (
                     <div
@@ -991,6 +1071,18 @@ export function CredentialsSection() {
                           : i18n.t("settings.model.testFail")}
                       </strong>
                       {(testState.kind === "ok" || testState.kind === "err") ? (testState.msg ?? "") : ""}
+                      {testState.kind === "err" ? (
+                        <div data-testid="test-failure-guidance" style={{ marginTop: "6px" }}>
+                          <div>
+                            <strong>{i18n.t("settings.model.testFailureReason")}：</strong>
+                            {testState.msg || i18n.t("settings.model.testFailureReasonUnknown")}
+                          </div>
+                          <div>
+                            <strong>{i18n.t("settings.model.testFailureSolution")}：</strong>
+                            {i18n.t("settings.model.testFailureSolutionDefault")}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>

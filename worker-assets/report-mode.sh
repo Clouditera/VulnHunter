@@ -126,7 +126,8 @@ model_entry = {
 }
 if is_thinking or is_deepseek or is_zai:
     model_entry["reasoning"] = True
-if is_deepseek:
+# fish 2026-08-05: completions endpoints default to system role (see scan-mode)
+if api_type == "openai-completions":
     model_entry["compat"] = {"supportsDeveloperRole": False}
 
 provider_cfg = {

@@ -21,6 +21,13 @@ export interface TestProgressProps {
   /** Final report once the stream completes. */
   report?: ModelDiagnosticResult | null;
   running: boolean;
+  /**
+   * L4 agent-loop verdict (fish 2026-08-05: L4 restored; badge stays gone —
+   * the verdict surfaces as a fourth row in this panel instead). Fired
+   * asynchronously after a gated save; the caller polls and feeds the
+   * status back in.
+   */
+  l4?: { status: "running" | "passed" | "failed" } | null;
 }
 
 /**
@@ -32,6 +39,69 @@ function checkLabel(check: ModelDiagnosticCheck): string {
   const key = `diagnostics.check.${check.id}`;
   const translated = i18n.t(key);
   return translated && translated !== key ? translated : check.label;
+}
+
+function FailureGuidance({ checks }: { checks: ModelDiagnosticCheck[] }) {
+  const failedChecks = checks.filter((check) => check.status === "fail");
+  if (failedChecks.length === 0) return null;
+
+  return (
+    <div
+      data-testid="test-failure-guidance"
+      style={{
+        padding: "10px 12px",
+        borderTop: "1px solid rgba(194,40,40,0.28)",
+        background: "var(--bg-error)",
+        color: "var(--danger)",
+        fontSize: 12,
+        lineHeight: 1.6,
+      }}
+    >
+      {failedChecks.map((check) => (
+        <div key={check.id} style={{ marginBottom: failedChecks.length > 1 ? 8 : 0 }}>
+          <div>
+            <strong>{i18n.t("settings.model.testFailureReason")}：</strong>
+            {checkLabel(check)} —{" "}
+            {check.detail || check.message || i18n.t("settings.model.testFailureReasonUnknown")}
+          </div>
+          <div>
+            <strong>{i18n.t("settings.model.testFailureSolution")}：</strong>
+            {check.suggestion || i18n.t("settings.model.testFailureSolutionDefault")}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TestConclusion({ checks, ok }: { checks: ModelDiagnosticCheck[]; ok: boolean }) {
+  if (!ok) return <FailureGuidance checks={checks} />;
+
+  const verifiedChecks = checks.filter((check) => check.status === "pass");
+  return (
+    <div
+      data-testid="test-success-conclusion"
+      style={{
+        padding: "10px 12px",
+        borderTop: "1px solid var(--bg-success-border)",
+        background: "var(--bg-success)",
+        color: "var(--bg-success-text)",
+        fontSize: 12,
+        lineHeight: 1.6,
+      }}
+    >
+      <div>
+        <strong>{i18n.t("settings.model.testSuccessConclusion")}：</strong>
+        {i18n.t("settings.model.testSuccessReady")}
+      </div>
+      {verifiedChecks.length > 0 ? (
+        <div>
+          <strong>{i18n.t("settings.model.testSuccessVerified")}：</strong>
+          {verifiedChecks.map(checkLabel).join("、")}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function StatusIcon({ status }: { status: string }) {
@@ -57,12 +127,12 @@ function StatusIcon({ status }: { status: string }) {
   );
 }
 
-export function CredentialTestProgress({ checks, report, running }: TestProgressProps) {
+export function CredentialTestProgress({ checks, report, running, l4 }: TestProgressProps) {
   const [, tick] = useState(0);
   useEffect(() => i18n.onChange(() => tick((n) => n + 1)), []);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  if (checks.length === 0 && !report) return null;
+  if (checks.length === 0 && !report && !l4) return null;
 
   return (
     <div
@@ -108,11 +178,21 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
                   {" "}
                   {active
                     ? i18n.t("settings.model.testProgress.running")
-                    : c.message}
+                    : c.id === "thinking" && c.message === "not_reasoning"
+                      ? i18n.t("diagnostics.check.thinking.notReasoning")
+                      : c.id === "l4_agent"
+                        ? i18n.t(c.status === "pass" ? "diagnostics.l4.passed" : "diagnostics.l4.failed")
+                        : c.message}
                 </span>
               </span>
               {typeof c.durationMs === "number" && done ? (
-                <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-tertiary)",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
                   {(c.durationMs / 1000).toFixed(1)}s
                 </span>
               ) : null}
@@ -141,7 +221,9 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
                   wordBreak: "break-word",
                 }}
               >
-                {c.suggestion ? `${i18n.t("settings.model.testProgress.suggestion")}：${c.suggestion}\n` : ""}
+                {c.suggestion
+                  ? `${i18n.t("settings.model.testProgress.suggestion")}：${c.suggestion}\n`
+                  : ""}
                 {c.httpStatus ? `HTTP：${c.httpStatus}\n` : ""}
                 {c.endpoint ? `Endpoint：${c.endpoint}\n` : ""}
                 {c.detail ?? ""}
@@ -150,6 +232,35 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
           </div>
         );
       })}
+      {l4 ? (
+        <div data-testid="test-check-l4_agent" data-status={l4.status}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              width: "100%",
+              padding: "8px 12px",
+              borderBottom: "1px solid var(--divider)",
+              fontSize: 12.5,
+              color: "var(--text-primary)",
+            }}
+          >
+            <StatusIcon status={l4.status === "passed" ? "pass" : l4.status === "failed" ? "fail" : "running"} />
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontWeight: 600 }}>{i18n.t("diagnostics.check.agent")}</span>
+              <span style={{ color: "var(--text-secondary)" }}>
+                {" "}
+                {l4.status === "running"
+                  ? i18n.t("settings.model.testProgress.running")
+                  : l4.status === "passed"
+                    ? i18n.t("diagnostics.l4.passed")
+                    : i18n.t("diagnostics.l4.failed")}
+              </span>
+            </span>
+          </div>
+        </div>
+      ) : null}
       {report && !running ? (
         <div
           data-testid="test-progress-summary"
@@ -160,8 +271,14 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
             color: report.ok ? "var(--status-completed)" : "var(--danger)",
           }}
         >
-          {report.summary}
+          {report.ok ? i18n.t("settings.model.testOk") : report.summary}
         </div>
+      ) : null}
+      {!running ? (
+        <TestConclusion
+          checks={checks}
+          ok={report?.ok ?? !checks.some((c) => c.status === "fail")}
+        />
       ) : null}
     </div>
   );
@@ -229,7 +346,12 @@ export async function streamCredentialTest(
       };
       if (parsed.type === "report") {
         sawReport = true;
-        handlers.onEvent({ type: "report", report: (parsed as { report: ModelDiagnosticResult }).report ?? (parsed as unknown as ModelDiagnosticResult) });
+        handlers.onEvent({
+          type: "report",
+          report:
+            (parsed as { report: ModelDiagnosticResult }).report ??
+            (parsed as unknown as ModelDiagnosticResult),
+        });
       } else if (parsed.check) {
         handlers.onEvent({ type: parsed.type, check: parsed.check } as TestStreamEvent);
       }

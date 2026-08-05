@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { WebSocketServer, WebSocket } from "ws";
 import { normalizeToolEventLine } from "./tool-event-normalize.js";
+import { RpcCommandTracker } from "./rpc-command-tracker.js";
 
 const PORT = Number(process.env.BRIDGE_PORT ?? "8080");
 const MODE = process.env.MODE ?? "chat";
@@ -71,6 +72,7 @@ const CONTEXT_WINDOW = parsePositiveInt(process.env.LLM_CONTEXT_WINDOW_TOKENS, D
 let pi: ChildProcess | null = null;
 const wsClients = new Set<WebSocket>();
 let lastActivity = Date.now();
+const rpcCommands = new RpcCommandTracker((line) => writeToPi(line));
 
 const PROTO_API_MAP: Record<string, string> = {
   "openai": "openai-completions",
@@ -118,7 +120,11 @@ function setupPiConfig(): void {
     const providerConfig: Record<string, unknown> = {
       baseUrl: API_KEY ? BASE_URL : noAuthProxyBaseUrl("primary"),
       api,
-      models: [{ id: MODEL_NAME, input: ["text", "image"], contextWindow: CONTEXT_WINDOW, maxTokens: 16384 }],
+      // fish 2026-08-05: completions endpoints default to system role.
+      models: [{
+        id: MODEL_NAME, input: ["text", "image"], contextWindow: CONTEXT_WINDOW, maxTokens: 16384,
+        ...(api === "openai-completions" ? { compat: { supportsDeveloperRole: false } } : {}),
+      }],
     };
     process.env.VH_LLM_API_KEY = API_KEY || NO_AUTH_DUMMY_KEY;
     providerConfig.apiKey = "$VH_LLM_API_KEY";
@@ -147,7 +153,10 @@ function setupPiConfig(): void {
           const providerConfig: Record<string, unknown> = {
             baseUrl: cred.api_key ? cred.base_url : noAuthProxyBaseUrl(cred.id),
             api,
-            models: [{ id: cred.model_id, input: ["text", "image"], contextWindow: parsePositiveInt(String(cred.context_window_tokens ?? ""), DEFAULT_CONTEXT_WINDOW_TOKENS), maxTokens: 16384 }],
+            models: [{
+              id: cred.model_id, input: ["text", "image"], contextWindow: parsePositiveInt(String(cred.context_window_tokens ?? ""), DEFAULT_CONTEXT_WINDOW_TOKENS), maxTokens: 16384,
+              ...(api === "openai-completions" ? { compat: { supportsDeveloperRole: false } } : {}),
+            }],
           };
           process.env[apiKeyEnv] = cred.api_key || NO_AUTH_DUMMY_KEY;
           providerConfig.apiKey = `$${apiKeyEnv}`;
@@ -257,6 +266,13 @@ function spawnPi(): ChildProcess {
     // broadcasting, so the frontend reducer and service persistence read a
     // single consistent shape. Non-tool events pass through unchanged.
     const outLine = normalizeToolEventLine(line);
+    let event: unknown;
+    try {
+      event = JSON.parse(line);
+      rpcCommands.accept(event);
+    } catch {
+      // Non-JSON output is still forwarded for diagnostics.
+    }
     broadcastToClients(outLine);
 
     // Write to report events file for LiveLog
@@ -294,6 +310,7 @@ function spawnPi(): ChildProcess {
 
   child.on("exit", (code) => {
     console.log(`[bridge] pi exited with code ${code}`);
+    rpcCommands.rejectAll(new Error(`pi exited with code ${code}`));
     pi = null;
   });
 
@@ -308,13 +325,17 @@ function broadcastToClients(jsonLine: string): void {
   }
 }
 
+function writeToPi(line: string): boolean {
+  if (!pi?.stdin || pi.stdin.destroyed) return false;
+  lastActivity = Date.now();
+  return pi.stdin.write(line);
+}
+
 function sendToPi(command: Record<string, unknown>): boolean {
-  if (!pi || !pi.stdin || pi.stdin.destroyed) {
+  if (!writeToPi(`${JSON.stringify(command)}\n`)) {
     console.warn("[bridge] pi not running, cannot send command");
     return false;
   }
-  lastActivity = Date.now();
-  pi.stdin.write(JSON.stringify(command) + "\n");
   return true;
 }
 
@@ -504,24 +525,11 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
 
   if (method === "POST" && url === "/chat/set-model") {
     let body = "";
-    req.on("data", (chunk) => (body += chunk));
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
     req.on("end", () => {
-      try {
-        const { credentialId } = JSON.parse(body);
-        const mapping = credProviderMap.get(credentialId);
-        if (!mapping) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: false, error: "Credential not registered" }));
-          return;
-        }
-        const ok = sendToPi({ type: "set_model", provider: mapping.providerKey, modelId: mapping.modelId });
-        console.log(`[bridge] set_model → provider=${mapping.providerKey}, model=${mapping.modelId}`);
-        res.writeHead(ok ? 200 : 503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok, provider: mapping.providerKey, modelId: mapping.modelId }));
-      } catch {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: false, error: "Invalid JSON" }));
-      }
+      void handleSetModel(body, res);
     });
     return;
   }
@@ -541,6 +549,37 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
 
   res.writeHead(404, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ error: "Not found" }));
+}
+
+async function handleSetModel(body: string, res: ServerResponse): Promise<void> {
+  let credentialId: string;
+  try {
+    ({ credentialId } = JSON.parse(body) as { credentialId: string });
+  } catch {
+    sendJson(res, 400, { ok: false, error: "Invalid JSON" });
+    return;
+  }
+
+  const mapping = credProviderMap.get(credentialId);
+  if (!mapping) {
+    sendJson(res, 400, { ok: false, error: "Credential not registered" });
+    return;
+  }
+
+  try {
+    await rpcCommands.send({ type: "set_model", provider: mapping.providerKey, modelId: mapping.modelId });
+    console.log(`[bridge] set_model confirmed → provider=${mapping.providerKey}, model=${mapping.modelId}`);
+    sendJson(res, 200, { ok: true, provider: mapping.providerKey, modelId: mapping.modelId });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.warn(`[bridge] set_model failed: ${error}`);
+    sendJson(res, 503, { ok: false, error });
+  }
+}
+
+function sendJson(res: ServerResponse, status: number, body: Record<string, unknown>): void {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(body));
 }
 
 // ─── Idle Timer ───
