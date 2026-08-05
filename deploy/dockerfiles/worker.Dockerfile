@@ -84,6 +84,14 @@ COPY flows/vulnhunter-report /opt/vulnhunter/flows/vulnhunter-report
 RUN chmod 0777 /opt/vulnhunter/flows/vulnforge /opt/vulnhunter/flows/vulnforge-timeout \
     /opt/vulnhunter/flows/prepare /opt/vulnhunter/flows/vulnhunter-report
 
+# Bake the ssh drop-in at build time: it is a static one-liner (Include the
+# tmpfs config), so runtime injection never touches /etc — de-identified
+# workers (uid != 0) can't write there (QA-caught continue-scan EACCES).
+# ssh silently skips the Include when the tmpfs config is absent (static
+# tasks) — verified: ssh -G exit 0 both ways.
+RUN mkdir -p /etc/ssh/ssh_config.d \
+    && printf 'Include /run/vulnhunter/ssh/config\n' > /etc/ssh/ssh_config.d/99-vulnhunter.conf
+
 # Worker bridge (for chat/report modes)
 COPY packages/worker-bridge/dist/bundle.js /opt/bridge/bundle.js
 COPY packages/worker-bridge/package.json /opt/bridge/package.json
