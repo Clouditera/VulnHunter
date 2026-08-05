@@ -1015,7 +1015,7 @@ export function CredentialsSection() {
               </div>
               {(testState.kind === "ok" || testState.kind === "err" || (testState.kind === "loading" && testChecks.length > 0) || l4 != null) && (
                 <div data-testid="settings-test-result" data-kind={testState.kind}>
-                  {testChecks.length > 0 ? (
+                  {testChecks.length > 0 || l4 != null ? (
                     <CredentialTestProgress
                       checks={testChecks}
                       report={testState.diagnostics ?? null}
