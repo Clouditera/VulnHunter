@@ -991,6 +991,18 @@ export function CredentialsSection() {
                           : i18n.t("settings.model.testFail")}
                       </strong>
                       {(testState.kind === "ok" || testState.kind === "err") ? (testState.msg ?? "") : ""}
+                      {testState.kind === "err" ? (
+                        <div data-testid="test-failure-guidance" style={{ marginTop: "6px" }}>
+                          <div>
+                            <strong>{i18n.t("settings.model.testFailureReason")}：</strong>
+                            {testState.msg || i18n.t("settings.model.testFailureReasonUnknown")}
+                          </div>
+                          <div>
+                            <strong>{i18n.t("settings.model.testFailureSolution")}：</strong>
+                            {i18n.t("settings.model.testFailureSolutionDefault")}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>

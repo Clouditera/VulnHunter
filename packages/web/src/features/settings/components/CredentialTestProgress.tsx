@@ -34,6 +34,39 @@ function checkLabel(check: ModelDiagnosticCheck): string {
   return translated && translated !== key ? translated : check.label;
 }
 
+function FailureGuidance({ checks }: { checks: ModelDiagnosticCheck[] }) {
+  const failedChecks = checks.filter((check) => check.status === "fail");
+  if (failedChecks.length === 0) return null;
+
+  return (
+    <div
+      data-testid="test-failure-guidance"
+      style={{
+        padding: "10px 12px",
+        borderTop: "1px solid rgba(194,40,40,0.28)",
+        background: "var(--bg-error)",
+        color: "var(--danger)",
+        fontSize: 12,
+        lineHeight: 1.6,
+      }}
+    >
+      {failedChecks.map((check) => (
+        <div key={check.id} style={{ marginBottom: failedChecks.length > 1 ? 8 : 0 }}>
+          <div>
+            <strong>{i18n.t("settings.model.testFailureReason")}：</strong>
+            {checkLabel(check)} —{" "}
+            {check.detail || check.message || i18n.t("settings.model.testFailureReasonUnknown")}
+          </div>
+          <div>
+            <strong>{i18n.t("settings.model.testFailureSolution")}：</strong>
+            {check.suggestion || i18n.t("settings.model.testFailureSolutionDefault")}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function StatusIcon({ status }: { status: string }) {
   if (status === "pass")
     return <Icon name="check-circle" size={14} style={{ color: "var(--status-completed)" }} />;
@@ -106,13 +139,17 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
                 <span style={{ fontWeight: 600 }}>{checkLabel(c)}</span>
                 <span style={{ color: "var(--text-secondary)" }}>
                   {" "}
-                  {active
-                    ? i18n.t("settings.model.testProgress.running")
-                    : c.message}
+                  {active ? i18n.t("settings.model.testProgress.running") : c.message}
                 </span>
               </span>
               {typeof c.durationMs === "number" && done ? (
-                <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-tertiary)",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
                   {(c.durationMs / 1000).toFixed(1)}s
                 </span>
               ) : null}
@@ -141,7 +178,9 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
                   wordBreak: "break-word",
                 }}
               >
-                {c.suggestion ? `${i18n.t("settings.model.testProgress.suggestion")}：${c.suggestion}\n` : ""}
+                {c.suggestion
+                  ? `${i18n.t("settings.model.testProgress.suggestion")}：${c.suggestion}\n`
+                  : ""}
                 {c.httpStatus ? `HTTP：${c.httpStatus}\n` : ""}
                 {c.endpoint ? `Endpoint：${c.endpoint}\n` : ""}
                 {c.detail ?? ""}
@@ -163,6 +202,7 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
           {report.summary}
         </div>
       ) : null}
+      {!running ? <FailureGuidance checks={checks} /> : null}
     </div>
   );
 }
@@ -229,7 +269,12 @@ export async function streamCredentialTest(
       };
       if (parsed.type === "report") {
         sawReport = true;
-        handlers.onEvent({ type: "report", report: (parsed as { report: ModelDiagnosticResult }).report ?? (parsed as unknown as ModelDiagnosticResult) });
+        handlers.onEvent({
+          type: "report",
+          report:
+            (parsed as { report: ModelDiagnosticResult }).report ??
+            (parsed as unknown as ModelDiagnosticResult),
+        });
       } else if (parsed.check) {
         handlers.onEvent({ type: parsed.type, check: parsed.check } as TestStreamEvent);
       }
