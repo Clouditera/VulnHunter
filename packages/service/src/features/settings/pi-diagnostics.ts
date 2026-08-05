@@ -20,8 +20,8 @@ import type { DecryptedLlmCredential } from "./storage.js";
 
 // ── SSE event types (architect's contract) ──────────────────────────
 
-export type DiagnosticCheckId = "basic" | "thinking" | "tool";
-export type DiagnosticLayer = "L1" | "L2" | "L3";
+export type DiagnosticCheckId = "basic" | "thinking" | "tool" | "l4_agent";
+export type DiagnosticLayer = "L1" | "L2" | "L3" | "L4";
 
 export interface DiagnosticCheck {
   id: DiagnosticCheckId;

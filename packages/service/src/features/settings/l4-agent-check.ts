@@ -99,7 +99,7 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
       "--no-session",
       "--provider", "platform",
       "--model", input.modelId,
-      "Reply with the single word: ok",
+      "Use the bash tool to run: ls. Then stop and reply with the word: ok",
     ];
 
     const events: unknown[] = [];
@@ -184,10 +184,26 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
 
     const durationMs = Date.now() - start;
 
-    // Assert: agent settled + assistant message with non-error stopReason
+    // Assert (fish 2026-08-05): the agent must actually close a real tool
+    // loop — bash tool call observed, tool result clean, agent settled.
+    // Schema: pi AgentEvent (pi-agent-core types.d.ts) — tool_execution_start
+    // carries toolName ("bash" built-in), tool_execution_end carries isError.
     const agentSettled = events.some(
       (e) => (e as { type?: string }).type === "agent_settled",
     );
+
+    const bashStarts = events.filter(
+      (e) =>
+        (e as { type?: string }).type === "tool_execution_start" &&
+        (e as { toolName?: string }).toolName === "bash",
+    );
+    const bashOkResults = events.filter(
+      (e) =>
+        (e as { type?: string }).type === "tool_execution_end" &&
+        (e as { toolName?: string }).toolName === "bash" &&
+        (e as { isError?: boolean }).isError === false,
+    );
+    const toolCallObserved = bashStarts.length > 0 && bashOkResults.length > 0;
 
     const assistantMessages = events.filter(
       (e) =>
@@ -245,10 +261,19 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
       };
     }
 
+    if (!toolCallObserved) {
+      return {
+        status: "fail",
+        durationMs,
+        detail: `Agent completed without a clean bash tool call (bash_starts=${bashStarts.length}, bash_ok=${bashOkResults.length}) — the model may not honor tool instructions or the endpoint rejects tool requests`,
+        events: events.slice(0, 5),
+      };
+    }
+
     return {
       status: "pass",
       durationMs,
-      detail: `Agent circuit OK (pi ${PI_VERSION}, ${assistantMessages.length} assistant message(s))`,
+      detail: `Agent circuit OK (pi ${PI_VERSION}, bash tool call + result verified, ${assistantMessages.length} assistant message(s))`,
     };
   } catch (err) {
     const durationMs = Date.now() - start;

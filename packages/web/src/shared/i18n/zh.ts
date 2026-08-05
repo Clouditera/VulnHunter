@@ -673,6 +673,7 @@ export const ZH: Record<string, string> = {
   "diagnostics.check.thinking": "模型思考",
   "diagnostics.check.tool": "工具调用",
   "diagnostics.check.agent": "Agent 回路",
+  "diagnostics.check.l4_agent": "Agent 回路",
   "diagnostics.check.thinking.notReasoning": "（未开启思考，不做此测试）",
   "diagnostics.l4.passed": "通过",
   "diagnostics.l4.failed": "未通过——真实任务/chat 可能受影响",
