@@ -74,6 +74,12 @@ RUN test -f /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-tracker/ind
     && grep -q -- '--sandbox-cfg <value>' /tmp/vulnforge-help.txt
 COPY flows/vulnhunter-report /opt/vulnhunter/flows/vulnhunter-report
 
+# De-identified workers (non-root) regenerate models.json + .env inside the
+# flow dir at run start (scan-mode.sh / report-mode.sh). Those two dirs are
+# per-run scratch — make them world-writable so uid != 0 can write.
+# Containers are single-use; nothing secret persists in the image.
+RUN chmod 0777 /opt/vulnhunter/flows/vulnforge /opt/vulnhunter/flows/vulnhunter-report
+
 # Worker bridge (for chat/report modes)
 COPY packages/worker-bridge/dist/bundle.js /opt/bridge/bundle.js
 COPY packages/worker-bridge/package.json /opt/bridge/package.json

@@ -107,6 +107,27 @@ instance_backup() {
 }
 
 # ── main: upgrade a self-contained instance from a release package ──
+# Worker de-identification (fish-approved 2026-08-05): workers now run as
+# SERVICE_UID, so legacy root-written files in task workspaces would wedge
+# continue-scan / cleanup. One-shot root helper chowns the worker-writable
+# data dirs. Probe first (fresh installs skip at zero cost); db/minio are
+# NEVER touched (postgres/minio uids). Rollback-safe: old root workers can
+# still write the chowned dirs.
+rehome_root_owned_workdirs() {
+  local data_dir="$1" uid="$2" gid="$3" image="$4"
+  local dirs=(workspaces chat-sessions report-workspaces diagnostics)
+  local d
+  for d in "${dirs[@]}"; do
+    [[ -d "$data_dir/$d" ]] || continue
+    if find "$data_dir/$d" -uid 0 -print -quit 2>/dev/null | grep -q .; then
+      echo "[upgrade] root-owned files found under $data_dir/$d — rehoming workdirs to $uid:$gid (worker de-identification)..."
+      docker run --rm --user 0:0 -v "$data_dir:/data" --entrypoint sh "$image" -c         "for d in ${dirs[*]}; do [ -d /data/\$d ] && chown -R $uid:$gid /data/\$d; done; echo rehomed"         && echo "[upgrade] workdir rehome done (${dirs[*]})"         || echo "[upgrade] warning: workdir rehome failed — legacy tasks may hit permission errors" >&2
+      return 0
+    fi
+  done
+  echo "[upgrade] workdir ownership: no root-owned files — rehome skipped"
+}
+
 run_instance_upgrade() {
   local pkg_root="$1" instance_dir="$2"
   local force="${FORCE:-0}" with_running="${WITH_RUNNING:-0}"
@@ -213,6 +234,9 @@ run_instance_upgrade() {
   # shellcheck disable=SC1090
   set -a; source "$instance_dir/.env"; set +a
   validate_local_images || return 1
+
+  # One-time workdir rehome for worker de-identification (probe-gated, no-op on fresh installs)
+  rehome_root_owned_workdirs "${DATA_DIR:-$instance_dir/data}" "${SERVICE_UID:-1001}" "${SERVICE_GID:-1001}" "${SERVICE_IMAGE:-vulnhunter-service:latest}"
 
   local project_name="${PROJECT_NAME:-$(project_name_from_dir "$instance_dir")}"
   echo "[upgrade] restarting stack (project=$project_name)..."

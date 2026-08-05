@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# De-identified workers (non-root) get HOME injected by the service; make
+# sure it exists (volume-mount workspaces can't be pre-created host-side).
+export HOME="${HOME:-/workspace/.home}"
+mkdir -p "$HOME" 2>/dev/null || true
+
 MODE="${MODE:-scan}"
 
 case "$MODE" in
