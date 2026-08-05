@@ -315,6 +315,12 @@ if [[ -d images ]]; then
 fi
 validate_local_images
 prepare_data_dirs
+
+# One-time workdir rehome for worker de-identification (probe-gated, no-op on
+# fresh installs; db/minio never touched). Same step runs on the
+# self-contained instance path (lib/instance-upgrade.sh).
+rehome_root_owned_workdirs "${DATA_DIR:-/opt/vulnhunter/data}" "${SERVICE_UID:-1001}" "${SERVICE_GID:-1001}" "${SERVICE_IMAGE:-vulnhunter-service:latest}"
+
 # Dual-name: support both pre-rename (vulnagent-*) and post-rename (vulnhunter-*) containers.
 migrate_container_data vulnagent-db /var/lib/postgresql/data "${DATA_DIR:-/opt/vulnagent/data}/db" db
 migrate_container_data vulnhunter-db /var/lib/postgresql/data "${DATA_DIR:-/opt/vulnhunter/data}/db" db
