@@ -8,6 +8,7 @@ vi.mock("../../src/features/workers/docker-client.js", () => ({
   LABEL_TASK_ID: "vulnhunter.task_id", LABEL_TASK_TYPE: "vulnhunter.task_type", LABEL_SCHEDULER_CLAIM: "vulnhunter.scheduler_claim",
   listManagedContainers: vi.fn(async () => m.containers),
   getDocker: () => ({ getContainer: () => ({ remove: m.remove, stop: vi.fn() }) }),
+  removeWorkDir: vi.fn(async () => undefined),
 }));
 vi.mock("../../src/features/tasks/storage.js", () => ({
   listPreparingSchedulerClaims: vi.fn(async () => m.preparing), markSchedulerClaimRunning: m.mark,
