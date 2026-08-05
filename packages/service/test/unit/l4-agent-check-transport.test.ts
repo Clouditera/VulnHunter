@@ -20,6 +20,8 @@ const spawnCalls: SpawnCall[] = [];
 const modelsJsonSnapshots: string[] = [];
 /** When true the mock child emits NO tool events (assertion must fail). */
 let noToolCall = false;
+/** When true the mock child replays the REAL captured pi event stream. */
+let fixtureMode = false;
 
 vi.mock("node:child_process", () => ({
   spawn: (command: string, args: string[], options: SpawnCall["options"]) => {
@@ -47,6 +49,13 @@ vi.mock("node:child_process", () => ({
       // json carries tool traces on message_end.content (ToolCall block) and
       // turn_end.toolResults (ToolResultMessage) — NOT tool_execution_* events
       // (QA-verified on the real stream). Mock closes a bash loop accordingly.
+      if (fixtureMode) {
+        for (const line of REAL_FIXTURE_LINES) {
+          child.stdout.emit("data", Buffer.from(line + "\n"));
+        }
+        child.emit("close", 0);
+        return;
+      }
       if (noToolCall) {
         child.stdout.emit("data", Buffer.from(JSON.stringify({ type: "agent_settled" }) + "\n"));
         child.stdout.emit("data", Buffer.from(JSON.stringify({
@@ -81,6 +90,12 @@ vi.mock("node:child_process", () => ({
 
 const { runL4Check } = await import("../../src/features/settings/l4-agent-check.js");
 
+import { readFileSync } from "node:fs";
+const REAL_FIXTURE_LINES = readFileSync(
+  new URL("../fixtures/l4-pi-events-real.jsonl", import.meta.url),
+  "utf-8",
+).split("\n").filter((l) => l.trim());
+
 const SECRET = "sk-unit-test-secret-DoNotLeak";
 
 function input(protoType = "openai-completions") {
@@ -97,6 +112,13 @@ describe("L4 credential transport (no argv leak)", () => {
     spawnCalls.length = 0;
     modelsJsonSnapshots.length = 0;
     noToolCall = false;
+    fixtureMode = false;
+  });
+
+  it("passes against the REAL captured pi event stream (qa-nery 23130 fixture)", async () => {
+    fixtureMode = true;
+    const result = await runL4Check(input());
+    expect(result.status).toBe("pass");
   });
 
   it("fails when the agent never closes a bash tool call (fish 2026-08-05 assertion)", async () => {
