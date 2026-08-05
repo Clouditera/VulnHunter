@@ -114,18 +114,18 @@ describe("evaluateQuota matrix (0 = unlimited)", () => {
 });
 
 describe("task ed25519 keypair (H1 handoff)", () => {
-  it("produces a valid OpenSSH ssh-ed25519 public line and keeps private key in memory only", () => {
+  it("produces a valid OpenSSH ssh-ed25519 public line and keeps private key in memory only", async () => {
     const { publicKeyOpenSsh } = ensureTaskSshKeypair(TASK_ID);
     expect(publicKeyOpenSsh).toMatch(/^ssh-ed25519 AAAA/);
     const wire = Buffer.from(publicKeyOpenSsh.split(" ")[1]!, "base64");
     // wire format: uint32 len + "ssh-ed25519" + uint32 len + 32-byte raw key
     expect(wire.subarray(4, 15).toString()).toBe("ssh-ed25519");
     expect(wire.length).toBe(4 + 11 + 4 + 32);
-    expect(peekTaskSshPrivateKey(TASK_ID)).toContain("PRIVATE KEY-----");
+    expect(await peekTaskSshPrivateKey(TASK_ID)).toContain("PRIVATE KEY-----");
     // stable per task until dropped
     expect(ensureTaskSshKeypair(TASK_ID).publicKeyOpenSsh).toBe(publicKeyOpenSsh);
     dropTaskSshKeypair(TASK_ID);
-    expect(peekTaskSshPrivateKey(TASK_ID)).toBeNull();
+    expect(await peekTaskSshPrivateKey(TASK_ID)).toBeNull();
     expect(ensureTaskSshKeypair(TASK_ID).publicKeyOpenSsh).not.toBe(publicKeyOpenSsh);
   });
 });

@@ -122,7 +122,7 @@ export async function spawnScanWorker(
   let sandbox: { mapping: TaskSandbox; privateKey: string } | null = null;
   if (dynamicEnabled) {
     const mapping = await getTaskSandbox(task.id);
-    const privateKey = mapping?.state === "ready" ? peekTaskSshPrivateKey(task.id) : null;
+    const privateKey = mapping?.state === "ready" ? await peekTaskSshPrivateKey(task.id) : null;
     if (mapping?.state === "ready" && privateKey) {
       sandbox = { mapping, privateKey };
     } else {

@@ -47,6 +47,22 @@ For a server that already has VulnHunter installed in this directory, do not run
 - Source archive upload limits use two layers: `UPLOAD_GATEWAY_LIMIT_MB` is the deployment ceiling and drives packaged web nginx plus the maximum value admins can configure; Settings controls the user-facing source archive upload limit and must be `<= UPLOAD_GATEWAY_LIMIT_MB`.
 - Enterprise/license information: official customer release packages set `EDITION=enterprise` and include `.secrets/license-public.pem`. For older installs that do not show license information, set `EDITION=enterprise` in `.env`, ensure `LICENSE_PUBLIC_KEY_FILE=./.secrets/license-public.pem` and `VULNHUNTER_LICENSE_PUBLIC_KEY_FILE=/run/secrets/license-public.pem`, then restart `service`/`web` and activate with the customer license.
 
+## SandboxPlane（动态验证沙箱）
+
+- **本机模式（默认）**：发布包自带沙箱子栈，`sandbox/install.sh` 一把起，无需任何手工步骤。
+- **远程模式**（沙箱跑在另一台机器）：5 步里只有第 3 步必须人工（跨机首次信任无法自动建立）：
+  1. 沙箱机：解压发布包 → `./sandbox/install.sh` 起沙箱子栈（自动）
+  2. 平台机生成部署钥匙：`ssh-keygen -t ed25519 -f $DATA_DIR/.secrets/sandbox-bastion -N ''`（一条命令）
+  3. **人工**：把上一步生成的 `.pub` 公钥追加到沙箱机堡垒机账号的 `~/.ssh/authorized_keys`
+  4. 平台 `.env` 填四键（缺一动态验证静默不可用，doctor 会报红）：
+     - `SANDBOXPLANE_BASE_URL=http://<sandbox-host>:28090`
+     - `SANDBOXPLANE_TOKEN=<plane token>`
+     - `SANDBOX_SSH_BASTION=<user>@<sandbox-host>`
+     - `SANDBOX_SSH_BASTION_IDENTITY=$DATA_DIR/.secrets/sandbox-bastion`
+  5. 重启栈后 `./doctor.sh` 验证（第 19 项：钥匙存在+权限+plane 可达）
+
+  注意：`SANDBOX_SSH_BASTION_IDENTITY` 必须指向**持久文件**（放 `$DATA_DIR/.secrets/`、`chmod 600`）。用临时环境变量 export 的配置会在 service 重启后丢失，动态验证将静默不跑（2026-08 实证事故）。
+
 ## Troubleshooting
 
 - Port occupied: change `WEB_PORT` in `.env`.

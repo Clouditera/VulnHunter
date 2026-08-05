@@ -480,6 +480,20 @@ echo "The release package directory is no longer required for runtime:"
 echo "  $PKG_ROOT"
 echo "You may delete it after taking a backup of $instance_dir if desired."
 echo ""
+# Remote SandboxPlane without a bastion identity: warn loudly NOW, not when
+# the first dynamic task silently degrades (2026-08-04 incident).
+if grep -qE '^SANDBOX_SSH_BASTION=.+' "$instance_dir/.env" 2>/dev/null \
+  && ! grep -qE '^SANDBOX_SSH_BASTION_IDENTITY=.+' "$instance_dir/.env" 2>/dev/null; then
+  echo ""
+  echo "------------------------------------------------------------------"
+  echo " WARNING: remote SandboxPlane configured without bastion identity"
+  echo " Dynamic verification will NOT work until you set"
+  echo "   SANDBOX_SSH_BASTION_IDENTITY=<private key file>  in .env"
+  echo " and restart the stack."
+  echo "------------------------------------------------------------------"
+  echo ""
+fi
+
 echo "Next: open /activate, import license, bootstrap admin, configure model credential."
 if [[ -d "$PKG_ROOT/sandbox" ]]; then
   echo "Optional dynamic sandboxes:"

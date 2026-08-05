@@ -5,7 +5,12 @@
  *
  * Key facts (H1 §2): generate at sandbox create; public key goes to
  * SandboxPlane once; private key only into the worker tmpfs (0400);
- * lifetime == task lifetime; no rotation, no DB, no env, no logs.
+ * lifetime == task lifetime; no rotation, no env, no logs.
+ *
+ * 051 update (fish-approved): the private key is ALSO persisted —
+ * vault-encrypted (AES-GCM, master key) onto the task_sandboxes row — so
+ * "继续扫描" survives service restarts/upgrades. Plaintext still never
+ * touches disk; the ciphertext dies with the mapping row on release.
  */
 
 import { generateKeyPairSync } from "node:crypto";
