@@ -71,8 +71,16 @@ check() { if "$@" >/dev/null 2>&1; then echo "[ok] $*"; else echo "[fail] $*"; f
 check_shell() { local name="$1"; shift; if "$@" >/dev/null 2>&1; then echo "[ok] $name"; else echo "[fail] $name"; fail=1; fi; }
 mount_source() { docker inspect "$1" --format "{{range .Mounts}}{{if eq .Destination \"$2\"}}{{.Source}}{{end}}{{end}}" 2>/dev/null || true; }
 check_mount_source() { [[ "$(mount_source "$1" "$2")" == "$3" ]]; }
+# Resolve a compose service to its live container id (named stacks get
+# <project>-<svc>-1; legacy single stacks pin vulnhunter-<svc>).
+container_ref() {
+  local cid
+  cid="$(compose ps -q "$1" 2>/dev/null | head -n1 || true)"
+  echo "${cid:-vulnhunter-$1}"
+}
+
 check_service_socket() {
-  docker exec -i vulnhunter-service node <<'NODE'
+  docker exec -i "$(container_ref service)" node <<'NODE'
 const net = require('node:net');
 const c = net.createConnection('/var/run/docker.sock');
 c.setTimeout(3000);
@@ -101,24 +109,26 @@ check_shell "DATA_DIR/db writable by postgres uid" docker run --rm --user 70:70 
 check_shell "DATA_DIR/minio writable" docker run --rm --entrypoint sh -v "$DATA_DIR/minio:/data" "${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}" -c 'touch /data/.doctor-write-test && rm /data/.doctor-write-test'
 identity_probe=".doctor-path-identity-$$"
 printf 'ok' > "${DATA_DIR}/${identity_probe}"
-check_shell "data dir path identity in service" docker exec vulnhunter-service test -f "${DATA_DIR}/${identity_probe}"
+check_shell "data dir path identity in service" docker exec "$(container_ref service)" test -f "${DATA_DIR}/${identity_probe}"
 rm -f "${DATA_DIR}/${identity_probe}"
 check_shell "web root" curl -fsS "http://127.0.0.1:${WEB_PORT}/"
 check_shell "system status API" curl -fsS "http://127.0.0.1:${WEB_PORT}/api/system/status"
-check_shell "service health" docker exec vulnhunter-service node -e "fetch('http://127.0.0.1:28080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-check_shell "service git available" docker exec vulnhunter-service git --version
-check_shell "database health" sh -c "docker inspect --format='{{.State.Health.Status}}' vulnhunter-db | grep -qx healthy"
-check_shell "minio health" sh -c "docker inspect --format='{{.State.Health.Status}}' vulnhunter-minio | grep -qx healthy"
+check_shell "service health" docker exec "$(container_ref service)" node -e "fetch('http://127.0.0.1:28080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+check_shell "service git available" docker exec "$(container_ref service)" git --version
+DB_CID="$(container_ref db)"
+MINIO_CID="$(container_ref minio)"
+check_shell "database health" sh -c "docker inspect --format='{{.State.Health.Status}}' '$DB_CID' | grep -qx healthy"
+check_shell "minio health" sh -c "docker inspect --format='{{.State.Health.Status}}' '$MINIO_CID' | grep -qx healthy"
 check_shell "DATA_DIR/db initialized files readable by postgres uid" check_db_initialized_readable
-check_shell "db mount source is DATA_DIR/db" check_mount_source vulnhunter-db /var/lib/postgresql/data "$DATA_DIR/db"
-check_shell "minio mount source is DATA_DIR/minio" check_mount_source vulnhunter-minio /data "$DATA_DIR/minio"
+check_shell "db mount source is DATA_DIR/db" check_mount_source "$(container_ref db)" /var/lib/postgresql/data "$DATA_DIR/db"
+check_shell "minio mount source is DATA_DIR/minio" check_mount_source "$(container_ref minio)" /data "$DATA_DIR/minio"
 check_shell "worker image present" docker image inspect "${WORKER_IMAGE:-vulnhunter-worker:latest}"
 check_shell "service docker socket access" check_service_socket
 
 # Remote SandboxPlane SSH prerequisites (FAIL — dynamic verification silently
 # degrades without them; 2026-08-04 bastion identity loss incident)
 if [[ -f "${ENV_FILE:-.env}" ]] && grep -qE '^SANDBOX_SSH_BASTION=.+' "${ENV_FILE:-.env}"; then
-  bastion_id="$(grep -E '^SANDBOX_SSH_BASTION_IDENTITY=' "${ENV_FILE:-.env}" | tail -n1 | cut -d= -f2-)"
+  bastion_id="$(grep -E '^SANDBOX_SSH_BASTION_IDENTITY=' "${ENV_FILE:-.env}" | tail -n1 | cut -d= -f2- || true)"
   if [[ -z "$bastion_id" ]]; then
     echo "[fail] remote sandbox: SANDBOX_SSH_BASTION_IDENTITY is not set (required for remote mode)"; fail=1
   elif [[ "$bastion_id" == /* ]]; then
