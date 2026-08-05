@@ -3,6 +3,7 @@ import { api, type LlmCredential, type SourceArchivePolicy, type SandboxCapacity
 import { i18n } from "../../../shared/i18n/index.js";
 import { toast } from "../../../shared/toast/toast.js";
 import { useConfirmClose } from "../../../shared/hooks/useConfirmClose.js";
+import { getTaskNameError, normalizeTaskName, TASK_NAME_MAX_LENGTH } from "../task-name.js";
 
 interface Props {
   onClose: () => void;
@@ -151,6 +152,9 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
 
   async function handleCreate() {
     setError("");
+    const normalizedDisplayName = normalizeTaskName(displayName);
+    if (getTaskNameError(displayName)) return;
+    setDisplayName(normalizedDisplayName);
     setLoading(true);
     // Custom duration is shown in hours; backend expects scan_timeout in seconds.
     // In auto mode the backend forces the fixed 72h ceiling and ignores the value.
@@ -172,7 +176,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         const fd = new FormData();
         fd.append("file", file);
         if (credentialId) fd.append("credential_id", credentialId);
-        if (displayName.trim()) fd.append("display_name", displayName.trim());
+        fd.append("display_name", normalizedDisplayName);
         if (focus) fd.append("audit_focus", focus);
         fd.append("timeout_mode", timeoutMode);
         if (timeoutMode === "custom" && scanTimeout !== undefined) fd.append("scan_timeout", String(scanTimeout));
@@ -187,7 +191,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
           git_url: gitUrl,
           git_branch: gitBranch.trim() || undefined,
           project_name: gitUrl.split("/").pop(),
-          display_name: displayName.trim() || undefined,
+          display_name: normalizedDisplayName,
           credential_id: credentialId || undefined,
           audit_focus: focus || undefined,
           timeout_mode: timeoutMode,
@@ -230,7 +234,9 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
     }
   }
 
-  const canSubmit = tab === "upload" ? !!file : !!gitUrl;
+  const displayNameError = getTaskNameError(displayName);
+  const displayNameLength = Array.from(displayName).length;
+  const canSubmit = (tab === "upload" ? !!file : !!gitUrl) && !displayNameError;
 
   // Track where mousedown originated so a text-selection drag that
   // happens to release on the overlay does NOT close the modal.
@@ -341,14 +347,29 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
             <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
               {i18n.t("tasks.displayNameOptional")}
             </label>
-            <input
-              data-testid="new-task-display-name-input"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder={i18n.t("tasks.displayNamePlaceholder")}
-              maxLength={120}
-              style={{ width: "100%", height: "40px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 10px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box" }}
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                data-testid="new-task-display-name-input"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                onBlur={() => setDisplayName(normalizeTaskName(displayName))}
+                placeholder={i18n.t("tasks.displayNamePlaceholder")}
+                aria-invalid={!!displayNameError}
+                aria-describedby={displayNameError ? "new-task-display-name-error" : undefined}
+                style={{ width: "100%", height: "40px", border: `1px solid ${displayNameError ? "var(--danger)" : "var(--border)"}`, borderRadius: "6px", padding: "0 58px 0 10px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box" }}
+              />
+              <span
+                data-testid="new-task-display-name-count"
+                style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: displayNameLength > TASK_NAME_MAX_LENGTH ? "var(--danger)" : "var(--text-secondary)", pointerEvents: "none" }}
+              >
+                {displayNameLength}/{TASK_NAME_MAX_LENGTH}
+              </span>
+            </div>
+            {displayNameError ? (
+              <div id="new-task-display-name-error" data-testid="new-task-display-name-error" style={{ marginTop: 6, color: "var(--danger)", fontSize: 12 }}>
+                {i18n.t(`tasks.displayNameError.${displayNameError}`)}
+              </div>
+            ) : null}
           </div>
 
           {/* Credential picker — only shown when multiple credentials exist */}

@@ -10,7 +10,8 @@
     "dev": "vite",
     "dev:admin": "vite --config vite.admin.config.ts",
     "preview": "vite preview",
-    "clean": "rm -rf dist dist-business dist-admin"
+    "clean": "rm -rf dist dist-business dist-admin",
+    "test": "vitest run"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.7",
@@ -30,7 +31,8 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "vitest": "^2.1.9"
   },
   "license": "AGPL-3.0-only"
 }
