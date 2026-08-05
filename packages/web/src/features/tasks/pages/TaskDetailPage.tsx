@@ -8,6 +8,7 @@ import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
 import { effectiveTaskState, isTaskTimedOut } from "../task-timeout.js";
 import { formatDateTime } from "../../../shared/utils/format.js";
+import { getTaskNameError, normalizeTaskName, TASK_NAME_MAX_LENGTH } from "../task-name.js";
 
 const TABS = [
   { labelKey: "taskDetail.tab.overview", path: "" },
@@ -128,8 +129,10 @@ export function TaskDetailPage() {
   });
   const [editingName, setEditingName] = useState(false);
   const [displayNameDraft, setDisplayNameDraft] = useState("");
+  const displayNameError = getTaskNameError(displayNameDraft);
+  const displayNameLength = Array.from(displayNameDraft).length;
   const displayNameMut = useMutation({
-    mutationFn: (name: string) => api.tasks.updateDisplayName(taskId!, name),
+    mutationFn: (name: string) => api.tasks.updateDisplayName(taskId!, normalizeTaskName(name)),
     onSuccess: () => {
       setEditingName(false);
       qc.invalidateQueries({ queryKey: ["task", taskId] });
@@ -242,12 +245,16 @@ export function TaskDetailPage() {
                 {task.display_name?.trim() || task.project_name}
               </h1>
               {editingName ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                  <input data-testid="task-display-name-input" value={displayNameDraft} onChange={(e) => setDisplayNameDraft(e.target.value)} maxLength={120} placeholder={task.project_name} style={{ height: 30, border: "1px solid var(--border)", borderRadius: 6, padding: "0 8px", background: "var(--bg-card)", color: "var(--text-primary)" }} />
-                  <button data-testid="task-display-name-save" onClick={() => displayNameMut.mutate(displayNameDraft)} style={{ height: 30, border: "1px solid var(--brand)", borderRadius: 6, background: "var(--brand)", color: "#fff", padding: "0 10px", cursor: "pointer" }}>{i18n.t("tasks.saveDisplayName")}</button>
-                  <button data-testid="task-display-name-clear" onClick={() => { setDisplayNameDraft(""); displayNameMut.mutate(""); }} style={{ height: 30, border: "1px solid var(--border)", borderRadius: 6, background: "transparent", color: "var(--text-secondary)", padding: "0 10px", cursor: "pointer" }}>{i18n.t("tasks.clearDisplayName")}</button>
+                <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 6, flexWrap: "wrap" }}>
+                  <span>
+                    <span style={{ position: "relative", display: "inline-block" }}>
+                      <input data-testid="task-display-name-input" value={displayNameDraft} onChange={(e) => setDisplayNameDraft(e.target.value)} onBlur={() => setDisplayNameDraft(normalizeTaskName(displayNameDraft))} aria-invalid={!!displayNameError} placeholder={task.project_name} style={{ height: 30, border: `1px solid ${displayNameError ? "var(--danger)" : "var(--border)"}`, borderRadius: 6, padding: "0 52px 0 8px", background: "var(--bg-card)", color: "var(--text-primary)" }} />
+                      <span style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: displayNameLength > TASK_NAME_MAX_LENGTH ? "var(--danger)" : "var(--text-secondary)", pointerEvents: "none" }}>{displayNameLength}/{TASK_NAME_MAX_LENGTH}</span>
+                    </span>
+                    {displayNameError ? <span data-testid="task-display-name-error" style={{ display: "block", marginTop: 4, fontSize: 11, color: "var(--danger)" }}>{i18n.t(`tasks.displayNameError.${displayNameError}`)}</span> : null}
+                  </span>
+                  <button data-testid="task-display-name-save" disabled={!!displayNameError || displayNameMut.isPending} onClick={() => displayNameMut.mutate(displayNameDraft)} style={{ height: 30, border: "1px solid var(--brand)", borderRadius: 6, background: displayNameError ? "var(--bg-disabled)" : "var(--brand)", color: displayNameError ? "var(--text-secondary)" : "#fff", padding: "0 10px", cursor: displayNameError ? "not-allowed" : "pointer" }}>{i18n.t("tasks.saveDisplayName")}</button>
                   <button onClick={() => setEditingName(false)} style={{ height: 30, border: "1px solid var(--border)", borderRadius: 6, background: "transparent", color: "var(--text-secondary)", padding: "0 10px", cursor: "pointer" }}>{i18n.t("tasks.cancelDisplayName")}</button>
-                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{i18n.t("tasks.displayNameClearHint")}</span>
                 </span>
               ) : (
                 <button data-testid="task-display-name-edit" title={i18n.t("tasks.editDisplayName")} onClick={() => { setDisplayNameDraft(task.display_name ?? ""); setEditingName(true); }} style={{ border: "none", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", padding: 2 }}>

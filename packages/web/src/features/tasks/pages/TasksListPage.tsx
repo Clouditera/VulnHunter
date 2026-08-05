@@ -10,6 +10,7 @@ import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
 import { effectiveTaskState, isTaskTimedOut } from "../task-timeout.js";
 import { SeverityBadges } from "../../../shared/components/SeverityBadges.js";
+import { truncateTaskName } from "../task-name.js";
 import {
   formatDateTime,
 } from "../../../shared/utils/format.js";
@@ -412,6 +413,7 @@ export function TasksListPage() {
             ) : (
               visibleTasks.map((task: Task) => {
                 const title = task.display_name?.trim() || task.project_name;
+                const displayedTitle = truncateTaskName(title);
                 const subtitle = task.display_name?.trim() ? task.project_name : null;
                 return (
                   <tr
@@ -438,7 +440,14 @@ export function TasksListPage() {
                           size={14}
                           style={{ color: "var(--text-secondary)" }}
                         />
-                        <span>{title}</span>
+                        <span
+                          title={displayedTitle.truncated ? title : undefined}
+                          aria-label={displayedTitle.truncated ? title : undefined}
+                          tabIndex={displayedTitle.truncated ? 0 : undefined}
+                          style={{ maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        >
+                          {displayedTitle.text}
+                        </span>
                       </div>
                       {subtitle ? <div style={{ marginLeft: 22, marginTop: 3, fontSize: 11, color: "var(--text-secondary)", fontWeight: 400 }}>{subtitle}</div> : null}
                     </td>
