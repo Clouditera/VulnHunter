@@ -228,6 +228,19 @@ export function CredentialsSection() {
       modelId: c.model_id,
     });
     setTestedFingerprint(null);
+    // Backfill the L4 row from the stored status (QA P2: reopening the edit
+    // view must surface deep verification — fish: 保存时就暴露). A settled
+    // status renders statically; pending/running resumes polling.
+    const dv = c.deep_verified_status;
+    if (dv === "passed" || dv === "failed") {
+      stopL4Poll();
+      setL4({ credId: c.id, status: dv });
+    } else if (dv === "pending" || dv === "running") {
+      startL4Tracking(c.id);
+    } else {
+      stopL4Poll();
+      setL4(null);
+    }
   }
 
   /** Reset the model suggestion list (switch of edit target — spec ①). */
@@ -249,6 +262,8 @@ export function CredentialsSection() {
     resetModelList();
     setEditCoreSnap(null);
     setTestedFingerprint(null);
+    stopL4Poll();
+    setL4(null);
   }
 
   /** Open the "+ New credential" draft row at the top of the list. */
@@ -270,6 +285,8 @@ export function CredentialsSection() {
     resetModelList();
     setEditCoreSnap(null);
     setTestedFingerprint(null);
+    stopL4Poll();
+    setL4(null);
   }
 
   async function handleDeleteCredential(c: LlmCredential) {
@@ -378,11 +395,16 @@ export function CredentialsSection() {
       await Promise.all(ops);
 
       // Refresh credential state so UI shows "saved" masked view.
-      const savedId = editingCredentialId;
+      // wasNewDraft/savedCredId are SYNCHRONOUS captures — the setState calls
+      // below are async, so the state vars still read pre-save values here
+      // (QA P2: new-save path lost L4 tracking by reading them).
+      const wasNewDraft = isNewDraft;
+      let savedCredId: string | null = editingCredentialId;
       const fresh = await api.settings.getCredential().catch(() => ({ credential: cred }));
-      if (fresh?.credential && (!savedId || fresh.credential.id === savedId)) {
+      if (fresh?.credential && (!savedCredId || fresh.credential.id === savedCredId)) {
         setCred(fresh.credential);
         setEditingCredentialId(fresh.credential.id);
+        savedCredId = fresh.credential.id;
       }
       // After save, the draft row (if any) becomes a real row.
       setIsNewDraft(false);
@@ -391,7 +413,7 @@ export function CredentialsSection() {
         .listCredentials()
         .catch(() => ({ credentials: [] as LlmCredential[] }));
       setCredentials(freshList.credentials);
-      if (isNewDraft) {
+      if (wasNewDraft) {
         const created = freshList.credentials.find((item) =>
           item.model_id === modelId &&
           normalizeProtoType(item.proto_type) === protoType &&
@@ -400,13 +422,13 @@ export function CredentialsSection() {
         if (created) {
           setCred(created);
           setEditingCredentialId(created.id);
+          savedCredId = created.id;
         }
       }
       setApiKey("");
-      // L4 fired backend-side only when core fields changed; a fresh gate
-      // pass is exactly that signal on this side.
-      const trackedId = editingCredentialId ?? cred?.id;
-      if (testPassedForCurrent && trackedId) startL4Tracking(trackedId);
+      // L4 fired backend-side only when core fields changed (new credential
+      // or gated edit); a fresh gate pass is exactly that signal on this side.
+      if ((wasNewDraft || coreChanged) && testPassedForCurrent && savedCredId) startL4Tracking(savedCredId);
       setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
       setTimeout(() => setToast(null), 2200);
     } catch (err) {
@@ -991,7 +1013,7 @@ export function CredentialsSection() {
                 </button>
                 }
               </div>
-              {(testState.kind === "ok" || testState.kind === "err" || (testState.kind === "loading" && testChecks.length > 0)) && (
+              {(testState.kind === "ok" || testState.kind === "err" || (testState.kind === "loading" && testChecks.length > 0) || l4 != null) && (
                 <div data-testid="settings-test-result" data-kind={testState.kind}>
                   {testChecks.length > 0 ? (
                     <CredentialTestProgress

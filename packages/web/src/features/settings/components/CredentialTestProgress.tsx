@@ -69,7 +69,7 @@ export function CredentialTestProgress({ checks, report, running, l4 }: TestProg
   useEffect(() => i18n.onChange(() => tick((n) => n + 1)), []);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  if (checks.length === 0 && !report) return null;
+  if (checks.length === 0 && !report && !l4) return null;
 
   return (
     <div
