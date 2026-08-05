@@ -115,6 +115,27 @@ check_shell "minio mount source is DATA_DIR/minio" check_mount_source vulnhunter
 check_shell "worker image present" docker image inspect "${WORKER_IMAGE:-vulnhunter-worker:latest}"
 check_shell "service docker socket access" check_service_socket
 
+# Remote SandboxPlane SSH prerequisites (FAIL — dynamic verification silently
+# degrades without them; 2026-08-04 bastion identity loss incident)
+if [[ -f "${ENV_FILE:-.env}" ]] && grep -qE '^SANDBOX_SSH_BASTION=.+' "${ENV_FILE:-.env}"; then
+  bastion_id="$(grep -E '^SANDBOX_SSH_BASTION_IDENTITY=' "${ENV_FILE:-.env}" | tail -n1 | cut -d= -f2-)"
+  if [[ -z "$bastion_id" ]]; then
+    echo "[fail] remote sandbox: SANDBOX_SSH_BASTION_IDENTITY is not set (required for remote mode)"; fail=1
+  elif [[ "$bastion_id" == /* ]]; then
+    check_shell "bastion identity file exists ($bastion_id)" test -f "$bastion_id"
+    if [[ -f "$bastion_id" ]]; then
+      perms="$(stat -c '%a' "$bastion_id" 2>/dev/null || echo '?')"
+      if [[ "$perms" == "600" || "$perms" == "400" ]]; then
+        echo "[ok] bastion identity permissions ($perms)"
+      else
+        echo "[fail] bastion identity permissions too open ($perms, want 600/400)"; fail=1
+      fi
+    fi
+  else
+    echo "[ok] bastion identity provided as inline key material"
+  fi
+fi
+
 # Optional SandboxPlane reachability (WARN only — remote plane may be in maintenance)
 if [[ -f "${ENV_FILE:-.env}" ]] && grep -qE '^SANDBOXPLANE_BASE_URL=.+' "${ENV_FILE:-.env}"; then
   plane_url="$(grep -E '^SANDBOXPLANE_BASE_URL=' "${ENV_FILE:-.env}" | tail -n1 | cut -d= -f2-)"

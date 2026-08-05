@@ -76,9 +76,87 @@ export function hasTaskSshKeypair(taskId: string): boolean {
   return sshKeys.has(taskId);
 }
 
+/**
+ * 051 persistence (fish-approved): the private key is vault-encrypted onto the
+ * task_sandboxes mapping row, so it survives service restarts/upgrades.
+ * Read chain: memory -> DB decrypt (+ rehydrate memory) -> caller generates.
+ * Decrypt failure (master key lost/rotated) returns false and the caller
+ * falls back to the recycle path (degraded, never wedged).
+ * Plaintext still never touches disk/env/logs — only the vault ciphertext
+ * lives in DB, and it dies with the mapping row on release.
+ */
+
+/** Persist the in-memory keypair (vault-encrypted) onto the mapping row. */
+export async function storeTaskSshKeypair(taskId: string): Promise<void> {
+  const entry = sshKeys.get(taskId);
+  if (!entry) return;
+  const { getVaultOptional } = await import("../settings/storage.js");
+  const vault = getVaultOptional();
+  if (!vault) {
+    logger.warn({ taskId }, "Master key unavailable — task ssh keypair stays memory-only (restart resilience degraded)");
+    return;
+  }
+  const { updateTaskSandboxSshKey } = await import("./storage.js");
+  const encrypted = vault.encrypt(entry.privateKeyOpenSsh);
+  await updateTaskSandboxSshKey(taskId, {
+    ciphertext: encrypted.ciphertext as Buffer,
+    iv: encrypted.iv as Buffer,
+    tag: encrypted.tag as Buffer,
+  });
+}
+
+/** Memory -> DB decrypt -> rehydrate. False when unavailable or undecryptable. */
+export async function loadTaskSshKeypair(taskId: string): Promise<boolean> {
+  if (sshKeys.has(taskId)) return true;
+  const mapping = await getTaskSandbox(taskId);
+  if (!mapping?.ssh_key_ciphertext || !mapping.ssh_key_iv || !mapping.ssh_key_tag) return false;
+  try {
+    const { getVaultOptional } = await import("../settings/storage.js");
+    const vault = getVaultOptional();
+    if (!vault) return false;
+    const privateKeyOpenSsh = vault.decrypt({
+      ciphertext: mapping.ssh_key_ciphertext,
+      iv: mapping.ssh_key_iv,
+      tag: mapping.ssh_key_tag,
+    });
+    // Public half is derivable from the OpenSSH private blob; store the pair
+    // shape consumers expect (public used only for plane create, not resume).
+    const publicKeyOpenSsh = publicFromOpenSshPrivate(privateKeyOpenSsh);
+    sshKeys.set(taskId, { publicKeyOpenSsh, privateKeyOpenSsh });
+    return true;
+  } catch (err) {
+    logger.warn({ err, taskId }, "Task ssh keypair decrypt failed (master key issue); recycle path applies");
+    return false;
+  }
+}
+
+/** Extract the public key line from an openssh-key-v1 private blob. */
+function publicFromOpenSshPrivate(privateKeyOpenSsh: string): string {
+  const body = Buffer.from(
+    privateKeyOpenSsh.replace(/-----[^-]+-----/g, "").replace(/\s+/g, ""),
+    "base64",
+  );
+  // Layout: "openssh-key-v1\0" + 3 strings + uint32 nkeys + string public-blob
+  let off = "openssh-key-v1\0".length;
+  const readStr = (): Buffer => {
+    const len = body.readUInt32BE(off);
+    off += 4;
+    const out = body.subarray(off, off + len);
+    off += len;
+    return out;
+  };
+  readStr(); readStr(); readStr(); // ciphername, kdfname, kdfoptions
+  off += 4; // nkeys
+  const publicBlob = readStr();
+  return `ssh-ed25519 ${publicBlob.toString("base64")}`;
+}
+
 /** H1 handoff: the OpenSSH private key file content for worker tmpfs injection. */
-export function peekTaskSshPrivateKey(taskId: string): string | null {
-  return sshKeys.get(taskId)?.privateKeyOpenSsh ?? null;
+export async function peekTaskSshPrivateKey(taskId: string): Promise<string | null> {
+  if (await loadTaskSshKeypair(taskId)) {
+    return sshKeys.get(taskId)?.privateKeyOpenSsh ?? null;
+  }
+  return null;
 }
 
 export function dropTaskSshKeypair(taskId: string): void {
@@ -186,7 +264,7 @@ export async function ensureSandboxForTask(
   // in-memory keypair survives (same process). After a service restart the
   // instance is unreachable — recycle (release + fresh create with a new
   // key) instead of wedging the task on a sandbox nobody can enter.
-  if (existing && (existing.state === "ready" || existing.state === "stopped") && !hasTaskSshKeypair(task.id)) {
+  if (existing && (existing.state === "ready" || existing.state === "stopped") && !(await loadTaskSshKeypair(task.id))) {
     logger.warn({ taskId: task.id, sandboxId: existing.sandbox_id, state: existing.state }, "Task ssh keypair lost (service restart); recycling sandbox instance");
     try {
       await releaseSandboxPlaneSandbox(existing.sandbox_id);
@@ -272,6 +350,9 @@ export async function ensureSandboxForTask(
     ssh_host_public_key: sandbox.ssh_host_public_key ?? null,
     state: "ready",
   });
+  await storeTaskSshKeypair(task.id).catch((err) =>
+    logger.warn({ err, taskId: task.id }, "Failed to persist task ssh keypair (restart resilience degraded)"),
+  );
   const mapping = (await getTaskSandbox(task.id))!;
   logger.info({ taskId: task.id, sandboxId: sandbox.sandbox_id, profileId, reused: createdRecord.status === "running" }, "Sandbox allocated for task");
   return { mapping, reused: createdRecord.status === "running" };

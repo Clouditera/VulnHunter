@@ -25,6 +25,11 @@ export interface TaskSandbox {
   /** Instance host public key for StrictHostKeyChecking pin (#7). */
   ssh_host_public_key: string | null;
   host_key: string | null;
+  /** Master-key-vault encrypted per-task SSH private key (051); null for
+   *  pre-051 mappings or until the first allocate persists it. */
+  ssh_key_ciphertext: Buffer | null;
+  ssh_key_iv: Buffer | null;
+  ssh_key_tag: Buffer | null;
   state: TaskSandboxState;
   failure_reason: string | null;
   created_at: string;
@@ -91,6 +96,19 @@ export async function upsertTaskSandbox(input: {
       state = EXCLUDED.state,
       failure_reason = EXCLUDED.failure_reason,
       updated_at = now()
+  `;
+}
+
+/** Persist the vault-encrypted private key onto the mapping row (051). */
+export async function updateTaskSandboxSshKey(
+  taskId: string,
+  key: { ciphertext: Buffer; iv: Buffer; tag: Buffer },
+): Promise<void> {
+  const db = getDb();
+  await db`
+    UPDATE task_sandboxes
+    SET ssh_key_ciphertext = ${key.ciphertext}, ssh_key_iv = ${key.iv}, ssh_key_tag = ${key.tag}, updated_at = now()
+    WHERE task_id = ${taskId}
   `;
 }
 
