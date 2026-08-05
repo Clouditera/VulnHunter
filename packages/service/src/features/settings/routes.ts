@@ -85,9 +85,15 @@ async function runFullDiagnostics(
   cred: Parameters<typeof credentialFingerprint>[0] & { context_window_tokens?: number },
   emit: (event: DiagnosticEvent) => void,
 ): Promise<{ ok: boolean; checks: DiagnosticCheck[] }> {
-  const diag = await runPiDiagnostics(cred as any, emit);
+  // B3 (QA-caught): runPiDiagnostics emits its own 3-layer report BEFORE L4 —
+  // the client would treat it as terminal. Suppress it; the single terminal
+  // report (all four layers) is emitted here at the end.
+  const diag = await runPiDiagnostics(cred as any, (e) => {
+    if (e.type !== "report") emit(e);
+  });
   if (!diag.ok) {
     recordTestPass(cred, false);
+    emit({ type: "report", checks: diag.checks, ok: false });
     return diag;
   }
   // L4 — agent circuit with a real bash tool call (fish 2026-08-05)
@@ -417,10 +423,19 @@ settingsRouter.post("/credential/diagnose-stream", async (c) => {
   } as any;
 
   return streamSSE(c, async (stream) => {
+    // B1 (QA-caught): L4's terminal frames were written synchronously right
+    // before the callback resolved — hono closed the response and the queued
+    // writes were dropped (panel stuck on 测试中…). Serialize writes on a
+    // promise chain and await it before returning so every frame hits the
+    // wire, in order.
+    let writeChain: Promise<void> = Promise.resolve();
     const emit = (event: DiagnosticEvent) => {
-      stream.writeSSE({ data: JSON.stringify(event) });
+      writeChain = writeChain.then(() =>
+        stream.writeSSE({ data: JSON.stringify(event) }).then(() => undefined),
+      );
     };
     await runFullDiagnostics(cred, emit);
+    await writeChain;
   });
 });
 

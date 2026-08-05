@@ -43,8 +43,10 @@ vi.mock("node:child_process", () => ({
     child.stderr = new EventEmitter();
     child.kill = () => {};
     queueMicrotask(() => {
-      // fish 2026-08-05: L4 asserts a REAL bash tool loop (pi AgentEvent
-      // schema: tool_execution_start/end) — the mock must close one.
+      // fish 2026-08-05: L4 asserts a REAL bash tool loop. pi 0.83 --mode
+      // json carries tool traces on message_end.content (ToolCall block) and
+      // turn_end.toolResults (ToolResultMessage) — NOT tool_execution_* events
+      // (QA-verified on the real stream). Mock closes a bash loop accordingly.
       if (noToolCall) {
         child.stdout.emit("data", Buffer.from(JSON.stringify({ type: "agent_settled" }) + "\n"));
         child.stdout.emit("data", Buffer.from(JSON.stringify({
@@ -55,17 +57,16 @@ vi.mock("node:child_process", () => ({
         return;
       }
       child.stdout.emit("data", Buffer.from(JSON.stringify({
-        type: "tool_execution_start",
-        toolCallId: "c1",
-        toolName: "bash",
-        args: { command: "ls" },
+        type: "message_end",
+        message: {
+          role: "assistant", stopReason: "tool_use",
+          content: [{ type: "toolCall", id: "c1", name: "bash", arguments: { command: "ls" } }],
+        },
       }) + "\n"));
       child.stdout.emit("data", Buffer.from(JSON.stringify({
-        type: "tool_execution_end",
-        toolCallId: "c1",
-        toolName: "bash",
-        result: "out.txt\n",
-        isError: false,
+        type: "turn_end",
+        message: { role: "assistant" },
+        toolResults: [{ role: "toolResult", toolCallId: "c1", toolName: "bash", content: [{ type: "text", text: "out.txt\n" }] }],
       }) + "\n"));
       child.stdout.emit("data", Buffer.from(JSON.stringify({ type: "agent_settled" }) + "\n"));
       child.stdout.emit("data", Buffer.from(JSON.stringify({
