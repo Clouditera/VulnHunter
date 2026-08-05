@@ -24,6 +24,9 @@ export const LABEL_SCHEDULER_CLAIM = "vulnhunter.scheduler_claim";
 export const LABEL_INSTANCE = "vulnhunter.instance";
 
 export interface WorkerContainerSpec {
+  /** Override the run-as uid:gid (default: the service process uid/gid —
+   *  worker de-identification, fish-approved 2026-08-05). */
+  runAs?: string;
   taskId: string;
   taskType: "scan" | "chat" | "report" | "eval" | "poc-run" | "diagnostic" | "prepare";
   image: string;
@@ -44,7 +47,20 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
   const docker = getDocker();
   const name = `va-${spec.taskType}-${spec.taskId}`;
 
-  const env = Object.entries(spec.env).map(([k, v]) => `${k}=${v}`);
+  // Worker de-identification: containers run as the service uid (compose
+  // user: ${SERVICE_UID}), not root. The image sets HOME=/root (unreadable
+  // for us) — repoint HOME into the mounted workspace so pi config / npm
+  // cache / shell rc writes keep working. .home is pre-created host-side
+  // when we can see the dir; entrypoint mkdir -p covers the rest.
+  const runAs = spec.runAs ?? `${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0}`;
+  const envMap = { ...spec.env };
+  if ((spec.hostWorkDir || spec.volumeName) && !envMap.HOME) {
+    envMap.HOME = "/workspace/.home";
+  }
+  if (spec.hostWorkDir) {
+    try { mkdirSync(join(spec.hostWorkDir, ".home"), { recursive: true }); } catch { /* entrypoint retries in-container */ }
+  }
+  const env = Object.entries(envMap).map(([k, v]) => `${k}=${v}`);
 
   const mounts: Dockerode.HostConfig["Mounts"] = [];
   if (spec.hostWorkDir) {
@@ -71,6 +87,7 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
   const container = await docker.createContainer({
     name,
     Image: spec.image,
+    User: runAs,
     Env: env,
     Labels: {
       [LABEL_MANAGED]: "true",
@@ -97,7 +114,7 @@ export async function createWorkerContainer(spec: WorkerContainerSpec): Promise<
 }
 
 import { existsSync, mkdirSync, rmSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 export function ensureWorkDir(hostPath: string): void {
   mkdirSync(hostPath, { recursive: true });
