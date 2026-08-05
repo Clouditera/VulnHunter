@@ -67,6 +67,36 @@ function FailureGuidance({ checks }: { checks: ModelDiagnosticCheck[] }) {
   );
 }
 
+function TestConclusion({ checks, ok }: { checks: ModelDiagnosticCheck[]; ok: boolean }) {
+  if (!ok) return <FailureGuidance checks={checks} />;
+
+  const verifiedChecks = checks.filter((check) => check.status === "pass");
+  return (
+    <div
+      data-testid="test-success-conclusion"
+      style={{
+        padding: "10px 12px",
+        borderTop: "1px solid var(--bg-success-border)",
+        background: "var(--bg-success)",
+        color: "var(--bg-success-text)",
+        fontSize: 12,
+        lineHeight: 1.6,
+      }}
+    >
+      <div>
+        <strong>{i18n.t("settings.model.testSuccessConclusion")}：</strong>
+        {i18n.t("settings.model.testSuccessReady")}
+      </div>
+      {verifiedChecks.length > 0 ? (
+        <div>
+          <strong>{i18n.t("settings.model.testSuccessVerified")}：</strong>
+          {verifiedChecks.map(checkLabel).join("、")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function StatusIcon({ status }: { status: string }) {
   if (status === "pass")
     return <Icon name="check-circle" size={14} style={{ color: "var(--status-completed)" }} />;
@@ -199,10 +229,15 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
             color: report.ok ? "var(--status-completed)" : "var(--danger)",
           }}
         >
-          {report.summary}
+          {report.ok ? i18n.t("settings.model.testOk") : report.summary}
         </div>
       ) : null}
-      {!running ? <FailureGuidance checks={checks} /> : null}
+      {!running ? (
+        <TestConclusion
+          checks={checks}
+          ok={report?.ok ?? !checks.some((c) => c.status === "fail")}
+        />
+      ) : null}
     </div>
   );
 }
