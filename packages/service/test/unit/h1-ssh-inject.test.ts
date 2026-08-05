@@ -152,11 +152,12 @@ describe("renderInjectionFiles + buildInjectionTar", () => {
       ["/run/vulnhunter/ssh/id_ed25519", 0o400],
       ["/run/vulnhunter/ssh/known_hosts", 0o444],
       ["/run/vulnhunter/ssh/config", 0o444],
-      ["/etc/ssh/ssh_config.d/99-vulnhunter.conf", 0o644],
       ["/run/vulnhunter/sandbox.md", 0o444],
     ]);
-    const dropin = files.find((f) => f.containerPath.endsWith("99-vulnhunter.conf"));
-    expect(dropin?.content).toBe("Include /run/vulnhunter/ssh/config\n");
+    // The /etc drop-in is baked into the worker image at build time (static
+    // one-liner) — runtime injection must never touch /etc (de-identified
+    // workers can't; 2026-08-05 continue-scan EACCES).
+    expect(files.some((f) => f.containerPath.startsWith("/etc/"))).toBe(false);
 
     expect(files[0]!.content).toBe("PRIVATE");
     expect(files[1]!.content).toContain("[host.docker.internal]:32771 ssh-ed25519 AAAASAND");
@@ -192,7 +193,7 @@ describe("renderInjectionFiles + buildInjectionTar", () => {
       writeFileSync(tarPath, tar);
       const listing = execFileSync("tar", ["-tvf", tarPath]).toString();
       expect(listing).toContain("run/vulnhunter/ssh/id_ed25519");
-      expect(listing).toContain("etc/ssh/ssh_config.d/99-vulnhunter.conf");
+      expect(listing).not.toContain("etc/ssh");
       expect(listing).toMatch(/-r--------.*id_ed25519/);
       expect(listing).toMatch(/-r--r--r--.*sandbox\.md/);
       // tar extracts cleanly
