@@ -426,9 +426,9 @@ export function CredentialsSection() {
         }
       }
       setApiKey("");
-      // L4 fired backend-side only when core fields changed (new credential
-      // or gated edit); a fresh gate pass is exactly that signal on this side.
-      if ((wasNewDraft || coreChanged) && testPassedForCurrent && savedCredId) startL4Tracking(savedCredId);
+      // L4 now runs inside the test stream as the 4th layer (fish 2026-08-05)
+      // — the panel already showed its verdict live before this save; no
+      // post-save polling needed.
       setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
       setTimeout(() => setToast(null), 2200);
     } catch (err) {

@@ -13,9 +13,10 @@ import {
 } from "./storage.js";
 import { logger } from "../../infra/logger.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
-import { runPiDiagnostics, type DiagnosticEvent } from "./pi-diagnostics.js";
+import { runPiDiagnostics, type DiagnosticCheck, type DiagnosticEvent } from "./pi-diagnostics.js";
 import { updateDeepVerifiedStatus } from "./storage.js";
 import { runL4Check } from "./l4-agent-check.js";
+import { createHash } from "node:crypto";
 import { coreFieldsChanged, effectiveApiKey } from "./credential-core-fields.js";
 import { lookupModelMeta } from "./pi-model-catalog.js";
 import { loadConfig } from "../../infra/config.js";
@@ -34,42 +35,93 @@ function parseContextWindowTokens(value: unknown): number {
 }
 
 /**
- * Async L4 deep verification — fires after credential save when core fields
- * changed and the L1-L3 gate passed (fish 2026-08-05: re-enabled; he removed
- * only the badge, not the check — the 08-04 removal was our misreading).
- * Sets pending → running → passed/failed; fire-and-forget.
- * Uses the EFFECTIVE key (blank-on-edit = stored key) so optional-only edits
- * never fire and blank-key saves never test an empty key.
+ * L4 is the fourth gate layer (fish 2026-08-05): the test stream runs
+ * L1→L2→L3→L4 and only all-pass permits save. L4 is slow (real pi agent,
+ * up to ~60s), so the save gate reuses a fresh L4 verdict instead of
+ * re-running it: lastTestPass is keyed by a fingerprint of the exact
+ * credential payload (incl. key hash) and is written only by the
+ * server-side stream — the UI cannot forge it.
  */
-async function triggerL4DeepVerification(
-  credentialId: string,
-  cred: {
-    proto_type: string;
-    base_url: string;
-    model_id: string;
-    api_key: string;
-    thinking_effort?: string;
-  },
-): Promise<void> {
-  await updateDeepVerifiedStatus(credentialId, "pending");
-  // Fire-and-forget — don't await, don't block the save response.
-  void (async () => {
-    try {
-      await updateDeepVerifiedStatus(credentialId, "running");
-      const result = await runL4Check({
-        baseUrl: cred.base_url,
-        apiKey: cred.api_key,
-        modelId: cred.model_id,
-        protoType: cred.proto_type,
-        thinkingEffort: cred.thinking_effort,
-      });
-      await updateDeepVerifiedStatus(credentialId, result.status === "pass" ? "passed" : "failed");
-      logger.info({ credentialId, status: result.status, durationMs: result.durationMs }, "L4 deep verification completed");
-    } catch (err) {
-      await updateDeepVerifiedStatus(credentialId, "failed").catch(() => undefined);
-      logger.warn({ err, credentialId }, "L4 deep verification errored");
-    }
-  })();
+const LAST_TEST_TTL_MS = 5 * 60_000;
+const lastTestPass = new Map<string, { at: number; ok: boolean }>();
+
+function credentialFingerprint(cred: {
+  proto_type: string;
+  base_url: string;
+  model_id: string;
+  thinking_effort?: string;
+  api_key: string;
+}): string {
+  const h = createHash("sha256");
+  h.update(cred.proto_type);
+  h.update("|");
+  h.update(cred.base_url);
+  h.update("|");
+  h.update(cred.model_id);
+  h.update("|");
+  h.update(cred.thinking_effort ?? "");
+  h.update("|");
+  h.update(createHash("sha256").update(cred.api_key).digest("hex"));
+  return h.digest("hex");
+}
+
+function recordTestPass(cred: Parameters<typeof credentialFingerprint>[0], ok: boolean): void {
+  lastTestPass.set(credentialFingerprint(cred), { at: Date.now(), ok });
+}
+
+function freshTestPass(cred: Parameters<typeof credentialFingerprint>[0]): boolean | null {
+  const fp = credentialFingerprint(cred);
+  const entry = lastTestPass.get(fp);
+  if (!entry) return null;
+  if (Date.now() - entry.at > LAST_TEST_TTL_MS) {
+    lastTestPass.delete(fp);
+    return null;
+  }
+  return entry.ok;
+}
+
+/** Run L1-L3 (+ L4 when L1-L3 pass) and emit every event; returns merged result. */
+async function runFullDiagnostics(
+  cred: Parameters<typeof credentialFingerprint>[0] & { context_window_tokens?: number },
+  emit: (event: DiagnosticEvent) => void,
+): Promise<{ ok: boolean; checks: DiagnosticCheck[] }> {
+  const diag = await runPiDiagnostics(cred as any, emit);
+  if (!diag.ok) {
+    recordTestPass(cred, false);
+    return diag;
+  }
+  // L4 — agent circuit with a real bash tool call (fish 2026-08-05)
+  const l4Check: DiagnosticCheck = {
+    id: "l4_agent",
+    label: "l4_agent",
+    layer: "L4",
+    status: "pass",
+    message: "testing",
+  };
+  emit({ type: "check_started", check: l4Check });
+  const t0 = Date.now();
+  const l4 = await runL4Check({
+    baseUrl: cred.base_url,
+    apiKey: cred.api_key,
+    modelId: cred.model_id,
+    protoType: cred.proto_type,
+    thinkingEffort: cred.thinking_effort,
+  });
+  const l4Done: DiagnosticCheck = {
+    id: "l4_agent",
+    label: "l4_agent",
+    layer: "L4",
+    status: l4.status === "pass" ? "pass" : "fail",
+    message: l4.status === "pass" ? "agent_circuit_ok" : `agent_circuit_failed: ${l4.detail.slice(0, 200)}`,
+    durationMs: Date.now() - t0,
+    detail: l4.detail,
+  };
+  emit({ type: l4.status === "pass" ? "check_passed" : "check_failed", check: l4Done });
+  const checks = [...diag.checks, l4Done];
+  const ok = l4.status === "pass";
+  recordTestPass(cred, ok);
+  emit({ type: "report", checks, ok });
+  return { ok, checks };
 }
 
 export const settingsRouter = new Hono();
@@ -174,7 +226,11 @@ settingsRouter.put("/credential", async (c) => {
     coreChanged = coreFieldsChanged(existing, body);
   }
 
-  // ── Save gate: run L1-L3 before persisting (fish 2026-08-04) ──
+  // ── Save gate: all four layers must pass before persisting (fish
+  // 2026-08-05: L4 joined the stream as the 4th layer and save requires
+  // all-pass). A fresh server-side test verdict (same payload fingerprint,
+  // < 5 min) is reused so the just-run test isn't re-burned; otherwise the
+  // full L1-L3+L4 gate runs here. ──
   if (coreChanged) {
     const gateCred = {
       id: body.id ?? "gate",
@@ -189,7 +245,10 @@ settingsRouter.put("/credential", async (c) => {
       created_at: new Date(),
       updated_at: new Date(),
     } as any;
-    const gateResult = await runPiDiagnostics(gateCred, () => {});
+    const cached = freshTestPass(gateCred);
+    const gateResult = cached === null
+      ? await runFullDiagnostics(gateCred, () => {})
+      : { ok: cached, checks: [] as DiagnosticCheck[] };
     if (!gateResult.ok) {
       return c.json(
         {
@@ -229,17 +288,11 @@ settingsRouter.put("/credential", async (c) => {
 
   if (body.id && !id) throw new AppError("ERR_NOT_FOUND");
 
-  // ── Async L4 deep verification (fish re-enabled 2026-08-05): only when
-  // core fields changed (create or gated edit) — optional-only edits keep
-  // the previous verdict. Fire-and-forget; never blocks the save response.
+  // L4 verdict for backfill-on-open (fish 2026-08-05): the gate already ran
+  // L4 (or reused a fresh server-side pass), so just persist the verdict —
+  // no second agent run. Optional-only edits keep the previous verdict.
   if (coreChanged) {
-    triggerL4DeepVerification(id, {
-      proto_type: body.proto_type,
-      base_url: body.base_url!,
-      model_id: body.model_id,
-      api_key: effectiveKey,
-      thinking_effort: body.thinking_effort,
-    }).catch((err) => logger.warn({ err, credentialId: id }, "L4 deep verification failed to start"));
+    await updateDeepVerifiedStatus(id, "passed").catch(() => undefined);
   }
   return c.json({ id });
 });
@@ -346,7 +399,7 @@ settingsRouter.post("/credential/diagnose-stream", async (c) => {
     const emit = (event: DiagnosticEvent) => {
       stream.writeSSE({ data: JSON.stringify(event) });
     };
-    await runPiDiagnostics(cred, emit);
+    await runFullDiagnostics(cred, emit);
   });
 });
 

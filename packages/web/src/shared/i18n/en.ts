@@ -672,6 +672,7 @@ export const EN: Record<string, string> = {
   "diagnostics.check.thinking": "Model thinking",
   "diagnostics.check.tool": "Tool invocation",
   "diagnostics.check.agent": "Agent loop",
+  "diagnostics.check.l4_agent": "Agent loop",
   "diagnostics.check.thinking.notReasoning": "(thinking not enabled — this test is skipped)",
   "diagnostics.l4.passed": "Passed",
   "diagnostics.l4.failed": "Failed — real tasks/chat may be affected",
