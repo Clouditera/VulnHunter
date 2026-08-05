@@ -705,7 +705,7 @@ export const ZH: Record<string, string> = {
   "newTask.projectName": "项目名称",
   "newTask.projectPlaceholder": "如 libpng-1.6.54",
   "newTask.gitUrl": "Git URL",
-  "newTask.gitPlaceholder": "https://github.com/org/repo",
+  "newTask.gitPlaceholder": "请输入 Git 仓库 URL，例如：https://github.com/org/repo",
   "newTask.branch": "分支（可选）",
   "newTask.branchLoading": "正在获取分支…",
   "newTask.branchFallback": "无法自动获取分支，请手动输入；留空将使用远程默认分支。",
