@@ -1,9 +1,9 @@
 /**
- * Global toast notifications — bottom-right stack.
+ * Global toast notifications — centered viewport stack.
  * Usage: toast.error("…") / toast.success("…") / toast.info("…")
  */
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 
 export type ToastKind = "error" | "success" | "info";
@@ -73,6 +73,20 @@ const ACCENT: Record<ToastKind, string> = {
   info: "var(--brand)",
 };
 
+export const TOAST_HOST_STYLE: CSSProperties = {
+  position: "fixed",
+  top: "50%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+  zIndex: 2000,
+  display: "flex",
+  flexDirection: "column-reverse",
+  gap: 10,
+  width: "max-content",
+  maxWidth: "min(420px, calc(100vw - 40px))",
+  pointerEvents: "none",
+};
+
 export function ToastHost() {
   const [list, setList] = useState<ToastItem[]>(items);
   useEffect(() => {
@@ -88,20 +102,7 @@ export function ToastHost() {
   if (list.length === 0) return null;
 
   return (
-    <div
-      data-testid="toast-host"
-      style={{
-        position: "fixed",
-        right: 24,
-        bottom: 24,
-        zIndex: 2000,
-        display: "flex",
-        flexDirection: "column-reverse",
-        gap: 10,
-        maxWidth: "min(420px, calc(100vw - 40px))",
-        pointerEvents: "none",
-      }}
-    >
+    <div data-testid="toast-host" style={TOAST_HOST_STYLE}>
       {list.map((t) => (
         <div
           key={t.id}
