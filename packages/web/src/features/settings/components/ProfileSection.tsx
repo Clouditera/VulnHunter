@@ -73,7 +73,10 @@ export function ProfileSection() {
     changePwdMut.mutate();
   }
 
-  const canSubmitPwd = currentPwd.length > 0 && newPwd.length >= 8 && newPwd === confirmPwd && !changePwdMut.isPending;
+  const pwdTooShort = newPwd.length > 0 && newPwd.length < 8;
+  const pwdSameAsCurrent = currentPwd.length > 0 && newPwd.length > 0 && newPwd === currentPwd;
+  const pwdMismatch = confirmPwd.length > 0 && newPwd !== confirmPwd;
+  const canSubmitPwd = currentPwd.length > 0 && newPwd.length >= 8 && newPwd === confirmPwd && !pwdSameAsCurrent && !changePwdMut.isPending;
 
   return (
     <section style={CARD} data-testid="settings-card-profile">
@@ -120,10 +123,27 @@ export function ProfileSection() {
         <div>
           <PwdField label={i18n.t("profile.newPassword")} value={newPwd} onChange={setNewPwd} show={showNew} onToggle={() => setShowNew(!showNew)} />
           <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "4px" }}>{i18n.t("userModal.passwordHint")}</div>
+          {pwdTooShort ? (
+            <div data-testid="pwd-hint-short" style={{ fontSize: "11.5px", color: "var(--danger)", marginTop: "4px" }}>
+              {i18n.t("userModal.passwordHint")}
+            </div>
+          ) : null}
+          {pwdSameAsCurrent ? (
+            <div data-testid="pwd-hint-same" style={{ fontSize: "11.5px", color: "var(--danger)", marginTop: "4px" }}>
+              {i18n.t("profile.err.sameAsCurrent")}
+            </div>
+          ) : null}
         </div>
-        <PwdField label={i18n.t("profile.confirmPassword")} value={confirmPwd} onChange={setConfirmPwd} show={showConfirm} onToggle={() => setShowConfirm(!showConfirm)} />
+        <div>
+          <PwdField label={i18n.t("profile.confirmPassword")} value={confirmPwd} onChange={setConfirmPwd} show={showConfirm} onToggle={() => setShowConfirm(!showConfirm)} />
+          {pwdMismatch ? (
+            <div data-testid="pwd-hint-mismatch" style={{ fontSize: "11.5px", color: "var(--danger)", marginTop: "4px" }}>
+              {i18n.t("profile.err.mismatch")}
+            </div>
+          ) : null}
+        </div>
 
-        {pwdError && <div style={{ color: "var(--brand)", fontSize: "12px" }}>{pwdError}</div>}
+        {pwdError && <div style={{ color: "var(--danger)", fontSize: "12px" }}>{pwdError}</div>}
 
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button
