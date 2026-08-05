@@ -218,7 +218,8 @@ export function CredentialsSection() {
     setThinking((c.thinking_effort as ThinkingValue) ?? "medium");
     setContextWindow(formatContextWindow(c.context_window_tokens));
     setLabel(c.label ?? "");
-    setApiKey(""); // always require re-entry for security
+    setApiKey(""); // loaded only after an explicit reveal action
+    setShowKey(false);
     setTestState({ kind: "idle" });
     setToast(null);
     resetModelList();
@@ -287,6 +288,25 @@ export function CredentialsSection() {
     setTestedFingerprint(null);
     stopL4Poll();
     setL4(null);
+  }
+
+  async function toggleApiKeyVisibility() {
+    if (showKey) {
+      setShowKey(false);
+      return;
+    }
+    if (apiKey || isNewDraft || !editingCredentialId) {
+      setShowKey(true);
+      return;
+    }
+    try {
+      const { api_key } = await api.settings.revealCredentialKey(editingCredentialId);
+      setApiKey(api_key);
+      setShowKey(true);
+    } catch (err) {
+      setToast({ kind: "err", msg: String((err as Error).message || err) });
+      setTimeout(() => setToast(null), 2800);
+    }
   }
 
   async function handleDeleteCredential(c: LlmCredential) {
@@ -778,7 +798,7 @@ export function CredentialsSection() {
                   type="button"
                   data-testid="settings-api-key-toggle"
                   aria-label={showKey ? "Hide key" : "Show key"}
-                  onClick={() => setShowKey((s) => !s)}
+                  onClick={toggleApiKeyVisibility}
                   style={{
                     position: "absolute",
                     right: "8px",

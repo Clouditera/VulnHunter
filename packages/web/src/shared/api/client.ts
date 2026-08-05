@@ -479,6 +479,9 @@ export const api = {
   },
   settings: {
     getCredential: () => request<{ credential: LlmCredential | null }>("/api/settings/credential"),
+    /** Reveal a saved API key after an explicit eye-button action. */
+    revealCredentialKey: (id: string) =>
+      request<{ api_key: string }>(`/api/settings/credentials/${id}/key`),
     /** List all credentials (multi-credential support). */
     listCredentials: () =>
       request<{ credentials: LlmCredential[] }>("/api/settings/credentials"),
