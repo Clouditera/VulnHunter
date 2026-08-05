@@ -117,7 +117,9 @@ export function CredentialTestProgress({ checks, report, running, l4 }: TestProg
                     ? i18n.t("settings.model.testProgress.running")
                     : c.id === "thinking" && c.message === "not_reasoning"
                       ? i18n.t("diagnostics.check.thinking.notReasoning")
-                      : c.message}
+                      : c.id === "l4_agent"
+                        ? i18n.t(c.status === "pass" ? "diagnostics.l4.passed" : "diagnostics.l4.failed")
+                        : c.message}
                 </span>
               </span>
               {typeof c.durationMs === "number" && done ? (
