@@ -1,5 +1,5 @@
 /** Credentials section (extracted from SettingsPage): unified list + inline editor. */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential } from "../../../shared/api/client.js";
@@ -149,6 +149,37 @@ export function CredentialsSection() {
     | { kind: "ok"; msg?: string; diagnostics?: import("../../../shared/api/client").ModelDiagnosticResult }
     | { kind: "err"; msg: string; diagnostics?: import("../../../shared/api/client").ModelDiagnosticResult }
   >({ kind: "idle" });
+  /**
+   * L4 agent-loop verdict row (fish 2026-08-05: L4 restored, badge stays
+   * gone — verdict shows as a fourth row in the test panel). Fired by the
+   * backend after a gated save; we poll listCredentials until the status
+   * settles (passed/failed) or the poll budget runs out.
+   */
+  const [l4, setL4] = useState<{ credId: string; status: "running" | "passed" | "failed" } | null>(null);
+  const l4PollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopL4Poll = () => {
+    if (l4PollRef.current) { clearInterval(l4PollRef.current); l4PollRef.current = null; }
+  };
+  useEffect(() => () => stopL4Poll(), []);
+  const startL4Tracking = (credId: string) => {
+    stopL4Poll();
+    setL4({ credId, status: "running" });
+    let tries = 0;
+    l4PollRef.current = setInterval(async () => {
+      tries += 1;
+      try {
+        const list = await api.settings.listCredentials();
+        const row = list.credentials.find((c) => c.id === credId);
+        const st = row?.deep_verified_status;
+        if (st === "passed" || st === "failed") {
+          setL4({ credId, status: st });
+          stopL4Poll();
+          return;
+        }
+      } catch { /* transient — keep polling */ }
+      if (tries >= 40) stopL4Poll(); // ~2min budget; row stays "running" otherwise
+    }, 3000);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -372,6 +403,10 @@ export function CredentialsSection() {
         }
       }
       setApiKey("");
+      // L4 fired backend-side only when core fields changed; a fresh gate
+      // pass is exactly that signal on this side.
+      const trackedId = editingCredentialId ?? cred?.id;
+      if (testPassedForCurrent && trackedId) startL4Tracking(trackedId);
       setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
       setTimeout(() => setToast(null), 2200);
     } catch (err) {
@@ -509,6 +544,8 @@ export function CredentialsSection() {
     }
     setFieldErrors({});
     setTestState({ kind: "loading" });
+    stopL4Poll();
+    setL4(null);
     setTestChecks([]);
     const payload = {
       // credential_id rides along ONLY for stored-key fallback (backend
@@ -961,6 +998,7 @@ export function CredentialsSection() {
                       checks={testChecks}
                       report={testState.diagnostics ?? null}
                       running={testState.kind === "loading"}
+                      l4={l4 ? { status: l4.status } : null}
                     />
                   ) : testState.kind !== "loading" ? (
                     <div

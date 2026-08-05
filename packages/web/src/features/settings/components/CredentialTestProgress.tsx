@@ -21,6 +21,13 @@ export interface TestProgressProps {
   /** Final report once the stream completes. */
   report?: ModelDiagnosticResult | null;
   running: boolean;
+  /**
+   * L4 agent-loop verdict (fish 2026-08-05: L4 restored; badge stays gone —
+   * the verdict surfaces as a fourth row in this panel instead). Fired
+   * asynchronously after a gated save; the caller polls and feeds the
+   * status back in.
+   */
+  l4?: { status: "running" | "passed" | "failed" } | null;
 }
 
 /**
@@ -57,7 +64,7 @@ function StatusIcon({ status }: { status: string }) {
   );
 }
 
-export function CredentialTestProgress({ checks, report, running }: TestProgressProps) {
+export function CredentialTestProgress({ checks, report, running, l4 }: TestProgressProps) {
   const [, tick] = useState(0);
   useEffect(() => i18n.onChange(() => tick((n) => n + 1)), []);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -108,7 +115,9 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
                   {" "}
                   {active
                     ? i18n.t("settings.model.testProgress.running")
-                    : c.message}
+                    : c.id === "thinking" && c.message === "not_reasoning"
+                      ? i18n.t("diagnostics.check.thinking.notReasoning")
+                      : c.message}
                 </span>
               </span>
               {typeof c.durationMs === "number" && done ? (
@@ -150,6 +159,35 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
           </div>
         );
       })}
+      {l4 ? (
+        <div data-testid="test-check-l4_agent" data-status={l4.status}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              width: "100%",
+              padding: "8px 12px",
+              borderBottom: "1px solid var(--divider)",
+              fontSize: 12.5,
+              color: "var(--text-primary)",
+            }}
+          >
+            <StatusIcon status={l4.status === "passed" ? "pass" : l4.status === "failed" ? "fail" : "running"} />
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontWeight: 600 }}>{i18n.t("diagnostics.check.agent")}</span>
+              <span style={{ color: "var(--text-secondary)" }}>
+                {" "}
+                {l4.status === "running"
+                  ? i18n.t("settings.model.testProgress.running")
+                  : l4.status === "passed"
+                    ? i18n.t("diagnostics.l4.passed")
+                    : i18n.t("diagnostics.l4.failed")}
+              </span>
+            </span>
+          </div>
+        </div>
+      ) : null}
       {report && !running ? (
         <div
           data-testid="test-progress-summary"
