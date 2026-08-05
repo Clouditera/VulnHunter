@@ -65,13 +65,17 @@ async function writeModelsJson(
 
   // Match prepare-worker's proven format. apiKey is an env template resolved
   // by pi from the child env (L4_API_KEY_ENV) — never a literal.
+  // fish 2026-08-05: completions endpoints default supportsDeveloperRole=false
+  // — the L4 test path must match the real-task generation shape.
+  const modelEntry: Record<string, unknown> = { id: input.modelId };
+  if (apiType === "openai-completions") modelEntry.compat = { supportsDeveloperRole: false };
   const models = {
     providers: {
       platform: {
         api: apiType,
         baseUrl: input.baseUrl.replace(/\/$/, ""),
         apiKey: `$${L4_API_KEY_ENV}`,
-        models: [{ id: input.modelId }],
+        models: [modelEntry],
       },
     },
   };

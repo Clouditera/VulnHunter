@@ -118,7 +118,11 @@ function setupPiConfig(): void {
     const providerConfig: Record<string, unknown> = {
       baseUrl: API_KEY ? BASE_URL : noAuthProxyBaseUrl("primary"),
       api,
-      models: [{ id: MODEL_NAME, input: ["text", "image"], contextWindow: CONTEXT_WINDOW, maxTokens: 16384 }],
+      // fish 2026-08-05: completions endpoints default to system role.
+      models: [{
+        id: MODEL_NAME, input: ["text", "image"], contextWindow: CONTEXT_WINDOW, maxTokens: 16384,
+        ...(api === "openai-completions" ? { compat: { supportsDeveloperRole: false } } : {}),
+      }],
     };
     process.env.VH_LLM_API_KEY = API_KEY || NO_AUTH_DUMMY_KEY;
     providerConfig.apiKey = "$VH_LLM_API_KEY";
@@ -147,7 +151,10 @@ function setupPiConfig(): void {
           const providerConfig: Record<string, unknown> = {
             baseUrl: cred.api_key ? cred.base_url : noAuthProxyBaseUrl(cred.id),
             api,
-            models: [{ id: cred.model_id, input: ["text", "image"], contextWindow: parsePositiveInt(String(cred.context_window_tokens ?? ""), DEFAULT_CONTEXT_WINDOW_TOKENS), maxTokens: 16384 }],
+            models: [{
+              id: cred.model_id, input: ["text", "image"], contextWindow: parsePositiveInt(String(cred.context_window_tokens ?? ""), DEFAULT_CONTEXT_WINDOW_TOKENS), maxTokens: 16384,
+              ...(api === "openai-completions" ? { compat: { supportsDeveloperRole: false } } : {}),
+            }],
           };
           process.env[apiKeyEnv] = cred.api_key || NO_AUTH_DUMMY_KEY;
           providerConfig.apiKey = `$${apiKeyEnv}`;

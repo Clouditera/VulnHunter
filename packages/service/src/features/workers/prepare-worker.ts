@@ -105,13 +105,17 @@ export async function resolvePrepareModel(task: DbTask): Promise<{ modelsJson: s
   if (!cred || !cred.model_id) throw new AppError("ERR_MODEL_CREDENTIAL_UNAVAILABLE", { message: "Prepare 需要可用模型凭证，请在任务或 Settings 中配置模型" });
   const api = cred.proto_type.startsWith("anthropic") ? "anthropic-messages" : "openai-completions";
   const baseUrl = (cred.base_url ?? "").replace(/\/+$/, "");
+  // fish 2026-08-05: completions endpoints default supportsDeveloperRole=false
+  // (system understood everywhere; developer only matters on OpenAI o-series).
+  const modelEntry: Record<string, unknown> = { id: cred.model_id };
+  if (api === "openai-completions") modelEntry.compat = { supportsDeveloperRole: false };
   const models = {
     providers: {
       platform: {
         api,
         baseUrl,
         apiKey: cred.api_key,
-        models: [{ id: cred.model_id }],
+        models: [modelEntry],
       },
     },
   };
