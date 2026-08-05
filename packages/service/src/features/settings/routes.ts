@@ -14,6 +14,8 @@ import {
 import { logger } from "../../infra/logger.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { runPiDiagnostics, type DiagnosticEvent } from "./pi-diagnostics.js";
+import { updateDeepVerifiedStatus } from "./storage.js";
+import { runL4Check } from "./l4-agent-check.js";
 import { coreFieldsChanged, effectiveApiKey } from "./credential-core-fields.js";
 import { lookupModelMeta } from "./pi-model-catalog.js";
 import { loadConfig } from "../../infra/config.js";
@@ -29,6 +31,45 @@ function parseContextWindowTokens(value: unknown): number {
   const tokens = Math.trunc(value);
   if (tokens < 1000 || tokens > 10000000) throw new Error("invalid context_window_tokens");
   return tokens;
+}
+
+/**
+ * Async L4 deep verification — fires after credential save when core fields
+ * changed and the L1-L3 gate passed (fish 2026-08-05: re-enabled; he removed
+ * only the badge, not the check — the 08-04 removal was our misreading).
+ * Sets pending → running → passed/failed; fire-and-forget.
+ * Uses the EFFECTIVE key (blank-on-edit = stored key) so optional-only edits
+ * never fire and blank-key saves never test an empty key.
+ */
+async function triggerL4DeepVerification(
+  credentialId: string,
+  cred: {
+    proto_type: string;
+    base_url: string;
+    model_id: string;
+    api_key: string;
+    thinking_effort?: string;
+  },
+): Promise<void> {
+  await updateDeepVerifiedStatus(credentialId, "pending");
+  // Fire-and-forget — don't await, don't block the save response.
+  void (async () => {
+    try {
+      await updateDeepVerifiedStatus(credentialId, "running");
+      const result = await runL4Check({
+        baseUrl: cred.base_url,
+        apiKey: cred.api_key,
+        modelId: cred.model_id,
+        protoType: cred.proto_type,
+        thinkingEffort: cred.thinking_effort,
+      });
+      await updateDeepVerifiedStatus(credentialId, result.status === "pass" ? "passed" : "failed");
+      logger.info({ credentialId, status: result.status, durationMs: result.durationMs }, "L4 deep verification completed");
+    } catch (err) {
+      await updateDeepVerifiedStatus(credentialId, "failed").catch(() => undefined);
+      logger.warn({ err, credentialId }, "L4 deep verification errored");
+    }
+  })();
 }
 
 export const settingsRouter = new Hono();
@@ -188,10 +229,18 @@ settingsRouter.put("/credential", async (c) => {
 
   if (body.id && !id) throw new AppError("ERR_NOT_FOUND");
 
-  // L4 auto deep verification after save: DISABLED 2026-08-04 (fish — the
-  // deep-verified badge + auto check landed without his sign-off; only the
-  // L1-L3 save gate stays, which he confirmed). runL4Check code is kept;
-  // re-enable by restoring the trigger here.
+  // ── Async L4 deep verification (fish re-enabled 2026-08-05): only when
+  // core fields changed (create or gated edit) — optional-only edits keep
+  // the previous verdict. Fire-and-forget; never blocks the save response.
+  if (coreChanged) {
+    triggerL4DeepVerification(id, {
+      proto_type: body.proto_type,
+      base_url: body.base_url!,
+      model_id: body.model_id,
+      api_key: effectiveKey,
+      thinking_effort: body.thinking_effort,
+    }).catch((err) => logger.warn({ err, credentialId: id }, "L4 deep verification failed to start"));
+  }
   return c.json({ id });
 });
 
