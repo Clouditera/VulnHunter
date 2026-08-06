@@ -127,6 +127,23 @@ async function consumeStream(
   return { text, thinking, tool, error, httpStatus };
 }
 
+const RAW_ERROR_MAX = 200;
+
+/**
+ * fish 2026-08-06: failure rows show the RAW network error, nothing else.
+ * Compose HTTP status + gateway body when a status is present (service
+ * reachable), else the transport cause verbatim (ENOTFOUND / ECONNREFUSED /
+ * timeout). Safety gate: scrub the credential's plain API key from the
+ * string before it reaches the UI (some gateways echo it back; their own
+ * masking is not to be relied on). Truncate ~200 chars.
+ */
+export function formatRawError(error: string, httpStatus?: number, apiKey?: string): string {
+  let msg = error;
+  if (apiKey) msg = msg.split(apiKey).join("***");
+  if (httpStatus && !/^HTTP \d{3}/.test(msg)) msg = `HTTP ${httpStatus} — ${msg}`;
+  return msg.length > RAW_ERROR_MAX ? `${msg.slice(0, RAW_ERROR_MAX)}…` : msg;
+}
+
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -160,7 +177,7 @@ async function runL1Basic(cred: DecryptedLlmCredential, emit: DiagnosticEmitter)
     if (result.error && !result.text) {
       const check: DiagnosticCheck = {
         id, label, layer: "L1", status: "fail",
-        message: result.error,
+        message: formatRawError(result.error, result.httpStatus, cred.api_key),
         httpStatus: result.httpStatus,
         durationMs: Date.now() - t0,
         detail: `proto=${cred.proto_type} base_url=${cred.base_url} model=${cred.model_id}`,
@@ -179,7 +196,7 @@ async function runL1Basic(cred: DecryptedLlmCredential, emit: DiagnosticEmitter)
   } catch (err: any) {
     const check: DiagnosticCheck = {
       id, label, layer: "L1", status: "fail",
-      message: err?.message ?? String(err),
+      message: formatRawError(err?.message ?? String(err), err?.status, cred.api_key),
       durationMs: Date.now() - t0,
       detail: `proto=${cred.proto_type} base_url=${cred.base_url} model=${cred.model_id}`,
     };
@@ -226,7 +243,7 @@ async function runL2Thinking(cred: DecryptedLlmCredential, emit: DiagnosticEmitt
     if (result.error && !result.thinking) {
       const check: DiagnosticCheck = {
         id, label, layer: "L2", status: "fail",
-        message: `思考测试失败：${result.error}`,
+        message: formatRawError(result.error, result.httpStatus, cred.api_key),
         httpStatus: result.httpStatus,
         durationMs: Date.now() - t0,
       };
@@ -278,7 +295,7 @@ async function runL3Tool(cred: DecryptedLlmCredential, emit: DiagnosticEmitter):
     if (result.error && !result.tool) {
       const check: DiagnosticCheck = {
         id, label, layer: "L3", status: "fail",
-        message: `工具调用测试失败：${result.error}`,
+        message: formatRawError(result.error, result.httpStatus, cred.api_key),
         httpStatus: result.httpStatus,
         durationMs: Date.now() - t0,
       };
@@ -297,7 +314,7 @@ async function runL3Tool(cred: DecryptedLlmCredential, emit: DiagnosticEmitter):
   } catch (err: any) {
     const check: DiagnosticCheck = {
       id, label, layer: "L3", status: "fail",
-      message: err?.message ?? String(err),
+      message: formatRawError(err?.message ?? String(err), err?.status, cred.api_key),
       durationMs: Date.now() - t0,
     };
     emit({ type: "check_failed", check });
