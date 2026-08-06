@@ -69,6 +69,10 @@ release_check_vulnforge() {
     || release_die "missing flows/vulnforge/flow.audit.yaml; run git submodule update --init --recursive"
   [[ -f "$core/flows/vulnforge/extensions/output-contract/package.json" ]] \
     || release_die "missing flows/vulnforge/extensions/output-contract/package.json"
+  # pi-web-access nested submodule must be materialized (empty submodule dirs
+  # pack silently and the worker image then lacks web search in research/hunt).
+  [[ -f "$core/flows/vulnforge/extensions/pi-web-access/index.ts" ]] \
+    || release_die "missing flows/vulnforge/extensions/pi-web-access/index.ts; run git submodule update --init --recursive"
 }
 
 # ── Image sourcemap / declaration guard ──────────────────────────────
@@ -91,6 +95,20 @@ release_validate_no_runtime_sourcemaps() {
 release_validate_service_web_images() {
   release_validate_no_runtime_sourcemaps "vulnhunter-service:$VERSION" "/app/packages /app/public"
   release_validate_no_runtime_sourcemaps "vulnhunter-web:$VERSION" "/usr/share/nginx/html"
+}
+
+# ── Worker image content gates ───────────────────────────────────────
+# pi-web-access is a NESTED submodule of flows/vulnforge — if the build tree
+# never ran `git submodule update --init --recursive`, it lands in the image as
+# an empty dir and research/hunt silently lose web search. The Dockerfile
+# build-time probes already fail the build; this re-checks the tagged image.
+release_validate_worker_image() {
+  docker run --rm "vulnhunter-worker:$VERSION" sh -lc '
+    test -f /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access/index.ts \
+      || { echo "worker image: pi-web-access/index.ts missing" >&2; exit 1; }
+    test -d /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access/node_modules \
+      || { echo "worker image: pi-web-access node_modules missing" >&2; exit 1; }
+  '
 }
 
 # ── docker save ──────────────────────────────────────────────────────

@@ -330,6 +330,16 @@ EOF
 
 echo "[scan] Generated models.json + .env (model=$V_DEFAULT_MODEL, api=$MODEL_PROTO_TYPE, ctx=$LLM_CONTEXT_WINDOW_TOKENS)" >&2
 
+# pi-web-access (research/hunt stages) reads PI_CODING_AGENT_DIR/web-search.json.
+# youngflow sets PI_CODING_AGENT_DIR=<flowDir>/.pi-agent and copies models.json
+# into it (dist/model-config.js createAgentDir); it does NOT copy other files.
+# Pre-create the dir + file here: youngflow's recursive mkdir is non-destructive
+# and only overwrites auth.json/settings.json/models.json, so web-search.json
+# survives. workflow=none skips the interactive curator — unattended workers
+# have no one to click it (fish/architect 2026-08-06).
+mkdir -p "$FLOW_DIR/.pi-agent"
+printf '%s\n' '{"workflow":"none"}' > "$FLOW_DIR/.pi-agent/web-search.json"
+
 if [ "${RESUME:-0}" != "1" ] && [ "${CONTINUE:-0}" != "1" ]; then
   rm -rf /workspace/out
 fi

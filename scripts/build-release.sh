@@ -57,8 +57,8 @@ POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:16-alpine}"
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 YOUNGFLOW_VERSION="${YOUNGFLOW_VERSION:-0.3.8}"
-VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0-5-g1782ef6}"
-VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-1782ef6d99db58fda74c8e1524b9237ca39cad2c}"
+VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0-12-g72c4998}"
+VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-72c499876116496710dacc7b20563c6caf628d59}"
 PI_VERSION="${PI_VERSION:-$(sed -n 's/.*PI_VERSION = "\([^"]*\)".*/\1/p' packages/shared/src/pi.version.ts | head -1)}"
 
 release_require_cmd docker
@@ -107,6 +107,8 @@ docker build -f deploy/dockerfiles/web.Dockerfile -t "vulnhunter-web:$VERSION" -
 VULNFORGE_VERSION="$VULNFORGE_VERSION" VULNFORGE_COMMIT="$VULNFORGE_COMMIT" \
   scripts/build-worker-image.sh "vulnhunter-worker:$VERSION"
 docker tag "vulnhunter-worker:$VERSION" vulnhunter-worker:latest
+
+release_validate_worker_image
 docker pull "$POSTGRES_IMAGE"
 docker pull "$MINIO_IMAGE"
 
