@@ -33,6 +33,12 @@ describe("coreFieldsChanged (edit gate: core change requires re-verification)", 
     expect(coreFieldsChanged(existing, { ...existing, api_key: "sk-new" })).toBe(true);
     expect(coreFieldsChanged(existing, { ...existing, api_key: "" })).toBe(false);
   });
+
+  it("thinking_effort change -> true (fish 2026-08-06: reasoning params need re-verify)", () => {
+    expect(coreFieldsChanged(existing, { ...existing, thinking_effort: "high" })).toBe(true);
+    expect(coreFieldsChanged(existing, { ...existing, thinking_effort: "off" })).toBe(true);
+    expect(coreFieldsChanged(existing, { ...existing, thinking_effort: existing.thinking_effort })).toBe(false);
+  });
 });
 
 describe("effectiveApiKey", () => {
