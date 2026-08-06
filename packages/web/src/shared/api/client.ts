@@ -926,7 +926,7 @@ export interface SaveCredentialPayload {
 export interface ModelDiagnosticCheck {
   id: string;
   label: string;
-  status: "pass" | "fail" | "warn" | "skip" | "pending" | "running";
+  status: "pass" | "fail" | "warn" | "skip" | "na" | "pending" | "running";
   category?: string;
   message: string;
   detail?: string;
