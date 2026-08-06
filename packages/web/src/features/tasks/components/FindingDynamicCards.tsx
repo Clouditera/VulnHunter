@@ -264,6 +264,7 @@ function StageStatusCard({
   status,
   displayMap,
   showIncomplete,
+  notEvaluated = false,
 }: {
   titleKey: "poc" | "exp";
   testid: string;
@@ -273,6 +274,8 @@ function StageStatusCard({
   status: PocStatus | ExpStatus;
   displayMap: Record<string, CardStateDisplay>;
   showIncomplete: boolean;
+  /** Field never initialized (null in DB) — render 未评估 grey, not red unknown. */
+  notEvaluated?: boolean;
 }) {
   if (isRisk) {
     return (
@@ -306,6 +309,12 @@ function StageStatusCard({
             icon="clock"
             label={i18n.t(`finding.cards.${derivedLabelKey}`)}
           />
+        ) : notEvaluated ? (
+          <StateBadge
+            color="var(--text-tertiary, #BBC3CC)"
+            icon="minus-circle"
+            label={i18n.t("finding.cards.status.notEvaluated")}
+          />
         ) : display ? (
           <StateBadge
             color={display.color}
@@ -329,7 +338,7 @@ function StageStatusCard({
           {i18n.t("finding.cards.incomplete")}
         </div>
       ) : null}
-      {!derived && display ? (
+      {!derived && !notEvaluated && display ? (
         <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: derived === "not_enabled" ? 0 : 0 }}>
           {i18n.t(`finding.cards.helper.${display.helperKey}`)}
         </div>
@@ -381,6 +390,7 @@ export function FindingPocPanel({
         testid="finding-card-poc"
         isRisk={isRisk}
         derived={poc.derived}
+        notEvaluated={poc.notEvaluated}
         derivedLabelKey={poc.derived === "env_lost" ? "envLost" : poc.derived === "timed_out" ? "timedOut" : "notEnabled"}
         status={poc.status}
         displayMap={POC_STATE_DISPLAY}
@@ -427,6 +437,7 @@ export function FindingExpPanel({
         testid="finding-card-exp"
         isRisk={isRisk}
         derived={exp.derived}
+        notEvaluated={exp.notEvaluated}
         derivedLabelKey={exp.derived === "env_lost" ? "envLost" : exp.derived === "timed_out" ? "timedOut" : "notEnabled"}
         status={exp.status}
         displayMap={EXP_STATE_DISPLAY}
@@ -463,9 +474,10 @@ export function resolvePocTabPill(finding: FindingMeta, dynamicEnabled: boolean)
   if (isRisk) {
     return { label: i18n.t("finding.cards.poc.riskSkipLabel"), ...PILL_GRAY };
   }
-  const { derived, status } = resolvePocCardState({ dynamicEnabled, pocStatus: finding.poc_status });
+  const { derived, status, notEvaluated } = resolvePocCardState({ dynamicEnabled, pocStatus: finding.poc_status });
   if (derived === "not_enabled") return { label: i18n.t("finding.cards.notEnabled"), ...PILL_GRAY };
   if (derived === "env_lost") return { label: i18n.t("finding.cards.envLost"), ...PILL_RED };
+  if (notEvaluated) return { label: i18n.t("finding.cards.status.notEvaluated"), ...PILL_GRAY };
   switch (status) {
     case "reproduced":
       return { label: i18n.t("finding.cards.status.reproduced"), ...PILL_GREEN };
@@ -487,13 +499,14 @@ export function resolveExpTabPill(finding: FindingMeta, dynamicEnabled: boolean)
   if (isRisk) {
     return { label: i18n.t("finding.cards.exp.riskSkipLabel"), ...PILL_GRAY };
   }
-  const { derived, status } = resolveExpCardState({
+  const { derived, status, notEvaluated } = resolveExpCardState({
     dynamicEnabled,
     pocStatus: finding.poc_status,
     expStatus: finding.exp_status,
   });
   if (derived === "not_enabled") return { label: i18n.t("finding.cards.notEnabled"), ...PILL_GRAY };
   if (derived === "env_lost") return { label: i18n.t("finding.cards.envLost"), ...PILL_RED };
+  if (notEvaluated) return { label: i18n.t("finding.cards.status.notEvaluated"), ...PILL_GRAY };
   switch (status) {
     case "confirmed":
       return { label: i18n.t("finding.cards.status.confirmed"), ...PILL_GREEN };
