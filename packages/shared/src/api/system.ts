@@ -21,6 +21,9 @@ export interface SystemStatus {
     licenseSchema: string;
   };
   has_admin: boolean;
+  /** Published admin-console port (backend contract: onboarding wizard
+   *  redirect target). Absent on older backends — fall back to 23001. */
+  admin_console_port?: number;
   is_authenticated: boolean;
   installation_id: string;
   user?: {

@@ -1,7 +1,6 @@
 import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
 import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
 import { ActivatePage } from "../features/auth/pages/ActivatePage.js";
-import { BootstrapPage } from "../features/auth/pages/BootstrapPage.js";
 import { LoginPage } from "../features/auth/pages/LoginPage.js";
 import { HomePage } from "../features/home/pages/HomePage.js";
 import { ExpiredPage } from "../features/auth/pages/ExpiredPage.js";
@@ -30,12 +29,27 @@ function RootGuard() {
     if (status.license.status === "expired") return <Navigate to="/expired" replace />;
     if (status.license.status !== "active") return <Navigate to="/activate" replace />;
   }
-  if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
+  if (!status.has_admin) return goToAdminSetup(status);
   if (status.is_authenticated) {
     if (status.user?.role === "admin") return <SessionInvalidPage />;
     return <Navigate to="/chat" replace />;
   }
   return <HomePage />;
+}
+
+/**
+ * First-run handoff (fish 2026-08-06, single-path onboarding): with NO admin
+ * at all, the business site redirects to the admin-console setup wizard
+ * (activate + create admin happen there). Port comes from the status payload
+ * (admin_console_port); 23001 fallback for older backends. Returns null while
+ * the browser navigates cross-port.
+ */
+function goToAdminSetup(status: { admin_console_port?: number }): null {
+  const port = status.admin_console_port ?? 23001;
+  window.location.replace(
+    `${window.location.protocol}//${window.location.hostname}:${port}/setup`,
+  );
+  return null;
 }
 
 function LoadingScreen() {
@@ -94,26 +108,13 @@ function ExpiredGuard() {
   return <ExpiredPage />;
 }
 
-function BootstrapGuard() {
-  const { data: status, isLoading, error } = useSystemStatus();
-  if (isLoading) return <LoadingScreen />;
-  if (error || !status) return <Navigate to="/login" replace />;
-  const target = licenseTarget(status);
-  if (target) return <Navigate to={target} replace />;
-  if (status.has_admin) {
-    if (status.is_authenticated) return <Navigate to={postAuthHome(status)} replace />;
-    return <HomePage />;
-  }
-  return <BootstrapPage />;
-}
-
 function LoginGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
   if (error || !status) return <Navigate to="/login" replace />;
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
-  if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
+  if (!status.has_admin) return goToAdminSetup(status);
   if (status.is_authenticated) return <Navigate to={postAuthHome(status)} replace />;
   return <LoginPage />;
 }
@@ -124,7 +125,7 @@ function AuthGuard() {
   if (error || !status) return <Navigate to="/login" replace />;
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
-  if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
+  if (!status.has_admin) return goToAdminSetup(status);
   if (!status.is_authenticated) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
@@ -145,7 +146,6 @@ export const router: ReturnType<typeof createBrowserRouter> = createBrowserRoute
     element: <AuthGuard />,
     children: [{ path: "/change-password", element: <ChangePasswordPage /> }],
   },
-  { path: "/bootstrap", element: <BootstrapGuard /> },
   { path: "/login", element: <LoginGuard /> },
   { path: "/home", element: <HomePage /> },
   {

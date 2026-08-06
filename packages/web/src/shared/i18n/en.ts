@@ -593,14 +593,20 @@ export const EN: Record<string, string> = {
   "expired.error": "Invalid renewal key. Please contact your vendor.",
 
   // Bootstrap
-  "bootstrap.title": "Initialize Admin",
-  "bootstrap.desc": "Create the first administrator account",
-  "bootstrap.email": "Admin Email",
-  "bootstrap.password": "Password",
-  "bootstrap.confirm": "Confirm Password",
-  "bootstrap.submit": "Create Admin",
-  "bootstrap.creating": "Creating…",
-  "bootstrap.error": "Failed to create administrator. Check the email and password, then try again.",
+  "setup.title": "Set up VulnHunter",
+  "setup.desc": "Activate your license and create the administrator account.",
+  "setup.step.license": "Activate license",
+  "setup.step.account": "Create admin",
+  "setup.account.email": "Admin Email",
+  "setup.account.password": "Password",
+  "setup.account.confirm": "Confirm Password",
+  "setup.account.submit": "Create Admin",
+  "setup.account.creating": "Creating…",
+  "setup.account.success": "✓ Admin created — redirecting to sign-in…",
+  "setup.account.error.licenseFirst": "Activate the license first.",
+  "setup.account.error.sealed": "An admin already exists — please sign in.",
+  "setup.account.error.rateLimited": "Too many attempts — please try again later.",
+  "setup.account.error.default": "Failed to create the admin. Please check and try again.",
 
   // Settings
   "settings.title": "Settings",
