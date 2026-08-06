@@ -144,6 +144,8 @@ export function CredentialsSection() {
   /** Fingerprint of the form values the last successful test ran against. */
   const [testedFingerprint, setTestedFingerprint] = useState<string | null>(null);
   const [testChecks, setTestChecks] = useState<import("../../../shared/api/client").ModelDiagnosticCheck[]>([]);
+  /** Raw SSE frames of the current test run (JSONL detail view). */
+  const [rawFrames, setRawFrames] = useState<string[]>([]);
   const [modelFetchState, setModelFetchState] = useState<
     { kind: "idle" | "loading" } | { kind: "error"; msg: string }
   >({ kind: "idle" });
@@ -580,7 +582,13 @@ export function CredentialsSection() {
      *  accumulator BEFORE the fail was flushed in — stamping "ok" on a red
      *  test (QA round 3: dead host showed red ✗ yet save un-gated). */
     const acc: import("../../../shared/api/client").ModelDiagnosticCheck[] = [];
+    const frames: string[] = [];
+    setRawFrames([]);
     await streamCredentialTest(payload as Record<string, unknown>, {
+      onRawFrame: (raw) => {
+        frames.push(raw);
+        setRawFrames([...frames]);
+      },
       onEvent: (ev) => {
         if (ev.type === "report") {
           const report = ev.report;
@@ -1008,6 +1016,7 @@ export function CredentialsSection() {
                       checks={testChecks}
                       report={testState.diagnostics ?? null}
                       running={testState.kind === "loading"}
+                      rawFrames={rawFrames}
                     />
                   ) : testState.kind !== "loading" ? (
                     <div
