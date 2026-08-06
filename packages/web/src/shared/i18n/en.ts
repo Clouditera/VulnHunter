@@ -327,7 +327,6 @@ export const EN: Record<string, string> = {
   "finding.cards.status.downgraded": "Downgraded",
   "finding.cards.status.failed": "Attack not established",
   "finding.cards.status.unknown": "Status error",
-  "finding.cards.status.notEvaluated": "Not evaluated",
   "finding.cards.helper.pending": "Dynamic reproduction / Exploitability Assessment not yet run",
   "finding.cards.helper.reproduced": "Actually triggered in the sandbox",
   "finding.cards.helper.failReproduced": "Prerequisites met but not triggered this time; does not mean the vulnerability is absent",

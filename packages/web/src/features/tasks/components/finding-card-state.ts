@@ -49,21 +49,19 @@ export type DerivedState = "not_enabled" | "env_lost" | "timed_out" | null;
  * Resolve the POC card's effective display state (SSOT §4 priority):
  * not-enabled (task didn't open dynamic) > env-lost > timed-out (scan hit its
  * time budget with verification still pending, task-a3d095ad) > poc_status enum.
- * `notEvaluated` = field never initialized (null in DB — engine contract gap;
- * fish 2026-08-06: render 未评估 grey, not the red "unknown").
  */
 export function resolvePocCardState(input: {
   dynamicEnabled: boolean;
   envLost?: boolean;
   pocStatus: PocStatus | null;
   timedOut?: boolean;
-}): { derived: DerivedState; status: PocStatus; notEvaluated: boolean } {
-  if (!input.dynamicEnabled) return { derived: "not_enabled", status: "pending", notEvaluated: false };
-  if (input.envLost) return { derived: "env_lost", status: input.pocStatus ?? "unknown", notEvaluated: input.pocStatus == null };
+}): { derived: DerivedState; status: PocStatus } {
+  if (!input.dynamicEnabled) return { derived: "not_enabled", status: "pending" };
+  if (input.envLost) return { derived: "env_lost", status: input.pocStatus ?? "unknown" };
   if (input.timedOut && (input.pocStatus ?? "pending") === "pending") {
-    return { derived: "timed_out", status: "pending", notEvaluated: input.pocStatus == null };
+    return { derived: "timed_out", status: "pending" };
   }
-  return { derived: null, status: input.pocStatus ?? "unknown", notEvaluated: input.pocStatus == null };
+  return { derived: null, status: input.pocStatus ?? "unknown" };
 }
 
 /**
@@ -77,20 +75,20 @@ export function resolveExpCardState(input: {
   pocStatus: PocStatus | null;
   expStatus: ExpStatus | null;
   timedOut?: boolean;
-}): { derived: DerivedState; status: ExpStatus; waitingForPoc: boolean; notEvaluated: boolean } {
-  if (!input.dynamicEnabled) return { derived: "not_enabled", status: "pending", waitingForPoc: false, notEvaluated: false };
-  if (input.envLost) return { derived: "env_lost", status: input.expStatus ?? "unknown", waitingForPoc: false, notEvaluated: input.expStatus == null };
+}): { derived: DerivedState; status: ExpStatus; waitingForPoc: boolean } {
+  if (!input.dynamicEnabled) return { derived: "not_enabled", status: "pending", waitingForPoc: false };
+  if (input.envLost) return { derived: "env_lost", status: input.expStatus ?? "unknown", waitingForPoc: false };
   const exp = input.expStatus ?? "unknown";
   const poc = input.pocStatus ?? "unknown";
   // not-needed is a terminal state and is never overridden by the POC wait.
-  if (exp === "not-needed") return { derived: null, status: exp, waitingForPoc: false, notEvaluated: false };
+  if (exp === "not-needed") return { derived: null, status: exp, waitingForPoc: false };
   if (input.timedOut && exp === "pending") {
-    return { derived: "timed_out", status: "pending", waitingForPoc: false, notEvaluated: input.expStatus == null };
+    return { derived: "timed_out", status: "pending", waitingForPoc: false };
   }
   if (poc !== "reproduced" && exp === "pending") {
-    return { derived: null, status: "pending", waitingForPoc: true, notEvaluated: input.expStatus == null };
+    return { derived: null, status: "pending", waitingForPoc: true };
   }
-  return { derived: null, status: exp, waitingForPoc: false, notEvaluated: input.expStatus == null };
+  return { derived: null, status: exp, waitingForPoc: false };
 }
 
 /** Whether the "漏洞信息尚未完全确定" banner shows on a dynamic card (SSOT §2/§3). */

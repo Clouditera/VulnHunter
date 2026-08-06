@@ -304,7 +304,6 @@ export const ZH: Record<string, string> = {
   "finding.cards.status.downgraded": "已降级",
   "finding.cards.status.failed": "攻击未成立",
   "finding.cards.status.unknown": "状态异常",
-  "finding.cards.status.notEvaluated": "未评估",
   "finding.cards.helper.pending": "尚未执行动态复现 / 漏洞利用评估",
   "finding.cards.helper.reproduced": "已在沙箱中真实触发",
   "finding.cards.helper.failReproduced": "条件已具备但本次未触发；不等于漏洞不存在",
