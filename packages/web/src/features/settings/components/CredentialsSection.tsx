@@ -1241,21 +1241,27 @@ export function CredentialsSection() {
                         <button
                           type="button"
                           data-testid="settings-credential-save"
-                          disabled={saving || (!isDraft && c?.can_edit === false) || saveGateBlocked || !formDirty}
-                          title={saveGateBlocked ? i18n.t("settings.creds.gate.coreModified") : undefined}
+                          disabled={saving || (!isDraft && c?.can_edit === false) || saveGateBlocked || !formDirty || testState.kind === "loading"}
+                          title={
+                            testState.kind === "loading"
+                              ? i18n.t("settings.creds.gate.testing")
+                              : saveGateBlocked
+                                ? i18n.t("settings.creds.gate.coreModified")
+                                : undefined
+                          }
                           onClick={saveCredential}
                           style={{
                             padding: "6px 16px",
                             border: "none",
                             borderRadius: "6px",
-                            background: saving || saveGateBlocked || !formDirty
+                            background: saving || saveGateBlocked || !formDirty || testState.kind === "loading"
                               ? "var(--bg-disabled)"
                               : "var(--brand)",
                             color: "var(--btn-primary-text)",
                             fontSize: "12px",
                             fontWeight: 600,
                             cursor:
-                              saving || saveGateBlocked || !formDirty ? "not-allowed" : "pointer",
+                              saving || saveGateBlocked || !formDirty || testState.kind === "loading" ? "not-allowed" : "pointer",
                             opacity: 1,
                           }}
                         >
