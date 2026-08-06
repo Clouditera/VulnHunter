@@ -1,5 +1,5 @@
 /** Credentials section (extracted from SettingsPage): unified list + inline editor. */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential } from "../../../shared/api/client.js";
@@ -125,6 +125,23 @@ export function CredentialsSection() {
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+  /** Centralized toast with auto-dismiss (fish 2026-08-06: local toast had
+   *  no timeout on some paths — bubble stuck forever). Single timer: a new
+   *  toast cancels the old countdown; error 6s / success 4s (global spec). */
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = useCallback((t: { kind: "ok" | "err"; msg: string } | null) => {
+    if (toastTimerRef.current) { clearTimeout(toastTimerRef.current); toastTimerRef.current = null; }
+    setToast(t);
+    if (t) {
+      toastTimerRef.current = setTimeout(() => {
+        setToast(null);
+        toastTimerRef.current = null;
+      }, t.kind === "err" ? 6000 : 4000);
+    }
+  }, []);
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Model enhancements
@@ -193,7 +210,7 @@ export function CredentialsSection() {
     setApiKey(""); // loaded only after an explicit reveal action
     setShowKey(false);
     setTestState({ kind: "idle" });
-    setToast(null);
+    showToast(null);
     resetModelList();
     setEditCoreSnap({
       proto: normalizeProtoType(c.proto_type),
@@ -223,7 +240,7 @@ export function CredentialsSection() {
     setIsNewDraft(false);
     setApiKey("");
     setTestState({ kind: "idle" });
-    setToast(null);
+    showToast(null);
     resetModelList();
     setEditCoreSnap(null);
     setTestedFingerprint(null);
@@ -243,7 +260,7 @@ export function CredentialsSection() {
     setLabel("");
     setApiKey("");
     setTestState({ kind: "idle" });
-    setToast(null);
+    showToast(null);
     setTestChecks([]);
     resetModelList();
     setEditCoreSnap(null);
@@ -264,8 +281,7 @@ export function CredentialsSection() {
       setApiKey(api_key);
       setShowKey(true);
     } catch (err) {
-      setToast({ kind: "err", msg: String((err as Error).message || err) });
-      setTimeout(() => setToast(null), 2800);
+      showToast({ kind: "err", msg: String((err as Error).message || err) });
     }
   }
 
@@ -289,11 +305,9 @@ export function CredentialsSection() {
           .catch(() => ({ credential: null as LlmCredential | null }));
         if (cur?.credential) editCredential(cur.credential);
       }
-      setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
-      setTimeout(() => setToast(null), 2000);
+      showToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
     } catch (err) {
-      setToast({ kind: "err", msg: String((err as Error).message || err) });
-      setTimeout(() => setToast(null), 2800);
+      showToast({ kind: "err", msg: String((err as Error).message || err) });
     }
   }
 
@@ -304,11 +318,9 @@ export function CredentialsSection() {
         .listCredentials()
         .catch(() => ({ credentials: [] as LlmCredential[] }));
       setCredentials(fresh.credentials);
-      setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
-      setTimeout(() => setToast(null), 2000);
+      showToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
     } catch (err) {
-      setToast({ kind: "err", msg: String((err as Error).message || err) });
-      setTimeout(() => setToast(null), 2800);
+      showToast({ kind: "err", msg: String((err as Error).message || err) });
     }
   }
 
@@ -324,7 +336,7 @@ export function CredentialsSection() {
   async function saveCredential() {
     if (saving) return;
     setSaving(true);
-    setToast(null);
+    showToast(null);
     try {
       const contextWindowTokens = parseContextWindowInput(contextWindow);
       const errors: Record<string, string> = {};
@@ -337,7 +349,7 @@ export function CredentialsSection() {
         return;
       }
       if (contextWindowTokens == null) {
-        setToast({ kind: "err", msg: i18n.t("settings.model.contextWindow.invalid") });
+        showToast({ kind: "err", msg: i18n.t("settings.model.contextWindow.invalid") });
         setSaving(false);
         return;
       }
@@ -409,8 +421,7 @@ export function CredentialsSection() {
       // L4 now runs inside the test stream as the 4th layer (fish 2026-08-05)
       // — the panel already showed its verdict live before this save; no
       // post-save polling needed.
-      setToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
-      setTimeout(() => setToast(null), 2200);
+      showToast({ kind: "ok", msg: i18n.t("settings.savedToast") });
     } catch (err) {
       const code = (err as Error)?.message ?? "";
       const errCode = (err as { code?: string })?.code;
@@ -424,8 +435,7 @@ export function CredentialsSection() {
         code === "NEEDS_API_KEY"
           ? i18n.t("settings.model.apiKey") + " — " + i18n.t("settings.saveError")
           : i18n.t("settings.saveError");
-      setToast({ kind: "err", msg });
-      setTimeout(() => setToast(null), 2800);
+      showToast({ kind: "err", msg });
     } finally {
       setSaving(false);
     }
