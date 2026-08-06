@@ -71,7 +71,14 @@ function buildModel(cred: DecryptedLlmCredential): Model<any> {
     input: ["text"] as ("text" | "image")[],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     contextWindow: cred.context_window_tokens ?? 128000,
-    maxTokens: 16384,
+    // fish 2026-08-06: NO maxTokens for OpenAI-compatible APIs — a
+    // self-imposed output cap leaks into the real request and collides with
+    // gateway thinking budgets (kimi mid-tier: 64/16384 < thinking_budget
+    // 32768 → 400). Without the field the gateway applies the model's own
+    // default max output, compatible with its own budget mapping.
+    // Anthropic /messages REQUIRES max_tokens (API contract; pi-ai derives
+    // NaN/null without it) — give thinking budget (32768) + 4096 margin.
+    ...(api === "anthropic-messages" ? { maxTokens: 36_864 } : {}),
     // fish 2026-08-05: completions endpoints default to system role — the
     // TEST path must match the real-task generation shape (test/run seam).
     ...(api === "openai-completions" ? { compat: { supportsDeveloperRole: false } } : {}),
@@ -130,6 +137,12 @@ async function consumeStream(
 const RAW_ERROR_MAX = 200;
 
 /**
+ * fish 2026-08-06: L1-L4 all share one 120s timeout budget. No layer may
+ * run unbounded — a hung upstream must surface as a fail, not a spinner.
+ */
+const DIAGNOSTIC_TIMEOUT_MS = 120_000;
+
+/**
  * fish 2026-08-06: failure rows show the RAW network error, nothing else.
  * Compose HTTP status + gateway body when a status is present (service
  * reachable), else the transport cause verbatim (ENOTFOUND / ECONNREFUSED /
@@ -174,10 +187,14 @@ async function runL1Basic(cred: DecryptedLlmCredential, emit: DiagnosticEmitter)
     // expected to include /v1 when the gateway requires it).
     const path = api === "anthropic-messages" ? "/messages" : api === "openai-responses" ? "/responses" : "/chat/completions";
     const body = api === "anthropic-messages"
-      ? { model: cred.model_id, max_tokens: 16, messages: [{ role: "user", content: "Reply with the single word: ok" }] }
+      // Anthropic /messages REQUIRES max_tokens (API contract). Give the
+      // thinking budget (32768) + 4096 margin — architect 2026-08-06. The
+      // OpenAI-compatible branches carry NO max field: the gateway applies
+      // its model default (kimi thinking-budget regression fix).
+      ? { model: cred.model_id, max_tokens: 36_864, messages: [{ role: "user", content: "Reply with the single word: ok" }] }
       : api === "openai-responses"
-        ? { model: cred.model_id, input: "Reply with the single word: ok", max_output_tokens: 16 }
-        : { model: cred.model_id, messages: [{ role: "user", content: "Reply with the single word: ok" }], max_tokens: 16 };
+        ? { model: cred.model_id, input: "Reply with the single word: ok" }
+        : { model: cred.model_id, messages: [{ role: "user", content: "Reply with the single word: ok" }] };
 
     // Anthropic contract: x-api-key + anthropic-version (Bearer 401s);
     // OpenAI-compatible endpoints: Bearer. Mirrors the real gateways.
@@ -193,7 +210,7 @@ async function runL1Basic(cred: DecryptedLlmCredential, emit: DiagnosticEmitter)
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(DIAGNOSTIC_TIMEOUT_MS),
     });
 
     if (!res.ok) {
@@ -256,13 +273,14 @@ async function runL2Thinking(cred: DecryptedLlmCredential, emit: DiagnosticEmitt
     const context = buildContext("Think step by step: what is 2+2?");
     const stream = streamSimple(model, context, {
       apiKey: cred.api_key,
-      maxTokens: 64,
+      // fish 2026-08-06: no maxTokens (see buildModel) — the probe must not
+      // self-limit output in a way that collides with gateway budgets.
       reasoning: (cred.thinking_effort as any) ?? "medium",
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(DIAGNOSTIC_TIMEOUT_MS),
     });
     const result = await withTimeout(
-      consumeStream(stream, { wantThinking: true, signal: AbortSignal.timeout(30_000) }),
-      35_000,
+      consumeStream(stream, { wantThinking: true, signal: AbortSignal.timeout(DIAGNOSTIC_TIMEOUT_MS) }),
+      DIAGNOSTIC_TIMEOUT_MS,
       "L2 thinking",
     );
 
@@ -309,12 +327,12 @@ async function runL3Tool(cred: DecryptedLlmCredential, emit: DiagnosticEmitter):
     const context = buildContext("Call the diagnostic_echo tool with message 'hello'", [DIAGNOSTIC_TOOL]);
     const stream = streamSimple(model, context, {
       apiKey: cred.api_key,
-      maxTokens: 128,
-      signal: AbortSignal.timeout(30_000),
+      // fish 2026-08-06: no maxTokens (see buildModel).
+      signal: AbortSignal.timeout(DIAGNOSTIC_TIMEOUT_MS),
     });
     const result = await withTimeout(
-      consumeStream(stream, { wantTool: true, signal: AbortSignal.timeout(30_000) }),
-      35_000,
+      consumeStream(stream, { wantTool: true, signal: AbortSignal.timeout(DIAGNOSTIC_TIMEOUT_MS) }),
+      DIAGNOSTIC_TIMEOUT_MS,
       "L3 tool",
     );
 

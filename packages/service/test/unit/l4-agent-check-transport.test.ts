@@ -20,6 +20,8 @@ const spawnCalls: SpawnCall[] = [];
 const modelsJsonSnapshots: string[] = [];
 /** When true the mock child emits NO tool events (assertion must fail). */
 let noToolCall = false;
+/** When true the mock child emits NOTHING and never closes (hard-timeout test). */
+let hangMode = false;
 /** When true the mock child replays the REAL captured pi event stream. */
 let fixtureMode = false;
 
@@ -49,6 +51,9 @@ vi.mock("node:child_process", () => ({
       // json carries tool traces on message_end.content (ToolCall block) and
       // turn_end.toolResults (ToolResultMessage) — NOT tool_execution_* events
       // (QA-verified on the real stream). Mock closes a bash loop accordingly.
+      if (hangMode) {
+        return; // child never emits, never closes — only the hard deadline can settle
+      }
       if (fixtureMode) {
         for (const line of REAL_FIXTURE_LINES) {
           child.stdout.emit("data", Buffer.from(line + "\n"));
@@ -112,6 +117,7 @@ describe("L4 credential transport (no argv leak)", () => {
     spawnCalls.length = 0;
     modelsJsonSnapshots.length = 0;
     noToolCall = false;
+    hangMode = false;
     fixtureMode = false;
   });
 
@@ -126,6 +132,29 @@ describe("L4 credential transport (no argv leak)", () => {
     const result = await runL4Check(input());
     expect(result.status).toBe("fail");
     expect(result.detail).toContain("bash tool call");
+  });
+
+  it("hard timeout at 120s: fails with the raw timeout even when the child never closes (QA R1 hang, fish 2026-08-06)", async () => {
+    // Fake timers FIRST: runL4Check's internal deadline setTimeout must be
+    // fake, or advanceTimersByTimeAsync can't fire it.
+    vi.useFakeTimers();
+    try {
+      hangMode = true;
+      const promise = runL4Check(input());
+      // mkdtemp/writeModelsJson are real async fs — yield to the event loop
+      // with small fake-time advances until the pi child is spawned and its
+      // fake deadline timer armed.
+      for (let i = 0; i < 200 && spawnCalls.length === 0; i++) {
+        await vi.advanceTimersByTimeAsync(5);
+      }
+      expect(spawnCalls.length).toBe(1);
+      await vi.advanceTimersByTimeAsync(120_000);
+      const result = await promise;
+      expect(result.status).toBe("fail");
+      expect(result.detail).toBe("timeout after 120s");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("passes and never places the API key on the command line", async () => {

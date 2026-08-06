@@ -79,7 +79,25 @@ describe("pi-diagnostics", () => {
     expect(headers["x-api-key"]).toBe("sk-fake");
     expect(headers["anthropic-version"]).toBe("2023-06-01");
     expect(headers["Authorization"]).toBeUndefined();
-    expect(String(init.body)).toContain('"max_tokens":16');
+    // Anthropic /messages REQUIRES max_tokens — give the thinking budget
+    // (32768) + 4096 margin (architect 2026-08-06); NOT the old self-imposed 16.
+    expect(String(init.body)).toContain('"max_tokens":36864');
+  });
+
+  it("L1 openai-completions body carries NO max_tokens (gateway default output cap)", async () => {
+    mockFetch.mockResolvedValue(okFetch());
+    await runPiDiagnostics(FAKE_CRED, () => {});
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(String(init.body)).not.toContain("max_tokens");
+    expect(String(init.body)).not.toContain("max_output_tokens");
+  });
+
+  it("L1 openai-responses body carries NO max_output_tokens", async () => {
+    mockFetch.mockResolvedValue(okFetch());
+    await runPiDiagnostics({ ...FAKE_CRED, proto_type: "openai-responses" }, () => {});
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(String(init.body)).not.toContain("max_tokens");
+    expect(String(init.body)).not.toContain("max_output_tokens");
   });
 
   it("L1 fail carries the undici network cause (ENOTFOUND via err.cause)", async () => {
@@ -140,10 +158,39 @@ describe("pi-diagnostics buildModel shape", () => {
     expect(m.input).toContain("text");
     expect(m.cost).toBeDefined();
     expect(typeof m.contextWindow).toBe("number");
-    expect(typeof m.maxTokens).toBe("number");
+    // fish 2026-08-06: maxTokens must NOT exist for OpenAI-compatible APIs —
+    // a self-imposed output cap collides with gateway thinking budgets (kimi
+    // mid-tier 400 regression).
+    expect(m.maxTokens).toBeUndefined();
     expect(m.baseUrl).toBeDefined();
     expect(m.api).toBeDefined();
     expect(m.provider).toBeDefined();
     expect(typeof m.reasoning).toBe("boolean");
+  });
+
+  it("L2/L3 streamSimple calls carry NO maxTokens option", async () => {
+    mockFetch.mockResolvedValue(okFetch());
+    const optsSeen: any[] = [];
+    mockStreamSimple.mockImplementation((_model: any, _ctx: any, opts: any) => {
+      optsSeen.push(opts);
+      return makeStream([{ type: "thinking_delta", delta: "t", partial: {} }, { type: "done", reason: "stop", message: {} }]);
+    });
+    await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, () => {});
+    expect(optsSeen.length).toBeGreaterThan(0);
+    for (const opts of optsSeen) {
+      expect(opts.maxTokens).toBeUndefined();
+    }
+  });
+
+  it("buildModel keeps Anthropic maxTokens=36864 (API-required; thinking budget + margin)", async () => {
+    mockFetch.mockResolvedValue(okFetch());
+    const passedModel: any[] = [];
+    mockStreamSimple.mockImplementation((model: any) => {
+      passedModel.push(model);
+      return makeStream([{ type: "thinking_delta", delta: "t", partial: {} }, { type: "done", reason: "stop", message: {} }]);
+    });
+    await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high", proto_type: "anthropic" }, () => {});
+    const m = passedModel[0];
+    expect(m.maxTokens).toBe(36_864);
   });
 });

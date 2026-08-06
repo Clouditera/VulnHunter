@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PI_VERSION } from "@vulnhunter/shared";
 import { logger } from "../../infra/logger.js";
+import { formatRawError } from "./pi-diagnostics.js";
 
 export interface L4CheckInput {
   baseUrl: string;
@@ -39,7 +40,8 @@ export type L4CheckResult = {
   events?: unknown[];
 };
 
-const L4_TIMEOUT_MS = 60_000;
+/** fish 2026-08-06: L1-L4 unified 120s timeout. */
+const L4_TIMEOUT_MS = 120_000;
 
 /** Env var that carries the credential into the pi subprocess (never on argv). */
 const L4_API_KEY_ENV = "VULNHUNTER_L4_API_KEY";
@@ -108,6 +110,11 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
 
     const events: unknown[] = [];
     let stderr = "";
+    /** True when the hard deadline fired — the child (or a grandchild holding
+     *  the stdio pipe) never closed. QA R1 (2026-08-06): SIGTERM alone left
+     *  the promise pending forever because `close` waits for ALL stdio to
+     *  EOF; a killed pi with a live bash grandchild never EOFs. */
+    let timedOut = false;
 
     await new Promise<void>((resolve) => {
       const child = spawn("pi", args, {
@@ -122,16 +129,31 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
         stdio: ["ignore", "pipe", "pipe"],
       });
 
+      let settled = false;
+      const forceSettle = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+
+      // Hard deadline (fish 2026-08-06): when it fires, the layer FAILS.
+      // SIGTERM is best-effort; SIGKILL after a 2s grace for orphan cleanup.
+      // forceSettle() guarantees the promise ALWAYS resolves — a hung
+      // subprocess can no longer leave the credential test spinning.
       const timer = setTimeout(() => {
-        child.kill("SIGTERM");
+        timedOut = true;
+        try { child.kill("SIGTERM"); } catch { /* already dead */ }
+        setTimeout(() => {
+          try { child.kill("SIGKILL"); } catch { /* already dead */ }
+        }, 2_000);
+        forceSettle();
       }, L4_TIMEOUT_MS);
 
       input.signal?.addEventListener("abort", () => {
-        clearTimeout(timer);
-        child.kill("SIGTERM");
-      });
-
-      let settled = false;
+        try { child.kill("SIGTERM"); } catch { /* already dead */ }
+        forceSettle();
+      }, { once: true });
 
       let stdoutBuf = "";
       child.stdout.on("data", (chunk: Buffer) => {
@@ -155,38 +177,40 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
 
       child.on("close", () => {
         if (!settled) {
-          clearTimeout(timer);
           // Parse any remaining stdout
           if (stdoutBuf.trim()) {
             try { events.push(JSON.parse(stdoutBuf.trim())); } catch { /* skip */ }
           }
-          settled = true;
-          resolve();
+          forceSettle();
         }
       });
 
       // Early exit on any non-zero or null exit code (ENOENT, bad args, etc.)
       child.on("exit", (code) => {
         if (!settled && code !== 0) {
-          clearTimeout(timer);
           if (stdoutBuf.trim()) {
             try { events.push(JSON.parse(stdoutBuf.trim())); } catch { /* skip */ }
           }
-          settled = true;
-          resolve();
+          forceSettle();
         }
       });
 
       child.on("error", () => {
-        if (!settled) {
-          clearTimeout(timer);
-          settled = true;
-          resolve();
-        }
+        if (!settled) forceSettle();
       });
     });
 
     const durationMs = Date.now() - start;
+
+    // Hard timeout verdict (fish 2026-08-06): the child never closed within
+    // the 120s budget — report the raw timeout, not a guessed classification.
+    if (timedOut) {
+      return {
+        status: "fail" as const,
+        durationMs,
+        detail: formatRawError(`timeout after ${L4_TIMEOUT_MS / 1000}s`),
+      };
+    }
 
     // Assert (fish 2026-08-05): the agent must actually close a real tool
     // loop — bash tool call observed, tool result present, agent settled.
