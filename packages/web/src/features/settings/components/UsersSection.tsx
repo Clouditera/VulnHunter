@@ -123,7 +123,13 @@ export function UsersSection() {
               <RoleBadge role={u.role} />
             </div>
             <div style={{ width: "90px" }}>
-              <SourceBadge source={u.source} />
+              {/* System account: hide the source badge (fish 2026-08-06 —
+                  管理员创建 marker is meaningless for the built-in admin). */}
+              {u.is_system ? (
+                <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>—</span>
+              ) : (
+                <SourceBadge source={u.source} />
+              )}
             </div>
             <div style={{ width: "110px", fontSize: "12px", color: "var(--text-secondary)" }}>{formatTaskLimit(u)}</div>
             <div style={{ width: "100px", fontSize: "12px", color: "var(--text-secondary)" }}>{relativeTime(u.last_login_at)}</div>
