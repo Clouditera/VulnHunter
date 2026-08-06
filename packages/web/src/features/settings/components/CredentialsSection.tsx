@@ -1,5 +1,5 @@
 /** Credentials section (extracted from SettingsPage): unified list + inline editor. */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential } from "../../../shared/api/client.js";
@@ -137,7 +137,10 @@ export function CredentialsSection() {
   const [modelListOwner, setModelListOwner] = useState<string | null>(null);
   /** Core-field snapshot of the credential being edited (edit-gate, fish
    *  2026-08-04: 改核心字段必须先通过测试再保存，不许点了才报错). */
-  const [editCoreSnap, setEditCoreSnap] = useState<{ proto: string; baseUrl: string; modelId: string } | null>(null);
+  const [editCoreSnap, setEditCoreSnap] = useState<{
+    proto: string; baseUrl: string; modelId: string;
+    label: string; thinking: string; contextWindow: string;
+  } | null>(null);
   /** Fingerprint of the form values the last successful test ran against. */
   const [testedFingerprint, setTestedFingerprint] = useState<string | null>(null);
   const [testChecks, setTestChecks] = useState<import("../../../shared/api/client").ModelDiagnosticCheck[]>([]);
@@ -149,37 +152,6 @@ export function CredentialsSection() {
     | { kind: "ok"; msg?: string; diagnostics?: import("../../../shared/api/client").ModelDiagnosticResult }
     | { kind: "err"; msg: string; diagnostics?: import("../../../shared/api/client").ModelDiagnosticResult }
   >({ kind: "idle" });
-  /**
-   * L4 agent-loop verdict row (fish 2026-08-05: L4 restored, badge stays
-   * gone — verdict shows as a fourth row in the test panel). Fired by the
-   * backend after a gated save; we poll listCredentials until the status
-   * settles (passed/failed) or the poll budget runs out.
-   */
-  const [l4, setL4] = useState<{ credId: string; status: "running" | "passed" | "failed" } | null>(null);
-  const l4PollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stopL4Poll = () => {
-    if (l4PollRef.current) { clearInterval(l4PollRef.current); l4PollRef.current = null; }
-  };
-  useEffect(() => () => stopL4Poll(), []);
-  const startL4Tracking = (credId: string) => {
-    stopL4Poll();
-    setL4({ credId, status: "running" });
-    let tries = 0;
-    l4PollRef.current = setInterval(async () => {
-      tries += 1;
-      try {
-        const list = await api.settings.listCredentials();
-        const row = list.credentials.find((c) => c.id === credId);
-        const st = row?.deep_verified_status;
-        if (st === "passed" || st === "failed") {
-          setL4({ credId, status: st });
-          stopL4Poll();
-          return;
-        }
-      } catch { /* transient — keep polling */ }
-      if (tries >= 40) stopL4Poll(); // ~2min budget; row stays "running" otherwise
-    }, 3000);
-  };
 
   useEffect(() => {
     let mounted = true;
@@ -227,21 +199,13 @@ export function CredentialsSection() {
       proto: normalizeProtoType(c.proto_type),
       baseUrl: c.base_url ?? "",
       modelId: c.model_id,
+      label: c.label ?? "",
+      thinking: (c.thinking_effort as ThinkingValue) ?? "medium",
+      contextWindow: formatContextWindow(c.context_window_tokens),
     });
     setTestedFingerprint(null);
-    // Backfill the L4 row from the stored status (QA P2: reopening the edit
-    // view must surface deep verification — fish: 保存时就暴露). A settled
-    // status renders statically; pending/running resumes polling.
-    const dv = c.deep_verified_status;
-    if (dv === "passed" || dv === "failed") {
-      stopL4Poll();
-      setL4({ credId: c.id, status: dv });
-    } else if (dv === "pending" || dv === "running") {
-      startL4Tracking(c.id);
-    } else {
-      stopL4Poll();
-      setL4(null);
-    }
+    // fish 2026-08-06 ①: no L4 backfill on edit-open — the four test cards
+    // render ONLY from an actively-triggered test run (stream events).
   }
 
   /** Reset the model suggestion list (switch of edit target — spec ①). */
@@ -263,8 +227,6 @@ export function CredentialsSection() {
     resetModelList();
     setEditCoreSnap(null);
     setTestedFingerprint(null);
-    stopL4Poll();
-    setL4(null);
   }
 
   /** Open the "+ New credential" draft row at the top of the list. */
@@ -286,8 +248,6 @@ export function CredentialsSection() {
     resetModelList();
     setEditCoreSnap(null);
     setTestedFingerprint(null);
-    stopL4Poll();
-    setL4(null);
   }
 
   async function toggleApiKeyVisibility() {
@@ -525,13 +485,16 @@ export function CredentialsSection() {
    * from ever seeing a click-then-fail. */
   const normUrl = (u: string) => u.trim().replace(/\/+$/, "");
   const coreFingerprint = () =>
-    [protoType, normUrl(baseUrl), modelId.trim(), apiKey.trim() ? "newkey" : "keep"].join("|");
+    [protoType, normUrl(baseUrl), modelId.trim(), thinking, apiKey.trim() ? "newkey" : "keep"].join("|");
+  // fish 2026-08-06 ③: thinking_effort is a core field (it changes the
+  // reasoning params sent to the model) — editing it requires a fresh test.
   const coreChanged =
     !isNewDraft &&
     editCoreSnap != null &&
     (protoType !== editCoreSnap.proto ||
       normUrl(baseUrl) !== normUrl(editCoreSnap.baseUrl) ||
       modelId.trim() !== editCoreSnap.modelId ||
+      thinking !== editCoreSnap.thinking ||
       apiKey.trim() !== "");
   /** Un-gate ONLY when the last test run PASSED against the current form
    *  values. Fingerprint alone is not enough: a stale pass fingerprint can
@@ -540,6 +503,13 @@ export function CredentialsSection() {
    *  must always keep the gate closed. */
   const testPassedForCurrent = testState.kind === "ok" && testedFingerprint === coreFingerprint();
   const saveGateBlocked = coreChanged && !testPassedForCurrent;
+  // fish 2026-08-06 ④: nothing changed → save disabled (no pointless click).
+  const formDirty =
+    isNewDraft ||
+    editCoreSnap == null ||
+    coreChanged ||
+    label.trim() !== editCoreSnap.label ||
+    contextWindow.trim() !== editCoreSnap.contextWindow;
 
   /** Fetch-models button needs URL + a usable key (typed, or the stored one
    *  when editing) — fish: 模型列表依赖 key/url，排在其后且未填禁用. */
@@ -586,8 +556,6 @@ export function CredentialsSection() {
     }
     setFieldErrors({});
     setTestState({ kind: "loading" });
-    stopL4Poll();
-    setL4(null);
     setTestChecks([]);
     const payload = {
       // credential_id rides along ONLY for stored-key fallback (backend
@@ -1033,14 +1001,13 @@ export function CredentialsSection() {
                 </button>
                 }
               </div>
-              {(testState.kind === "ok" || testState.kind === "err" || (testState.kind === "loading" && testChecks.length > 0) || l4 != null) && (
+              {(testState.kind === "ok" || testState.kind === "err" || (testState.kind === "loading" && testChecks.length > 0)) && (
                 <div data-testid="settings-test-result" data-kind={testState.kind}>
-                  {testChecks.length > 0 || l4 != null ? (
+                  {testChecks.length > 0 ? (
                     <CredentialTestProgress
                       checks={testChecks}
                       report={testState.diagnostics ?? null}
                       running={testState.kind === "loading"}
-                      l4={l4 ? { status: l4.status } : null}
                     />
                   ) : testState.kind !== "loading" ? (
                     <div
@@ -1276,21 +1243,21 @@ export function CredentialsSection() {
                         <button
                           type="button"
                           data-testid="settings-credential-save"
-                          disabled={saving || (!isDraft && c?.can_edit === false) || saveGateBlocked}
+                          disabled={saving || (!isDraft && c?.can_edit === false) || saveGateBlocked || !formDirty}
                           title={saveGateBlocked ? i18n.t("settings.creds.gate.coreModified") : undefined}
                           onClick={saveCredential}
                           style={{
                             padding: "6px 16px",
                             border: "none",
                             borderRadius: "6px",
-                            background: saving || saveGateBlocked
+                            background: saving || saveGateBlocked || !formDirty
                               ? "var(--bg-disabled)"
                               : "var(--brand)",
                             color: "var(--btn-primary-text)",
                             fontSize: "12px",
                             fontWeight: 600,
                             cursor:
-                              saving || saveGateBlocked ? "not-allowed" : "pointer",
+                              saving || saveGateBlocked || !formDirty ? "not-allowed" : "pointer",
                             opacity: 1,
                           }}
                         >
