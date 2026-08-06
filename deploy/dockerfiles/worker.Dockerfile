@@ -37,8 +37,8 @@ RUN chmod +x /usr/local/bin/youngflow \
 
 # VulnForge 2.0 scan flow assets (separate from youngflow submodule).
 # Keep these values in the image so support/QA can prove the exact flow baseline.
-ARG VULNFORGE_VERSION=2.0-5-g1782ef6
-ARG VULNFORGE_COMMIT=1782ef6d99db58fda74c8e1524b9237ca39cad2c
+ARG VULNFORGE_VERSION=2.0-12-g72c4998
+ARG VULNFORGE_COMMIT=72c499876116496710dacc7b20563c6caf628d59
 LABEL org.opencontainers.image.vulnforge.version=$VULNFORGE_VERSION \
       org.opencontainers.image.vulnforge.revision=$VULNFORGE_COMMIT
 COPY flows/vulnforge /opt/vulnhunter/flows/vulnforge
@@ -59,6 +59,14 @@ RUN cd /opt/vulnhunter/flows/vulnforge/extensions/workspace-diff \
     && npm install --omit=dev --no-audit --no-fund \
       @earendil-works/pi-coding-agent@$PI_VERSION \
       @earendil-works/pi-ai@$PI_VERSION
+# pi-web-access (nested submodule, pinned a1135b8 in VulnForge-Flow): web
+# search/extract for research+hunt stages. 7 runtime deps + pi peerDeps
+# (mirrors output-contract/code-coverage-viewer install shape).
+RUN cd /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access \
+    && npm install --omit=dev --no-audit --no-fund \
+    && npm install --omit=dev --no-audit --no-fund \
+      @earendil-works/pi-coding-agent@$PI_VERSION \
+      @earendil-works/pi-ai@$PI_VERSION
 COPY flows/prepare /opt/vulnhunter/flows/prepare
 COPY packages/service/src/features/prepare/schemas/source-manifest-v1.schema.json /opt/vulnhunter/flows/prepare/schemas/source-manifest-v1.schema.json
 RUN youngflow /opt/vulnhunter/flows/prepare/flow.prepare.yaml --list-stages >/tmp/prepare-stages.txt \
@@ -67,6 +75,8 @@ RUN test -f /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-tracker/ind
     && test -f /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-viewer/index.ts \
     && test -f /opt/vulnhunter/flows/vulnforge/extensions/output-contract/contracts.json \
     && test -f /opt/vulnhunter/flows/vulnforge/extensions/workspace-diff/index.ts \
+    && test -f /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access/index.ts \
+    && test -d /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access/node_modules \
     && test -L /opt/vulnhunter/flows/vulnforge-timeout/schemas \
     && test "$(readlink /opt/vulnhunter/flows/vulnforge-timeout/schemas)" = ../vulnforge/schemas \
     && test "$(realpath /opt/vulnhunter/flows/vulnforge-timeout/schemas)" = /opt/vulnhunter/flows/vulnforge/schemas \

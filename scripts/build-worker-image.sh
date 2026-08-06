@@ -7,8 +7,8 @@ cd "$ROOT"
 IMAGE_TAG="${1:-vulnhunter-worker:local}"
 if [[ $# -gt 0 ]]; then shift; fi
 
-VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0-5-g1782ef6}"
-VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-1782ef6d99db58fda74c8e1524b9237ca39cad2c}"
+VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0-12-g72c4998}"
+VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-72c499876116496710dacc7b20563c6caf628d59}"
 PI_VERSION="${PI_VERSION:-$(sed -n 's/.*PI_VERSION = "\([^"]*\)".*/\1/p' "$ROOT/packages/shared/src/pi.version.ts" | head -1)}"
 
 # A clean checkout does not contain generated YoungFlow/worker-bridge outputs.
