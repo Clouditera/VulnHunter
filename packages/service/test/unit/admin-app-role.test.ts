@@ -60,11 +60,11 @@ describe("admin console backend wiring", () => {
     expect(codes).toMatch(/ERR_CREDIT_CODE_ASSIGNED/);
   });
 
-  it("compose has admin-api/admin-web, no docker.sock on admin-api, 127.0.0.1 default", () => {
+  it("compose has admin-api/admin-web, no docker.sock on admin-api, 0.0.0.0 default (fish 2026-08-06 首装动线)", () => {
     expect(compose).toMatch(/admin-api:/);
     expect(compose).toMatch(/admin-web:/);
     expect(compose).toMatch(/SERVICE_ROLE: "admin"/);
-    expect(compose).toMatch(/ADMIN_LISTEN_ADDR:-127\.0\.0\.1/);
+    expect(compose).toMatch(/ADMIN_LISTEN_ADDR:-0\.0\.0\.0/);
     expect(compose).toMatch(/NGINX_ROLE: "admin"/);
     // admin-api block should not mount docker.sock — check the admin-api section
     const adminApiBlock = compose.split("admin-api:")[1]?.split("admin-web:")[0] ?? "";

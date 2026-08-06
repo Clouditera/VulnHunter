@@ -31,6 +31,9 @@ async function statusHandler(c: any) {
     has_admin: hasAdmin,
     is_authenticated: isAuthenticated,
     installation_id: getInstallationId(),
+    // fish 2026-08-06: business-web guards redirect to the admin console
+    // /setup wizard — the port comes from the status API, zero hardcode.
+    admin_console_port: Number(process.env.ADMIN_PORT ?? 23001),
     user: sessionUser
       ? {
           id: sessionUser.userId,

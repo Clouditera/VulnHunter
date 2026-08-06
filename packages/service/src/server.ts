@@ -19,6 +19,7 @@ import { wikiRouter } from "./features/wiki/routes.js";
 import { notificationRouter } from "./features/notifications/index.js";
 import { sandboxPlaneInternalRouter } from "./features/sandbox-plane/routes.js";
 import { mountAdminRoutes } from "./features/admin/index.js";
+import { adminSetupRouter } from "./features/admin/setup-routes.js";
 import { setupWsRouter } from "./ws-router.js";
 import { mcpRouter } from "./mcp/index.js";
 import { injectUser, forbidAdmin } from "./middleware/index.js";
@@ -63,6 +64,8 @@ export function createApp(role: ServiceRole = "business"): Hono {
     // admin-api: auth subset + system subset + /api/admin/*
     app.route("/api/system", adminSystemRouter);
     app.route("/api/auth", adminAuthRouter);
+    // First-install setup wizard endpoints (pre-license, pre-admin; triple-closed).
+    app.route("/api/admin/setup", adminSetupRouter);
     // community users mounted here; enterprise attaches /api/admin/users in initEnterprise
     const edition = (process.env.EDITION ?? "community").toLowerCase();
     // community only: saas/enterprise use enterprise multi-user routes
