@@ -160,27 +160,49 @@ async function runL1Basic(cred: DecryptedLlmCredential, emit: DiagnosticEmitter)
   const t0 = Date.now();
   emit({ type: "check_started", check: { id, label, layer: "L1", status: "pass", message: "testing" } });
 
+  // Direct fetch instead of a pi-ai stream (QA-proven 2026-08-06): pi-ai 0.83
+  // swallows network errors into a generic errorMessage ("Connection error." /
+  // "Cannot read properties of undefined") — errno, HTTP status and gateway
+  // body never surface. undici gives us everything fish wants: err.cause.code
+  // (ENOTFOUND/ECONNREFUSED) and HTTP status + response body for non-2xx.
+  // The request body carries the model, so "model not exist" surfaces HERE as
+  // HTTP 400 with the gateway's own message.
   try {
-    const model = buildModel(cred);
-    const context = buildContext("Reply with the single word: ok");
-    const stream = streamSimple(model, context, {
-      apiKey: cred.api_key,
-      maxTokens: 16,
+    const api = mapApiType(cred.proto_type);
+    const baseUrl = (cred.base_url ?? "").replace(/\/+$/, "");
+    // Mirror pi-ai: paths are appended to the user's base URL (which is
+    // expected to include /v1 when the gateway requires it).
+    const path = api === "anthropic-messages" ? "/messages" : api === "openai-responses" ? "/responses" : "/chat/completions";
+    const body = api === "anthropic-messages"
+      ? { model: cred.model_id, max_tokens: 16, messages: [{ role: "user", content: "Reply with the single word: ok" }] }
+      : api === "openai-responses"
+        ? { model: cred.model_id, input: "Reply with the single word: ok", max_output_tokens: 16 }
+        : { model: cred.model_id, messages: [{ role: "user", content: "Reply with the single word: ok" }], max_tokens: 16 };
+
+    // Anthropic contract: x-api-key + anthropic-version (Bearer 401s);
+    // OpenAI-compatible endpoints: Bearer. Mirrors the real gateways.
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (api === "anthropic-messages") {
+      headers["x-api-key"] = cred.api_key;
+      headers["anthropic-version"] = "2023-06-01";
+    } else {
+      headers["Authorization"] = `Bearer ${cred.api_key}`;
+    }
+
+    const res = await fetch(`${baseUrl}${path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(20_000),
     });
-    const result = await withTimeout(
-      consumeStream(stream, { wantText: true, signal: AbortSignal.timeout(20_000) }),
-      25_000,
-      "L1 basic",
-    );
 
-    if (result.error && !result.text) {
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
       const check: DiagnosticCheck = {
         id, label, layer: "L1", status: "fail",
-        message: formatRawError(result.error, result.httpStatus, cred.api_key),
-        httpStatus: result.httpStatus,
+        message: formatRawError(text.trim().slice(0, 200) || `HTTP ${res.status}`, res.status, cred.api_key),
+        httpStatus: res.status,
         durationMs: Date.now() - t0,
-        detail: `proto=${cred.proto_type} base_url=${cred.base_url} model=${cred.model_id}`,
       };
       emit({ type: "check_failed", check });
       return check;
@@ -194,11 +216,15 @@ async function runL1Basic(cred: DecryptedLlmCredential, emit: DiagnosticEmitter)
     emit({ type: "check_passed", check });
     return check;
   } catch (err: any) {
+    // undici network errors: errno on err.cause (fetch failed → cause).
+    const cause = err?.cause as { code?: string; message?: string } | undefined;
+    const raw = cause?.code
+      ? `${cause.code}${cause.message ? ` ${cause.message}` : ""}`
+      : (err?.message ?? String(err));
     const check: DiagnosticCheck = {
       id, label, layer: "L1", status: "fail",
-      message: formatRawError(err?.message ?? String(err), err?.status, cred.api_key),
+      message: formatRawError(raw, err?.status, cred.api_key),
       durationMs: Date.now() - t0,
-      detail: `proto=${cred.proto_type} base_url=${cred.base_url} model=${cred.model_id}`,
     };
     emit({ type: "check_failed", check });
     return check;

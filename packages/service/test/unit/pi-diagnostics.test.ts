@@ -1,10 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 
-// Mock pi-ai streamSimple to avoid real API calls
+// Mock pi-ai streamSimple to avoid real API calls (L2/L3 use streams).
 const mockStreamSimple = vi.fn();
 vi.mock("@earendil-works/pi-ai/compat", () => ({
   streamSimple: (...args: any[]) => mockStreamSimple(...args),
 }));
+
+// L1 uses a direct undici fetch (QA-proven pi-ai swallows network errors).
+const mockFetch = vi.fn();
+vi.stubGlobal("fetch", mockFetch);
+
+function okFetch(): Response {
+  return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 const { runPiDiagnostics } = await import("../../src/features/settings/pi-diagnostics.js");
 const type = import("@earendil-works/pi-ai/compat");
@@ -32,34 +43,56 @@ function makeStream(events: any[]) {
 }
 
 describe("pi-diagnostics", () => {
-  it("L1 pass when text_delta observed", async () => {
-    let call = 0;
-    mockStreamSimple.mockImplementation(() => {
-      call++;
-      // L1 and L3 both get text events; L3 will fail (no tool) but L1 should pass
-      return makeStream([
-        { type: "text_delta", contentIndex: 0, delta: "ok", partial: {} },
-        { type: "done", reason: "stop", message: {} },
-      ]);
-    });
+  beforeEach(() => {
+    mockFetch.mockReset();
+    mockStreamSimple.mockReset();
+  });
+
+  it("L1 pass on 2xx from the direct fetch", async () => {
+    mockFetch.mockResolvedValue(okFetch());
     const events: any[] = [];
     const result = await runPiDiagnostics(FAKE_CRED, (e) => events.push(e));
     expect(result.checks[0].status).toBe("pass");
     expect(result.checks[0].layer).toBe("L1");
     expect(events.some((e) => e.type === "check_started" && e.check?.id === "basic")).toBe(true);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://api.example.com/v1/chat/completions",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
-  it("L1 fail stops further checks", async () => {
-    mockStreamSimple.mockReturnValue(makeStream([
-      { type: "error", reason: "error", error: { errorMessage: "Connection refused", stopReason: "error" } },
-    ]));
+  it("L1 fail carries HTTP status + gateway body verbatim and stops further checks", async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ error: { message: "Model Not Exist" } }), { status: 400 }));
     const result = await runPiDiagnostics(FAKE_CRED, () => {});
     expect(result.ok).toBe(false);
     expect(result.checks).toHaveLength(1); // only L1
     expect(result.checks[0].status).toBe("fail");
+    expect(result.checks[0].message).toContain('HTTP 400 — {"error":{"message":"Model Not Exist"}}');
+  });
+
+  it("L1 sends Anthropic contract headers for anthropic proto (not Bearer)", async () => {
+    mockFetch.mockResolvedValue(okFetch());
+    const anthropicCred = { ...FAKE_CRED, proto_type: "anthropic" };
+    await runPiDiagnostics(anthropicCred, () => {});
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["x-api-key"]).toBe("sk-fake");
+    expect(headers["anthropic-version"]).toBe("2023-06-01");
+    expect(headers["Authorization"]).toBeUndefined();
+    expect(String(init.body)).toContain('"max_tokens":16');
+  });
+
+  it("L1 fail carries the undici network cause (ENOTFOUND via err.cause)", async () => {
+    const netErr: any = new TypeError("fetch failed");
+    netErr.cause = { code: "ENOTFOUND", message: "getaddrinfo ENOTFOUND api.typo-host.com" };
+    mockFetch.mockRejectedValue(netErr);
+    const result = await runPiDiagnostics(FAKE_CRED, () => {});
+    expect(result.ok).toBe(false);
+    expect(result.checks[0].message).toContain("ENOTFOUND getaddrinfo ENOTFOUND api.typo-host.com");
   });
 
   it("L2 is N/A for non-reasoning model", async () => {
+    mockFetch.mockResolvedValue(okFetch());
     mockStreamSimple.mockReturnValue(makeStream([
       { type: "text_delta", contentIndex: 0, delta: "ok", partial: {} },
       { type: "done", reason: "stop", message: {} },
@@ -70,17 +103,16 @@ describe("pi-diagnostics", () => {
 
   it("L2 pass for reasoning model with thinking content", async () => {
     const reasoningCred = { ...FAKE_CRED, thinking_effort: "high", proto_type: "anthropic" };
-    let call = 0;
-    mockStreamSimple.mockImplementation(() => {
-      call++;
-      if (call === 1) return makeStream([{ type: "text_delta", delta: "4", partial: {} }, { type: "done", reason: "stop", message: {} }]);
-      return makeStream([{ type: "thinking_delta", delta: "thinking...", partial: {} }, { type: "done", reason: "stop", message: {} }]);
-    });
+    mockFetch.mockResolvedValue(okFetch());
+    mockStreamSimple.mockImplementation(() =>
+      makeStream([{ type: "thinking_delta", delta: "thinking...", partial: {} }, { type: "done", reason: "stop", message: {} }]),
+    );
     const result = await runPiDiagnostics(reasoningCred, () => {});
     expect(result.checks.find((c) => c.id === "thinking")?.status).toBe("pass");
   });
 
   it("emits check_started before each check", async () => {
+    mockFetch.mockResolvedValue(okFetch());
     mockStreamSimple.mockReturnValue(makeStream([{ type: "text_delta", delta: "ok", partial: {} }, { type: "done", reason: "stop", message: {} }]));
     const events: any[] = [];
     await runPiDiagnostics(FAKE_CRED, (e) => events.push(e));
@@ -96,11 +128,12 @@ describe("pi-diagnostics buildModel shape", () => {
     // pi-ai internals crash on .includes(). The mock below asserts the
     // model object passed to streamSimple has all required fields.
     const passedModel: any[] = [];
+    mockFetch.mockResolvedValue(okFetch());
     mockStreamSimple.mockImplementation((model: any) => {
       passedModel.push(model);
-      return makeStream([{ type: "text_delta", delta: "ok", partial: {} }, { type: "done", reason: "stop", message: {} }]);
+      return makeStream([{ type: "thinking_delta", delta: "t", partial: {} }, { type: "done", reason: "stop", message: {} }]);
     });
-    await runPiDiagnostics(FAKE_CRED, () => {});
+    await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, () => {});
     const m = passedModel[0];
     expect(m).toBeDefined();
     expect(Array.isArray(m.input)).toBe(true);
