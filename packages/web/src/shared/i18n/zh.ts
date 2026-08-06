@@ -655,6 +655,7 @@ export const ZH: Record<string, string> = {
   "settings.model.fetch": "获取列表",
   "settings.model.fetchNeedUrlKey": "请先填写 API 地址与 API Key",
   "settings.creds.gate.coreModified": "模型配置已更新，请先执行连接测试",
+  "settings.creds.gate.testing": "正在测试连接，请等待测试完成",
   "settings.model.fetching": "获取中…",
   "settings.model.fetchError": "无法获取模型列表 — 请手动输入",
   "settings.model.fetchNone": "该端点未返回任何模型",
