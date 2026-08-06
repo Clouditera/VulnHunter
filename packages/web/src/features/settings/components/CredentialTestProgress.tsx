@@ -75,33 +75,10 @@ function FailureGuidance({ checks }: { checks: ModelDiagnosticCheck[] }) {
 }
 
 function TestConclusion({ checks, ok }: { checks: ModelDiagnosticCheck[]; ok: boolean }) {
-  if (!ok) return <FailureGuidance checks={checks} />;
-
-  const verifiedChecks = checks.filter((check) => check.status === "pass");
-  return (
-    <div
-      data-testid="test-success-conclusion"
-      style={{
-        padding: "10px 12px",
-        borderTop: "1px solid var(--bg-success-border)",
-        background: "var(--bg-success)",
-        color: "var(--bg-success-text)",
-        fontSize: 12,
-        lineHeight: 1.6,
-      }}
-    >
-      <div>
-        <strong>{i18n.t("settings.model.testSuccessConclusion")}：</strong>
-        {i18n.t("settings.model.testSuccessReady")}
-      </div>
-      {verifiedChecks.length > 0 ? (
-        <div>
-          <strong>{i18n.t("settings.model.testSuccessVerified")}：</strong>
-          {verifiedChecks.map(checkLabel).join("、")}
-        </div>
-      ) : null}
-    </div>
-  );
+  // Success renders nothing (fish 2026-08-06: 成功结论块多此一举——四行
+  // 绿勾已说明一切). Failure keeps the reason+solution guidance block.
+  if (ok) return null;
+  return <FailureGuidance checks={checks} />;
 }
 
 function StatusIcon({ status }: { status: string }) {
