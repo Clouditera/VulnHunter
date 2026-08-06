@@ -1,23 +1,11 @@
-export const TASK_NAME_MAX_LENGTH = 64;
-export const TASK_NAME_DISPLAY_LENGTH = 32;
-
-export type TaskNameError = "required" | "too_long" | "invalid_characters";
-
-const TASK_NAME_PATTERN = /^[\p{Script=Han}A-Za-z0-9_\-()（）]+$/u;
-
-export function normalizeTaskName(value: string): string {
-  return value.trim();
-}
-
-export function getTaskNameError(value: string): TaskNameError | null {
-  const normalized = normalizeTaskName(value);
-  if (!normalized) return "required";
-  if (Array.from(normalized).length > TASK_NAME_MAX_LENGTH) return "too_long";
-  return TASK_NAME_PATTERN.test(normalized) ? null : "invalid_characters";
-}
-
-export function truncateTaskName(value: string): { text: string; truncated: boolean } {
-  const characters = Array.from(value);
-  if (characters.length <= TASK_NAME_DISPLAY_LENGTH) return { text: value, truncated: false };
-  return { text: `${characters.slice(0, TASK_NAME_DISPLAY_LENGTH).join("")}…`, truncated: true };
-}
+// Single source of truth moved to @vulnhunter/shared (task-8cb27359):
+// the server enforces the same rule the UI does. This file stays as a
+// re-export so existing web imports/tests keep working unchanged.
+export {
+  TASK_NAME_MAX_LENGTH,
+  TASK_NAME_DISPLAY_LENGTH,
+  getTaskNameError,
+  normalizeTaskName,
+  truncateTaskName,
+} from "@vulnhunter/shared";
+export type { TaskNameError } from "@vulnhunter/shared";

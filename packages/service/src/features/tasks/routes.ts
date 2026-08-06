@@ -10,6 +10,7 @@ import { listCredentials } from "../settings/storage.js";
 import { cancelTask, continueTask, pauseTask, restartTask, resumeTask, TaskControlError } from "./control-service.js";
 import { releaseSandboxForTask } from "../sandboxes/lifecycle.js";
 import { loadConfig } from "../../infra/config.js";
+import { assertValidTaskName } from "./task-name-guard.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
@@ -258,6 +259,9 @@ tasksRouter.patch("/:id/display-name", async (c) => {
   const task = await taskStorage.getTaskById(ctx, c.req.param("id"));
   if (!task) throw new AppError("ERR_TASK_NOT_FOUND");
   const body = await c.req.json<{ display_name?: string | null }>().catch(() => ({} as { display_name?: string | null }));
+  // Server-side rule (task-8cb27359): same shared rule as the UI — non-empty,
+  // ≤64 code points, charset whitelist. Rename always requires a valid name.
+  assertValidTaskName(body.display_name, { required: true });
   const updated = await taskStorage.updateTaskDisplayName(ctx, task.id, body.display_name ?? null);
   return c.json({ task: updated });
 });

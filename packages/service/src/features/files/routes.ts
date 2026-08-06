@@ -12,6 +12,7 @@ import { writeFile, unlink } from "node:fs/promises";
 import { loadConfig } from "../../infra/config.js";
 import { cloneAndUpload } from "./git-clone.js";
 import { GitRemoteError, listRemoteBranches, validateRemoteGitUrl } from "./git-remote.js";
+import { assertValidTaskName } from "../tasks/task-name-guard.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import { detectSourceArchive, stripSourceArchiveExtension } from "../source-archives/detect.js";
 import { inspectSourceArchive } from "../source-archives/extract.js";
@@ -190,6 +191,8 @@ filesRouter.post("/tasks", async (c) => {
 
     const credentialId = (formData.get("credential_id") as string | null) || undefined;
     const displayName = (formData.get("display_name") as string | null) || undefined;
+    // Server-side task-name rule (task-8cb27359) — shared with the UI.
+    assertValidTaskName(displayName);
     let agentMaxParallel: number | undefined;
     try {
       agentMaxParallel = parseAgentMaxParallel(formData.get("agent_max_parallel"));
@@ -326,6 +329,8 @@ filesRouter.post("/tasks", async (c) => {
   if (!credRes.ok) return c.json(credRes.body, credRes.status as 400);
 
   const projectName = body.project_name ?? new URL(safeGitUrl).pathname.split("/").pop() ?? "project";
+  // Server-side task-name rule (task-8cb27359) — shared with the UI.
+  assertValidTaskName(body.display_name);
   const conflictName = (body.display_name?.trim() || projectName).trim();
   if (await hasTaskNameConflict(ctx, conflictName)) {
     return c.json({
