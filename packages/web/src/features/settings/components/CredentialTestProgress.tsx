@@ -13,7 +13,6 @@
 import { useEffect, useState } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
-import { copyText } from "../../../shared/lib/copy-text.js";
 import type { ModelDiagnosticCheck, ModelDiagnosticResult } from "../../../shared/api/client.js";
 
 export interface TestProgressProps {
@@ -22,8 +21,6 @@ export interface TestProgressProps {
   /** Final report once the stream completes. */
   report?: ModelDiagnosticResult | null;
   running: boolean;
-  /** Raw SSE frames of the current run (JSONL detail view, fish 2026-08-06). */
-  rawFrames?: string[];
 }
 
 /**
@@ -116,12 +113,10 @@ function StatusIcon({ status }: { status: string }) {
   );
 }
 
-export function CredentialTestProgress({ checks, report, running, rawFrames }: TestProgressProps) {
+export function CredentialTestProgress({ checks, report, running }: TestProgressProps) {
   const [, tick] = useState(0);
   useEffect(() => i18n.onChange(() => tick((n) => n + 1)), []);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [showRaw, setShowRaw] = useState(false);
-  const [rawCopied, setRawCopied] = useState(false);
 
   // fish 2026-08-06 ②: thinking OFF → the thinking card does not render at
   // all (backend emits an na "not_reasoning" row in that case — hide it;
@@ -146,7 +141,7 @@ export function CredentialTestProgress({ checks, report, running, rawFrames }: T
       {visibleChecks.map((c) => {
         const done = ["pass", "fail", "na", "skip"].includes(c.status);
         const active = !done;
-        const hasDetail = Boolean(c.detail || c.suggestion || c.httpStatus || c.endpoint || (done && c.message && c.status !== "pass"));
+        const hasDetail = c.id !== "l4_agent" && Boolean(c.detail || c.suggestion || c.httpStatus || c.endpoint || (done && c.message && c.status !== "pass"));
         const isOpen = expanded === c.id;
         return (
           <div key={c.id} data-testid={`test-check-${c.id}`} data-status={c.status}>
@@ -244,90 +239,6 @@ export function CredentialTestProgress({ checks, report, running, rawFrames }: T
           ok={report?.ok ?? !checks.some((c) => c.status === "fail")}
         />
       ) : null}
-      {rawFrames && rawFrames.length > 0 ? (
-        <div data-testid="test-progress-raw">
-          <button
-            type="button"
-            data-testid="test-progress-raw-toggle"
-            onClick={() => setShowRaw((v) => !v)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              width: "100%",
-              padding: "7px 12px",
-              border: "none",
-              background: "transparent",
-              color: "var(--text-secondary)",
-              fontSize: 11.5,
-              fontWeight: 500,
-              cursor: "pointer",
-              fontFamily: "inherit",
-              textAlign: "left",
-            }}
-          >
-            <Icon
-              name="chevron-down"
-              size={12}
-              style={{
-                color: "var(--icon-muted)",
-                transform: showRaw ? "rotate(180deg)" : "none",
-                transition: "transform 0.15s",
-              }}
-            />
-            {i18n.t("settings.model.testProgress.details")}
-          </button>
-          {showRaw ? (
-            <div style={{ padding: "0 12px 10px" }}>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-                <button
-                  type="button"
-                  data-testid="test-progress-raw-copy"
-                  onClick={async () => {
-                    const ok = await copyText(rawFrames.join("\n"));
-                    if (ok) {
-                      setRawCopied(true);
-                      window.setTimeout(() => setRawCopied(false), 1500);
-                    }
-                  }}
-                  style={{
-                    padding: "3px 10px",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    background: "var(--bg-card)",
-                    color: "var(--text-secondary)",
-                    fontSize: 11,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {rawCopied ? i18n.t("settings.model.testProgress.copied") : i18n.t("settings.model.testProgress.copy")}
-                </button>
-              </div>
-              <pre
-                data-testid="test-progress-raw-jsonl"
-                style={{
-                  margin: 0,
-                  maxHeight: 240,
-                  overflow: "auto",
-                  padding: "8px 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-card)",
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  lineHeight: 1.55,
-                  color: "var(--text-secondary)",
-                  whiteSpace: "pre",
-                }}
-              >
-                {rawFrames.join("\n")}
-              </pre>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -350,9 +261,6 @@ export interface TestStreamHandlers {
    * (fish 2026-08-04: 三项全绿但按钮卡在「测试中…」).
    */
   onComplete?: (sawReport: boolean) => void;
-  /** Raw JSONL frame hook (fish 2026-08-06: 展开查看 JSONL 详细测试过程) —
-   *  called with each SSE frame's raw JSON text, in arrival order. */
-  onRawFrame?: (raw: string) => void;
 }
 
 /**
@@ -390,8 +298,6 @@ export async function streamCredentialTest(
       .filter((l) => l.startsWith("data:"))
       .map((l) => l.slice(5).trimStart());
     if (dataLines.length === 0) return;
-    const raw = dataLines.join("\n");
-    handlers.onRawFrame?.(raw);
     try {
       const parsed = JSON.parse(dataLines.join("\n")) as TestStreamEvent & {
         check?: ModelDiagnosticCheck;
