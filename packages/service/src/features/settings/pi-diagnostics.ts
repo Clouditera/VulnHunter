@@ -179,12 +179,19 @@ async function runL1Basic(cred: DecryptedLlmCredential, emit: DiagnosticEmitter)
         ? { model: cred.model_id, input: "Reply with the single word: ok", max_output_tokens: 16 }
         : { model: cred.model_id, messages: [{ role: "user", content: "Reply with the single word: ok" }], max_tokens: 16 };
 
+    // Anthropic contract: x-api-key + anthropic-version (Bearer 401s);
+    // OpenAI-compatible endpoints: Bearer. Mirrors the real gateways.
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (api === "anthropic-messages") {
+      headers["x-api-key"] = cred.api_key;
+      headers["anthropic-version"] = "2023-06-01";
+    } else {
+      headers["Authorization"] = `Bearer ${cred.api_key}`;
+    }
+
     const res = await fetch(`${baseUrl}${path}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${cred.api_key}`,
-      },
+      headers,
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(20_000),
     });

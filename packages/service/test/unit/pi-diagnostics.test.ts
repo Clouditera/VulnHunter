@@ -70,6 +70,18 @@ describe("pi-diagnostics", () => {
     expect(result.checks[0].message).toContain('HTTP 400 — {"error":{"message":"Model Not Exist"}}');
   });
 
+  it("L1 sends Anthropic contract headers for anthropic proto (not Bearer)", async () => {
+    mockFetch.mockResolvedValue(okFetch());
+    const anthropicCred = { ...FAKE_CRED, proto_type: "anthropic" };
+    await runPiDiagnostics(anthropicCred, () => {});
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["x-api-key"]).toBe("sk-fake");
+    expect(headers["anthropic-version"]).toBe("2023-06-01");
+    expect(headers["Authorization"]).toBeUndefined();
+    expect(String(init.body)).toContain('"max_tokens":16');
+  });
+
   it("L1 fail carries the undici network cause (ENOTFOUND via err.cause)", async () => {
     const netErr: any = new TypeError("fetch failed");
     netErr.cause = { code: "ENOTFOUND", message: "getaddrinfo ENOTFOUND api.typo-host.com" };
