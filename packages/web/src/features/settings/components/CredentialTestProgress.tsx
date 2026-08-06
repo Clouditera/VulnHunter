@@ -34,6 +34,11 @@ function checkLabel(check: ModelDiagnosticCheck): string {
   return translated && translated !== key ? translated : check.label;
 }
 
+/**
+ * Raw failure errors (fish 2026-08-06: 不要分类人话和修复建议——直接展示
+ * 网络请求的原生错误). One mono line per failed check; backend enriches
+ * the message with the raw upstream error (HTTP status+body / errno).
+ */
 function FailureGuidance({ checks }: { checks: ModelDiagnosticCheck[] }) {
   const failedChecks = checks.filter((check) => check.status === "fail");
   if (failedChecks.length === 0) return null;
@@ -46,21 +51,15 @@ function FailureGuidance({ checks }: { checks: ModelDiagnosticCheck[] }) {
         borderTop: "1px solid rgba(194,40,40,0.28)",
         background: "var(--bg-error)",
         color: "var(--danger)",
-        fontSize: 12,
+        fontSize: 11.5,
         lineHeight: 1.6,
+        fontFamily: "var(--font-mono)",
+        wordBreak: "break-word",
       }}
     >
       {failedChecks.map((check) => (
-        <div key={check.id} style={{ marginBottom: failedChecks.length > 1 ? 8 : 0 }}>
-          <div>
-            <strong>{i18n.t("settings.model.testFailureReason")}：</strong>
-            {checkLabel(check)} —{" "}
-            {check.detail || check.message || i18n.t("settings.model.testFailureReasonUnknown")}
-          </div>
-          <div>
-            <strong>{i18n.t("settings.model.testFailureSolution")}：</strong>
-            {check.suggestion || i18n.t("settings.model.testFailureSolutionDefault")}
-          </div>
+        <div key={check.id} style={{ marginBottom: failedChecks.length > 1 ? 6 : 0 }}>
+          {checkLabel(check)} — {check.detail || check.message}
         </div>
       ))}
     </div>
