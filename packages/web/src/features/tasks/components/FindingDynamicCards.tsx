@@ -478,7 +478,7 @@ export function resolvePocTabPill(finding: FindingMeta, dynamicEnabled: boolean)
     case "pending":
       return { label: i18n.t("finding.cards.status.pending"), ...PILL_GRAY };
     default:
-      return { label: i18n.t("finding.cards.status.unknown"), ...PILL_RED };
+      return { label: i18n.t("finding.cards.status.unknown"), ...PILL_GRAY };
   }
 }
 
@@ -508,6 +508,6 @@ export function resolveExpTabPill(finding: FindingMeta, dynamicEnabled: boolean)
     case "pending":
       return { label: i18n.t("finding.cards.status.pendingExp"), ...PILL_GRAY };
     default:
-      return { label: i18n.t("finding.cards.status.unknown"), ...PILL_RED };
+      return { label: i18n.t("finding.cards.status.unknown"), ...PILL_GRAY };
   }
 }

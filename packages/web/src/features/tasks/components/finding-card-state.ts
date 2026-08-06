@@ -28,7 +28,7 @@ export const POC_STATE_DISPLAY: Record<PocStatus, CardStateDisplay> = {
   "fail-reproduced": { labelKey: "failReproduced", color: "var(--sev-high)", icon: "alert-circle", helperKey: "failReproduced" },
   blocked: { labelKey: "blocked", color: "var(--sev-medium)", icon: "shield-alert", helperKey: "blocked" },
   "not-needed": { labelKey: "notNeeded", color: "#0891b2", icon: "check-circle", helperKey: "notNeeded" },
-  unknown: { labelKey: "unknown", color: "var(--danger)", icon: "alert-triangle", helperKey: "unknown" },
+  unknown: { labelKey: "unknown", color: "#737373", icon: "minus-circle", helperKey: "unknown" },
 };
 
 /** EXP 6-state display map (SSOT §3). No `upgraded` — the engine has none. */
@@ -39,7 +39,7 @@ export const EXP_STATE_DISPLAY: Record<ExpStatus, CardStateDisplay> = {
   failed: { labelKey: "failed", color: "var(--sev-high)", icon: "alert-circle", helperKey: "failed" },
   blocked: { labelKey: "blocked", color: "var(--sev-medium)", icon: "shield-alert", helperKey: "blocked" },
   "not-needed": { labelKey: "notNeededExp", color: "#0891b2", icon: "check-circle", helperKey: "notNeededExp" },
-  unknown: { labelKey: "unknown", color: "var(--danger)", icon: "alert-triangle", helperKey: "unknown" },
+  unknown: { labelKey: "unknown", color: "#737373", icon: "minus-circle", helperKey: "unknown" },
 };
 
 /** Derived (display) states that overlay the enum (SSOT §2/§3 派生态). */
