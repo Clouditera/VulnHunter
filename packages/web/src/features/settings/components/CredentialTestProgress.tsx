@@ -34,11 +34,25 @@ function checkLabel(check: ModelDiagnosticCheck): string {
   return translated && translated !== key ? translated : check.label;
 }
 
-/**
- * Raw failure errors (fish 2026-08-06: 不要分类人话和修复建议——直接展示
- * 网络请求的原生错误). One mono line per failed check; backend enriches
- * the message with the raw upstream error (HTTP status+body / errno).
- */
+function failureSolution(check: ModelDiagnosticCheck): string {
+  const raw = `${check.message ?? ""} ${check.detail ?? ""}`.toLowerCase();
+  const status = check.httpStatus;
+  if (status === 401 || status === 403 || /unauthorized|forbidden|invalid api.?key/.test(raw)) {
+    return i18n.t("settings.model.testFailureSolutionAuth");
+  }
+  if (status === 404 || /model.*not found|unknown model|does not exist/.test(raw)) {
+    return i18n.t("settings.model.testFailureSolutionNotFound");
+  }
+  if (status === 429 || /rate.?limit|quota/.test(raw)) {
+    return i18n.t("settings.model.testFailureSolutionQuota");
+  }
+  if (/enotfound|econnrefused|timeout|timed out|network|fetch failed/.test(raw)) {
+    return i18n.t("settings.model.testFailureSolutionNetwork");
+  }
+  return check.suggestion || i18n.t("settings.model.testFailureSolutionDefault");
+}
+
+/** Show an explicit conclusion, the upstream reason, and an actionable fix. */
 function FailureGuidance({ checks }: { checks: ModelDiagnosticCheck[] }) {
   const failedChecks = checks.filter((check) => check.status === "fail");
   if (failedChecks.length === 0) return null;
@@ -51,15 +65,23 @@ function FailureGuidance({ checks }: { checks: ModelDiagnosticCheck[] }) {
         borderTop: "1px solid rgba(194,40,40,0.28)",
         background: "var(--bg-error)",
         color: "var(--danger)",
-        fontSize: 11.5,
+        fontSize: 12,
         lineHeight: 1.6,
-        fontFamily: "var(--font-mono)",
         wordBreak: "break-word",
       }}
     >
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>{i18n.t("settings.model.testFail")}</div>
       {failedChecks.map((check) => (
-        <div key={check.id} style={{ marginBottom: failedChecks.length > 1 ? 6 : 0 }}>
-          {checkLabel(check)} — {check.detail || check.message}
+        <div key={check.id} style={{ marginBottom: failedChecks.length > 1 ? 8 : 0 }}>
+          <div>
+            <strong>{i18n.t("settings.model.testFailureReason")}：</strong>
+            {checkLabel(check)} —{" "}
+            {check.detail || check.message || i18n.t("settings.model.testFailureReasonUnknown")}
+          </div>
+          <div>
+            <strong>{i18n.t("settings.model.testFailureSolution")}：</strong>
+            {failureSolution(check)}
+          </div>
         </div>
       ))}
     </div>
@@ -140,7 +162,15 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
       {visibleChecks.map((c) => {
         const done = ["pass", "fail", "na", "skip"].includes(c.status);
         const active = !done;
-        const hasDetail = c.id !== "l4_agent" && Boolean(c.detail || c.suggestion || c.httpStatus || c.endpoint || (done && c.message && c.status !== "pass"));
+        const hasDetail =
+          c.id !== "l4_agent" &&
+          Boolean(
+            c.detail ||
+              c.suggestion ||
+              c.httpStatus ||
+              c.endpoint ||
+              (done && c.message && c.status !== "pass"),
+          );
         const isOpen = expanded === c.id;
         return (
           <div key={c.id} data-testid={`test-check-${c.id}`} data-status={c.status}>
@@ -229,7 +259,7 @@ export function CredentialTestProgress({ checks, report, running }: TestProgress
             color: report.ok ? "var(--status-completed)" : "var(--danger)",
           }}
         >
-          {report.ok ? i18n.t("settings.model.testOk") : report.summary}
+          {report.ok ? i18n.t("settings.model.testOk") : i18n.t("settings.model.testFail")}
         </div>
       ) : null}
       {!running ? (
