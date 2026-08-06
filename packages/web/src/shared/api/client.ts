@@ -278,8 +278,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ cert }),
     }),
-    bootstrap: (email: string, password: string) =>
-      request<{ ok: boolean }>("/api/auth/bootstrap", {
+    /** First-run wizard: create the initial admin (admin-console setup
+     *  endpoint; triple-sealed backend — 403 once an admin exists). */
+    createInitialAdmin: (email: string, password: string) =>
+      request<{ ok: boolean }>("/api/admin/setup/admin", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       }),

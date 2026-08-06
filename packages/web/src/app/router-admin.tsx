@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
 import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
 import { ActivatePage } from "../features/auth/pages/ActivatePage.js";
-import { BootstrapPage } from "../features/auth/pages/BootstrapPage.js";
 import { LoginPage } from "../features/auth/pages/LoginPage.js";
+import { SetupWizardPage } from "../features/admin/pages/SetupWizardPage.js";
 import { ExpiredPage } from "../features/auth/pages/ExpiredPage.js";
 import { ChangePasswordPage } from "../features/auth/pages/ChangePasswordPage.js";
 import { AdminLayout } from "../features/admin/layout.js";
@@ -65,7 +65,7 @@ function RootGuard() {
   if (error || !status) return <Navigate to="/login" replace />;
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
-  if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
+  if (!status.has_admin) return <Navigate to="/setup" replace />;
   if (status.is_authenticated) {
     if (status.user?.role === "admin") return <Navigate to="/admin" replace />;
     return <ForbiddenPage />;
@@ -99,18 +99,18 @@ function ExpiredGuard() {
   return <ExpiredPage />;
 }
 
-function BootstrapGuard() {
+/**
+ * Setup wizard guard (fish 2026-08-06, single-path onboarding): only exists
+ * while there is NO admin — once has_admin=true the wizard is permanently
+ * gone (403 semantics on the backend; here we redirect to login). License
+ * checks intentionally NOT applied: activation is the wizard's own step 1.
+ */
+function SetupGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
   if (error || !status) return <Navigate to="/login" replace />;
-  const target = licenseTarget(status);
-  if (target) return <Navigate to={target} replace />;
-  if (status.has_admin) {
-    if (status.is_authenticated && status.user?.role === "admin")
-      return <Navigate to="/admin" replace />;
-    return <Navigate to="/login" replace />;
-  }
-  return <BootstrapPage />;
+  if (status.has_admin) return <Navigate to="/login" replace />;
+  return <SetupWizardPage />;
 }
 
 function LoginGuard() {
@@ -119,7 +119,7 @@ function LoginGuard() {
   if (error || !status) return <Navigate to="/login" replace />;
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
-  if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
+  if (!status.has_admin) return <Navigate to="/setup" replace />;
   if (status.is_authenticated) {
     if (status.user?.role === "admin") return <Navigate to="/admin" replace />;
     return <ForbiddenPage />;
@@ -133,7 +133,7 @@ function AuthGuard() {
   if (error || !status) return <Navigate to="/login" replace />;
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
-  if (!status.has_admin) return <Navigate to="/bootstrap" replace />;
+  if (!status.has_admin) return <Navigate to="/setup" replace />;
   if (!status.is_authenticated) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
@@ -153,7 +153,7 @@ export const router: ReturnType<typeof createBrowserRouter> = createBrowserRoute
     element: <AuthGuard />,
     children: [{ path: "/change-password", element: <ChangePasswordPage /> }],
   },
-  { path: "/bootstrap", element: <BootstrapGuard /> },
+  { path: "/setup", element: <SetupGuard /> },
   { path: "/login", element: <LoginGuard /> },
   {
     element: <AuthGuard />,

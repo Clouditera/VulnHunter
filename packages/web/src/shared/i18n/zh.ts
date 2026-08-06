@@ -594,14 +594,20 @@ export const ZH: Record<string, string> = {
   "expired.error": "续期密钥无效，请联系供应商。",
 
   // Bootstrap
-  "bootstrap.title": "初始化管理员",
-  "bootstrap.desc": "创建第一个管理员账户",
-  "bootstrap.email": "管理员邮箱",
-  "bootstrap.password": "密码",
-  "bootstrap.confirm": "确认密码",
-  "bootstrap.submit": "创建管理员",
-  "bootstrap.creating": "创建中…",
-  "bootstrap.error": "创建管理员失败，请检查邮箱和密码后重试。",
+  "setup.title": "初始化 VulnHunter",
+  "setup.desc": "完成授权激活并创建管理员账户。",
+  "setup.step.license": "激活授权",
+  "setup.step.account": "创建管理员",
+  "setup.account.email": "管理员邮箱",
+  "setup.account.password": "设置密码",
+  "setup.account.confirm": "确认密码",
+  "setup.account.submit": "创建管理员",
+  "setup.account.creating": "创建中…",
+  "setup.account.success": "✓ 管理员已创建 — 前往登录…",
+  "setup.account.error.licenseFirst": "请先完成授权激活。",
+  "setup.account.error.sealed": "管理员已存在，请直接登录。",
+  "setup.account.error.rateLimited": "尝试次数过多，请稍后再试。",
+  "setup.account.error.default": "创建管理员失败，请检查后重试。",
 
   // Settings
   "settings.title": "设置",
