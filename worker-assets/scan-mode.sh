@@ -287,8 +287,15 @@ model_entry = {
     "id": model_id,
     "input": ["text"],
     "contextWindow": ctx,
-    "maxTokens": 16384,
 }
+# fish 2026-08-06: NO maxTokens for OpenAI-compatible APIs (64d20cec, same
+# disease as the test probes) — a self-imposed output cap collides with
+# gateway thinking budgets (kimi mid-tier: 16384 < thinking_budget 32768
+# → 400 on REAL scans). Without the field the gateway applies the model's
+# own default max output. Anthropic /messages REQUIRES max_tokens — give
+# thinking budget (32768) + 4096 margin.
+if api_type == "anthropic-messages":
+    model_entry["maxTokens"] = 36864
 if is_thinking or is_deepseek or is_zai:
     model_entry["reasoning"] = True
 if api_type == "openai-completions":
