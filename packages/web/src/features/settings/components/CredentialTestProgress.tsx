@@ -21,13 +21,6 @@ export interface TestProgressProps {
   /** Final report once the stream completes. */
   report?: ModelDiagnosticResult | null;
   running: boolean;
-  /**
-   * L4 agent-loop verdict (fish 2026-08-05: L4 restored; badge stays gone —
-   * the verdict surfaces as a fourth row in this panel instead). Fired
-   * asynchronously after a gated save; the caller polls and feeds the
-   * status back in.
-   */
-  l4?: { status: "running" | "passed" | "failed" } | null;
 }
 
 /**
@@ -104,12 +97,19 @@ function StatusIcon({ status }: { status: string }) {
   );
 }
 
-export function CredentialTestProgress({ checks, report, running, l4 }: TestProgressProps) {
+export function CredentialTestProgress({ checks, report, running }: TestProgressProps) {
   const [, tick] = useState(0);
   useEffect(() => i18n.onChange(() => tick((n) => n + 1)), []);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  if (checks.length === 0 && !report && !l4) return null;
+  // fish 2026-08-06 ②: thinking OFF → the thinking card does not render at
+  // all (backend emits an na "not_reasoning" row in that case — hide it;
+  // a real run with thinking enabled still shows pass/na-not-observed).
+  const visibleChecks = checks.filter(
+    (c) => !(c.id === "thinking" && c.message === "not_reasoning"),
+  );
+
+  if (visibleChecks.length === 0 && !report) return null;
 
   return (
     <div
@@ -122,7 +122,7 @@ export function CredentialTestProgress({ checks, report, running, l4 }: TestProg
       }}
     >
       <style>{`@keyframes vh-cred-test-spin{to{transform:rotate(360deg)}}`}</style>
-      {checks.map((c) => {
+      {visibleChecks.map((c) => {
         const done = ["pass", "fail", "na", "skip"].includes(c.status);
         const active = !done;
         const hasDetail = Boolean(c.detail || c.suggestion || c.httpStatus || c.endpoint);
@@ -155,11 +155,9 @@ export function CredentialTestProgress({ checks, report, running, l4 }: TestProg
                   {" "}
                   {active
                     ? i18n.t("settings.model.testProgress.running")
-                    : c.id === "thinking" && c.message === "not_reasoning"
-                      ? i18n.t("diagnostics.check.thinking.notReasoning")
-                      : c.id === "l4_agent"
-                        ? i18n.t(c.status === "pass" ? "diagnostics.l4.passed" : "diagnostics.l4.failed")
-                        : c.message}
+                    : c.id === "l4_agent"
+                      ? i18n.t(c.status === "pass" ? "diagnostics.l4.passed" : "diagnostics.l4.failed")
+                      : c.message}
                 </span>
               </span>
               {typeof c.durationMs === "number" && done ? (
@@ -209,35 +207,6 @@ export function CredentialTestProgress({ checks, report, running, l4 }: TestProg
           </div>
         );
       })}
-      {l4 ? (
-        <div data-testid="test-check-l4_agent" data-status={l4.status}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              width: "100%",
-              padding: "8px 12px",
-              borderBottom: "1px solid var(--divider)",
-              fontSize: 12.5,
-              color: "var(--text-primary)",
-            }}
-          >
-            <StatusIcon status={l4.status === "passed" ? "pass" : l4.status === "failed" ? "fail" : "running"} />
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ fontWeight: 600 }}>{i18n.t("diagnostics.check.agent")}</span>
-              <span style={{ color: "var(--text-secondary)" }}>
-                {" "}
-                {l4.status === "running"
-                  ? i18n.t("settings.model.testProgress.running")
-                  : l4.status === "passed"
-                    ? i18n.t("diagnostics.l4.passed")
-                    : i18n.t("diagnostics.l4.failed")}
-              </span>
-            </span>
-          </div>
-        </div>
-      ) : null}
       {report && !running ? (
         <div
           data-testid="test-progress-summary"
