@@ -365,39 +365,10 @@ authRouter.post("/logout", async (c) => {
 });
 
 // POST /api/system/bootstrap
-authRouter.post("/bootstrap", licenseGuard, async (c) => {
-  // When deploy-provisioned system admin is configured, bootstrap is disabled.
-  if (process.env.VULNHUNTER_ADMIN_EMAIL?.trim() && process.env.VULNHUNTER_ADMIN_PASSWORD) {
-    return c.json(
-      {
-        error: {
-          code: "ERR_ADMIN_SINGLETON",
-          detail: "管理员由部署配置管理，无需 bootstrap",
-        },
-      },
-      400,
-    );
-  }
-
-  const body = await c.req.json<{ email: string; password: string }>();
-
-  if (!body.email || !body.password || body.password.length < 8) {
-    return c.json(
-      { error: { code: "ERR_INTERNAL", detail: "email and password (min 8 chars) required" } },
-      400,
-    );
-  }
-
-  const result = await authService.bootstrap(body);
-  if (!result.success) {
-    return c.json(
-      { error: { code: "ERR_INTERNAL", detail: result.error } },
-      409,
-    );
-  }
-
-  return c.json({ ok: true });
-});
+// REMOVED (fish 2026-08-06 首装动线终稿): admin creation happens ONLY in the
+// admin console /setup wizard (admin-api POST /api/admin/setup/admin). The
+// business entry no longer carries any initialization logic — its guards
+// redirect to the admin console instead (designer).
 
 /**
  * admin-api auth subset: login / logout / me / change-password / force-change-password.

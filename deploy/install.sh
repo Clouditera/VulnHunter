@@ -459,7 +459,7 @@ if [[ -x "$PKG_ROOT/doctor.sh" ]]; then
 fi
 
 host_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
-admin_addr="${ADMIN_LISTEN_ADDR:-127.0.0.1}"
+admin_addr="${ADMIN_LISTEN_ADDR:-0.0.0.0}"
 admin_port="${ADMIN_PORT:-23001}"
 
 echo ""
@@ -468,7 +468,7 @@ echo "INSTANCE_DIR: $instance_dir"
 echo "PROJECT_NAME: $project_name"
 echo "URL: http://${host_ip:-127.0.0.1}:${web_port}/"
 echo "Local URL: http://127.0.0.1:${web_port}/"
-echo "Admin console: http://${admin_addr}:${admin_port}/admin  (default localhost-only; remote: ADMIN_LISTEN_ADDR=0.0.0.0 or ssh -L)"
+echo "Admin console: http://${admin_addr}:${admin_port}/admin  (default all-interfaces; production pin: ADMIN_LISTEN_ADDR=127.0.0.1 or ssh -L)"
 echo "System admin: ${VULNHUNTER_ADMIN_EMAIL:-admin@vulnhunter.local}  (password in $instance_dir/.env — VULNHUNTER_ADMIN_PASSWORD; account is protected: cannot be disabled/deleted)"
 [[ -n "$install_id" ]] && echo "Machine code: $install_id"
 echo ""

@@ -138,26 +138,6 @@ export async function resolveSession(sessionId: string) {
   };
 }
 
-export async function bootstrap(params: {
-  email: string;
-  password: string;
-}): Promise<{ success: boolean; error?: string }> {
-  const alreadyHasAdmin = await storage.hasAnyAdmin();
-  if (alreadyHasAdmin) {
-    return { success: false, error: "admin_exists" };
-  }
-
-  const passwordHash = await bcrypt.hash(params.password, BCRYPT_COST);
-  await storage.createUser({
-    email: params.email,
-    passwordHash,
-    role: "admin",
-  });
-
-  logger.info({ email: params.email }, "Admin account created via bootstrap");
-  return { success: true };
-}
-
 export async function createUserAccount(params: {
   email: string;
   password: string;

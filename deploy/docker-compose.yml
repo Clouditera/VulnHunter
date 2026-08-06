@@ -115,7 +115,7 @@ services:
     container_name: vulnhunter-admin-web
     restart: unless-stopped
     ports:
-      - "${ADMIN_LISTEN_ADDR:-127.0.0.1}:${ADMIN_PORT:-23001}:80"
+      - "${ADMIN_LISTEN_ADDR:-0.0.0.0}:${ADMIN_PORT:-23001}:80"
     environment:
       UPLOAD_GATEWAY_LIMIT_MB: "${UPLOAD_GATEWAY_LIMIT_MB:-2048}"
       NGINX_ROLE: "admin"
