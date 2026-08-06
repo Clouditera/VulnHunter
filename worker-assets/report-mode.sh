@@ -122,8 +122,12 @@ model_entry = {
     "id": model_id,
     "input": ["text"],
     "contextWindow": ctx,
-    "maxTokens": 16384,
 }
+# fish 2026-08-06: NO maxTokens for OpenAI-compatible APIs (64d20cec, same
+# disease as the test probes) — see scan-mode.sh for the kimi thinking-budget
+# rationale. Anthropic /messages REQUIRES max_tokens — budget 32768 + 4096.
+if api_type == "anthropic-messages":
+    model_entry["maxTokens"] = 36864
 if is_thinking or is_deepseek or is_zai:
     model_entry["reasoning"] = True
 # fish 2026-08-05: completions endpoints default to system role (see scan-mode)
