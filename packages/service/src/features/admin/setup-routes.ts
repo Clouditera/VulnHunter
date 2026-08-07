@@ -1,13 +1,12 @@
 /**
  * Admin first-install setup endpoints (fish 2026-08-06 终稿, 单路径版).
+ * fish 2026-08-07 终终稿: env admin is seed-once only — DB is the single
+ * authority once any admin exists. The setup wizard simply checks has_admin.
  *
- * The /setup wizard only exists when NO admin exists yet (env provisioning
- * absent). Triple closure: has_admin → 403 / env-admin configured → 403 /
- * success → permanently closed (has_admin now true). Rate-limited per IP.
- *
- * Design: no licenseGuard here (the wizard must be reachable BEFORE license
- * activation); POST /setup/admin itself requires an ACTIVE license so the
- * wizard order (activate → create admin) is enforced server-side.
+ * The /setup wizard only exists when NO admin exists yet. Double closure:
+ * license inactive → 402 / has_admin → 403. Rate-limited per IP.
+ * Design: no licenseGuard here (reachable BEFORE license activation);
+ * POST /setup/admin requires an ACTIVE license (wizard order: activate → create).
  */
 import { Hono } from "hono";
 import bcrypt from "bcrypt";
@@ -18,11 +17,6 @@ import { getLicenseStatus } from "../system/license-status.js";
 export const adminSetupRouter = new Hono();
 
 const BCRYPT_COST = 10;
-
-/** Env-provisioned system admin (deploy-managed; setup wizard must not create a second). */
-function envAdminConfigured(): boolean {
-  return !!(process.env.VULNHUNTER_ADMIN_EMAIL?.trim() && process.env.VULNHUNTER_ADMIN_PASSWORD);
-}
 
 // ── Rate limit: per-IP attempt window (in-memory; single-instance admin-api) ──
 const SETUP_MAX_ATTEMPTS = 10;
@@ -55,7 +49,6 @@ adminSetupRouter.get("/status", async (c) => {
   return c.json({
     has_admin: await authStorage.hasAnyAdmin(),
     license_active: license.status === "active",
-    env_admin_configured: envAdminConfigured(),
   });
 });
 
@@ -72,15 +65,15 @@ adminSetupRouter.post("/admin", async (c) => {
     return c.json({ error: { code: "ERR_LICENSE_NOT_ACTIVATED" } }, 402);
   }
 
-  // Triple closure 2: an admin already exists (created here or provisioned).
+  // Triple closure 2 (was 3): an admin already exists (created here or seeded).
   if (await authStorage.hasAnyAdmin()) {
     return c.json({ error: { code: "ERR_ADMIN_SINGLETON", detail: "管理员已存在" } }, 403);
   }
 
-  // Triple closure 3: deploy-provisioned admin configured — setup must not mint a second.
-  if (envAdminConfigured()) {
-    return c.json({ error: { code: "ERR_ADMIN_SINGLETON", detail: "管理员由部署配置管理，无需向导建号" } }, 403);
-  }
+  // env-provisioned check retired (fish 2026-08-07): seed-once means env is
+  // consumed at boot only when no admin exists — by the time a user reaches
+  // this endpoint, hasAnyAdmin already reflects the seeded admin. No separate
+  // env check needed.
 
   const body = await c.req.json<{ email?: string; password?: string }>();
   const email = (body.email ?? "").trim().toLowerCase();
