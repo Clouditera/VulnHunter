@@ -1,6 +1,6 @@
 {
   "name": "vulnhunter",
-  "version": "2.3.5",
+  "version": "2.3.6",
   "private": true,
   "scripts": {
     "build": "turbo run build",
