@@ -1460,9 +1460,9 @@ export function CredentialsSection() {
           role="status"
           style={{
             position: "fixed",
-            bottom: "32px",
+            top: "50%",
             left: "50%",
-            transform: "translateX(-50%)",
+            transform: "translate(-50%, -50%)",
             background: toast.kind === "ok" ? "rgba(0,0,0,0.92)" : "var(--brand)",
             color: "#fff",
             padding: "10px 24px",
