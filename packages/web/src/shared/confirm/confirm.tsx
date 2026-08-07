@@ -64,6 +64,13 @@ function settle(value: boolean | string | null) {
   emit();
 }
 
+/** True while a confirm/prompt dialog is open — lets ESC guards in
+ *  underlying modals skip the keypress the dialog will handle itself
+ *  (fish 2026-08-07 unified modal base, task-d3f85fe5). */
+export function hasPendingDialog(): boolean {
+  return current !== null;
+}
+
 export const CONFIRM_OVERLAY_STYLE: CSSProperties = {
   position: "fixed",
   inset: 0,
@@ -130,7 +137,6 @@ export function ConfirmHost() {
     <div
       data-testid="confirm-overlay"
       style={CONFIRM_OVERLAY_STYLE}
-      onMouseDown={(event) => event.target === event.currentTarget && cancel()}
     >
       <div data-testid="confirm-dialog" role="alertdialog" aria-modal="true" style={DIALOG_STYLE}>
         {pending.options.title ? (

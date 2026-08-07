@@ -220,9 +220,8 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
       role="dialog"
       aria-modal="true"
       style={OVERLAY}
-      onClick={onClose}
     >
-      <div style={MODAL} onClick={(e) => e.stopPropagation()}>
+      <div style={MODAL}>
         {/* 横线1 之上：搜索框区 */}
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
           <input

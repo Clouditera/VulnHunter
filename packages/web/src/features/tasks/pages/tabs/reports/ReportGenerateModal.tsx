@@ -88,7 +88,6 @@ export function ReportGenerateModal({
   return (
     <div
       style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}
-      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
     >
       <div style={{ width: 560, maxHeight: "80vh", display: "flex", flexDirection: "column", borderRadius: 10, background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
         {/* Header */}

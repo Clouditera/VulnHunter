@@ -9,6 +9,7 @@ import type { CSSProperties } from "react";
 import { api, type UserApi } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
+import { useConfirmClose } from "../../../shared/hooks/useConfirmClose.js";
 
 export function UsersSection() {
   const [, force] = useState(0);
@@ -304,6 +305,13 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   const [taskLimit, setTaskLimit] = useState("0");
   const [adminRemark, setAdminRemark] = useState("");
   const [error, setError] = useState("");
+  // Unified modal base (fish 2026-08-07): ESC closes, dirty asks first,
+  // backdrop never closes (ModalOverlay has no backdrop handler).
+  const requestClose = useConfirmClose(
+    onClose,
+    email !== "" || displayName !== "" || password !== "" || confirmPassword !== "" || adminRemark.trim() !== "" || taskLimit !== "0" || !forceChange,
+    true,
+  );
 
   const mut = useMutation({
     mutationFn: () => {
@@ -318,7 +326,7 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   return (
     <ModalOverlay onClose={onClose}>
       <div style={MODAL}>
-        <div style={MODAL_HEADER}><span style={{ fontSize: "15px", fontWeight: 600 }}>{i18n.t("userModal.create.title")}</span><CloseBtn onClick={onClose} /></div>
+        <div style={MODAL_HEADER}><span style={{ fontSize: "15px", fontWeight: 600 }}>{i18n.t("userModal.create.title")}</span><CloseBtn onClick={requestClose} /></div>
         <div style={MODAL_BODY}>
           <Field label={i18n.t("userModal.email")}><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={INPUT} placeholder="user@example.com" /></Field>
           <Field label={i18n.t("userModal.displayName.optional")}><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={INPUT} /></Field>
@@ -342,7 +350,7 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
           {error && <div style={{ color: "var(--brand)", fontSize: "12px" }}>{error}</div>}
         </div>
         <div style={MODAL_FOOTER}>
-          <button onClick={onClose} style={GHOST_BTN_STYLED}>{i18n.t("userModal.cancel")}</button>
+          <button onClick={requestClose} style={GHOST_BTN_STYLED}>{i18n.t("userModal.cancel")}</button>
           <button onClick={() => mut.mutate()} disabled={!email || password.length < 8 || confirmPassword.length < 8 || password !== confirmPassword || mut.isPending} style={{ ...PRIMARY_BTN, opacity: !email || password.length < 8 || confirmPassword.length < 8 || password !== confirmPassword ? 0.5 : 1 }}>
             {mut.isPending ? "..." : i18n.t("userModal.create")}
           </button>
@@ -359,6 +367,14 @@ function EditUserModal({ user, onClose, onSuccess }: { user: UserApi; onClose: (
   const [taskLimit, setTaskLimit] = useState(String(user.task_limit ?? 0));
   const [adminRemark, setAdminRemark] = useState(user.admin_remark ?? "");
   const [error, setError] = useState("");
+  const requestClose = useConfirmClose(
+    onClose,
+    displayName !== user.display_name ||
+      disabled !== (user.status === "suspended") ||
+      taskLimit !== String(user.task_limit ?? 0) ||
+      adminRemark !== (user.admin_remark ?? ""),
+    true,
+  );
 
   const mut = useMutation({
     mutationFn: () =>
@@ -376,7 +392,7 @@ function EditUserModal({ user, onClose, onSuccess }: { user: UserApi; onClose: (
   return (
     <ModalOverlay onClose={onClose}>
       <div style={MODAL}>
-        <div style={MODAL_HEADER}><span style={{ fontSize: "15px", fontWeight: 600 }}>{i18n.t("userModal.edit.title")}</span><CloseBtn onClick={onClose} /></div>
+        <div style={MODAL_HEADER}><span style={{ fontSize: "15px", fontWeight: 600 }}>{i18n.t("userModal.edit.title")}</span><CloseBtn onClick={requestClose} /></div>
         <div style={MODAL_BODY}>
           <Field label={i18n.t("userModal.email")}><input value={user.email} readOnly title={i18n.t("userModal.emailReadonly")} style={{ ...INPUT, background: "var(--bg-page)", cursor: "not-allowed" }} /></Field>
           <Field label={i18n.t("userModal.displayName")}><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={INPUT} maxLength={64} /></Field>
@@ -392,7 +408,7 @@ function EditUserModal({ user, onClose, onSuccess }: { user: UserApi; onClose: (
           {error && <div style={{ color: "var(--brand)", fontSize: "12px" }}>{error}</div>}
         </div>
         <div style={MODAL_FOOTER}>
-          <button onClick={onClose} style={GHOST_BTN_STYLED}>{i18n.t("userModal.cancel")}</button>
+          <button onClick={requestClose} style={GHOST_BTN_STYLED}>{i18n.t("userModal.cancel")}</button>
           <button onClick={() => mut.mutate()} disabled={mut.isPending} style={PRIMARY_BTN}>{mut.isPending ? "..." : i18n.t("userModal.save")}</button>
         </div>
       </div>
@@ -406,6 +422,7 @@ function ResetPasswordModal({ user, onClose, onSuccess }: { user: UserApi; onClo
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState("");
+  const requestClose = useConfirmClose(onClose, password !== "" || confirmPassword !== "", true);
 
   const mut = useMutation({
     mutationFn: () => {
@@ -419,7 +436,7 @@ function ResetPasswordModal({ user, onClose, onSuccess }: { user: UserApi; onClo
   return (
     <ModalOverlay onClose={onClose}>
       <div style={{ ...MODAL, width: "380px" }}>
-        <div style={MODAL_HEADER}><span style={{ fontSize: "15px", fontWeight: 600 }}>{i18n.t("resetPwd.title")} · {user.email}</span><CloseBtn onClick={onClose} /></div>
+        <div style={MODAL_HEADER}><span style={{ fontSize: "15px", fontWeight: 600 }}>{i18n.t("resetPwd.title")} · {user.email}</span><CloseBtn onClick={requestClose} /></div>
         <div style={MODAL_BODY}>
           <Field label={i18n.t("resetPwd.newPassword")}>
             <PwdInput value={password} onChange={setPassword} show={showPwd} onToggle={() => setShowPwd(!showPwd)} />
@@ -431,7 +448,7 @@ function ResetPasswordModal({ user, onClose, onSuccess }: { user: UserApi; onClo
           {error && <div style={{ color: "var(--brand)", fontSize: "12px" }}>{error}</div>}
         </div>
         <div style={MODAL_FOOTER}>
-          <button onClick={onClose} style={GHOST_BTN_STYLED}>{i18n.t("userModal.cancel")}</button>
+          <button onClick={requestClose} style={GHOST_BTN_STYLED}>{i18n.t("userModal.cancel")}</button>
           <button onClick={() => mut.mutate()} disabled={password.length < 8 || confirmPassword.length < 8 || password !== confirmPassword || mut.isPending} style={{ ...PRIMARY_BTN, opacity: password.length < 8 || confirmPassword.length < 8 || password !== confirmPassword ? 0.5 : 1 }}>
             {mut.isPending ? "..." : i18n.t("resetPwd.confirm")}
           </button>

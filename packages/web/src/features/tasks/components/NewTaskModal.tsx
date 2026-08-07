@@ -241,7 +241,6 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   // Track where mousedown originated so a text-selection drag that
   // happens to release on the overlay does NOT close the modal.
   // Only close when BOTH mousedown AND mouseup happen on the overlay itself.
-  const overlayMouseDownRef = useRef(false);
   // Guard against losing a filled-in form on accidental overlay click (fish 2026-08-04).
   const isDirty =
     file != null ||
@@ -263,18 +262,6 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         zIndex: 50,
         padding: "20px",
         boxSizing: "border-box",
-      }}
-      onMouseDown={(e) => {
-        overlayMouseDownRef.current = e.target === e.currentTarget;
-      }}
-      onMouseUp={(e) => {
-        if (
-          overlayMouseDownRef.current &&
-          e.target === e.currentTarget
-        ) {
-          requestClose();
-        }
-        overlayMouseDownRef.current = false;
       }}
     >
       <div

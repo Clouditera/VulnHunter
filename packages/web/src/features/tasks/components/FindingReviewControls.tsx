@@ -4,6 +4,7 @@
  */
 import { useState } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
+import { useConfirmClose } from "../../../shared/hooks/useConfirmClose.js";
 import type { FindingReviewStatus, FindingReviewEvent } from "../../../shared/api/client.js";
 
 // ─── Status metadata ───
@@ -170,6 +171,9 @@ export function ReviewNoteModal({
 }) {
   const [note, setNote] = useState("");
   const meta = REVIEW_STATUS_META[targetStatus];
+  // Unified modal base (fish 2026-08-07): ESC closes, dirty note asks first;
+  // backdrop never closes. Mount-only modal → esc=true.
+  const requestCancel = useConfirmClose(onCancel, note.trim() !== "", true);
 
   return (
     <div
@@ -184,7 +188,6 @@ export function ReviewNoteModal({
         padding: 20,
         boxSizing: "border-box",
       }}
-      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
     >
       <div
         style={{
@@ -225,7 +228,7 @@ export function ReviewNoteModal({
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
           <button
             type="button"
-            onClick={onCancel}
+            onClick={requestCancel}
             style={{
               padding: "6px 14px",
               borderRadius: 6,

@@ -29,7 +29,8 @@ export function ChangelogDrawer({ open, runtimeVersion, productName = "VulnHunte
 
   return (
     <div data-testid="changelog-drawer" role="dialog" aria-modal="true" aria-label={i18n.t("changelog.title")} style={WRAP}>
-      <button type="button" aria-label={i18n.t("changelog.close")} onClick={onClose} style={BACKDROP} />
+      {/* Dim layer only — fish 2026-08-07: backdrop NEVER dismisses. */}
+      <div style={BACKDROP_DIM} />
       <aside style={PANEL}>
         <header style={HEADER}>
           <div>
@@ -70,7 +71,7 @@ export function ChangelogDrawer({ open, runtimeVersion, productName = "VulnHunte
 }
 
 const WRAP: CSSProperties = { position: "fixed", inset: 0, zIndex: 1000, display: "flex", justifyContent: "flex-end" };
-const BACKDROP: CSSProperties = { position: "absolute", inset: 0, border: "none", background: "rgba(0,0,0,0.36)", cursor: "pointer" };
+const BACKDROP_DIM: CSSProperties = { position: "absolute", inset: 0, background: "rgba(0,0,0,0.36)" };
 const PANEL: CSSProperties = { position: "relative", width: "min(520px, 92vw)", height: "100%", background: "var(--bg-card)", borderLeft: "1px solid var(--border)", boxShadow: "-16px 0 40px rgba(0,0,0,0.22)", display: "flex", flexDirection: "column" };
 const HEADER: CSSProperties = { padding: "22px 24px", borderBottom: "1px solid var(--divider)", display: "flex", justifyContent: "space-between", gap: "16px", flexShrink: 0 };
 const EYEBROW: CSSProperties = { fontSize: "11px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: "6px" };
