@@ -7,7 +7,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
-import { writeFileSync, mkdirSync, existsSync, createWriteStream, mkdtempSync } from "node:fs";
+import { writeFileSync, mkdirSync, createWriteStream, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { WebSocketServer, WebSocket } from "ws";
