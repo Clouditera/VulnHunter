@@ -3,8 +3,9 @@
  * Used by FindingsTab and ReportGenerateModal.
  */
 import { useState } from "react";
+import type { FindingReviewEvent, FindingReviewStatus } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
-import type { FindingReviewStatus, FindingReviewEvent } from "../../../shared/api/client.js";
+import { resolveReviewPickAction } from "./review-pick-action.js";
 
 // ─── Status metadata ───
 
@@ -91,13 +92,8 @@ export function ReviewStatusSelect({
   const statuses: FindingReviewStatus[] = ["pending", "confirmed", "false_positive", "ignored"];
 
   function handleClick(status: FindingReviewStatus) {
-    if (status === value || disabled) return;
-    // false_positive and ignored prompt for note
-    if (status === "false_positive" || status === "ignored") {
-      setNoteModalTarget(status);
-    } else {
-      onChange(status);
-    }
+    if (disabled || resolveReviewPickAction(value, status) === "noop") return;
+    setNoteModalTarget(status);
   }
 
   return (
@@ -169,7 +165,14 @@ export function ReviewNoteModal({
   onCancel: () => void;
 }) {
   const [note, setNote] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const meta = REVIEW_STATUS_META[targetStatus];
+
+  function handleConfirm() {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    onConfirm(note || undefined);
+  }
 
   return (
     <div
@@ -184,7 +187,8 @@ export function ReviewNoteModal({
         padding: 20,
         boxSizing: "border-box",
       }}
-      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+      onClick={(e) => { if (e.target === e.currentTarget && !isSubmitting) onCancel(); }}
+      onKeyDown={(e) => { if (e.key === "Escape" && !isSubmitting) onCancel(); }}
     >
       <div
         style={{
@@ -200,7 +204,7 @@ export function ReviewNoteModal({
         }}
       >
         <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
-          {i18n.t("review.note.markAs")}<span style={{ color: meta.color }}>{i18n.t(meta.labelKey)}</span>
+          {i18n.t("review.note.confirmTitle").replace("{status}", i18n.t(meta.labelKey))}
         </div>
         <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 6 }}>
           {i18n.t("review.note.placeholder")}
@@ -226,6 +230,7 @@ export function ReviewNoteModal({
           <button
             type="button"
             onClick={onCancel}
+            disabled={isSubmitting}
             style={{
               padding: "6px 14px",
               borderRadius: 6,
@@ -241,7 +246,8 @@ export function ReviewNoteModal({
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(note || undefined)}
+            onClick={handleConfirm}
+            disabled={isSubmitting}
             style={{
               padding: "6px 14px",
               borderRadius: 6,
@@ -254,7 +260,7 @@ export function ReviewNoteModal({
               cursor: "pointer",
             }}
           >
-            {i18n.t("review.action.confirm")}
+            {i18n.t("review.note.confirmMark")}
           </button>
         </div>
       </div>
