@@ -25,11 +25,13 @@ function RootGuard() {
   if (isLoading) return <LoadingScreen />;
 
   if (error || !status) return <HomePage />;
+  // fish 2026-08-07: no-admin wins over license — the setup wizard owns
+  // activation, so check has_admin before any license branch.
+  if (!status.has_admin) return goToAdminSetup(status);
   if (status.edition !== "community") {
     if (status.license.status === "expired") return <Navigate to="/expired" replace />;
     if (status.license.status !== "active") return <Navigate to="/activate" replace />;
   }
-  if (!status.has_admin) return goToAdminSetup(status);
   if (status.is_authenticated) {
     if (status.user?.role === "admin") return <SessionInvalidPage />;
     return <Navigate to="/chat" replace />;
@@ -87,6 +89,7 @@ function postAuthHome(_status: NonNullable<ReturnType<typeof useSystemStatus>["d
 function ActivateGuard() {
   const { data: status, isLoading } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
+  if (status && !status.has_admin) return goToAdminSetup(status);
   if (status?.edition === "community" || status?.license.status === "active") return <Navigate to="/" replace />;
   if (
     status?.license.status === "expired" ||
@@ -99,6 +102,7 @@ function ActivateGuard() {
 function ExpiredGuard() {
   const { data: status, isLoading } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
+  if (status && !status.has_admin) return goToAdminSetup(status);
   if (status?.edition === "community" || status?.license.status === "active") return <Navigate to="/" replace />;
   if (
     status?.license.status !== "expired" &&
@@ -112,9 +116,9 @@ function LoginGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
   if (error || !status) return <Navigate to="/login" replace />;
+  if (!status.has_admin) return goToAdminSetup(status);
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
-  if (!status.has_admin) return goToAdminSetup(status);
   if (status.is_authenticated) return <Navigate to={postAuthHome(status)} replace />;
   return <LoginPage />;
 }
@@ -123,9 +127,9 @@ function AuthGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
   if (error || !status) return <Navigate to="/login" replace />;
+  if (!status.has_admin) return goToAdminSetup(status);
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
-  if (!status.has_admin) return goToAdminSetup(status);
   if (!status.is_authenticated) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
