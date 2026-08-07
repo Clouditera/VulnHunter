@@ -45,7 +45,7 @@ describe("admin setup wizard (triple closure + rate limit)", () => {
     delete process.env.VULNHUNTER_ADMIN_PASSWORD;
   });
 
-  it("GET /setup/status exposes has_admin + license_active + env_admin_configured", async () => {
+  it("GET /setup/status exposes has_admin + license_active (env_admin_configured retired, fish 2026-08-07)", async () => {
     const app = makeApp();
     hasAnyAdmin.mockResolvedValue(false);
     getLicenseStatus.mockResolvedValue(INACTIVE as never);
@@ -54,7 +54,7 @@ describe("admin setup wizard (triple closure + rate limit)", () => {
     const body = await res.json();
     expect(body.has_admin).toBe(false);
     expect(body.license_active).toBe(false);
-    expect(body.env_admin_configured).toBe(false);
+    expect(body.env_admin_configured).toBeUndefined();
   });
 
   it("POST /setup/admin succeeds on a fresh install and creates the singleton admin", async () => {
@@ -78,14 +78,15 @@ describe("admin setup wizard (triple closure + rate limit)", () => {
     expect(createUser).not.toHaveBeenCalled();
   });
 
-  it("closure 2: env-provisioned admin configured → 403", async () => {
+  it("env-provisioned admin configured but no admin in DB → still creates (seed-once, fish 2026-08-07)", async () => {
     const app = makeApp();
     process.env.VULNHUNTER_ADMIN_EMAIL = "deploy@corp.local";
     process.env.VULNHUNTER_ADMIN_PASSWORD = "DeployPass1";
+    hasAnyAdmin.mockResolvedValue(false);
     const res = await post(app, "10.0.0.3", { email: "admin@corp.local", password: "Passw0rd!" });
-    expect(res.status).toBe(403);
-    expect((await res.json()).error.code).toBe("ERR_ADMIN_SINGLETON");
-    expect(createUser).not.toHaveBeenCalled();
+    // env is no longer a gate — DB authority means hasAnyAdmin is the only check
+    expect(res.status).toBe(200);
+    expect(createUser).toHaveBeenCalledTimes(1);
   });
 
   it("closure 3: license not active → 402 (wizard order: activate first)", async () => {

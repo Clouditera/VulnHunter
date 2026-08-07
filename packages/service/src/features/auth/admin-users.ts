@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import bcrypt from "bcrypt";
 import { requireAdmin } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { AppError } from "../../infra/app-error.js";
@@ -11,6 +12,8 @@ import { countTasksForUser } from "../tasks/storage.js";
 import { listAcceptancesForUsers } from "./agreements.js";
 
 export const adminUsersRouter = new Hono();
+
+const BCRYPT_COST = 10;
 adminUsersRouter.use("*", licenseGuard);
 adminUsersRouter.use("*", requireAdmin);
 
@@ -78,21 +81,15 @@ adminUsersRouter.patch("/:id", async (c) => {
   const me = c.get("user");
   const ip = clientIp(c);
 
-  // Community admin-users is status-only. Reject password/role mutations with
+  // Community admin-users is status-only. Reject role mutations with
   // explicit 400 so clients never see silent "ok" that did not apply (QA).
-  if (body.reset_password !== undefined) {
-    logger.warn({ actor: me.userId, target: id, action: "reset_password", result: "denied", ip });
-    return c.json(
-      {
-        error: {
-          code: user.is_system ? "ERR_PROTECTED_ACCOUNT" : "ERR_PROTECTED_ACCOUNT",
-          message: user.is_system
-            ? "系统管理员账号受保护，请通过部署配置管理"
-            : "请使用完整用户管理接口重置密码",
-        },
-      },
-      400,
-    );
+  // reset_password is allowed for ALL admins (DB authoritative, fish 2026-08-07).
+  if (body.reset_password !== undefined && body.reset_password !== "") {
+    const passwordHash = await bcrypt.hash(body.reset_password, BCRYPT_COST);
+    await authStorage.updateUser(id, { passwordHash, mustChangePassword: false });
+    await authStorage.deleteAllSessionsForUser(id);
+    logger.info({ actor: me.userId, target: id, action: "reset_password", result: "ok", ip });
+    return c.json({ ok: true });
   }
   if (body.role !== undefined) {
     logger.warn({ actor: me.userId, target: id, action: "role", result: "denied_singleton", ip });
@@ -102,24 +99,9 @@ adminUsersRouter.patch("/:id", async (c) => {
     );
   }
 
-  if (user.is_system) {
-    logger.warn({
-      actor: me.userId,
-      target: id,
-      action: "status",
-      result: "denied_protected",
-      ip,
-    });
-    return c.json(
-      {
-        error: {
-          code: "ERR_PROTECTED_ACCOUNT",
-          message: "系统管理员账号受保护，请通过部署配置管理",
-        },
-      },
-      400,
-    );
-  }
+  // is_system guard retired (fish 2026-08-07): DB is the single authority.
+  // Protect the LAST admin instead — cannot suspend/delete/demote to zero.
+  // (No early is_system return here anymore.)
 
   if (body.status === "suspended") {
     if (me.userId === id) {
@@ -160,18 +142,8 @@ adminUsersRouter.delete("/:id", async (c) => {
   const me = c.get("user");
   const ip = clientIp(c);
 
-  if (user.is_system) {
-    logger.warn({ actor: me.userId, target: id, action: "delete", result: "denied_protected", ip });
-    return c.json(
-      {
-        error: {
-          code: "ERR_PROTECTED_ACCOUNT",
-          message: "系统管理员账号受保护，请通过部署配置管理",
-        },
-      },
-      400,
-    );
-  }
+  // is_system guard retired (fish 2026-08-07): protect the LAST admin instead.
+  // (No early is_system return here anymore.)
 
   if (me.userId === id) {
     throw new AppError("ERR_SELF_DELETE");
