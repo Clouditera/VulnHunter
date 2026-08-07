@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { CSSProperties } from "react";
 
 export interface ConfirmOptions {
@@ -9,8 +10,9 @@ export interface ConfirmOptions {
   danger?: boolean;
 }
 
-interface PromptOptions extends ConfirmOptions {
+export interface PromptOptions extends ConfirmOptions {
   defaultValue?: string;
+  placeholder?: string;
 }
 
 type PendingDialog =
@@ -44,6 +46,12 @@ export function prompt(options: PromptOptions): Promise<string | null> {
     queue.push({ kind: "prompt", options, resolve });
     showNext();
   });
+}
+
+export function __resetDialogsForTest() {
+  queue.length = 0;
+  current = null;
+  listeners.clear();
 }
 
 function settle(value: boolean | string | null) {
@@ -118,7 +126,7 @@ export function ConfirmHost() {
   }, [pending, cancel]);
 
   if (!pending) return null;
-  return (
+  return createPortal(
     <div
       data-testid="confirm-overlay"
       style={CONFIRM_OVERLAY_STYLE}
@@ -135,6 +143,7 @@ export function ConfirmHost() {
           <input
             autoFocus
             value={input}
+            placeholder={pending.options.placeholder}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={(event) => event.key === "Enter" && accept()}
             style={{
@@ -156,7 +165,8 @@ export function ConfirmHost() {
           autoFocus={pending.kind === "confirm"}
         />
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
