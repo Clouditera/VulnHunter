@@ -1,8 +1,13 @@
 import bcrypt from "bcrypt";
+import { AppError } from "../../infra/app-error.js";
 import { logger } from "../../infra/logger.js";
 import * as storage from "./storage.js";
 
 const BCRYPT_COST = 12;
+
+export function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
 
 // In-memory login attempt tracker (acceptable for single-instance v1.0)
 const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
@@ -151,9 +156,14 @@ export async function createUserAccount(params: {
   adminRemark?: string | null;
   source?: "admin" | "registered";
 }): Promise<storage.DbUser> {
+  const email = params.email.trim().toLowerCase();
+  if (!isValidEmail(email)) {
+    throw new AppError("ERR_VALIDATION", { details: { field: "email" } });
+  }
+
   const passwordHash = await bcrypt.hash(params.password, BCRYPT_COST);
   return storage.createUser({
-    email: params.email,
+    email,
     passwordHash,
     role: params.role,
     displayName: params.displayName,
