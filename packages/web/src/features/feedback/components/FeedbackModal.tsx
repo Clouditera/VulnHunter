@@ -16,9 +16,9 @@ export function FeedbackModal({ open, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
-  // Guard against losing unsubmitted content on overlay click / ESC / X.
+  // Guard against losing unsubmitted content when the close button is clicked.
   const isDirty = !done && (satisfaction != null || content.trim() !== "" || email.trim() !== "");
-  const requestClose = useConfirmClose(onClose, isDirty, open);
+  const requestClose = useConfirmClose(onClose, isDirty);
   useEffect(() => {
     if (!open) return;
     setSatisfaction(null);
@@ -64,8 +64,8 @@ export function FeedbackModal({ open, onClose }: Props) {
   if (!open) return null;
 
   return (
-    <div data-testid="feedback-modal" role="dialog" aria-modal="true" style={OVERLAY} onClick={requestClose}>
-      <div style={MODAL} onClick={(e) => e.stopPropagation()}>
+    <div data-testid="feedback-modal" role="dialog" aria-modal="true" style={OVERLAY}>
+      <div style={MODAL}>
         {done ? (
           <div style={{ textAlign: "center", padding: "36px 20px" }} data-testid="feedback-success">
             <div style={{ fontSize: 36, marginBottom: 12 }}>✓</div>
