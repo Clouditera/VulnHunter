@@ -66,18 +66,19 @@ function credentialFingerprint(cred: {
 }
 
 function recordTestPass(cred: Parameters<typeof credentialFingerprint>[0], ok: boolean): void {
-  lastTestPass.set(credentialFingerprint(cred), { at: Date.now(), ok });
+  const fp = credentialFingerprint(cred);
+  // TEMP DEBUG (task-4393660d): trace cache writes to catch concurrent overwrite
+  logger.info({ fpPrefix: fp.slice(0, 8), ok, ageMs: lastTestPass.get(fp) ? Date.now() - lastTestPass.get(fp)!.at : -1 }, "[credgate] recordTestPass");
+  lastTestPass.set(fp, { at: Date.now(), ok });
 }
 
 function freshTestPass(cred: Parameters<typeof credentialFingerprint>[0]): boolean | null {
   const fp = credentialFingerprint(cred);
   const entry = lastTestPass.get(fp);
-  if (!entry) return null;
-  if (Date.now() - entry.at > LAST_TEST_TTL_MS) {
-    lastTestPass.delete(fp);
-    return null;
-  }
-  return entry.ok;
+  const cached = !entry ? null : Date.now() - entry.at > LAST_TEST_TTL_MS ? (lastTestPass.delete(fp), null) : entry.ok;
+  // TEMP DEBUG (task-4393660d): trace cache lookups at save gate
+  logger.info({ fpPrefix: fp.slice(0, 8), cached, hadEntry: !!entry }, "[credgate] freshTestPass");
+  return cached;
 }
 
 /** Run L1-L3 (+ L4 when L1-L3 pass) and emit every event; returns merged result. */
