@@ -213,9 +213,9 @@ export function CloudRouterPromo() {
           data-testid="cloudrouter-toast"
           style={{
             position: "fixed",
-            bottom: 32,
+            top: "50%",
             left: "50%",
-            transform: "translateX(-50%)",
+            transform: "translate(-50%, -50%)",
             background: "rgba(0,0,0,0.9)",
             color: "#fff",
             padding: "8px 16px",
