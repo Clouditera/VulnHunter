@@ -438,8 +438,24 @@ settingsRouter.post("/credential/diagnose-stream", async (c) => {
         stream.writeSSE({ data: JSON.stringify(event) }).then(() => undefined),
       );
     };
-    await runFullDiagnostics(cred, emit);
-    await writeChain;
+    // Heartbeat (fish 2026-08-07): L4 agent circuit can have 60s+ silent
+    // periods; nginx/intermediaries with a 60s read-timeout would kill the
+    // connection. A 30s SSE comment frame (": ping\n\n") keeps it alive —
+    // same pattern as the notifications channel. Comment frames are ignored
+    // by the browser EventSource but reset intermediary idle timers.
+    const heartbeat = setInterval(() => {
+      writeChain = writeChain.then(() =>
+        stream.write(": ping\n\n").then(() => undefined),
+      );
+    }, 30_000);
+    const stopHeartbeat = () => clearInterval(heartbeat);
+    stream.onAbort(stopHeartbeat);
+    try {
+      await runFullDiagnostics(cred, emit);
+      await writeChain;
+    } finally {
+      stopHeartbeat();
+    }
   });
 });
 
