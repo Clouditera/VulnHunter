@@ -27,6 +27,9 @@ services:
       EDITION: "${EDITION:-community}"
       SERVICE_ROLE: "business"
       PORT: "28080"
+      # fish 2026-08-07: pass ADMIN_PORT so /api/system/status returns the real
+      # admin console port for business-web guard redirects (not hardcoded 23001).
+      ADMIN_PORT: "${ADMIN_PORT:-23001}"
       DATABASE_URL: "postgresql://vulnhunter:${DB_PASSWORD:-vulnhunter}@db:5432/vulnhunter"
       MINIO_ENDPOINT: "minio"
       MINIO_PORT: "9000"
