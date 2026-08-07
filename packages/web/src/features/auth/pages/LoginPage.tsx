@@ -228,6 +228,14 @@ function AgreementModal({
   html: string;
   onClose: () => void;
 }) {
+  // ESC closes (fish 2026-08-07 unified modal base); backdrop never does.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   // Extract body inner HTML so we don't nest full documents.
   const bodyHtml = (() => {
     const m = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
@@ -248,7 +256,6 @@ function AgreementModal({
         justifyContent: "center",
         padding: "24px",
       }}
-      onClick={onClose}
     >
       <div
         style={{

@@ -589,7 +589,8 @@ function ghostBtn(disabled: boolean): CSSProperties {
 }
 
 function Overlay({ children, onClose, dirty = false }: { children: ReactNode; onClose: () => void; dirty?: boolean }) {
-  const requestClose = useConfirmClose(onClose, dirty, true);
+  // ESC + dirty gate side effect (fish 2026-08-07 base); backdrop never closes.
+  useConfirmClose(onClose, dirty, true);
   return (
     <div
       role="dialog"
@@ -602,9 +603,6 @@ function Overlay({ children, onClose, dirty = false }: { children: ReactNode; on
         alignItems: "center",
         justifyContent: "center",
         padding: 16,
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) requestClose();
       }}
     >
       {children}

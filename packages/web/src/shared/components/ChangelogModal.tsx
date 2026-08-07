@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { CSSProperties } from "react";
 import { Markdown } from "../../features/chat/components/Markdown.js";
 import { LATEST_CHANGELOG_ENTRY } from "../changelog.js";
@@ -12,6 +13,14 @@ export function ChangelogContent({ markdown }: { markdown: string }) {
  * don't accidentally dismiss the announcement.
  */
 export function ChangelogModal({ onClose }: { onClose: () => void }) {
+  // ESC closes (fish 2026-08-07 unified modal base); backdrop never does.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   const entry = LATEST_CHANGELOG_ENTRY;
   return (
     <div data-testid="changelog-modal" style={BACKDROP}>

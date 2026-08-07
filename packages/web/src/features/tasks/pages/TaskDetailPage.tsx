@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useConfirmClose } from "../../../shared/hooks/useConfirmClose.js";
 import { useParams, useNavigate, NavLink, Outlet } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Task } from "../../../shared/api/client.js";
@@ -104,14 +105,25 @@ export function TaskDetailPage() {
   const [continueDialogOpen, setContinueDialogOpen] = useState(false);
   const [continueFocus, setContinueFocus] = useState("");
   const [continueDuration, setContinueDuration] = useState("60");
+  const [continueInitial, setContinueInitial] = useState({ focus: "", duration: "60" });
   /** Open the continue-scan dialog prefilled from the task's source metadata. */
   function openContinueDialog() {
     const meta = (task as Task & { source_meta?: Record<string, unknown> }).source_meta ?? {};
-    setContinueFocus(typeof meta.audit_focus === "string" ? meta.audit_focus : "");
+    const focus = typeof meta.audit_focus === "string" ? meta.audit_focus : "";
+    setContinueFocus(focus);
     const t = Number(meta.scan_timeout);
-    setContinueDuration(Number.isFinite(t) && t > 0 ? String(Math.round(t / 60)) : "60");
+    const duration = Number.isFinite(t) && t > 0 ? String(Math.round(t / 60)) : "60";
+    setContinueDuration(duration);
+    setContinueInitial({ focus, duration });
     setContinueDialogOpen(true);
   }
+  // Unified modal base (fish 2026-08-07): ESC closes, dirty asks first,
+  // backdrop never closes.
+  const requestContinueClose = useConfirmClose(
+    () => setContinueDialogOpen(false),
+    continueFocus !== continueInitial.focus || continueDuration !== continueInitial.duration,
+    continueDialogOpen,
+  );
   const continueMut = useMutation({
     mutationFn: () => {
       const min = Number.parseInt(continueDuration, 10);
@@ -432,7 +444,6 @@ export function TaskDetailPage() {
           <div
             data-testid="continue-scan-dialog"
             style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}
-            onMouseDown={(e) => { if (e.target === e.currentTarget) setContinueDialogOpen(false); }}
           >
             <div style={{ background: "var(--bg-card)", borderRadius: "10px", width: "460px", boxShadow: "0 20px 60px rgba(0,0,0,0.15)", overflow: "hidden" }}>
               <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
@@ -480,7 +491,7 @@ export function TaskDetailPage() {
               </div>
               <div style={{ padding: "0 24px 24px", display: "flex", gap: "10px" }}>
                 <button
-                  onClick={() => setContinueDialogOpen(false)}
+                  onClick={requestContinueClose}
                   style={{ flex: 1, padding: "10px", background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
                 >
                   {i18n.t("common.cancel")}

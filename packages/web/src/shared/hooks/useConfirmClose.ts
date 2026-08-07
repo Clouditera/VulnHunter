@@ -1,13 +1,17 @@
 import { useCallback, useEffect } from "react";
 import { i18n } from "../i18n/index.js";
-import { confirm } from "../confirm/confirm.js";
+import { confirm, hasPendingDialog } from "../confirm/confirm.js";
 
 /**
- * Close-with-confirm guard for input-bearing modals (fish 2026-08-04:
- * feedback modal lost typed content on accidental overlay click).
+ * Unified modal close guard (fish 2026-08-07 定稿, task-d3f85fe5):
+ * - Backdrop NEVER closes (all modals, no per-type customization)
+ * - ESC closes; when the form holds content (isDirty), ask first with the
+ *   fish-approved copy: title 关闭前确认 / body 表单已有填写内容… /
+ *   【继续填写】primary (cancel) + 【放弃内容并关闭】danger (confirm)
+ * - Clean modals close immediately (lightweight)
  *
- * Returns a `requestClose` fn — when `isDirty`, asks "内容还未提交，确定关闭吗？"
- * before invoking onClose; clean modals close immediately (lightweight).
+ * Returns a `requestClose` fn to wire into the ✕ button and any other close
+ * affordance (backdrop clicks must not call it at all).
  *
  * `esc` gates the ESC-key listener: pass the modal's `open` flag for
  * always-mounted modals (FeedbackModal); leave false for modals that
@@ -19,7 +23,13 @@ export function useConfirmClose(onClose: () => void, isDirty: boolean, esc: bool
       onClose();
       return;
     }
-    void confirm({ message: i18n.t("modal.closeConfirm") }).then((confirmed) => {
+    void confirm({
+      title: i18n.t("modal.unsaved.title"),
+      message: i18n.t("modal.unsaved.message"),
+      confirmText: i18n.t("modal.unsaved.discard"),
+      cancelText: i18n.t("modal.unsaved.keep"),
+      danger: true,
+    }).then((confirmed) => {
       if (confirmed) onClose();
     });
   }, [onClose, isDirty]);
@@ -27,7 +37,11 @@ export function useConfirmClose(onClose: () => void, isDirty: boolean, esc: bool
   useEffect(() => {
     if (!esc) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") requestClose();
+      if (e.key !== "Escape") return;
+      // The shared confirm host handles its own ESC (= 继续填写/cancel);
+      // don't let the same keypress also fire the underlying modal's guard.
+      if (hasPendingDialog()) return;
+      requestClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
