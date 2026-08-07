@@ -134,7 +134,11 @@ export function UsersSection() {
             <div style={{ width: "110px", fontSize: "12px", color: "var(--text-secondary)" }}>{formatTaskLimit(u)}</div>
             <div style={{ width: "100px", fontSize: "12px", color: "var(--text-secondary)" }}>{relativeTime(u.last_login_at)}</div>
             <div style={{ width: "40px", position: "relative" }}>
-              {u.is_system ? (
+              {/* System admin menu by provisioning source (fish 2026-08-07,
+                  task-7cff2ecf): disable/delete NEVER render; reset-password
+                  renders only for wizard-created admins (DB authority).
+                  env-provisioned → no menu at all (quiet). */}
+              {u.is_system && u.is_env_provisioned !== false ? (
                 <span
                   data-testid={`user-system-locked-${u.id}`}
                   title={i18n.t("settings.users.systemLocked")}
@@ -145,6 +149,7 @@ export function UsersSection() {
               ) : (
                 <>
                   <button
+                    data-testid={`user-menu-btn-${u.id}`}
                     onClick={() => setMenuOpen(menuOpen === u.id ? null : u.id)}
                     style={{ ...GHOST_BTN, fontSize: "16px", padding: "4px 8px" }}
                   >⋯</button>
@@ -265,6 +270,20 @@ function ActionMenu({ user, users, onEdit, onResetPwd, onToggle, onDelete, onClo
   user: UserApi; users: UserApi[]; onEdit: () => void; onResetPwd: () => void; onToggle: () => void; onDelete: () => void; onClose: () => void;
 }) {
   const isLastAdmin = user.role === "admin" && users.filter((x) => x.role === "admin" && x.status === "active").length <= 1;
+  // System admin (only wizard-created ones reach the menu — see row render):
+  // disable/delete stay un-rendered forever (fish 铁律); only reset-password.
+  if (user.is_system) {
+    return (
+      <>
+        <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 999 }} />
+        <div style={MENU}>
+          <button data-testid={`user-menu-reset-${user.id}`} onClick={onResetPwd} style={MENU_ITEM}>
+            {i18n.t("settings.users.menu.resetPassword")}
+          </button>
+        </div>
+      </>
+    );
+  }
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 999 }} />

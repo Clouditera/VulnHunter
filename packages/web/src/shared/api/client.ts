@@ -1017,6 +1017,14 @@ export interface UserApi {
   source?: string;
   /** Deploy-provisioned system admin — protected in UI + API */
   is_system?: boolean;
+  /**
+   * System-admin provisioning source (fish 2026-08-07, task-7cff2ecf):
+   * true = env-provisioned (env is the password authority — UI must NOT
+   * offer reset-password, a reset would be reverted on restart);
+   * false/undefined = wizard-created (DB is the authority — reset allowed).
+   * Absent on older backends → treated as env-provisioned (quiet default).
+   */
+  is_env_provisioned?: boolean;
   must_change_password: boolean;
   last_login_at: string | null;
   created_at: string;
