@@ -16,6 +16,7 @@ import { FeedbackModal } from "../features/feedback/components/FeedbackModal.js"
 import { SupportContactCard } from "../shared/components/SupportContact.js";
 import { OnboardingHost } from "../features/onboarding/OnboardingTour.js";
 import { useEdition } from "../shared/hooks/useEdition.js";
+import { confirm } from "../shared/confirm/confirm.js";
 
 const NAV_ITEMS: Array<{ to: string; icon: IconName; labelKey: string; testid: string; tour?: string }> = [
   { to: "/chat", icon: "chat", labelKey: "nav.chat", testid: "nav-chat" },
@@ -212,7 +213,11 @@ export function AppLayout() {
   }
 
   async function handleDeleteSession(session: RecentSession) {
-    const ok = window.confirm(`Delete chat “${session.title}”?`);
+    const ok = await confirm({
+      message: `Delete chat “${session.title}”?`,
+      confirmText: "Delete",
+      danger: true,
+    });
     if (!ok) return;
     // Always notify chat host first so the open pane clears even if delete races.
     window.dispatchEvent(new CustomEvent("vh:delete-session", { detail: { id: session.id } }));

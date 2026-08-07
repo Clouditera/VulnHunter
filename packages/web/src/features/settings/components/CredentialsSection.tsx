@@ -15,6 +15,7 @@ import {
 import { CloudRouterBalanceGlance, CloudRouterBalanceStrip } from "./CloudRouterBalance.js";
 import { useSystemStatus } from "../../auth/hooks/useSystemStatus.js";
 import { useEdition } from "../../../shared/hooks/useEdition.js";
+import { confirm } from "../../../shared/confirm/confirm.js";
 import {
   FIELD_INPUT,
   FIELD_LABEL,
@@ -289,7 +290,8 @@ export function CredentialsSection() {
     const msg = i18n
       .t("settings.credentials.deleteConfirm")
       .replace("{label}", c.label || c.provider);
-    if (!window.confirm(msg)) return;
+    const confirmed = await confirm({ message: msg, danger: true });
+    if (!confirmed) return;
     try {
       await api.settings.deleteCredential(c.id);
       const fresh = await api.settings

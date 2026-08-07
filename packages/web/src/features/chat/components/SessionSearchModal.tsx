@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { useNavigate } from "react-router-dom";
 import { api, type ChatSessionApi } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
+import { confirm, prompt } from "../../../shared/confirm/confirm.js";
 
 type GroupKey = "today" | "yesterday" | "last_7_days" | "this_year" | "earlier";
 
@@ -160,7 +161,10 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
 
   async function renameSelected() {
     if (!selected) return;
-    const next = window.prompt(i18n.t("search.renamePrompt"), selected.session.title ?? "");
+    const next = await prompt({
+      message: i18n.t("search.renamePrompt"),
+      defaultValue: selected.session.title ?? "",
+    });
     if (next == null) return;
     const title = next.trim();
     if (!title) return;
@@ -181,7 +185,10 @@ export function SessionSearchModal({ open, onClose, activeSessionId, onSelect, o
 
   async function deleteSelected() {
     if (!selected) return;
-    const ok = window.confirm(i18n.t("search.deleteConfirm").replace("{title}", selected.session.title || ""));
+    const ok = await confirm({
+      message: i18n.t("search.deleteConfirm").replace("{title}", selected.session.title || ""),
+      danger: true,
+    });
     if (!ok) return;
     const id = selected.session.id;
     setItems((prev) => prev.filter((it) => it.session.id !== id));

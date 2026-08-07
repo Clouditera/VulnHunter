@@ -28,6 +28,7 @@ import { Markdown } from "../../../chat/components/Markdown.js";
 import { formatDateTime } from "../../../../shared/utils/format.js";
 import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
 import { ReportGenerateModal } from "./reports/ReportGenerateModal.js";
+import { confirm } from "../../../../shared/confirm/confirm.js";
 
 export function ReportsTab() {
   const { task } = useOutletContext<{ task: Task }>();
@@ -153,14 +154,14 @@ export function ReportsTab() {
                 active={r.id === selectedReportId}
                 onClick={() => setSelectedReportId(r.id)}
                 onDelete={() => {
-                  if (
-                    window.confirm(
-                      i18n
-                        .t("reports.deleteConfirm")
-                        .replace("{name}", r.skill_name || r.id.slice(0, 8)),
-                    )
-                  )
-                    deleteMut.mutate(r.id);
+                  void confirm({
+                    message: i18n
+                      .t("reports.deleteConfirm")
+                      .replace("{name}", r.skill_name || r.id.slice(0, 8)),
+                    danger: true,
+                  }).then((confirmed) => {
+                    if (confirmed) deleteMut.mutate(r.id);
+                  });
                 }}
               />
             ))
