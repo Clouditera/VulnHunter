@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { WebSocketServer, WebSocket } from "ws";
 import { normalizeToolEventLine } from "./tool-event-normalize.js";
 import { RpcCommandTracker } from "./rpc-command-tracker.js";
+import { piApiForProtocol, SUPPORTED_MODEL_PROTOCOLS } from "./model-config.js";
 
 const PORT = Number(process.env.BRIDGE_PORT ?? "8080");
 const MODE = process.env.MODE ?? "chat";
@@ -74,14 +75,6 @@ const wsClients = new Set<WebSocket>();
 let lastActivity = Date.now();
 const rpcCommands = new RpcCommandTracker((line) => writeToPi(line));
 
-const PROTO_API_MAP: Record<string, string> = {
-  "openai": "openai-completions",
-  "openai-completions": "openai-completions",
-  "openai-responses": "openai-responses",
-  "anthropic": "anthropic",
-};
-
-// Credential ID → provider key mapping for set_model
 const credProviderMap = new Map<string, { providerKey: string; modelId: string }>();
 const noAuthProxyTargets = new Map<string, string>();
 const NO_AUTH_DUMMY_KEY = "vulnhunter-no-auth";
@@ -111,9 +104,9 @@ function setupPiConfig(): void {
 
   // Register primary credential
   if (BASE_URL) {
-    const api = PROTO_API_MAP[MODEL_PROTO];
+    const api = piApiForProtocol(MODEL_PROTO);
     if (!api) {
-      console.error(`[bridge] Unknown MODEL_PROTO_TYPE: "${MODEL_PROTO}". Valid: ${Object.keys(PROTO_API_MAP).join(", ")}`);
+      console.error(`[bridge] Unknown MODEL_PROTO_TYPE: "${MODEL_PROTO}". Valid: ${SUPPORTED_MODEL_PROTOCOLS.join(", ")}`);
       process.exit(1);
     }
     const providerKey = "vulnhunter";
@@ -146,7 +139,7 @@ function setupPiConfig(): void {
         base_url: string; api_key: string; model_id: string; context_window_tokens?: number;
       }>; 
       for (const cred of allCreds) {
-        const api = PROTO_API_MAP[cred.proto_type];
+        const api = piApiForProtocol(cred.proto_type);
         if (!api) continue;
         const providerKey = `va-${cred.id.slice(0, 8)}`;
         const apiKeyEnv = `VH_KEY_${cred.id.replace(/-/g, "_").slice(0, 12).toUpperCase()}`;
