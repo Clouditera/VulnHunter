@@ -63,9 +63,11 @@ function RootGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
   if (error || !status) return <Navigate to="/login" replace />;
+  // fish 2026-08-07: no-admin wins over license — the setup wizard owns
+  // activation, so check has_admin before any license branch.
+  if (!status.has_admin) return <Navigate to="/setup" replace />;
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
-  if (!status.has_admin) return <Navigate to="/setup" replace />;
   if (status.is_authenticated) {
     if (status.user?.role === "admin") return <Navigate to="/admin" replace />;
     return <ForbiddenPage />;
@@ -76,6 +78,7 @@ function RootGuard() {
 function ActivateGuard() {
   const { data: status, isLoading } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
+  if (status && !status.has_admin) return <Navigate to="/setup" replace />;
   if (status?.edition === "community" || status?.license.status === "active")
     return <Navigate to="/" replace />;
   if (
@@ -89,6 +92,7 @@ function ActivateGuard() {
 function ExpiredGuard() {
   const { data: status, isLoading } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
+  if (status && !status.has_admin) return <Navigate to="/setup" replace />;
   if (status?.edition === "community" || status?.license.status === "active")
     return <Navigate to="/" replace />;
   if (
@@ -117,9 +121,9 @@ function LoginGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
   if (error || !status) return <Navigate to="/login" replace />;
+  if (!status.has_admin) return <Navigate to="/setup" replace />;
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
-  if (!status.has_admin) return <Navigate to="/setup" replace />;
   if (status.is_authenticated) {
     if (status.user?.role === "admin") return <Navigate to="/admin" replace />;
     return <ForbiddenPage />;
@@ -131,9 +135,9 @@ function AuthGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
   if (isLoading) return <LoadingScreen />;
   if (error || !status) return <Navigate to="/login" replace />;
+  if (!status.has_admin) return <Navigate to="/setup" replace />;
   const target = licenseTarget(status);
   if (target) return <Navigate to={target} replace />;
-  if (!status.has_admin) return <Navigate to="/setup" replace />;
   if (!status.is_authenticated) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
