@@ -83,6 +83,17 @@ describe("runPreparePhase branch matrix", () => {
     expect(m.events.map((e) => e.type)).toEqual(["prepare_started", "prepare_completed", "prepare_failed"]);
   });
 
+  it("fragment_collection → interrupts same path (fish 2026-08-07: loose examples/snippets have no audit value)", async () => {
+    m.dynamicEnabled = true;
+    baseTask.source_meta = { dynamic_enabled: true, enable_poc: true };
+    m.prepareResult = { project_complete: false, sandbox_type: null, reason: "fragment_collection" };
+    await expect((scheduler() as any).runPreparePhase(baseTask, token, "/tmp/w")).rejects.toThrow(/源码不完整/);
+    expect(m.metadataPatches.some((p) => p.source_incomplete === true)).toBe(true);
+    const failed = m.events.find((e) => e.type === "prepare_failed");
+    expect(failed).toMatchObject({ reason: "source_incomplete" });
+    expect(m.events.map((e) => e.type)).toEqual(["prepare_started", "prepare_completed", "prepare_failed"]);
+  });
+
   it("complete + dynamic on + sandbox chosen → proceeds (no throw), records sandbox_type", async () => {
     m.dynamicEnabled = true;
     m.prepareResult = { project_complete: true, sandbox_type: "linux-docker", reason: "complete" };

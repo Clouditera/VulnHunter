@@ -49,7 +49,7 @@ const CONTAINER_FLOW_MODELS_JSON = "/opt/vulnhunter/flows/prepare/models.json";
 export interface PrepareResult {
   project_complete: boolean;
   sandbox_type: string | null;
-  reason: "complete" | "partial_source" | "no_compatible_sandbox";
+  reason: "complete" | "partial_source" | "fragment_collection" | "no_compatible_sandbox";
 }
 
 function booleanMeta(meta: DbTask["source_meta"] | null | undefined, key: string): boolean {
@@ -279,7 +279,7 @@ export async function readPrepareResult(outputDir: string): Promise<PrepareResul
   const v = value as Record<string, unknown>;
   if (typeof v.project_complete !== "boolean") throw new Error("Prepare 结果缺 project_complete");
   if (v.sandbox_type !== null && typeof v.sandbox_type !== "string") throw new Error("Prepare 结果 sandbox_type 非法");
-  if (!["complete", "partial_source", "no_compatible_sandbox"].includes(String(v.reason))) {
+  if (!["complete", "partial_source", "fragment_collection", "no_compatible_sandbox"].includes(String(v.reason))) {
     throw new Error("Prepare 结果 reason 非法");
   }
   return {
