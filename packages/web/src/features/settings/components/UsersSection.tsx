@@ -134,32 +134,25 @@ export function UsersSection() {
             <div style={{ width: "110px", fontSize: "12px", color: "var(--text-secondary)" }}>{formatTaskLimit(u)}</div>
             <div style={{ width: "100px", fontSize: "12px", color: "var(--text-secondary)" }}>{relativeTime(u.last_login_at)}</div>
             <div style={{ width: "40px", position: "relative" }}>
-              {u.is_system ? (
-                <span
-                  data-testid={`user-system-locked-${u.id}`}
-                  title={i18n.t("settings.users.systemLocked")}
-                  style={{ fontSize: 11, color: "var(--text-secondary)", padding: "4px 6px" }}
-                >
-                  —
-                </span>
-              ) : (
-                <>
-                  <button
-                    onClick={() => setMenuOpen(menuOpen === u.id ? null : u.id)}
-                    style={{ ...GHOST_BTN, fontSize: "16px", padding: "4px 8px" }}
-                  >⋯</button>
-                  {menuOpen === u.id && (
-                    <ActionMenu
-                      user={u}
-                      onEdit={() => { setEditUser(u); setMenuOpen(null); }}
-                      onResetPwd={() => { setResetPwdUser(u); setMenuOpen(null); }}
-                      onToggle={() => { toggleMut.mutate({ id: u.id, status: u.status === "active" ? "suspended" : "active" }); setMenuOpen(null); }}
-                      onDelete={() => { setDeleteTarget(u); setMenuOpen(null); }}
-                      onClose={() => setMenuOpen(null)}
-                      users={users}
-                    />
-                  )}
-                </>
+              {/* System admin menu (fish 2026-08-07 终拍, task-7cff2ecf):
+                  DB 单一权威, 零来源判定 — menu always renders with
+                  reset-password as a REAL action; disable/delete/edit stay
+                  un-rendered (铁律). Backend guards migrate to last-admin. */}
+              <button
+                data-testid={`user-menu-btn-${u.id}`}
+                onClick={() => setMenuOpen(menuOpen === u.id ? null : u.id)}
+                style={{ ...GHOST_BTN, fontSize: "16px", padding: "4px 8px" }}
+              >⋯</button>
+              {menuOpen === u.id && (
+                <ActionMenu
+                  user={u}
+                  onEdit={() => { setEditUser(u); setMenuOpen(null); }}
+                  onResetPwd={() => { setResetPwdUser(u); setMenuOpen(null); }}
+                  onToggle={() => { toggleMut.mutate({ id: u.id, status: u.status === "active" ? "suspended" : "active" }); setMenuOpen(null); }}
+                  onDelete={() => { setDeleteTarget(u); setMenuOpen(null); }}
+                  onClose={() => setMenuOpen(null)}
+                  users={users}
+                />
               )}
             </div>
           </div>
@@ -265,6 +258,20 @@ function ActionMenu({ user, users, onEdit, onResetPwd, onToggle, onDelete, onClo
   user: UserApi; users: UserApi[]; onEdit: () => void; onResetPwd: () => void; onToggle: () => void; onDelete: () => void; onClose: () => void;
 }) {
   const isLastAdmin = user.role === "admin" && users.filter((x) => x.role === "admin" && x.status === "active").length <= 1;
+  // System admin: reset-password is a real action (DB sole authority,
+  // fish 2026-08-07); disable/delete/edit stay un-rendered (铁律).
+  if (user.is_system) {
+    return (
+      <>
+        <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 999 }} />
+        <div style={MENU}>
+          <button data-testid={`user-menu-reset-${user.id}`} onClick={onResetPwd} style={MENU_ITEM}>
+            {i18n.t("settings.users.menu.resetPassword")}
+          </button>
+        </div>
+      </>
+    );
+  }
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 999 }} />

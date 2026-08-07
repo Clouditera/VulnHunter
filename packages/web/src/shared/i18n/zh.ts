@@ -775,7 +775,6 @@ export const ZH: Record<string, string> = {
   "settings.users.never": "从未",
   "settings.users.systemBadge": "系统账号",
   "settings.users.status.suspended": "已禁用",
-  "settings.users.systemLocked": "系统账号由部署配置管理，不可在此操作",
   "settings.users.menu.edit": "编辑",
   "settings.users.menu.resetPassword": "重置密码",
   "settings.users.menu.disable": "禁用",

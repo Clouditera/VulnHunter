@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent } from "react";
-import { i18n } from "../../../shared/i18n/index.js";
-import { Icon } from "../../../shared/components/Icon.js";
 import { api } from "../../../shared/api/client.js";
+import { Icon } from "../../../shared/components/Icon.js";
+import { i18n } from "../../../shared/i18n/index.js";
+import { shouldSubmitChatInput } from "../chat-input-key.js";
 import type { ChatImageAttachment } from "../types.js";
 
 /**
@@ -236,7 +237,14 @@ export function ChatInput({
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (
+      shouldSubmitChatInput({
+        key: e.key,
+        shiftKey: e.shiftKey,
+        isComposing: e.nativeEvent.isComposing,
+        keyCode: e.nativeEvent.keyCode,
+      })
+    ) {
       e.preventDefault();
       void submit();
     }

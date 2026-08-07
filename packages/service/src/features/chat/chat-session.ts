@@ -27,6 +27,10 @@ import { logger } from "../../infra/logger.js";
 
 type State = "idle" | "starting" | "ready" | "active" | "recovering";
 
+export function shouldForwardModelSwitch(state: State): boolean {
+  return state === "starting" || state === "ready" || state === "active";
+}
+
 const EVENT_BUFFER_SIZE = 100;
 
 interface ReadyWaiter {
@@ -542,12 +546,11 @@ export class ChatSession {
     if (!result.ok) throw new Error("Bridge rejected prompt");
   }
 
-  /** Forward set-model command to bridge → pi */
+  /** Forward set-model to a running worker. Before the first prompt there is
+   *  no runtime to update; the route persists the selection for start(). */
   async setModel(credentialId: string): Promise<void> {
-    // Auto-start if container is not running
-    if (this.state === "idle" || this.state === "recovering") {
-      await this.start();
-    } else if (this.state === "starting") {
+    if (!shouldForwardModelSwitch(this.state)) return;
+    if (this.state === "starting") {
       await this.waitForReady();
     }
     if (!this.bridgeUrl) throw new Error("Bridge not available");

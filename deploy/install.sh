@@ -285,7 +285,9 @@ if [[ -z "${DOCKER_SUBNET:-}" ]]; then
   set_env_key "$instance_dir/.env" DOCKER_SUBNET "10.177.${octet}.0/24"
 fi
 
-# System admin (singleton, protected): provisioned from env on every boot.
+# System admin (seed-once, fish 2026-08-07): env credentials consumed ONLY on
+# first boot when no admin exists in DB. Once seeded, DB is authoritative —
+# change passwords via the admin UI, not these env keys.
 # Fresh installs get a generated password; operators may pre-set
 # VULNHUNTER_ADMIN_EMAIL / VULNHUNTER_ADMIN_PASSWORD to override.
 admin_email="${VULNHUNTER_ADMIN_EMAIL:-admin@vulnhunter.local}"
