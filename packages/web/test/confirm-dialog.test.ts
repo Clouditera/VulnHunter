@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -23,10 +24,18 @@ describe("application confirmation dialog", () => {
     expect(src).toMatch(/<ConfirmHost\s*\/>/);
   });
 
-  it("uses the application dialog for the screenshot's delete-chat flow", () => {
-    const src = readWebSource("app/layout.tsx");
+  it("removes every browser-native dialog call from web source", () => {
+    const result = spawnSync(
+      "grep",
+      [
+        "-REn",
+        "window\\.(confirm|alert|prompt)|(^|[^.[:alnum:]_])alert\\(",
+        resolve(__dirname, "../src"),
+      ],
+      { encoding: "utf8" },
+    );
 
-    expect(src).toMatch(/await confirm\(\{[\s\S]*?danger:\s*true/);
-    expect(src).not.toMatch(/window\.confirm/);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
   });
 });

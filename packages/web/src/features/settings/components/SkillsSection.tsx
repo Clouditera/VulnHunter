@@ -8,6 +8,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type ReportSkill } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
+import { confirm } from "../../../shared/confirm/confirm.js";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -216,14 +217,12 @@ export function SkillsSection() {
               key={s.id}
               skill={s}
               onDelete={() => {
-                if (
-                  window.confirm(
-                    i18n
-                      .t("skills.deleteConfirm")
-                      .replace("{name}", s.name),
-                  )
-                )
-                  deleteMut.mutate(s.id);
+                void confirm({
+                  message: i18n.t("skills.deleteConfirm").replace("{name}", s.name),
+                  danger: true,
+                }).then((confirmed) => {
+                  if (confirmed) deleteMut.mutate(s.id);
+                });
               }}
             />
           ))}

@@ -11,6 +11,8 @@ import { StatusPill } from "../../../shared/components/StatusPill.js";
 import { effectiveTaskState, isTaskTimedOut } from "../task-timeout.js";
 import { SeverityBadges } from "../../../shared/components/SeverityBadges.js";
 import { truncateTaskName } from "../task-name.js";
+import { confirm } from "../../../shared/confirm/confirm.js";
+import { toast } from "../../../shared/toast/toast.js";
 import {
   formatDateTime,
 } from "../../../shared/utils/format.js";
@@ -136,7 +138,7 @@ export function TasksListPage() {
     mutationFn: (id: string) => api.tasks.delete(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
     onError: () => {
-      alert(i18n.t("tasks.delete.error"));
+      toast.error(i18n.t("tasks.delete.error"));
     },
   });
 
@@ -539,7 +541,9 @@ export function TasksListPage() {
                               const msg = i18n
                                 .t("tasks.delete.confirm")
                                 .replace("{name}", title);
-                              if (window.confirm(msg)) deleteMut.mutate(task.id);
+                              void confirm({ message: msg, danger: true }).then((confirmed) => {
+                                if (confirmed) deleteMut.mutate(task.id);
+                              });
                             }}
                             style={{
                               display: "inline-flex",

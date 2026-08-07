@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { i18n } from "../i18n/index.js";
+import { confirm } from "../confirm/confirm.js";
 
 /**
  * Close-with-confirm guard for input-bearing modals (fish 2026-08-04:
@@ -14,7 +15,13 @@ import { i18n } from "../i18n/index.js";
  */
 export function useConfirmClose(onClose: () => void, isDirty: boolean, esc: boolean | string = false) {
   const requestClose = useCallback(() => {
-    if (!isDirty || window.confirm(i18n.t("modal.closeConfirm"))) onClose();
+    if (!isDirty) {
+      onClose();
+      return;
+    }
+    void confirm({ message: i18n.t("modal.closeConfirm") }).then((confirmed) => {
+      if (confirmed) onClose();
+    });
   }, [onClose, isDirty]);
 
   useEffect(() => {
