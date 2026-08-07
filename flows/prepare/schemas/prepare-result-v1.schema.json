@@ -7,6 +7,6 @@
   "properties": {
     "project_complete": {"type": "boolean"},
     "sandbox_type": {"type": ["string", "null"], "minLength": 1, "maxLength": 128},
-    "reason": {"type": "string", "enum": ["complete", "partial_source", "no_compatible_sandbox"]}
+    "reason": {"type": "string", "enum": ["complete", "partial_source", "fragment_collection", "no_compatible_sandbox"]}
   }
 }

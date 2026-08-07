@@ -64,6 +64,17 @@ describe("prepare-worker helpers", () => {
     }
   });
 
+  it("readPrepareResult accepts fragment_collection reason (fish 2026-08-07)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "prepare-result-"));
+    try {
+      const result = { project_complete: false, sandbox_type: null, reason: "fragment_collection" };
+      writeFileSync(join(dir, "prepare-result.json"), JSON.stringify(result));
+      await expect(readPrepareResult(dir)).resolves.toEqual(result);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("readPrepareResult fails closed on missing / malformed / wrong-shape results", () => {
     const missing = mkdtempSync(join(tmpdir(), "prepare-result-"));
     const malformed = mkdtempSync(join(tmpdir(), "prepare-result-"));

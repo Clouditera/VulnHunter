@@ -590,6 +590,8 @@ export class TaskScheduler {
    * and applies the branch matrix:
    *   - partial_source        → interrupt: fail in preparing with a reason
    *                              (dynamic/static alike; no scan, no sandbox);
+   *   - fragment_collection   → interrupt: same path (loose example/tutorial
+   *                              snippets have no audit value; fish 2026-08-07);
    *   - complete + dynamic on + no compatible sandbox → O1: fail in preparing;
    *   - otherwise             → proceed to the scan worker.
    * All side effects run under the owner's scheduler claim (②). Throws on any
@@ -631,7 +633,7 @@ export class TaskScheduler {
     });
 
     if (!result.project_complete) {
-      // partial_source: INTERRUPT (fish 2026-07-20). The audit target must be a
+      // partial_source / fragment_collection: INTERRUPT (fish 2026-07-20 / 2026-08-07). The audit target must be a
       // self-contained, complete functional project (web app / CLI / library);
       // code fragments, docs, and case demos cannot establish complete code
       // semantics, so the task fails in the prepare phase and reports why —
@@ -648,7 +650,7 @@ export class TaskScheduler {
         reason: "source_incomplete",
         remediation,
       });
-      logger.warn({ taskId: task.id, token }, "Source is incomplete (partial_source); interrupting task");
+      logger.warn({ taskId: task.id, token, reason: result.reason }, "Source is incomplete; interrupting task");
       throw new AppError("ERR_PREPARE_FAILED", {
         message: `源码不完整：功能代码缺失，无法建立完整的代码功能语义。审计目标应是自洽完整的功能项目（如 web 应用、CLI 应用、库）。${remediation}。`,
         details: { phase: "prepare", reason: "source_incomplete", remediation },
