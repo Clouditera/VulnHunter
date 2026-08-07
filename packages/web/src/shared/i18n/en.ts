@@ -767,7 +767,6 @@ export const EN: Record<string, string> = {
   "settings.users.create": "+ Create user",
   "settings.users.systemBadge": "System",
   "settings.users.status.suspended": "Disabled",
-  "settings.users.systemLocked": "Managed via deployment config — not editable here",
   "settings.users.col.email": "Email",
   "settings.users.col.name": "Name",
   "settings.users.col.remark": "Remark",
