@@ -122,7 +122,10 @@ function setupPiConfig(): void {
       api,
       // fish 2026-08-05: completions endpoints default to system role.
       models: [{
-        id: MODEL_NAME, input: ["text", "image"], contextWindow: CONTEXT_WINDOW, maxTokens: 16384,
+        id: MODEL_NAME, input: ["text", "image"], contextWindow: CONTEXT_WINDOW,
+        // fish 2026-08-07: no maxTokens for OpenAI-compatible (kimi thinking-budget
+        // 400); anthropic-messages keeps 36864 (API-required, budget 32768+4096).
+        ...(api === "anthropic-messages" ? { maxTokens: 36_864 } : {}),
         ...(api === "openai-completions" ? { compat: { supportsDeveloperRole: false } } : {}),
       }],
     };
@@ -154,7 +157,8 @@ function setupPiConfig(): void {
             baseUrl: cred.api_key ? cred.base_url : noAuthProxyBaseUrl(cred.id),
             api,
             models: [{
-              id: cred.model_id, input: ["text", "image"], contextWindow: parsePositiveInt(String(cred.context_window_tokens ?? ""), DEFAULT_CONTEXT_WINDOW_TOKENS), maxTokens: 16384,
+              id: cred.model_id, input: ["text", "image"], contextWindow: parsePositiveInt(String(cred.context_window_tokens ?? ""), DEFAULT_CONTEXT_WINDOW_TOKENS),
+              ...(api === "anthropic-messages" ? { maxTokens: 36_864 } : {}),
               ...(api === "openai-completions" ? { compat: { supportsDeveloperRole: false } } : {}),
             }],
           };
