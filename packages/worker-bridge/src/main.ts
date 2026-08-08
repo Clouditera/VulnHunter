@@ -548,28 +548,61 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   res.end(JSON.stringify({ error: "Not found" }));
 }
 
+/**
+ * Batch 3 (fish 2026-08-08): model switch via pi reload RPC.
+ *
+ * The service sends the unified models.json content (from buildModelsJson)
+ * + the API key env. The bridge:
+ *   1. Writes models.json to piDir
+ *   2. Sets the API key env in process.env (pi reads $ENV_VAR at reload)
+ *   3. Sends reload RPC → pi re-reads models.json + resetApiProviders
+ *   4. Sends set_model to switch the active model reference
+ */
 async function handleSetModel(body: string, res: ServerResponse): Promise<void> {
-  let credentialId: string;
+  let parsed: {
+    credentialId?: string;
+    modelsJson?: Record<string, unknown>;
+    apiKeyEnv?: Record<string, string>;
+    providerKey?: string;
+    modelId?: string;
+  };
   try {
-    ({ credentialId } = JSON.parse(body) as { credentialId: string });
+    parsed = JSON.parse(body);
   } catch {
     sendJson(res, 400, { ok: false, error: "Invalid JSON" });
     return;
   }
 
-  const mapping = credProviderMap.get(credentialId);
-  if (!mapping) {
-    sendJson(res, 400, { ok: false, error: "Credential not registered" });
+  if (!parsed.modelsJson || !parsed.providerKey || !parsed.modelId) {
+    sendJson(res, 400, { ok: false, error: "modelsJson, providerKey, modelId required" });
     return;
   }
 
   try {
-    await rpcCommands.send({ type: "set_model", provider: mapping.providerKey, modelId: mapping.modelId });
-    console.log(`[bridge] set_model confirmed → provider=${mapping.providerKey}, model=${mapping.modelId}`);
-    sendJson(res, 200, { ok: true, provider: mapping.providerKey, modelId: mapping.modelId });
+    // 1. Rewrite models.json in piDir
+    const piDir = getPiDir();
+    writeFileSync(join(piDir, "models.json"), JSON.stringify(parsed.modelsJson, null, 2) + "\n");
+    console.log(`[bridge] Rewrote models.json for credential=${parsed.credentialId ?? "unknown"}`);
+
+    // 2. Set API key env (pi resolves $VULNHUNTER_LLM_API_KEY from process env)
+    if (parsed.apiKeyEnv) {
+      for (const [key, value] of Object.entries(parsed.apiKeyEnv)) {
+        process.env[key] = value;
+      }
+    }
+
+    // 3. Send reload RPC — pi re-reads models.json + resetApiProviders
+    await rpcCommands.send({ type: "reload" });
+    console.log("[bridge] reload confirmed → pi re-read models.json");
+
+    // 4. Switch active model to the new provider/model
+    await rpcCommands.send({ type: "set_model", provider: parsed.providerKey, modelId: parsed.modelId });
+    console.log(`[bridge] set_model confirmed → provider=${parsed.providerKey}, model=${parsed.modelId}`);
+
+    sendJson(res, 200, { ok: true, provider: parsed.providerKey, modelId: parsed.modelId });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    console.warn(`[bridge] set_model failed: ${error}`);
+    console.warn(`[bridge] set-model (reload path) failed: ${error}`);
     sendJson(res, 503, { ok: false, error });
   }
 }

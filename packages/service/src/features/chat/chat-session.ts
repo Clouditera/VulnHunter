@@ -547,7 +547,9 @@ export class ChatSession {
   }
 
   /** Forward set-model to a running worker. Before the first prompt there is
-   *  no runtime to update; the route persists the selection for start(). */
+   *  no runtime to update; the route persists the selection for start().
+   *  Batch 3 (fish 2026-08-08): switch uses pi reload RPC — service writes
+   *  new models.json to the bridge, bridge rewrites piDir + sends reload. */
   async setModel(credentialId: string): Promise<void> {
     if (!shouldForwardModelSwitch(this.state)) return;
     if (this.state === "starting") {
@@ -555,14 +557,35 @@ export class ChatSession {
     }
     if (!this.bridgeUrl) throw new Error("Bridge not available");
 
+    // Fetch the full credential and build unified models.json
+    const cred = await getCredentialById(credentialId);
+    if (!cred) throw new Error("Credential not found");
+
+    const { buildModelsJson } = await import("../settings/credential-models.js");
+    const result = await buildModelsJson({
+      proto_type: cred.proto_type,
+      base_url: cred.base_url,
+      model_id: cred.model_id,
+      thinking_effort: cred.thinking_effort,
+      context_window_tokens: cred.context_window_tokens,
+      api_key: cred.api_key,
+      advanced_config: (cred as any).advanced_config ?? null,
+    });
+
     const res = await fetch(`${this.bridgeUrl}/chat/set-model`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ credentialId }),
-      signal: AbortSignal.timeout(10000),
+      body: JSON.stringify({
+        credentialId,
+        modelsJson: result.modelsJson,
+        apiKeyEnv: result.childEnv,
+        providerKey: result.providerKey,
+        modelId: result.modelRef,
+      }),
+      signal: AbortSignal.timeout(15_000),
     });
-    const result = (await res.json()) as { ok: boolean; error?: string };
-    if (!result.ok) throw new Error(result.error ?? "Bridge rejected set-model");
+    const resp = (await res.json()) as { ok: boolean; error?: string };
+    if (!resp.ok) throw new Error(resp.error ?? "Bridge rejected set-model");
   }
 
   private async stopContainer(): Promise<void> {
