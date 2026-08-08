@@ -13,7 +13,9 @@ import { tmpdir } from "node:os";
 import { WebSocketServer, WebSocket } from "ws";
 import { normalizeToolEventLine } from "./tool-event-normalize.js";
 import { RpcCommandTracker } from "./rpc-command-tracker.js";
-import { piApiForProtocol, SUPPORTED_MODEL_PROTOCOLS } from "./model-config.js";
+// model-config imports retained for piApiForProtocol used elsewhere
+// setupPiConfig no longer needs it (models.json comes from service)
+// import removed — not used after MODELS_JSON refactor
 
 const PORT = Number(process.env.BRIDGE_PORT ?? "8080");
 const MODE = process.env.MODE ?? "chat";
@@ -65,8 +67,7 @@ const API_KEY = process.env.LLM_API_KEY ?? "";
 const BASE_URL = process.env.LLM_BASE_URL ?? "";
 const SERVICE_URL = process.env.SERVICE_URL ?? "";
 const MCP_TOKEN = process.env.CHAT_WORKER_TOKEN ?? "";
-const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
-const CONTEXT_WINDOW = parsePositiveInt(process.env.LLM_CONTEXT_WINDOW_TOKENS, DEFAULT_CONTEXT_WINDOW_TOKENS);
+// parsePositiveInt removed — models.json now from service (MODELS_JSON env)
 
 // ─── Pi RPC Process ───
 
@@ -100,79 +101,97 @@ function setupPiConfig(): void {
   const piDir = getPiDir();
   mkdirSync(piDir, { recursive: true });
 
-  const providers: Record<string, unknown> = {};
-
-  // Register primary credential
-  if (BASE_URL) {
-    const api = piApiForProtocol(MODEL_PROTO);
-    if (!api) {
-      console.error(`[bridge] Unknown MODEL_PROTO_TYPE: "${MODEL_PROTO}". Valid: ${SUPPORTED_MODEL_PROTOCOLS.join(", ")}`);
-      process.exit(1);
-    }
-    const providerKey = "vulnhunter";
-    const providerConfig: Record<string, unknown> = {
-      baseUrl: API_KEY ? BASE_URL : noAuthProxyBaseUrl("primary"),
-      api,
-      // fish 2026-08-05: completions endpoints default to system role.
-      models: [{
-        id: MODEL_NAME, input: ["text", "image"], contextWindow: CONTEXT_WINDOW,
-        // fish 2026-08-07: no maxTokens for OpenAI-compatible (kimi thinking-budget
-        // 400); anthropic-messages keeps 36864 (API-required, budget 32768+4096).
-        ...(api === "anthropic-messages" ? { maxTokens: 36_864 } : {}),
-        ...(api === "openai-completions" ? { compat: { supportsDeveloperRole: false } } : {}),
-      }],
-    };
-    process.env.VH_LLM_API_KEY = API_KEY || NO_AUTH_DUMMY_KEY;
-    providerConfig.apiKey = "$VH_LLM_API_KEY";
-    if (!API_KEY) {
-      noAuthProxyTargets.set("primary", stripTrailingSlash(BASE_URL));
-    }
-    providers[providerKey] = providerConfig;
+  // ── Unified models.json from service (fish/architect 2026-08-08) ──
+  // The service pre-generates a complete models.json via buildModelsJsonMulti
+  // and passes it as MODELS_JSON env. This is the single source of truth —
+  // advanced_config (thinkingFormat/thinkingLevelMap/compat) is fully
+  //贯通. No more bridge-side provider assembly.
+  const modelsJsonEnv = process.env.MODELS_JSON;
+  if (!modelsJsonEnv) {
+    console.error("[bridge] FATAL: MODELS_JSON env not set. The service must generate models.json before starting the worker.");
+    process.exit(1);
   }
 
-  // Register all additional credentials for runtime switching
+  let providers: Record<string, Record<string, unknown>>;
+  try {
+    const parsed = JSON.parse(modelsJsonEnv) as { providers: Record<string, Record<string, unknown>> };
+    providers = parsed.providers;
+  } catch (err) {
+    console.error(`[bridge] FATAL: Failed to parse MODELS_JSON: ${err}`);
+    process.exit(1);
+  }
+
+  if (Object.keys(providers).length === 0) {
+    console.error("[bridge] FATAL: MODELS_JSON has no providers.");
+    process.exit(1);
+  }
+
+  // ── Keyless credential post-processing ──
+  // For providers whose API key env contains an empty/dummy value (no-auth
+  // credential), rewrite baseUrl to local _llm_proxy + point apiKey at
+  // NO_AUTH_DUMMY_KEY. Uses ALL_CREDENTIALS for the key presence check
+  // (models.json has $ENV_VAR templates, not the actual key).
   const allCredsJson = process.env.ALL_CREDENTIALS;
+  const keylessIds = new Set<string>();
   if (allCredsJson) {
     try {
       const allCreds = JSON.parse(allCredsJson) as Array<{
-        id: string; label: string; proto_type: string;
-        base_url: string; api_key: string; model_id: string; context_window_tokens?: number;
-      }>; 
+        id: string; api_key: string; base_url: string;
+      }>;
       for (const cred of allCreds) {
-        const api = piApiForProtocol(cred.proto_type);
-        if (!api) continue;
-        const providerKey = `va-${cred.id.slice(0, 8)}`;
-        const apiKeyEnv = `VH_KEY_${cred.id.replace(/-/g, "_").slice(0, 12).toUpperCase()}`;
-
-        // Skip if same provider already registered (primary credential)
-        if (!providers[providerKey]) {
-          const providerConfig: Record<string, unknown> = {
-            baseUrl: cred.api_key ? cred.base_url : noAuthProxyBaseUrl(cred.id),
-            api,
-            models: [{
-              id: cred.model_id, input: ["text", "image"], contextWindow: parsePositiveInt(String(cred.context_window_tokens ?? ""), DEFAULT_CONTEXT_WINDOW_TOKENS),
-              ...(api === "anthropic-messages" ? { maxTokens: 36_864 } : {}),
-              ...(api === "openai-completions" ? { compat: { supportsDeveloperRole: false } } : {}),
-            }],
-          };
-          process.env[apiKeyEnv] = cred.api_key || NO_AUTH_DUMMY_KEY;
-          providerConfig.apiKey = `$${apiKeyEnv}`;
-          if (!cred.api_key) {
-            noAuthProxyTargets.set(cred.id, stripTrailingSlash(cred.base_url));
-          }
-          providers[providerKey] = providerConfig;
+        if (!cred.api_key) {
+          keylessIds.add(cred.id);
+          noAuthProxyTargets.set(cred.id, stripTrailingSlash(cred.base_url));
         }
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  // Check primary credential key presence
+  if (!API_KEY && BASE_URL) {
+    keylessIds.add("primary");
+    noAuthProxyTargets.set("primary", stripTrailingSlash(BASE_URL));
+    process.env.VH_LLM_API_KEY = NO_AUTH_DUMMY_KEY;
+  }
+
+  // Apply keyless proxy rewrite to matching providers
+  for (const [providerKey, provider] of Object.entries(providers)) {
+    // Determine if this provider is keyless
+    const isPrimary = providerKey === "vulnhunter";
+    const credId = isPrimary ? "primary" : providerKey.replace(/^va-/, "");
+    if (!keylessIds.has("primary") && !keylessIds.has(credId)) {
+      // Check by va-<id8> prefix matching
+      for (const kid of keylessIds) {
+        if (kid !== "primary" && `va-${kid.slice(0, 8)}` === providerKey) {
+          provider.baseUrl = noAuthProxyBaseUrl(kid);
+          break;
+        }
+      }
+      continue;
+    }
+    // Rewrite keyless provider
+    const targetKey = isPrimary ? "primary" : credId;
+    provider.baseUrl = noAuthProxyBaseUrl(targetKey);
+    const dummyEnv = isPrimary ? "VH_LLM_API_KEY" : "VH_LLM_API_KEY";
+    provider.apiKey = `$${dummyEnv}`;
+    if (!process.env[dummyEnv]) process.env[dummyEnv] = NO_AUTH_DUMMY_KEY;
+  }
+
+  // ── Build credProviderMap for runtime switching (from ALL_CREDENTIALS) ──
+  if (allCredsJson) {
+    try {
+      const allCreds = JSON.parse(allCredsJson) as Array<{
+        id: string; model_id: string;
+      }>;
+      for (const cred of allCreds) {
+        const providerKey = `va-${cred.id.slice(0, 8)}`;
         credProviderMap.set(cred.id, { providerKey, modelId: cred.model_id });
       }
-      console.log(`[bridge] Registered ${Object.keys(providers).length} model providers`);
-    } catch (err) {
-      console.error(`[bridge] Failed to parse ALL_CREDENTIALS:`, err);
-    }
+    } catch { /* ignore */ }
   }
 
-  if (Object.keys(providers).length > 0) {
-    writeFileSync(join(piDir, "models.json"), JSON.stringify({ providers }, null, 2));
-  }
+  writeFileSync(join(piDir, "models.json"), JSON.stringify({ providers }, null, 2));
+  console.log(`[bridge] models.json from service (MODELS_JSON): ${Object.keys(providers).length} providers`);
 
   // Empty auth.json to prevent pi from complaining
   writeFileSync(join(piDir, "auth.json"), "{}");
@@ -707,9 +726,3 @@ function main(): void {
 }
 
 main();
-
-function parsePositiveInt(raw: string | undefined, fallback: number): number {
-  const value = Number.parseInt(raw ?? "", 10);
-  if (!Number.isFinite(value) || value < 1000 || value > 10000000) return fallback;
-  return value;
-}
