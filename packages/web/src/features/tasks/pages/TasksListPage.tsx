@@ -495,7 +495,9 @@ export function TasksListPage() {
                     <td
                       style={{ padding: "14px 20px", color: "var(--text-secondary)", fontSize: "12px" }}
                     >
-                      {formatDuration(task.duration_ms)}
+                      {formatDuration(
+                        (task.total_duration_ms ?? 0) > 0 ? (task.total_duration_ms ?? null) : (task.duration_ms ?? null),
+                      )}
                     </td>
                     <td
                       style={{ padding: "14px 20px", color: "var(--text-secondary)", fontSize: "12px" }}

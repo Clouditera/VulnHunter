@@ -33,12 +33,22 @@ function formatDuration(ms: number | null): string {
 }
 
 /**
- * Live duration for running tasks: backend leaves `duration_ms` null while
- * running, so we compute it from `started_at`. Re-renders every second via
- * a timer hook so the value ticks without waiting for the 3s poll.
+ * Cumulative live duration (fish 2026-08-08, task-70ebb6d0):
+ * - running/paused: accumulated total from previous segments + the current
+ *   segment ticking (now − started_at) — continuations keep counting up
+ *   instead of restarting from zero
+ * - finished: accumulated total (each completed segment was added by the
+ *   backend); legacy rows without the column fall back to duration_ms
+ * Re-renders every second via a timer hook so the value ticks without
+ * waiting for the 3s poll.
  */
 function useLiveDurationMs(
-  task: { state: string; started_at: string | null; duration_ms: number | null },
+  task: {
+    state: string;
+    started_at: string | null;
+    duration_ms: number | null;
+    total_duration_ms?: number | null;
+  },
 ): number | null {
   const [now, setNow] = useState(() => Date.now());
   const isLive =
@@ -49,9 +59,13 @@ function useLiveDurationMs(
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [isLive]);
+  const accumulated = task.total_duration_ms ?? 0;
   if (isLive && task.started_at) {
-    return Math.max(0, now - Date.parse(task.started_at));
+    return accumulated + Math.max(0, now - Date.parse(task.started_at));
   }
+  // Completed: prefer the accumulated column; legacy rows (pre-migration,
+  // total = 0) still have their single segment in duration_ms.
+  if (accumulated > 0) return accumulated;
   return task.duration_ms;
 }
 
@@ -83,7 +97,7 @@ export function TaskDetailPage() {
   // Safe to call unconditionally before the early-return; returns null
   // while task is still loading and falls through to task.duration_ms.
   const liveDurationMs = useLiveDurationMs(
-    data?.task ?? { state: "", started_at: null, duration_ms: null },
+    data?.task ?? { state: "", started_at: null, duration_ms: null, total_duration_ms: null },
   );
 
   const cancelMut = useMutation({
