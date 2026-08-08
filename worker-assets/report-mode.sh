@@ -68,7 +68,7 @@ fi
 # Copy models.json into the flow directory
 cp "$PI_AGENT_SRC/models.json" "$FLOW_DIR/models.json"
 
-# Extract V_DEFAULT_MODEL from model-env.json (written by the service)
+# Extract V_DEFAULT_MODEL from model-env.json (written by service)
 V_DEFAULT_MODEL="$(python3 -c "import json; print(json.load(open('$PI_AGENT_SRC/model-env.json'))['vDefaultModel'])" 2>/dev/null || echo '')"
 if [ -z "$V_DEFAULT_MODEL" ]; then
   echo "[report] FATAL: failed to read vDefaultModel from model-env.json" >&2

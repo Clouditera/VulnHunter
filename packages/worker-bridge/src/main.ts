@@ -567,6 +567,7 @@ async function handleSetModel(body: string, res: ServerResponse): Promise<void> 
     modelsJson?: Record<string, unknown>;
     apiKeyEnvName?: string;
     apiKeyPresent?: boolean;
+    thinkingEffort?: string;
     providerKey?: string;
     modelId?: string;
   };
@@ -623,6 +624,18 @@ async function handleSetModel(body: string, res: ServerResponse): Promise<void> 
     // 3. Switch active model to the new provider/model
     await rpcCommands.send({ type: "set_model", provider: parsed.providerKey, modelId: parsed.modelId });
     console.log(`[bridge] set_model confirmed → provider=${parsed.providerKey}, model=${parsed.modelId}`);
+
+    // 4. Set thinking level (fish 2026-08-08: pass user's configured level)
+    const effort = (parsed.thinkingEffort ?? "off").toLowerCase();
+    if (effort && effort !== "off" && effort !== "none") {
+      try {
+        await rpcCommands.send({ type: "set_thinking_level", level: effort });
+        console.log(`[bridge] set_thinking_level confirmed → level=${effort}`);
+      } catch (err) {
+        // Non-fatal: thinking level is a tuning, not a hard requirement
+        console.warn(`[bridge] set_thinking_level failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
 
     sendJson(res, 200, { ok: true, provider: parsed.providerKey, modelId: parsed.modelId });
   } catch (err) {

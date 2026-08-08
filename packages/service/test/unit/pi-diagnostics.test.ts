@@ -41,7 +41,7 @@ function successEvents(): unknown[] {
         role: "assistant",
         content: [
           { type: "thinking", text: "I need to run ls" },
-          { type: "toolCall", name: "bash", arguments: { command: "ls" } },
+          { type: "toolCall", name: "read", arguments: { command: "ls" } },
           { type: "text", text: "ok" },
         ],
         stopReason: "stop",
@@ -50,7 +50,7 @@ function successEvents(): unknown[] {
     {
       type: "turn_end",
       toolResults: [
-        { toolName: "bash", content: [{ type: "text", text: "file1\nfile2" }] },
+        { toolName: "read", content: [{ type: "text", text: "file1\nfile2" }] },
       ],
     },
     { type: "agent_settled" },
@@ -65,7 +65,7 @@ function nonReasoningEvents(): unknown[] {
       message: {
         role: "assistant",
         content: [
-          { type: "toolCall", name: "bash", arguments: { command: "ls" } },
+          { type: "toolCall", name: "read", arguments: { command: "ls" } },
           { type: "text", text: "ok" },
         ],
         stopReason: "stop",
@@ -74,7 +74,7 @@ function nonReasoningEvents(): unknown[] {
     {
       type: "turn_end",
       toolResults: [
-        { toolName: "bash", content: [{ type: "text", text: "output" }] },
+        { toolName: "read", content: [{ type: "text", text: "output" }] },
       ],
     },
     { type: "agent_settled" },
@@ -180,7 +180,7 @@ describe("pi-diagnostics (four-in-one CLI)", () => {
     expect(l2?.status).toBe("fail");
   });
 
-  it("L3 passes when bash toolCall + toolResult observed", async () => {
+  it("L3 passes when read toolCall + toolResult observed", async () => {
     mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(successEvents()));
     const result = await runPiDiagnostics(FAKE_CRED, () => {});
 
@@ -188,7 +188,7 @@ describe("pi-diagnostics (four-in-one CLI)", () => {
     expect(l3?.status).toBe("pass");
   });
 
-  it("L3 fails when no tool call observed", async () => {
+  it("L3 fails when no read tool call observed", async () => {
     const events = [
       {
         type: "message_end",
@@ -222,13 +222,13 @@ describe("pi-diagnostics (four-in-one CLI)", () => {
         type: "message_end",
         message: {
           role: "assistant",
-          content: [{ type: "text", text: "ok" }, { type: "toolCall", name: "bash", arguments: {} }],
+          content: [{ type: "text", text: "ok" }, { type: "toolCall", name: "read", arguments: {} }],
           stopReason: "stop",
         },
       },
       {
         type: "turn_end",
-        toolResults: [{ toolName: "bash", content: [{ type: "text", text: "output" }] }],
+        toolResults: [{ toolName: "read", content: [{ type: "text", text: "output" }] }],
       },
       // No agent_settled
     ];
