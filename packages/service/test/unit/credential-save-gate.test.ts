@@ -6,12 +6,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * reuses a fresh server-side test verdict (lastTestPass, keyed by a
  * fingerprint incl. key hash). This test verifies the happy path
  * end-to-end through the Hono router.
+ *
+ * Updated 2026-08-08: four-in-one CLI — runPiDiagnostics now returns all
+ * four layers (no separate runL4Check call).
  */
 
-// runPiDiagnostics (L1-L3) — default PASS
+// runPiDiagnostics (four-in-one L1-L4) — default PASS
 const runPiDiagnostics = vi.fn();
-// runL4Check (L4 agent circuit) — default PASS
-const runL4Check = vi.fn();
 
 vi.mock("../../src/middleware/auth.js", () => ({
   requireAuth: async (c: { set: (k: string, v: unknown) => void }, next: () => Promise<void>) => {
@@ -38,9 +39,6 @@ vi.mock("../../src/features/settings/storage.js", () => ({
 vi.mock("../../src/features/settings/pi-diagnostics.js", () => ({
   runPiDiagnostics: (...a: unknown[]) => runPiDiagnostics(...a),
 }));
-vi.mock("../../src/features/settings/l4-agent-check.js", () => ({
-  runL4Check: (...a: unknown[]) => runL4Check(...a),
-}));
 vi.mock("../../src/features/settings/pi-model-catalog.js", () => ({ lookupModelMeta: vi.fn() }));
 vi.mock("../../src/infra/config.js", () => ({ loadConfig: vi.fn(() => ({ edition: "enterprise" })) }));
 vi.mock("../../src/features/reports/storage.js", () => ({}));
@@ -51,8 +49,15 @@ vi.mock("../../src/infra/logger.js", () => ({
 
 const { settingsRouter } = await import("../../src/features/settings/routes.js");
 
-const PASS_DIAG = { ok: true, checks: [{ id: "basic", status: "pass" }] };
-const PASS_L4 = { status: "pass", durationMs: 100, detail: "ok" };
+const PASS_DIAG = {
+  ok: true,
+  checks: [
+    { id: "basic", status: "pass" },
+    { id: "thinking", status: "na" },
+    { id: "tool", status: "pass" },
+    { id: "l4_agent", status: "pass" },
+  ],
+};
 
 const NEW_CRED_BODY = {
   provider: "openai-completions",
@@ -75,9 +80,7 @@ function putCredential(body: Record<string, unknown>) {
 describe("PUT /credential save gate (task-4393660d)", () => {
   beforeEach(() => {
     runPiDiagnostics.mockReset();
-    runL4Check.mockReset();
     runPiDiagnostics.mockResolvedValue(PASS_DIAG);
-    runL4Check.mockResolvedValue(PASS_L4);
   });
 
   it("passes all four layers → save 200 (no false negative on the gate)", async () => {
@@ -85,33 +88,32 @@ describe("PUT /credential save gate (task-4393660d)", () => {
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body).toEqual({ id: "new-cred-id" });
-    // Diagnostics must have run (cache was empty for a new credential)
     expect(runPiDiagnostics).toHaveBeenCalledTimes(1);
-    expect(runL4Check).toHaveBeenCalledTimes(1);
   });
 
   it("second save reuses the fresh-pass cache (no re-run)", async () => {
     const r1 = await putCredential(NEW_CRED_BODY);
     expect(r1.status).toBe(200);
     runPiDiagnostics.mockClear();
-    runL4Check.mockClear();
 
     const r2 = await putCredential(NEW_CRED_BODY);
     expect(r2.status).toBe(200);
-    // cache hit → no diagnostics re-run
     expect(runPiDiagnostics).not.toHaveBeenCalled();
-    expect(runL4Check).not.toHaveBeenCalled();
   });
 
-  it("L4 fail → 422 with real checks (not empty)", async () => {
-    runL4Check.mockResolvedValue({ status: "fail", durationMs: 100, detail: "agent failed" });
+  it("diagnostics fail → 422 with real checks (not empty)", async () => {
+    runPiDiagnostics.mockResolvedValue({
+      ok: false,
+      checks: [
+        { id: "basic", status: "fail", message: "connection refused" },
+      ],
+    });
     // Distinct credential (fresh fingerprint) so the cache from prior tests
     // doesn't mask the failure run.
     const res = await putCredential({ ...NEW_CRED_BODY, api_key: "sk-different-fail-key" });
     expect(res.status).toBe(422);
     const body = await res.json();
     expect(body.error.code).toBe("ERR_CREDENTIAL_TEST_FAILED");
-    // The checks array must carry real check results, NOT be empty
     expect(body.error.checks.length).toBeGreaterThan(0);
   });
 });

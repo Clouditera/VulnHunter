@@ -1,24 +1,21 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-// Mock pi-ai streamSimple to avoid real API calls (L2/L3 use streams).
-const mockStreamSimple = vi.fn();
-vi.mock("@earendil-works/pi-ai/compat", () => ({
-  streamSimple: (...args: any[]) => mockStreamSimple(...args),
+/**
+ * Four-in-one CLI diagnostics tests.
+ *
+ * Mocks `runCredentialCliCheck` (the pi CLI subprocess runner) to inject
+ * controlled event streams. Each test verifies that the four-layer
+ * assertion logic correctly derives L1-L4 results from the event stream.
+ */
+
+// Mock the CLI runner — returns controlled events
+const mockRunCredentialCliCheck = vi.fn();
+vi.mock("../../src/features/settings/l4-agent-check.js", () => ({
+  runCredentialCliCheck: (...args: unknown[]) => mockRunCredentialCliCheck(...args),
+  CLI_TIMEOUT_MS: 120_000,
 }));
 
-// L1 uses a direct undici fetch (QA-proven pi-ai swallows network errors).
-const mockFetch = vi.fn();
-vi.stubGlobal("fetch", mockFetch);
-
-function okFetch(): Response {
-  return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
 const { runPiDiagnostics } = await import("../../src/features/settings/pi-diagnostics.js");
-const type = import("@earendil-works/pi-ai/compat");
 
 const FAKE_CRED = {
   id: "test-cred",
@@ -27,170 +24,247 @@ const FAKE_CRED = {
   base_url: "https://api.example.com/v1",
   model_id: "gpt-test",
   thinking_effort: "off" as string | undefined,
-  api_key: "sk-fake",
+  api_key: "sk-fake-key-12345",
   context_window_tokens: 128000,
   is_default: false,
   created_at: new Date(),
   updated_at: new Date(),
 } as any;
 
-function makeStream(events: any[]) {
-  return {
-    async *[Symbol.asyncIterator]() {
-      for (const ev of events) yield ev;
+/** Build a successful agent event stream (all four layers pass). */
+function successEvents(): unknown[] {
+  return [
+    { type: "message_start", message: { role: "assistant" } },
+    {
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", text: "I need to run ls" },
+          { type: "toolCall", name: "bash", arguments: { command: "ls" } },
+          { type: "text", text: "ok" },
+        ],
+        stopReason: "stop",
+      },
     },
+    {
+      type: "turn_end",
+      toolResults: [
+        { toolName: "bash", content: [{ type: "text", text: "file1\nfile2" }] },
+      ],
+    },
+    { type: "agent_settled" },
+  ];
+}
+
+/** Events with NO thinking blocks (non-reasoning model). */
+function nonReasoningEvents(): unknown[] {
+  return [
+    {
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "toolCall", name: "bash", arguments: { command: "ls" } },
+          { type: "text", text: "ok" },
+        ],
+        stopReason: "stop",
+      },
+    },
+    {
+      type: "turn_end",
+      toolResults: [
+        { toolName: "bash", content: [{ type: "text", text: "output" }] },
+      ],
+    },
+    { type: "agent_settled" },
+  ];
+}
+
+function makeCliResult(events: unknown[], overrides: Record<string, unknown> = {}) {
+  return {
+    events,
+    stderr: "",
+    timedOut: false,
+    durationMs: 1000,
+    ...overrides,
   };
 }
 
-describe("pi-diagnostics", () => {
+describe("pi-diagnostics (four-in-one CLI)", () => {
   beforeEach(() => {
-    mockFetch.mockReset();
-    mockStreamSimple.mockReset();
+    mockRunCredentialCliCheck.mockReset();
   });
 
-  it("L1 pass on 2xx from the direct fetch", async () => {
-    mockFetch.mockResolvedValue(okFetch());
+  it("all four layers pass on a successful agent circuit", async () => {
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(successEvents()));
     const events: any[] = [];
-    const result = await runPiDiagnostics(FAKE_CRED, (e) => events.push(e));
-    expect(result.checks[0].status).toBe("pass");
-    expect(result.checks[0].layer).toBe("L1");
-    expect(events.some((e) => e.type === "check_started" && e.check?.id === "basic")).toBe(true);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "https://api.example.com/v1/chat/completions",
-      expect.objectContaining({ method: "POST" }),
-    );
+    const result = await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, (e) => events.push(e));
+
+    expect(result.ok).toBe(true);
+    expect(result.checks).toHaveLength(4);
+    expect(result.checks.map((c) => c.layer)).toEqual(["L1", "L2", "L3", "L4"]);
+    expect(result.checks.every((c) => c.status === "pass")).toBe(true);
   });
 
-  it("L1 fail carries HTTP status + gateway body verbatim and stops further checks", async () => {
-    mockFetch.mockResolvedValue(new Response(JSON.stringify({ error: { message: "Model Not Exist" } }), { status: 400 }));
+  it("L1 fails when no events produced (CLI produced no output)", async () => {
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult([], { stderr: "pi: command not found" }));
     const result = await runPiDiagnostics(FAKE_CRED, () => {});
+
     expect(result.ok).toBe(false);
-    expect(result.checks).toHaveLength(1); // only L1
+    expect(result.checks).toHaveLength(1); // only L1 (early stop)
     expect(result.checks[0].status).toBe("fail");
-    expect(result.checks[0].message).toContain('HTTP 400 — {"error":{"message":"Model Not Exist"}}');
+    expect(result.checks[0].message).toContain("pi: command not found");
   });
 
-  it("L1 sends Anthropic contract headers for anthropic proto (not Bearer)", async () => {
-    mockFetch.mockResolvedValue(okFetch());
-    const anthropicCred = { ...FAKE_CRED, proto_type: "anthropic" };
-    await runPiDiagnostics(anthropicCred, () => {});
-    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Record<string, string>;
-    expect(headers["x-api-key"]).toBe("sk-fake");
-    expect(headers["anthropic-version"]).toBe("2023-06-01");
-    expect(headers["Authorization"]).toBeUndefined();
-    // Anthropic /messages REQUIRES max_tokens — give the thinking budget
-    // (32768) + 4096 margin (architect 2026-08-06); NOT the old self-imposed 16.
-    expect(String(init.body)).toContain('"max_tokens":36864');
-  });
-
-  it("L1 openai-completions body carries NO max_tokens (gateway default output cap)", async () => {
-    mockFetch.mockResolvedValue(okFetch());
-    await runPiDiagnostics(FAKE_CRED, () => {});
-    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(String(init.body)).not.toContain("max_tokens");
-    expect(String(init.body)).not.toContain("max_output_tokens");
-  });
-
-  it("L1 openai-responses body carries NO max_output_tokens", async () => {
-    mockFetch.mockResolvedValue(okFetch());
-    await runPiDiagnostics({ ...FAKE_CRED, proto_type: "openai-responses" }, () => {});
-    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(String(init.body)).not.toContain("max_tokens");
-    expect(String(init.body)).not.toContain("max_output_tokens");
-  });
-
-  it("L1 fail carries the undici network cause (ENOTFOUND via err.cause)", async () => {
-    const netErr: any = new TypeError("fetch failed");
-    netErr.cause = { code: "ENOTFOUND", message: "getaddrinfo ENOTFOUND api.typo-host.com" };
-    mockFetch.mockRejectedValue(netErr);
+  it("L1 fails when timeout fires", async () => {
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult([], { timedOut: true }));
     const result = await runPiDiagnostics(FAKE_CRED, () => {});
+
     expect(result.ok).toBe(false);
-    expect(result.checks[0].message).toContain("ENOTFOUND getaddrinfo ENOTFOUND api.typo-host.com");
+    expect(result.checks[0].status).toBe("fail");
+    expect(result.checks[0].message).toContain("timeout");
   });
 
-  it("L2 is N/A for non-reasoning model", async () => {
-    mockFetch.mockResolvedValue(okFetch());
-    mockStreamSimple.mockReturnValue(makeStream([
-      { type: "text_delta", contentIndex: 0, delta: "ok", partial: {} },
-      { type: "done", reason: "stop", message: {} },
-    ]));
+  it("L1 fails on error stopReason", async () => {
+    const events = [
+      {
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [],
+          stopReason: "error",
+          errorMessage: "HTTP 401 — Invalid API key",
+        },
+      },
+    ];
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(events));
     const result = await runPiDiagnostics(FAKE_CRED, () => {});
-    expect(result.checks.find((c) => c.id === "thinking")?.status).toBe("na");
+
+    expect(result.ok).toBe(false);
+    expect(result.checks[0].status).toBe("fail");
+    expect(result.checks[0].message).toContain("HTTP 401");
+    // API key scrubbed from error
+    expect(result.checks[0].message).not.toContain("sk-fake-key-12345");
   });
 
-  it("L2 pass for reasoning model with thinking content", async () => {
-    const reasoningCred = { ...FAKE_CRED, thinking_effort: "high", proto_type: "anthropic" };
-    mockFetch.mockResolvedValue(okFetch());
-    mockStreamSimple.mockImplementation(() =>
-      makeStream([{ type: "thinking_delta", delta: "thinking...", partial: {} }, { type: "done", reason: "stop", message: {} }]),
-    );
-    const result = await runPiDiagnostics(reasoningCred, () => {});
-    expect(result.checks.find((c) => c.id === "thinking")?.status).toBe("pass");
+  it("L1 stops further checks on fail (only 1 check returned)", async () => {
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult([], { stderr: "connection refused" }));
+    const result = await runPiDiagnostics(FAKE_CRED, () => {});
+
+    expect(result.checks).toHaveLength(1);
   });
 
-  it("emits check_started before each check", async () => {
-    mockFetch.mockResolvedValue(okFetch());
-    mockStreamSimple.mockReturnValue(makeStream([{ type: "text_delta", delta: "ok", partial: {} }, { type: "done", reason: "stop", message: {} }]));
+  it("L2 is N/A for non-reasoning model (thinking_effort=off)", async () => {
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(nonReasoningEvents()));
+    const result = await runPiDiagnostics(FAKE_CRED, () => {});
+
+    const l2 = result.checks.find((c) => c.id === "thinking");
+    expect(l2?.status).toBe("na");
+  });
+
+  it("L2 passes for reasoning model with thinking blocks", async () => {
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(successEvents()));
+    const result = await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, () => {});
+
+    const l2 = result.checks.find((c) => c.id === "thinking");
+    expect(l2?.status).toBe("pass");
+  });
+
+  it("L2 fails for reasoning model without thinking blocks", async () => {
+    // Reasoning model but response has no thinking blocks
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(nonReasoningEvents()));
+    const result = await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, () => {});
+
+    const l2 = result.checks.find((c) => c.id === "thinking");
+    expect(l2?.status).toBe("fail");
+  });
+
+  it("L3 passes when bash toolCall + toolResult observed", async () => {
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(successEvents()));
+    const result = await runPiDiagnostics(FAKE_CRED, () => {});
+
+    const l3 = result.checks.find((c) => c.id === "tool");
+    expect(l3?.status).toBe("pass");
+  });
+
+  it("L3 fails when no tool call observed", async () => {
+    const events = [
+      {
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "ok" }],
+          stopReason: "stop",
+        },
+      },
+      { type: "agent_settled" },
+    ];
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(events));
+    const result = await runPiDiagnostics(FAKE_CRED, () => {});
+
+    const l3 = result.checks.find((c) => c.id === "tool");
+    expect(l3?.status).toBe("fail");
+  });
+
+  it("L4 passes when agent_settled and no error", async () => {
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(successEvents()));
+    const result = await runPiDiagnostics(FAKE_CRED, () => {});
+
+    const l4 = result.checks.find((c) => c.id === "l4_agent");
+    expect(l4?.status).toBe("pass");
+    expect(l4?.message).toContain("agent_circuit_ok");
+  });
+
+  it("L4 fails when agent_settled not reached", async () => {
+    const events = [
+      {
+        type: "message_end",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "ok" }, { type: "toolCall", name: "bash", arguments: {} }],
+          stopReason: "stop",
+        },
+      },
+      {
+        type: "turn_end",
+        toolResults: [{ toolName: "bash", content: [{ type: "text", text: "output" }] }],
+      },
+      // No agent_settled
+    ];
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(events));
+    const result = await runPiDiagnostics(FAKE_CRED, () => {});
+
+    const l4 = result.checks.find((c) => c.id === "l4_agent");
+    expect(l4?.status).toBe("fail");
+  });
+
+  it("emits check_started before each layer and report at end", async () => {
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(successEvents()));
     const events: any[] = [];
-    await runPiDiagnostics(FAKE_CRED, (e) => events.push(e));
-    expect(events.some((e) => e.type === "check_started" && e.check?.id === "basic")).toBe(true);
+    await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, (e) => events.push(e));
+
+    const startedIds = events.filter((e) => e.type === "check_started").map((e) => e.check?.id);
+    expect(startedIds).toContain("basic");
+    expect(startedIds).toContain("thinking");
+    expect(startedIds).toContain("tool");
+    expect(startedIds).toContain("l4_agent");
     expect(events.some((e) => e.type === "report")).toBe(true);
   });
-});
 
-describe("pi-diagnostics buildModel shape", () => {
-  it("buildModel output has all required Model fields", async () => {
-    // Re-import to get buildModel — it's not exported, so test indirectly
-    // via the stream: if input/cost/contextWindow/maxTokens are missing,
-    // pi-ai internals crash on .includes(). The mock below asserts the
-    // model object passed to streamSimple has all required fields.
-    const passedModel: any[] = [];
-    mockFetch.mockResolvedValue(okFetch());
-    mockStreamSimple.mockImplementation((model: any) => {
-      passedModel.push(model);
-      return makeStream([{ type: "thinking_delta", delta: "t", partial: {} }, { type: "done", reason: "stop", message: {} }]);
-    });
-    await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, () => {});
-    const m = passedModel[0];
-    expect(m).toBeDefined();
-    expect(Array.isArray(m.input)).toBe(true);
-    expect(m.input).toContain("text");
-    expect(m.cost).toBeDefined();
-    expect(typeof m.contextWindow).toBe("number");
-    // fish 2026-08-06: maxTokens must NOT exist for OpenAI-compatible APIs —
-    // a self-imposed output cap collides with gateway thinking budgets (kimi
-    // mid-tier 400 regression).
-    expect(m.maxTokens).toBeUndefined();
-    expect(m.baseUrl).toBeDefined();
-    expect(m.api).toBeDefined();
-    expect(m.provider).toBeDefined();
-    expect(typeof m.reasoning).toBe("boolean");
-  });
+  it("passes credential fields to runCredentialCliCheck including advanced_config", async () => {
+    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(successEvents()));
+    const cred = {
+      ...FAKE_CRED,
+      thinking_effort: "high",
+      advanced_config: { compat: { thinkingFormat: "zai" } },
+    };
+    await runPiDiagnostics(cred as any, () => {});
 
-  it("L2/L3 streamSimple calls carry NO maxTokens option", async () => {
-    mockFetch.mockResolvedValue(okFetch());
-    const optsSeen: any[] = [];
-    mockStreamSimple.mockImplementation((_model: any, _ctx: any, opts: any) => {
-      optsSeen.push(opts);
-      return makeStream([{ type: "thinking_delta", delta: "t", partial: {} }, { type: "done", reason: "stop", message: {} }]);
-    });
-    await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, () => {});
-    expect(optsSeen.length).toBeGreaterThan(0);
-    for (const opts of optsSeen) {
-      expect(opts.maxTokens).toBeUndefined();
-    }
-  });
-
-  it("buildModel keeps Anthropic maxTokens=36864 (API-required; thinking budget + margin)", async () => {
-    mockFetch.mockResolvedValue(okFetch());
-    const passedModel: any[] = [];
-    mockStreamSimple.mockImplementation((model: any) => {
-      passedModel.push(model);
-      return makeStream([{ type: "thinking_delta", delta: "t", partial: {} }, { type: "done", reason: "stop", message: {} }]);
-    });
-    await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high", proto_type: "anthropic" }, () => {});
-    const m = passedModel[0];
-    expect(m.maxTokens).toBe(36_864);
+    const passedCred = mockRunCredentialCliCheck.mock.calls[0][0];
+    expect(passedCred.proto_type).toBe("openai-completions");
+    expect(passedCred.model_id).toBe("gpt-test");
+    expect(passedCred.api_key).toBe("sk-fake-key-12345");
+    expect(passedCred.advanced_config).toEqual({ compat: { thinkingFormat: "zai" } });
   });
 });

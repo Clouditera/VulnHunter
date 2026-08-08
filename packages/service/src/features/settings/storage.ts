@@ -66,6 +66,7 @@ export interface DbLlmCredential {
   owner_id: string | null;
   deep_verified_status: string | null;
   deep_verified_at: Date | null;
+  advanced_config: unknown | null;
 }
 
 export interface DecryptedLlmCredential extends DbLlmCredential {
@@ -84,7 +85,7 @@ export async function getDefaultCredential(ctx?: QueryContext): Promise<Decrypte
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
       FROM llm_credentials
       WHERE is_default = true AND (owner_id = ${ctx.userId} OR owner_id IS NULL)
       ORDER BY owner_id NULLS LAST, created_at DESC
@@ -96,7 +97,7 @@ export async function getDefaultCredential(ctx?: QueryContext): Promise<Decrypte
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
       FROM llm_credentials
       WHERE is_default = true
       ORDER BY created_at DESC
@@ -131,7 +132,7 @@ export async function getCredentialById(ctxOrId: QueryContext | string, maybeId?
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
       FROM llm_credentials
       WHERE id = ${id}
       LIMIT 1
@@ -153,7 +154,7 @@ export async function getDefaultOrFirstAvailableCredential(ctx?: QueryContext): 
     api_key_tag: Buffer | null;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-           key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
+           key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
     FROM llm_credentials
     ORDER BY is_default DESC, created_at DESC
   `;
@@ -190,7 +191,7 @@ export async function listCredentials(ctx?: QueryContext): Promise<ListedLlmCred
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, deep_verified_status, deep_verified_at
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, deep_verified_status, deep_verified_at, advanced_config
       FROM llm_credentials
       WHERE owner_id IS NULL OR owner_id = ${ctx.userId}
       ORDER BY is_default DESC, owner_id NULLS FIRST, created_at DESC
@@ -201,7 +202,7 @@ export async function listCredentials(ctx?: QueryContext): Promise<ListedLlmCred
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, deep_verified_status, deep_verified_at
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, deep_verified_status, deep_verified_at, advanced_config
       FROM llm_credentials
       ORDER BY is_default DESC, owner_id NULLS FIRST, created_at DESC
     `;
@@ -228,6 +229,7 @@ export async function listCredentials(ctx?: QueryContext): Promise<ListedLlmCred
         owner_id: row.owner_id,
         deep_verified_status: row.deep_verified_status ?? null,
         deep_verified_at: row.deep_verified_at ?? null,
+        advanced_config: row.advanced_config ?? null,
         scope: row.owner_id ? "personal" : "global",
         can_edit: !ctx || ctx.role === "admin" || row.owner_id === ctx.userId,
       } as ListedLlmCredential;
@@ -274,6 +276,7 @@ export async function listCredentials(ctx?: QueryContext): Promise<ListedLlmCred
       owner_id: row.owner_id,
       deep_verified_status: row.deep_verified_status ?? null,
       deep_verified_at: row.deep_verified_at ?? null,
+      advanced_config: row.advanced_config ?? null,
       scope: row.owner_id ? "personal" : "global",
       can_edit: !ctx || ctx.role === "admin" || row.owner_id === ctx.userId,
     };
@@ -365,6 +368,7 @@ export async function upsertCredential(params: {
   isDefault?: boolean;
   contextWindowTokens?: number;
   ownerId?: string | null;
+  advancedConfig?: unknown;
   ctx?: QueryContext;
 }): Promise<string> {
   const db = getDb();
@@ -377,6 +381,7 @@ export async function upsertCredential(params: {
     // Update existing credential. Blank apiKey on edit = keep the stored key
     // material (single-gate rule: PUT is the only save path and must be safe
     // for edits that don't re-enter the key).
+    const advancedConfig = params.advancedConfig !== undefined ? params.advancedConfig : undefined;
     const rows = encrypted
       ? await db<{ id: string }[]>`
       UPDATE llm_credentials
@@ -390,6 +395,7 @@ export async function upsertCredential(params: {
           key_fingerprint = ${vault!.fingerprint()},
           context_window_tokens = ${contextWindowTokens},
           owner_id = ${ownerId}
+          ${advancedConfig !== undefined ? db.unsafe('advanced_config = ' + (advancedConfig === null ? 'NULL' : db.json(advancedConfig as any) + '::jsonb')) : db.unsafe('')}
       WHERE id = ${params.id}
         AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
       RETURNING id
@@ -402,6 +408,7 @@ export async function upsertCredential(params: {
           label = ${params.label ?? ""},
           context_window_tokens = ${contextWindowTokens},
           owner_id = ${ownerId}
+          ${advancedConfig !== undefined ? db.unsafe('advanced_config = ' + (advancedConfig === null ? 'NULL' : db.json(advancedConfig as any) + '::jsonb')) : db.unsafe('')}
       WHERE id = ${params.id}
         AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
       RETURNING id
@@ -431,12 +438,13 @@ export async function upsertCredential(params: {
   const rows = await db<{ id: string }[]>`
     INSERT INTO llm_credentials (
       provider, proto_type, base_url, model_id, thinking_effort, label, is_default, owner_id,
-      api_key_ciphertext, api_key_iv, api_key_tag, key_fingerprint, context_window_tokens
+      api_key_ciphertext, api_key_iv, api_key_tag, key_fingerprint, context_window_tokens, advanced_config
     ) VALUES (
       ${params.provider}, ${params.protoType}, ${params.baseUrl ?? null},
       ${params.modelId}, ${params.thinkingEffort ?? "off"}, ${params.label ?? ""},
       ${makeDefault || isFirst}, ${ownerId},
-      ${encrypted?.ciphertext ?? null}, ${encrypted?.iv ?? null}, ${encrypted?.tag ?? null}, ${vault?.fingerprint() ?? null}, ${contextWindowTokens}
+      ${encrypted?.ciphertext ?? null}, ${encrypted?.iv ?? null}, ${encrypted?.tag ?? null}, ${vault?.fingerprint() ?? null}, ${contextWindowTokens},
+      ${params.advancedConfig !== undefined ? db.json(params.advancedConfig as Record<string, string | number | boolean | null>) : null}
     )
     RETURNING id
   `;
