@@ -65,6 +65,7 @@ export interface TaskSummary {
   risk_score?: number;
   severity_counts: Record<Severity, number>;
   duration_ms?: number;
+  total_duration_ms?: number;
   created_at: string;
   started_at?: string;
   completed_at?: string;
