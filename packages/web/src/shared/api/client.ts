@@ -94,6 +94,12 @@ export interface Task {
   failure_reason: string | null;
   source_type: string;
   duration_ms: number | null;
+  /**
+   * Accumulated duration across all run segments (fish 2026-08-08,
+   * task-70ebb6d0): first run + every continuation; reset to 0 on a fresh
+   * re-scan. Absent/zero on pre-migration rows → fall back to duration_ms.
+   */
+  total_duration_ms?: number | null;
   total_tokens_in: number;
   total_tokens_out: number;
   input_tokens: number;

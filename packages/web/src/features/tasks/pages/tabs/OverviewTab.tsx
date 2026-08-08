@@ -435,7 +435,10 @@ export function OverviewTab() {
       <Card title={i18n.t("overview.executionSummary")}>
         <KV
           label={i18n.t("overview.duration")}
-          value={task.duration_ms ? `${Math.round(task.duration_ms / 60_000)} min` : null}
+          value={(() => {
+            const ms = (task.total_duration_ms ?? 0) > 0 ? task.total_duration_ms! : task.duration_ms;
+            return ms ? `${Math.round(ms / 60_000)} min` : null;
+          })()}
         />
         <KV
           label={i18n.t("overview.created")}
