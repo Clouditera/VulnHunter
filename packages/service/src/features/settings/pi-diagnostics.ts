@@ -5,7 +5,7 @@
  * assertions:
  *   L1 basic:     message_end assistant message contains non-empty text content
  *   L2 thinking:  when reasoning enabled, message contains thinking blocks
- *   L3 tool:      message_end contains bash toolCall + turn_end has bash toolResults
+ *   L3 tool:      message_end contains read toolCall + turn_end has read toolResults
  *   L4 agent:     agent_settled reached with non-error assistant output
  *
  * This replaces the old L1-L3 process-internal streamSimple probes + separate
@@ -71,7 +71,7 @@ interface StreamAnalysis {
   hasTextContent: boolean;
   /** L2: thinking/reasoning content blocks present */
   hasThinking: boolean;
-  /** L3: bash toolCall in message_end + bash toolResult in turn_end */
+  /** L3: read toolCall in message_end + read toolResult in turn_end */
   toolCallObserved: boolean;
   /** L4: agent_settled event reached */
   agentSettled: boolean;
@@ -112,18 +112,18 @@ function analyzeEvents(events: unknown[]): StreamAnalysis {
     return Array.isArray(content) && content.some((b) => b.type === "thinking");
   });
 
-  // L3: bash tool call observed
-  const bashToolCalls = events.filter((e) => {
+  // L3: read tool call observed (fish 2026-08-08: bash → read for safety)
+  const readToolCalls = events.filter((e) => {
     const ev = e as { type?: string; message?: { content?: Array<{ type?: string; name?: string }> } };
     return ev.type === "message_end" && Array.isArray(ev.message?.content)
-      && ev.message!.content!.some((b) => b.type === "toolCall" && b.name === "bash");
+      && ev.message!.content!.some((b) => b.type === "toolCall" && b.name === "read");
   });
-  const bashToolResults = events.filter((e) => {
+  const readToolResults = events.filter((e) => {
     const ev = e as { type?: string; toolResults?: Array<{ toolName?: string; content?: unknown[] }> };
     return ev.type === "turn_end" && Array.isArray(ev.toolResults)
-      && ev.toolResults!.some((r) => r.toolName === "bash" && Array.isArray(r.content) && r.content.length > 0);
+      && ev.toolResults!.some((r) => r.toolName === "read" && Array.isArray(r.content) && r.content.length > 0);
   });
-  const toolCallObserved = bashToolCalls.length > 0 && bashToolResults.length > 0;
+  const toolCallObserved = readToolCalls.length > 0 && readToolResults.length > 0;
 
   // L4: agent settled
   const agentSettled = events.some(
@@ -253,7 +253,7 @@ export async function runPiDiagnostics(
       status: passed ? "pass" : "fail",
       message: passed ? "tool_call_observed" : "tool_call_not_observed",
       durationMs: cliResult.durationMs,
-      detail: passed ? undefined : "No clean bash tool call was observed in the event stream",
+      detail: passed ? undefined : "No clean read tool call was observed in the event stream",
     };
     emit({ type: "check_started", check: { ...check, status: "pass", message: "testing" } });
     emit({ type: passed ? "check_passed" : "check_failed", check });

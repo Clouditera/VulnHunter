@@ -585,6 +585,7 @@ export class ChatSession {
         modelsJson: result.modelsJson,
         apiKeyEnvName, // bridge validates this was injected at startup
         apiKeyPresent: !!cred.api_key,
+        thinkingEffort: cred.thinking_effort ?? "off",
         providerKey: result.providerKey,
         modelId: result.modelRef,
       }),

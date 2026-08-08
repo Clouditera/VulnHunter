@@ -68,8 +68,21 @@ export interface CredentialCliResult {
 /** fish 2026-08-06: L1-L4 unified 120s timeout. */
 export const CLI_TIMEOUT_MS = 120_000;
 
-/** Prompt that exercises all four layers: text reply + tool call + agent loop. */
-const DIAGNOSTIC_PROMPT = "Use the bash tool to run: ls. Then stop and reply with the word: ok";
+/**
+ * Diagnostic prompt (fish 2026-08-08): exercises all four layers with a
+ * read-only tool call + a question that triggers thinking (prime check).
+ * A canary file is pre-placed in the work directory.
+ */
+const CANARY_FILENAME = "diagnostic-canary.txt";
+const CANARY_CONTENT = "VHN-DIAG-CANARY-9F3A";
+const DIAGNOSTIC_PROMPT = `First, use the read tool to read ${CANARY_FILENAME}. Then answer: is 29 a prime number? Reply with the file content followed by yes or no.`;
+
+/** Built-in thinking levels that pi accepts via --thinking flag. */
+const BUILTIN_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+/** Read-only tools for diagnostic (fish 2026-08-08: no bash/edit/write —
+ *  upstream tampering cannot execute commands or write files). */
+const DIAGNOSTIC_TOOLS = "read,ls,grep,find";
 
 // ── models.json writer (delegates to unified module) ──────────────────
 
@@ -83,7 +96,7 @@ async function writeModelsJsonFromCredential(
   return result.childEnv;
 }
 
-// ── CLI runner ────────────────────────────────────────────────────────
+// ── CLI runner ─────────────────────────────────────────────────────────
 
 /**
  * Run pi CLI headless with the given credential and return parsed events.
@@ -109,14 +122,31 @@ export async function runCredentialCliCheck(
     const agentDir = join(workDir, "agent");
     const childEnvExtra = await writeModelsJsonFromCredential(agentDir, cred);
 
+    // Pre-place canary file in workDir (read tool reads from cwd)
+    await writeFile(join(workDir, CANARY_FILENAME), CANARY_CONTENT + "\n", "utf-8");
+
+    // Build args: pi CLI with read-only tools + thinking level
     const args = [
       "-p",
       "--mode", "json",
       "--no-session",
       "--provider", "platform",
       "--model", cred.model_id,
-      DIAGNOSTIC_PROMPT,
+      // fish 2026-08-08: read-only tool surface — no bash/edit/write.
+      "--tools", DIAGNOSTIC_TOOLS,
     ];
+
+    // fish 2026-08-08: pass the user's configured thinking level so the
+    // test exercises the real mapped value (not pi's default medium).
+    const effort = cred.thinking_effort?.toLowerCase() ?? "";
+    if (BUILTIN_THINKING_LEVELS.includes(effort) && effort !== "off") {
+      args.push("--thinking", effort);
+    } else if (effort && !BUILTIN_THINKING_LEVELS.includes(effort)) {
+      // Non-builtin level (historical dirty data) — skip the flag + warn
+      logger.warn({ effort }, "Non-builtin thinking level — skipping --thinking flag");
+    }
+
+    args.push(DIAGNOSTIC_PROMPT);
 
     const events: unknown[] = [];
     let stderr = "";
@@ -253,17 +283,17 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
     (e) => (e as { type?: string }).type === "agent_settled",
   );
 
-  const bashToolCalls = events.filter((e) => {
+  const readToolCalls = events.filter((e) => {
     const ev = e as { type?: string; message?: { content?: Array<{ type?: string; name?: string }> } };
     return ev.type === "message_end" && Array.isArray(ev.message?.content)
-      && ev.message!.content!.some((b) => b.type === "toolCall" && b.name === "bash");
+      && ev.message!.content!.some((b) => b.type === "toolCall" && b.name === "read");
   });
-  const bashToolResults = events.filter((e) => {
+  const readToolResults = events.filter((e) => {
     const ev = e as { type?: string; toolResults?: Array<{ toolName?: string; content?: unknown[] }> };
     return ev.type === "turn_end" && Array.isArray(ev.toolResults)
-      && ev.toolResults!.some((r) => r.toolName === "bash" && Array.isArray(r.content) && r.content.length > 0);
+      && ev.toolResults!.some((r) => r.toolName === "read" && Array.isArray(r.content) && r.content.length > 0);
   });
-  const toolCallObserved = bashToolCalls.length > 0 && bashToolResults.length > 0;
+  const toolCallObserved = readToolCalls.length > 0 && readToolResults.length > 0;
 
   const assistantMessages = events.filter(
     (e) =>
@@ -325,7 +355,7 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
     return {
       status: "fail",
       durationMs,
-      detail: `Agent completed without a clean bash tool call (bash_calls=${bashToolCalls.length}, bash_results=${bashToolResults.length}) — the model may not honor tool instructions or the endpoint rejects tool requests`,
+      detail: `Agent completed without a clean read tool call (read_calls=${readToolCalls.length}, read_results=${readToolResults.length}) — the model may not honor tool instructions or the endpoint rejects tool requests`,
       events: events.slice(0, 5),
     };
   }
@@ -333,6 +363,6 @@ export async function runL4Check(input: L4CheckInput): Promise<L4CheckResult> {
   return {
     status: "pass",
     durationMs,
-    detail: `Agent circuit OK (pi ${PI_VERSION}, bash tool call + result verified, ${assistantMessages.length} assistant message(s))`,
+    detail: `Agent circuit OK (pi ${PI_VERSION}, read tool call + result verified, ${assistantMessages.length} assistant message(s))`,
   };
 }
