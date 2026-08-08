@@ -16,7 +16,7 @@ import {
 } from "../workers/docker-client.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
-import { credentialToWorkerEnv } from "../settings/credential-env.js";
+import { credentialToWorkerEnv, writeWorkerModelsJson } from "../settings/credential-env.js";
 import { getSkill, updateReportStatus, getReport } from "./storage.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { notify } from "../notifications/index.js";
@@ -384,6 +384,9 @@ export async function spawnReportWorker(params: {
     REPORT_ID: reportId,
     ...credentialToWorkerEnv(cred),
   };
+
+  // Batch 2 (fish 2026-08-08): pre-generate models.json via the unified module.
+  await writeWorkerModelsJson(cred, hostWorkDir);
 
   const container = await createWorkerContainer({
     taskId: reportId,

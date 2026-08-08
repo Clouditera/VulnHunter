@@ -47,7 +47,7 @@ vi.mock("../../src/features/workers/prepare-worker.js", () => ({
 }));
 vi.mock("../../src/features/workers/minio-download.js", () => ({ downloadObjectWithRetry: vi.fn() }));
 vi.mock("../../src/features/settings/storage.js", () => ({ getDefaultCredential: vi.fn(async () => ({ proto_type: "x", model_id: "m" })), getCredentialById: vi.fn() }));
-vi.mock("../../src/features/settings/credential-env.js", () => ({ credentialToWorkerEnv: () => ({}) }));
+vi.mock("../../src/features/settings/credential-env.js", () => ({ credentialToWorkerEnv: () => ({}), writeWorkerModelsJson: vi.fn(async () => {}) }));
 vi.mock("../../src/features/events/event-tail.js", () => ({ startTailing: vi.fn(), stopTailing: vi.fn() }));
 vi.mock("../../src/features/findings/indexer.js", () => ({ indexFindings: vi.fn() }));
 vi.mock("../../src/features/workers/sync-outputs.js", () => ({ syncOutputsToMinio: vi.fn(), downloadOutputsFromMinio: vi.fn() }));
