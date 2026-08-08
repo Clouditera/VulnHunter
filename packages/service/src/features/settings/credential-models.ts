@@ -129,13 +129,13 @@ async function lookupCatalogModel(
   // Try matching by baseUrl prefix (most reliable)
   for (const provider of catalog) {
     if (!provider.baseUrlPrefix || !normalizedBase.includes(provider.baseUrlPrefix.replace(/\/+$/, ""))) continue;
-    const match = provider.models.find((m) => m.id === modelId);
+    const match = provider.models.find((m) => m.id.toLowerCase() === modelId.toLowerCase());
     if (match) return match;
   }
 
   // Fallback: match by model id across all providers
   for (const provider of catalog) {
-    const match = provider.models.find((m) => m.id === modelId);
+    const match = provider.models.find((m) => m.id.toLowerCase() === modelId.toLowerCase());
     if (match) return match;
   }
 
