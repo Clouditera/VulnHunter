@@ -381,6 +381,7 @@ settingsRouter.post("/credential/diagnose-stream", async (c) => {
   let thinkingEffort = body.thinking_effort;
 
   // Load saved credential if id provided
+  let advancedConfig: unknown = null;
   if (body.credential_id) {
     const ctx = queryContextFromUser(c.get("user"));
     const saved = await getCredentialById(ctx, body.credential_id);
@@ -390,6 +391,7 @@ settingsRouter.post("/credential/diagnose-stream", async (c) => {
     modelId = modelId || saved.model_id;
     apiKey = apiKey || saved.api_key;
     thinkingEffort = thinkingEffort ?? saved.thinking_effort;
+    advancedConfig = saved.advanced_config ?? null;
   }
 
   const cred = {
@@ -401,6 +403,7 @@ settingsRouter.post("/credential/diagnose-stream", async (c) => {
     thinking_effort: thinkingEffort,
     api_key: apiKey,
     context_window_tokens: 128000,
+    advanced_config: advancedConfig,
     is_default: false,
     created_at: new Date(),
     updated_at: new Date(),
