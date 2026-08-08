@@ -2,4 +2,4 @@
 -- Stores vendor-specific model config overrides (compat / thinkingLevelMap /
 -- input / cost) that are merged into models.json at generation time.
 -- NULL = use defaults from pi catalog + scalar credential fields.
-ALTER TABLE credentials ADD COLUMN IF NOT EXISTS advanced_config JSONB DEFAULT NULL;
+ALTER TABLE llm_credentials ADD COLUMN IF NOT EXISTS advanced_config JSONB DEFAULT NULL;
