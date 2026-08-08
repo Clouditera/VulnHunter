@@ -46,7 +46,7 @@ import { reconcileSchedulerClaims } from "./reconciler.js";
 import { downloadObjectWithRetry } from "./minio-download.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
-import { credentialToWorkerEnv } from "../settings/credential-env.js";
+import { credentialToWorkerEnv, writeWorkerModelsJson } from "../settings/credential-env.js";
 import { startTailing, stopTailing } from "../events/event-tail.js";
 import { indexFindings } from "../findings/indexer.js";
 import { syncOutputsToMinio, downloadOutputsFromMinio } from "./sync-outputs.js";
@@ -481,6 +481,10 @@ export class TaskScheduler {
         ...credentialToWorkerEnv(cred),
         YOUNGFLOW_MAX_PARALLEL: String(task.agent_max_parallel ?? 3),
       };
+
+      // Batch 2 (fish 2026-08-08): pre-generate models.json via the unified
+      // module so the worker consumes a single source of truth.
+      await writeWorkerModelsJson(cred, hostWorkDir);
 
       if (claim.mode === "continue") {
         published = await this.prepareWorkspace(task, token);

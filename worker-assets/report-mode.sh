@@ -47,127 +47,41 @@ if [ ! -d "$FLOW_DIR/skills/uploaded-report-skill" ]; then
     exit 1
   fi
 fi
-
 # ---------------------------------------------------------------------------
-# Model config for YoungFlow 0.3.x / pi 0.79.x.
+# Model config: consume pre-generated models.json from the unified module.
 #
-# Report mode is independent from scan-mode and also needs pi-native
-# models.json. YoungFlow 0.3.x does not translate the legacy flat LLM_* env
-# vars into pi config; the flow declares `artifacts.models_json: models.json`
-# and resolves its model through `${env.V_DEFAULT_MODEL}`.
+# Batch 2 (fish 2026-08-08): the service pre-generates models.json via
+# buildModelsJson (credential-models.ts) and writes it to
+# /workspace/.pi-agent/models.json + model-env.json before the worker starts.
 # ---------------------------------------------------------------------------
-if ! command -v python3 &>/dev/null; then
-  echo "[report] FATAL: python3 not found — required for models.json generation" >&2
+PI_AGENT_SRC="/workspace/.pi-agent"
+
+if [ ! -f "$PI_AGENT_SRC/models.json" ]; then
+  echo "[report] FATAL: pre-generated models.json not found at $PI_AGENT_SRC/models.json. The service must generate it before starting the worker." >&2
+  exit 1
+fi
+if [ ! -f "$PI_AGENT_SRC/model-env.json" ]; then
+  echo "[report] FATAL: pre-generated model-env.json not found at $PI_AGENT_SRC/model-env.json." >&2
   exit 1
 fi
 
-MODEL_PROTO_TYPE="${MODEL_PROTO_TYPE:-openai-completions}"
-LLM_MODEL_NAME="${LLM_MODEL_NAME:-}"
-LLM_BASE_URL="${LLM_BASE_URL:-}"
-LLM_API_KEY="${LLM_API_KEY:-}"
-MODEL_EFFORT="${MODEL_EFFORT:-off}"
-LLM_CONTEXT_WINDOW_TOKENS="${LLM_CONTEXT_WINDOW_TOKENS:-128000}"
+# Copy models.json into the flow directory
+cp "$PI_AGENT_SRC/models.json" "$FLOW_DIR/models.json"
 
-if [ -z "$LLM_MODEL_NAME" ] || [ -z "$LLM_API_KEY" ]; then
-  echo "[report] FATAL: model credential not configured (LLM_MODEL_NAME / LLM_API_KEY missing). Configure a model in Settings before generating reports." >&2
-  exit 1
-fi
-
-V_DEFAULT_MODEL="$(
-  MODEL_PROTO_TYPE="$MODEL_PROTO_TYPE" \
-  LLM_MODEL_NAME="$LLM_MODEL_NAME" \
-  LLM_BASE_URL="$LLM_BASE_URL" \
-  LLM_CONTEXT_WINDOW_TOKENS="$LLM_CONTEXT_WINDOW_TOKENS" \
-  MODEL_EFFORT="$MODEL_EFFORT" \
-  python3 - "$FLOW_DIR/models.json" <<'PY'
-import json, os, sys
-
-out_path = sys.argv[1]
-proto = (os.environ.get("MODEL_PROTO_TYPE") or "openai-completions").strip()
-model_id = (os.environ.get("LLM_MODEL_NAME") or "").strip()
-base_url = (os.environ.get("LLM_BASE_URL") or "").strip().rstrip("/")
-effort = (os.environ.get("MODEL_EFFORT") or "off").strip().lower()
-try:
-    ctx = int(os.environ.get("LLM_CONTEXT_WINDOW_TOKENS") or "128000")
-except ValueError:
-    ctx = 128000
-if ctx < 1000 or ctx > 10_000_000:
-    ctx = 128000
-
-API_TYPE_MAP = {
-    "openai": "openai-completions",
-    "openai-completions": "openai-completions",
-    "openai-responses": "openai-responses",
-    "anthropic": "anthropic-messages",
-    "anthropic-messages": "anthropic-messages",
-}
-api_type = API_TYPE_MAP.get(proto)
-if not api_type:
-    sys.stderr.write(
-        f"[report] FATAL: unknown MODEL_PROTO_TYPE '{proto}'. "
-        f"Valid: {', '.join(sorted(API_TYPE_MAP))}\n"
-    )
-    sys.exit(1)
-
-PROVIDER = "platform"
-API_KEY_ENV = "PLATFORM_API_KEY"
-
-lo = f"{model_id} {base_url}".lower()
-is_deepseek = "deepseek" in lo
-is_zai = (not is_deepseek) and ("glm" in lo or "bigmodel" in lo or "zhipu" in lo or "z.ai" in lo)
-THINKING_LEVELS = {"low", "medium", "high", "xhigh"}
-is_thinking = effort in THINKING_LEVELS
-
-model_entry = {
-    "id": model_id,
-    "input": ["text"],
-    "contextWindow": ctx,
-}
-# fish 2026-08-06: NO maxTokens for OpenAI-compatible APIs (64d20cec, same
-# disease as the test probes) — see scan-mode.sh for the kimi thinking-budget
-# rationale. Anthropic /messages REQUIRES max_tokens — budget 32768 + 4096.
-if api_type == "anthropic-messages":
-    model_entry["maxTokens"] = 36864
-if is_thinking or is_deepseek or is_zai:
-    model_entry["reasoning"] = True
-# fish 2026-08-05: completions endpoints default to system role (see scan-mode)
-if api_type == "openai-completions":
-    model_entry["compat"] = {"supportsDeveloperRole": False}
-
-provider_cfg = {
-    "api": api_type,
-    "apiKey": f"${API_KEY_ENV}",
-    "models": [model_entry],
-}
-if base_url:
-    provider_cfg["baseUrl"] = base_url
-
-models = {"providers": {PROVIDER: provider_cfg}}
-with open(out_path, "w", encoding="utf-8") as f:
-    json.dump(models, f, ensure_ascii=False, indent=2)
-    f.write("\n")
-
-model_string = f"{PROVIDER}/{model_id}"
-if is_thinking:
-    model_string += f":{effort}"
-sys.stdout.write(model_string)
-PY
-)"
-
+# Extract V_DEFAULT_MODEL from model-env.json (written by the service)
+V_DEFAULT_MODEL="$(python3 -c "import json; print(json.load(open('$PI_AGENT_SRC/model-env.json'))['vDefaultModel'])" 2>/dev/null || echo '')"
 if [ -z "$V_DEFAULT_MODEL" ]; then
-  echo "[report] FATAL: failed to generate models.json / resolve V_DEFAULT_MODEL" >&2
+  echo "[report] FATAL: failed to read vDefaultModel from model-env.json" >&2
   exit 1
 fi
 
 cat > "$FLOW_DIR/.env" << ENVEOF
-PLATFORM_API_KEY=${LLM_API_KEY}
 V_DEFAULT_MODEL=${V_DEFAULT_MODEL}
 YOUNGFLOW_IDLE_TIMEOUT=${YOUNGFLOW_IDLE_TIMEOUT:-3600}
 YOUNGFLOW_ERROR_RETRIES=${YOUNGFLOW_ERROR_RETRIES:-5}
 ENVEOF
 
-echo "[report] Generated models.json + .env (model=$V_DEFAULT_MODEL, api=$MODEL_PROTO_TYPE, ctx=$LLM_CONTEXT_WINDOW_TOKENS)" >&2
-
+echo "[report] Copied pre-generated models.json + wrote .env (model=$V_DEFAULT_MODEL)" >&2
 mkdir -p /workspace/.service-logs
 rm -f "$SERVICE_LOG"
 

@@ -198,136 +198,40 @@ echo "[scan] Preflight OK: python3 + main/finalizer flows + deadline gates avail
 # Code already extracted to /workspace/src/ by service (bind mount)
 
 # ---------------------------------------------------------------------------
-# Model config for the new VulnForge audit flow.
+# Model config: consume pre-generated models.json from the unified module.
 #
-# YoungFlow 0.3.x no longer translates LLM_* env vars into pi config; the flow
-# declares `artifacts.models_json: models.json` and resolves its model via
-# `${env.V_DEFAULT_MODEL}` / `${env.V_STRONG_MODEL}` (flow model env
-# interpolation, v0.3.7). So we generate, at scan start, from the platform
-# credential env:
-#   - $FLOW_DIR/models.json : pi-native provider/API details
-#   - $FLOW_DIR/.env        : V_DEFAULT_MODEL / V_STRONG_MODEL + API key env
+# Batch 2 (fish 2026-08-08): the service pre-generates models.json via
+# buildModelsJson (credential-models.ts) and writes it to
+# /workspace/.pi-agent/models.json + model-env.json before the worker starts.
+# This script copies them into the flow directory.
 #
-# Current worker pi is @earendil-works/pi-coding-agent; its config resolver
-# supports $ENV / ${ENV} templates in models.json. Keep VulnForge's natural
-# three-layer shape: models.json points at an API-key env var, .env carries the
-# secret, and flow.yaml selects model names via ${env.*}.
+# The old python3 heredoc generator is retired — a single source of truth
+# (credential-models.ts) now feeds scan/report/chat/prepare/diagnostics.
 # ---------------------------------------------------------------------------
-MODEL_PROTO_TYPE="${MODEL_PROTO_TYPE:-openai-completions}"
-LLM_MODEL_NAME="${LLM_MODEL_NAME:-}"
-LLM_BASE_URL="${LLM_BASE_URL:-}"
-MODEL_EFFORT="${MODEL_EFFORT:-off}"
-LLM_CONTEXT_WINDOW_TOKENS="${LLM_CONTEXT_WINDOW_TOKENS:-128000}"
+PI_AGENT_SRC="/workspace/.pi-agent"
 
-# Direct credential: the worker uses the real LLM credential (LLM_BASE_URL +
-# LLM_API_KEY) injected by the service. Model-proxy removed (fish 2026-08-04).
-LLM_DIRECT_BASE_URL="${LLM_BASE_URL:-}"
-
-if [ -z "$LLM_MODEL_NAME" ] || [ -z "$LLM_API_KEY" ]; then
-  echo "[scan] FATAL: model credential not configured (LLM_MODEL_NAME / LLM_API_KEY missing). Configure a model in Settings before scanning." >&2
+if [ ! -f "$PI_AGENT_SRC/models.json" ]; then
+  echo "[scan] FATAL: pre-generated models.json not found at $PI_AGENT_SRC/models.json. The service must generate it before starting the worker." >&2
+  exit 1
+fi
+if [ ! -f "$PI_AGENT_SRC/model-env.json" ]; then
+  echo "[scan] FATAL: pre-generated model-env.json not found at $PI_AGENT_SRC/model-env.json." >&2
   exit 1
 fi
 
-# Generate models.json from the platform credential. Emits the resolved
-# V_DEFAULT_MODEL string (provider/model[:effort]) on stdout for the .env.
-V_DEFAULT_MODEL="$(
-  MODEL_PROTO_TYPE="$MODEL_PROTO_TYPE" \
-  LLM_MODEL_NAME="$LLM_MODEL_NAME" \
-  LLM_DIRECT_BASE_URL="$LLM_DIRECT_BASE_URL" \
-  LLM_CONTEXT_WINDOW_TOKENS="$LLM_CONTEXT_WINDOW_TOKENS" \
-  MODEL_EFFORT="$MODEL_EFFORT" \
-  python3 - "$FLOW_DIR/models.json" <<'PY'
-import json, os, sys
+# Copy models.json into the flow directory (youngflow reads it from here)
+cp "$PI_AGENT_SRC/models.json" "$FLOW_DIR/models.json"
 
-out_path = sys.argv[1]
-proto = (os.environ.get("MODEL_PROTO_TYPE") or "openai-completions").strip()
-model_id = (os.environ.get("LLM_MODEL_NAME") or "").strip()
-direct_url = (os.environ.get("LLM_DIRECT_BASE_URL") or "").strip().rstrip("/")
-effort = (os.environ.get("MODEL_EFFORT") or "off").strip().lower()
-try:
-    ctx = int(os.environ.get("LLM_CONTEXT_WINDOW_TOKENS") or "128000")
-except ValueError:
-    ctx = 128000
-if ctx < 1000 or ctx > 10_000_000:
-    ctx = 128000
-
-# Platform proto_type -> pi api type.
-API_TYPE_MAP = {
-    "openai": "openai-completions",
-    "openai-completions": "openai-completions",
-    "openai-responses": "openai-responses",
-    "anthropic": "anthropic-messages",
-    "anthropic-messages": "anthropic-messages",
-}
-api_type = API_TYPE_MAP.get(proto)
-if not api_type:
-    sys.stderr.write(
-        f"[scan] FATAL: unknown MODEL_PROTO_TYPE '{proto}'. "
-        f"Valid: {', '.join(sorted(API_TYPE_MAP))}\n"
-    )
-    sys.exit(1)
-
-PROVIDER = "platform"
-API_KEY_ENV = "LLM_API_KEY"
-
-lo = f"{model_id}".lower()
-is_deepseek = "deepseek" in lo
-is_zai = (not is_deepseek) and ("glm" in lo or "bigmodel" in lo or "zhipu" in lo or "z.ai" in lo)
-
-# Reasoning effort: only known thinking levels become a model suffix.
-THINKING_LEVELS = {"low", "medium", "high", "xhigh"}
-is_thinking = effort in THINKING_LEVELS
-
-# fish 2026-08-05: openai-completions endpoints get the conservative default
-# `supportsDeveloperRole: False` — system is understood by every gateway,
-# developer only matters on OpenAI o-series (which accept system too).
-# responses protocol keeps developer (native there). zai/glm/deepseek are
-# flagged reasoning for effort handling.
-model_entry = {
-    "id": model_id,
-    "input": ["text"],
-    "contextWindow": ctx,
-}
-# fish 2026-08-06: NO maxTokens for OpenAI-compatible APIs (64d20cec, same
-# disease as the test probes) — a self-imposed output cap collides with
-# gateway thinking budgets (kimi mid-tier: 16384 < thinking_budget 32768
-# → 400 on REAL scans). Without the field the gateway applies the model's
-# own default max output. Anthropic /messages REQUIRES max_tokens — give
-# thinking budget (32768) + 4096 margin.
-if api_type == "anthropic-messages":
-    model_entry["maxTokens"] = 36864
-if is_thinking or is_deepseek or is_zai:
-    model_entry["reasoning"] = True
-if api_type == "openai-completions":
-    model_entry["compat"] = {"supportsDeveloperRole": False}
-
-provider_cfg = {
-    "api": api_type,
-    "apiKey": f"${API_KEY_ENV}",
-    "models": [model_entry],
-    # Direct credential: real base_url + real key (model-proxy removed).
-    "baseUrl": direct_url,
-}
-
-models = {"providers": {PROVIDER: provider_cfg}}
-with open(out_path, "w", encoding="utf-8") as f:
-    json.dump(models, f, ensure_ascii=False, indent=2)
-    f.write("\n")
-
-model_string = f"{PROVIDER}/{model_id}"
-if is_thinking:
-    model_string += f":{effort}"
-sys.stdout.write(model_string)
-PY
-)"
-
+# Extract V_DEFAULT_MODEL from model-env.json (written by the service)
+V_DEFAULT_MODEL="$(python3 -c "import json; print(json.load(open('$PI_AGENT_SRC/model-env.json'))['vDefaultModel'])" 2>/dev/null || echo '')"
 if [ -z "$V_DEFAULT_MODEL" ]; then
-  echo "[scan] FATAL: failed to generate models.json / resolve V_DEFAULT_MODEL" >&2
+  echo "[scan] FATAL: failed to read vDefaultModel from model-env.json" >&2
   exit 1
 fi
 
 # Write .env for youngflow: model selection + engine tuning. API key lives in
-# the container env (LLM_API_KEY), expanded by youngflow via $LLM_API_KEY.
+# the container env (VULNHUNTER_LLM_API_KEY), expanded by pi via the
+# $VULNHUNTER_LLM_API_KEY template in models.json.
 cat > "$FLOW_DIR/.env" << EOF
 V_DEFAULT_MODEL=${V_DEFAULT_MODEL}
 V_STRONG_MODEL=${V_DEFAULT_MODEL}
@@ -335,8 +239,7 @@ YOUNGFLOW_IDLE_TIMEOUT=${YOUNGFLOW_IDLE_TIMEOUT:-3600}
 YOUNGFLOW_ERROR_RETRIES=${YOUNGFLOW_ERROR_RETRIES:-5}
 EOF
 
-echo "[scan] Generated models.json + .env (model=$V_DEFAULT_MODEL, api=$MODEL_PROTO_TYPE, ctx=$LLM_CONTEXT_WINDOW_TOKENS)" >&2
-
+echo "[scan] Copied pre-generated models.json + wrote .env (model=$V_DEFAULT_MODEL)" >&2
 # pi-web-access (research/hunt stages) reads PI_CODING_AGENT_DIR/web-search.json.
 # youngflow sets PI_CODING_AGENT_DIR=<flowDir>/.pi-agent and copies models.json
 # into it (dist/model-config.js createAgentDir); it does NOT copy other files.
