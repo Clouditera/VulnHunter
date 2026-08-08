@@ -390,32 +390,54 @@ export async function buildModelsJson(
 
 // ── Convenience: build for multiple credentials (chat additional models) ──
 
+export interface MultiCredentialItem {
+  id: string;
+  proto_type: string;
+  base_url: string | null;
+  model_id: string;
+  thinking_effort: string;
+  context_window_tokens: number;
+  api_key: string;
+  advanced_config?: AdvancedConfig | null;
+}
+
+/**
+ * Build models.json for chat worker: primary credential as "vulnhunter"
+ * provider + all additional credentials as "va-<id8>" providers.
+ * Each credential gets its own $VH_KEY_<id12> env var template.
+ *
+ * Returns models.json content + a map of all env vars to inject.
+ */
 export async function buildModelsJsonMulti(
-  primary: DecryptedCredentialLike,
-  additional: DecryptedCredentialLike[],
+  primary: MultiCredentialItem,
+  additional: MultiCredentialItem[],
 ): Promise<ModelsJsonResult> {
-  const primaryResult = await buildModelsJson(primary);
+ const providers: Record<string, unknown> = {};
+ const childEnv: Record<string, string> = {};
 
-  // Extend providers with additional credentials
-  const providers = (primaryResult.modelsJson as { providers: Record<string, unknown> }).providers;
+ // Primary credential → "vulnhunter" provider (bridge convention)
+ const primaryEnvName = "VH_LLM_API_KEY";
+ const primaryResult = await buildModelsJson(primary, { apiKeyEnvName: primaryEnvName });
+ const primaryProvider = (primaryResult.modelsJson as { providers: Record<string, unknown> }).providers[PROVIDER_KEY];
+ providers["vulnhunter"] = primaryProvider;
+ Object.assign(childEnv, primaryResult.childEnv);
 
-  for (let i = 0; i < additional.length; i++) {
-    const cred = additional[i];
-    const singleResult = await buildModelsJson(cred);
-    const providerKey = `va-${i}`;
-    const singleProviders = (singleResult.modelsJson as { providers: Record<string, unknown> }).providers;
-    providers[providerKey] = singleProviders[PROVIDER_KEY];
+ // Additional credentials → "va-<id8>" providers
+ for (const cred of additional) {
+   const providerKey = `va-${cred.id.slice(0, 8)}`;
+   const apiKeyEnvName = `VH_KEY_${cred.id.replace(/-/g, "_").slice(0, 12).toUpperCase()}`;
+   const result = await buildModelsJson(cred, { apiKeyEnvName });
+   const provider = (result.modelsJson as { providers: Record<string, unknown> }).providers[PROVIDER_KEY];
+   providers[providerKey] = provider;
+   Object.assign(childEnv, result.childEnv);
+ }
 
-    // Merge child env keys (each credential gets its own env key)
-    const envKey = `${API_KEY_ENV}_${i}`;
-    (providers[providerKey] as Record<string, unknown>).apiKey = `$${envKey}`;
-    (primaryResult.childEnv as Record<string, string>)[envKey] = cred.api_key;
-  }
-
-  return {
-    ...primaryResult,
-    modelsJson: { providers },
-  };
+ return {
+   modelsJson: { providers },
+   childEnv,
+   providerKey: "vulnhunter",
+   modelRef: primary.model_id,
+ };
 }
 
 // ── Thinking levels for UI ────────────────────────────────────────────

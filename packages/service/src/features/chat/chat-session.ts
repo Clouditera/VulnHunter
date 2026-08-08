@@ -239,7 +239,7 @@ export class ChatSession {
       const hostWorkDir = join(config.dataDir, "chat-sessions", this.sessionId);
       ensureWorkDir(hostWorkDir);
 
-      // Serialize all credentials for runtime model switching
+      // Serialize all credentials for runtime model switching + unified models.json
       const listedCreds = await listCredentials(queryCtx);
       const decryptedCreds = await Promise.all(
         listedCreds
@@ -250,11 +250,27 @@ export class ChatSession {
             throw err;
           })),
       );
+      const validCreds = decryptedCreds.filter(Boolean) as NonNullable<typeof decryptedCreds[number]>[];
+      // Exclude primary credential from additional list
+      const additionalCreds = validCreds.filter((c) => c.id !== cred.id);
+
+      // Build unified models.json with advanced_config for all providers
+      const { buildModelsJsonMulti } = await import("../settings/credential-models.js");
+      const toItem = (c: typeof cred) => ({
+        id: c.id, proto_type: c.proto_type, base_url: c.base_url,
+        model_id: c.model_id, thinking_effort: c.thinking_effort,
+        context_window_tokens: c.context_window_tokens, api_key: c.api_key,
+        advanced_config: (c as any).advanced_config ?? null,
+      });
+      const multiResult = await buildModelsJsonMulti(toItem(cred), additionalCreds.map(toItem));
+      const modelsJsonStr = JSON.stringify(multiResult.modelsJson);
+
+      // Legacy ALL_CREDENTIALS retained for credProviderMap + keyless proxy
       const allCredsJson = JSON.stringify(
-        decryptedCreds.filter(Boolean).map(c => ({
-          id: c!.id, label: c!.label, proto_type: c!.proto_type,
-          base_url: c!.base_url, api_key: c!.api_key, model_id: c!.model_id,
-          context_window_tokens: c!.context_window_tokens ?? 128000,
+        validCreds.map(c => ({
+          id: c.id, label: c.label, proto_type: c.proto_type,
+          base_url: c.base_url, api_key: c.api_key, model_id: c.model_id,
+          context_window_tokens: c.context_window_tokens ?? 128000,
         })),
       );
 
@@ -264,6 +280,9 @@ export class ChatSession {
         SESSION_DIR: "/workspace/chat-session",
         ...credentialToWorkerEnv(cred),
         ALL_CREDENTIALS: allCredsJson,
+        MODELS_JSON: modelsJsonStr,
+        // Inject all API key env vars (VH_LLM_API_KEY + VH_KEY_<id12> for each)
+        ...Object.fromEntries(Object.entries(multiResult.childEnv)),
         SERVICE_URL: config.docker.workerServiceUrl,
         CHAT_WORKER_TOKEN: this.sessionId,
         CHAT_USER_ID: queryCtx.userId,
