@@ -89,37 +89,33 @@ export interface SpawnPrepareWorkerOptions {
 }
 
 /**
- * Generate the prepare flow's models.json with the task's **real LLM credential**
- * written directly (fish 2026-08-04 decision: model-proxy removed; workers carry
- * user-owned keys — user bears the risk of scanning untrusted code).
+ * Generate the prepare flow's models.json via the unified credential module
+ * (fish 2026-08-08 batch 4: single source of truth — credential-models.ts).
  *
- * - baseUrl = credential base_url **as-is** (trailing-slash trim only, no path
- *   manipulation — pi SDK conventions: Anthropic SDK appends /v1/messages, so
- *   baseURL should NOT contain /v1; OpenAI SDK expects /v1 in baseURL).
- * - apiKey = decrypted real key (no task-id proxy).
- * - model id = the task's real model_id (forwarded verbatim by pi SDK).
- * - api type = mapped from proto_type.
+ * Key is written as $VULNHUNTER_LLM_API_KEY template (no plaintext) and
+ * injected via the container env.
  */
-export async function resolvePrepareModel(task: DbTask): Promise<{ modelsJson: string; modelString: string }> {
+export async function resolvePrepareModel(task: DbTask): Promise<{ modelsJson: string; modelString: string; apiKeyEnv: Record<string, string> }> {
   const cred = task.credential_id ? await getCredentialById(task.credential_id) : await getDefaultCredential();
   if (!cred || !cred.model_id) throw new AppError("ERR_MODEL_CREDENTIAL_UNAVAILABLE", { message: "Prepare 需要可用模型凭证，请在任务或 Settings 中配置模型" });
-  const api = cred.proto_type.startsWith("anthropic") ? "anthropic-messages" : "openai-completions";
-  const baseUrl = (cred.base_url ?? "").replace(/\/+$/, "");
-  // fish 2026-08-05: completions endpoints default supportsDeveloperRole=false
-  // (system understood everywhere; developer only matters on OpenAI o-series).
-  const modelEntry: Record<string, unknown> = { id: cred.model_id };
-  if (api === "openai-completions") modelEntry.compat = { supportsDeveloperRole: false };
-  const models = {
-    providers: {
-      platform: {
-        api,
-        baseUrl,
-        apiKey: cred.api_key,
-        models: [modelEntry],
-      },
-    },
+  const { buildModelsJson } = await import("../settings/credential-models.js");
+  const result = await buildModelsJson({
+    proto_type: cred.proto_type,
+    base_url: cred.base_url,
+    model_id: cred.model_id,
+    thinking_effort: cred.thinking_effort,
+    context_window_tokens: cred.context_window_tokens,
+    api_key: cred.api_key,
+    advanced_config: (cred as any).advanced_config ?? null,
+  });
+  // Build model string for youngflow .env: platform/model_id[:effort]
+  const isThinking = !!cred.thinking_effort && cred.thinking_effort !== "off" && cred.thinking_effort !== "none";
+  const modelString = `platform/${cred.model_id}${isThinking ? `:${cred.thinking_effort}` : ""}`;
+  return {
+    modelsJson: JSON.stringify(result.modelsJson, null, 2) + "\n",
+    modelString,
+    apiKeyEnv: result.childEnv,
   };
-  return { modelsJson: JSON.stringify(models, null, 2) + "\n", modelString: `platform/${cred.model_id}` };
 }
 
 /**
@@ -138,9 +134,9 @@ export async function createPrepareWorker(opts: SpawnPrepareWorkerOptions): Prom
   await rm(sandboxTypesDir, { recursive: true, force: true });
   await mkdir(sandboxTypesDir, { recursive: true });
 
-  // Direct credential: models.json now carries the real LLM key + base_url
-  // as-is (fish 2026-08-04: model-proxy removed).
-  const { modelsJson, modelString } = await resolvePrepareModel(task);
+  // Direct credential: models.json now carries the $ENV_VAR key template
+  // (fish 2026-08-08 batch 4: unified module — no plaintext on disk).
+  const { modelsJson, modelString, apiKeyEnv } = await resolvePrepareModel(task);
   const modelsJsonHostPath = join(sandboxTypesDir, "models.json");
   await writeFile(modelsJsonHostPath, modelsJson, { mode: 0o644 });
 
@@ -177,6 +173,9 @@ export async function createPrepareWorker(opts: SpawnPrepareWorkerOptions): Prom
       PREPARE_DYNAMIC_ENABLED: isDynamicEnabled(task) ? "true" : "false",
       PREPARE_SANDBOX_TYPES_FILE: CONTAINER_SANDBOX_TYPES_FILE,
       V_PREPARE_MODEL: modelString,
+      // Credential rides the env channel (pi resolves $VULNHUNTER_LLM_API_KEY
+      // from the models.json template).
+      ...apiKeyEnv,
       // The service reads the root-written result as its own uid — tell the
       // worker who must own the outputs (self-aligning; prepare-mode.sh
       // chowns dir+file to this after postflight, modes stay 0700/0600).

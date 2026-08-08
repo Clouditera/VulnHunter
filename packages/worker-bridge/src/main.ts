@@ -548,28 +548,86 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   res.end(JSON.stringify({ error: "Not found" }));
 }
 
+/**
+ * Batch 3 (fish 2026-08-08) + architect fix: model switch via pi reload RPC.
+ *
+ * Architect 2026-08-08 env-freeze fix: pi's child env is frozen at spawn.
+ * We CANNOT set new env vars at runtime. Instead, we validate that the
+ * $ENV_VAR referenced in models.json was already injected at startup
+ * (via ALL_CREDENTIALS / primary credential). If not in the startup set,
+ * reject with a clear message.
+ *
+ * Keyless credentials (noAuthProxy): the service sends apiKeyPresent=false;
+ * the bridge rewrites baseUrl to the local _llm_proxy and points apiKey
+ * at the NO_AUTH_DUMMY_KEY env (already set for keyless providers at startup).
+ */
 async function handleSetModel(body: string, res: ServerResponse): Promise<void> {
-  let credentialId: string;
+  let parsed: {
+    credentialId?: string;
+    modelsJson?: Record<string, unknown>;
+    apiKeyEnvName?: string;
+    apiKeyPresent?: boolean;
+    providerKey?: string;
+    modelId?: string;
+  };
   try {
-    ({ credentialId } = JSON.parse(body) as { credentialId: string });
+    parsed = JSON.parse(body);
   } catch {
     sendJson(res, 400, { ok: false, error: "Invalid JSON" });
     return;
   }
 
-  const mapping = credProviderMap.get(credentialId);
-  if (!mapping) {
-    sendJson(res, 400, { ok: false, error: "Credential not registered" });
+  if (!parsed.modelsJson || !parsed.providerKey || !parsed.modelId || !parsed.apiKeyEnvName) {
+    sendJson(res, 400, { ok: false, error: "modelsJson, apiKeyEnvName, providerKey, modelId required" });
+    return;
+  }
+
+  // Validate: the env var referenced in models.json MUST have been injected
+  // at startup. If it's not in process.env, the credential wasn't in
+  // ALL_CREDENTIALS — reject (new session needed).
+  if (!(parsed.apiKeyEnvName in process.env)) {
+    sendJson(res, 400, {
+      ok: false,
+      error: `Credential not in this session's switchable list (env ${parsed.apiKeyEnvName} not injected at startup). Start a new session to use it.`,
+    });
     return;
   }
 
   try {
-    await rpcCommands.send({ type: "set_model", provider: mapping.providerKey, modelId: mapping.modelId });
-    console.log(`[bridge] set_model confirmed → provider=${mapping.providerKey}, model=${mapping.modelId}`);
-    sendJson(res, 200, { ok: true, provider: mapping.providerKey, modelId: mapping.modelId });
+    let modelsToWrite = parsed.modelsJson;
+
+    // Keyless credential: rewrite baseUrl to local proxy + point apiKey at dummy
+    if (parsed.apiKeyPresent === false) {
+      const proxyUrl = noAuthProxyBaseUrl(parsed.credentialId ?? "unknown");
+      const dummyEnv = "VH_LLM_API_KEY"; // NO_AUTH_DUMMY_KEY is set here at startup
+      // Deep-clone and patch the provider's baseUrl + apiKey
+      modelsToWrite = JSON.parse(JSON.stringify(parsed.modelsJson));
+      const providers = (modelsToWrite as any).providers;
+      const platform = providers?.platform;
+      if (platform) {
+        platform.baseUrl = proxyUrl;
+        platform.apiKey = `$${dummyEnv}`;
+      }
+      console.log(`[bridge] Keyless credential → proxy ${proxyUrl}`);
+    }
+
+    // 1. Rewrite models.json in piDir
+    const piDir = getPiDir();
+    writeFileSync(join(piDir, "models.json"), JSON.stringify(modelsToWrite, null, 2) + "\n");
+    console.log(`[bridge] Rewrote models.json for credential=${parsed.credentialId ?? "unknown"} (env=$${parsed.apiKeyEnvName})`);
+
+    // 2. Send reload RPC — pi re-reads models.json + resetApiProviders
+    await rpcCommands.send({ type: "reload" });
+    console.log("[bridge] reload confirmed → pi re-read models.json");
+
+    // 3. Switch active model to the new provider/model
+    await rpcCommands.send({ type: "set_model", provider: parsed.providerKey, modelId: parsed.modelId });
+    console.log(`[bridge] set_model confirmed → provider=${parsed.providerKey}, model=${parsed.modelId}`);
+
+    sendJson(res, 200, { ok: true, provider: parsed.providerKey, modelId: parsed.modelId });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    console.warn(`[bridge] set_model failed: ${error}`);
+    console.warn(`[bridge] set-model (reload path) failed: ${error}`);
     sendJson(res, 503, { ok: false, error });
   }
 }

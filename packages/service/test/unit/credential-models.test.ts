@@ -275,4 +275,39 @@ describe("buildModelsJson", () => {
     // No plaintext key anywhere
     expect(JSON.stringify(result.modelsJson)).not.toContain("sk-");
   });
+
+  it("apiKeyEnvName parameter customizes the $ENV_VAR template (chat path)", async () => {
+    const customEnvName = "VH_KEY_ABC123DEF456";
+    const result = await buildModelsJson(makeCred({ api_key: "sk-secret-123" }), {
+      apiKeyEnvName: customEnvName,
+    });
+    const json = result.modelsJson as any;
+    expect(json.providers.platform.apiKey).toBe(`$${customEnvName}`);
+    expect(result.childEnv[customEnvName]).toBe("sk-secret-123");
+    // Default name is NOT used
+    expect(result.childEnv.VULNHUNTER_LLM_API_KEY).toBeUndefined();
+  });
+
+  it("apiKeyEnvName: the $VAR in models.json matches what bridge injects at startup (architect fix)", async () => {
+    // Simulate the bridge's VH_KEY_<id> naming convention
+    const credId = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+    const expectedEnvName = `VH_KEY_${credId.replace(/-/g, "_").slice(0, 12).toUpperCase()}`;
+    const result = await buildModelsJson(makeCred({ api_key: "sk-test" }), {
+      apiKeyEnvName: expectedEnvName,
+    });
+    const json = result.modelsJson as any;
+    // The $VAR referenced in models.json MUST match the bridge's injection name
+    expect(json.providers.platform.apiKey).toBe(`$${expectedEnvName}`);
+    expect(expectedEnvName).toMatch(/^VH_KEY_[A-Z0-9_]+$/);
+  });
+
+  it("keyless credential (empty api_key) produces no plaintext leak", async () => {
+    const result = await buildModelsJson(makeCred({ api_key: "" }));
+    const json = result.modelsJson as any;
+    // Even with empty key, the template is still $VULNHUNTER_LLM_API_KEY
+    expect(json.providers.platform.apiKey).toBe("$VULNHUNTER_LLM_API_KEY");
+    expect(result.childEnv.VULNHUNTER_LLM_API_KEY).toBe("");
+    // No sk- pattern in the output
+    expect(JSON.stringify(json)).not.toMatch(/sk-[a-zA-Z0-9]{5,}/);
+  });
 });

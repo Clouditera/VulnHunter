@@ -287,7 +287,9 @@ const API_KEY_ENV = "VULNHUNTER_LLM_API_KEY";
  */
 export async function buildModelsJson(
   cred: DecryptedCredentialLike,
+  opts?: { apiKeyEnvName?: string },
 ): Promise<ModelsJsonResult> {
+  const apiKeyEnvName = opts?.apiKeyEnvName ?? API_KEY_ENV;
   const api = mapProtoToApi(cred.proto_type);
   const baseUrl = (cred.base_url ?? "").replace(/\/+$/, "");
 
@@ -372,7 +374,7 @@ export async function buildModelsJson(
       [PROVIDER_KEY]: {
         api,
         baseUrl,
-        apiKey: `$${API_KEY_ENV}`,
+        apiKey: `$${apiKeyEnvName}`,
         models: [modelEntry],
       },
     },
@@ -380,7 +382,7 @@ export async function buildModelsJson(
 
   return {
     modelsJson,
-    childEnv: { [API_KEY_ENV]: cred.api_key },
+    childEnv: { [apiKeyEnvName]: cred.api_key },
     providerKey: PROVIDER_KEY,
     modelRef: cred.model_id,
   };
