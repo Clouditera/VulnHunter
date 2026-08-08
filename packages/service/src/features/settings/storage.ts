@@ -121,7 +121,7 @@ export async function getCredentialById(ctxOrId: QueryContext | string, maybeId?
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag
+             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
       FROM llm_credentials
       WHERE id = ${id} AND (owner_id = ${ctx.userId} OR owner_id IS NULL)
       LIMIT 1
