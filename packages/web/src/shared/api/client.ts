@@ -911,6 +911,12 @@ export interface LlmCredential {
   key_fingerprint?: string | null;
   current_key_fingerprint?: string;
   context_window_tokens: number;
+  /**
+   * Vendor-adaptation config (fish 2026-08-08, design §3.1a): sparse object
+   * holding only non-default compat/thinkingLevelMap/input/cost values;
+   * null/absent = all defaults (「使用默认配置」).
+   */
+  advanced_config?: Record<string, unknown> | null;
   owner_id?: string | null;
   scope?: "global" | "personal";
   can_edit?: boolean;
@@ -928,6 +934,8 @@ export interface SaveCredentialPayload {
   api_key: string;
   is_default?: boolean;
   context_window_tokens?: number;
+  /** Sparse vendor-adaptation config; null clears to defaults. */
+  advanced_config?: Record<string, unknown> | null;
   owner_id?: string | null;
 }
 

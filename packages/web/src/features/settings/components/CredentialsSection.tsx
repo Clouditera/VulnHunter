@@ -23,6 +23,13 @@ import {
   Field,
   ensureSpinKeyframes,
 } from "./settings-ui.js";
+import {
+  CredentialAdvancedConfig,
+  defaultAdvancedConfig,
+  parseAdvancedConfig,
+  serializeAdvancedConfig,
+  type AdvancedConfigState,
+} from "./CredentialAdvancedConfig.js";
 import type { CSSProperties } from "react";
 
 const CRED_ROW_BTN: CSSProperties = {
@@ -158,7 +165,12 @@ export function CredentialsSection() {
   const [editCoreSnap, setEditCoreSnap] = useState<{
     proto: string; baseUrl: string; modelId: string;
     label: string; thinking: string; contextWindow: string;
+    /** Serialized advanced_config at load time (sparse JSON string). */
+    adv: string;
   } | null>(null);
+  /** Vendor-adaptation config form state (fish 2026-08-08 §3.1a). Changes
+   *  count as core-field changes (save requires a fresh passing test). */
+  const [advConfig, setAdvConfig] = useState<AdvancedConfigState>(defaultAdvancedConfig());
   /** Fingerprint of the form values the last successful test ran against. */
   const [testedFingerprint, setTestedFingerprint] = useState<string | null>(null);
   const [testChecks, setTestChecks] = useState<import("../../../shared/api/client").ModelDiagnosticCheck[]>([]);
@@ -208,6 +220,7 @@ export function CredentialsSection() {
     setThinking((c.thinking_effort as ThinkingValue) ?? "medium");
     setContextWindow(formatContextWindow(c.context_window_tokens));
     setLabel(c.label ?? "");
+    setAdvConfig(parseAdvancedConfig(c.advanced_config));
     setApiKey(""); // loaded only after an explicit reveal action
     setShowKey(false);
     setTestState({ kind: "idle" });
@@ -220,6 +233,7 @@ export function CredentialsSection() {
       label: c.label ?? "",
       thinking: (c.thinking_effort as ThinkingValue) ?? "medium",
       contextWindow: formatContextWindow(c.context_window_tokens),
+      adv: JSON.stringify(serializeAdvancedConfig(parseAdvancedConfig(c.advanced_config))),
     });
     setTestedFingerprint(null);
     // fish 2026-08-06 ①: no L4 backfill on edit-open — the four test cards
@@ -245,6 +259,7 @@ export function CredentialsSection() {
     resetModelList();
     setEditCoreSnap(null);
     setTestedFingerprint(null);
+    setAdvConfig(defaultAdvancedConfig());
   }
 
   /** Open the "+ New credential" draft row at the top of the list. */
@@ -259,6 +274,7 @@ export function CredentialsSection() {
     setThinking("medium");
     setContextWindow("128k");
     setLabel("");
+    setAdvConfig(defaultAdvancedConfig());
     setApiKey("");
     setTestState({ kind: "idle" });
     showToast(null);
@@ -377,6 +393,7 @@ export function CredentialsSection() {
           thinking_effort: thinking,
           label: label || undefined,
           context_window_tokens: contextWindowTokens,
+          advanced_config: serializeAdvancedConfig(advConfig),
           api_key: apiKey,
         }),
       );
@@ -496,8 +513,9 @@ export function CredentialsSection() {
    * save directly. Backend enforces the same rule; this gate keeps the user
    * from ever seeing a click-then-fail. */
   const normUrl = (u: string) => u.trim().replace(/\/+$/, "");
+  const advSerialized = () => JSON.stringify(serializeAdvancedConfig(advConfig));
   const coreFingerprint = () =>
-    [protoType, normUrl(baseUrl), modelId.trim(), thinking, apiKey.trim() ? "newkey" : "keep"].join("|");
+    [protoType, normUrl(baseUrl), modelId.trim(), thinking, apiKey.trim() ? "newkey" : "keep", advSerialized()].join("|");
   // fish 2026-08-06 ③: thinking_effort is a core field (it changes the
   // reasoning params sent to the model) — editing it requires a fresh test.
   const coreChanged =
@@ -507,6 +525,7 @@ export function CredentialsSection() {
       normUrl(baseUrl) !== normUrl(editCoreSnap.baseUrl) ||
       modelId.trim() !== editCoreSnap.modelId ||
       thinking !== editCoreSnap.thinking ||
+      advSerialized() !== editCoreSnap.adv ||
       apiKey.trim() !== "");
   /** Un-gate ONLY when the last test run PASSED against the current form
    *  values. Fingerprint alone is not enough: a stale pass fingerprint can
@@ -956,6 +975,16 @@ export function CredentialsSection() {
                 style={FIELD_INPUT}
               />
             </Field>
+
+            <CredentialAdvancedConfig
+              value={advConfig}
+              onChange={setAdvConfig}
+              baseline={editCoreSnap ? parseAdvancedConfig(JSON.parse(editCoreSnap.adv)) : null}
+              disabled={saving || (!isNewDraft && cred?.can_edit === false)}
+            />
+            <div style={{ fontSize: "11px", color: "var(--text-tertiary)", margin: "4px 0 14px", lineHeight: 1.5 }}>
+              {i18n.t("settings.adv.hint")}
+            </div>
 
             {/* Test Connection lives inside the model card so it's right
                 next to the credentials the user just filled in, not
