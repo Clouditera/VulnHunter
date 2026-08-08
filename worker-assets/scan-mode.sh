@@ -184,7 +184,7 @@ echo "[scan] Starting scan for task: $TASK_ID" >&2
 
 # Preflight: verify critical dependencies
 if ! command -v python3 &>/dev/null; then
-  echo "[scan] FATAL: python3 not found — required for models.json generation" >&2
+  echo "[scan] FATAL: python3 not found — required for worker runtime" >&2
   exit 1
 fi
 for required in "$FLOW_FILE" "$TIMEOUT_FLOW_FILE" "$DEADLINE_RUNNER" "$FINALIZE_ARTIFACTS"; do

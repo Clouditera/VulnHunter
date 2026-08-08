@@ -24,25 +24,28 @@ describe("prepare-worker helpers", () => {
     expect(isDynamicEnabled({ source_meta: null } as any)).toBe(false);
   });
 
-  it("resolvePrepareModel writes the real credential directly (model-proxy removed)", async () => {
-    getCredentialByIdMock.mockResolvedValue({ id: "c1", proto_type: "openai-completions", model_id: "glm-4-plus", api_key: "sk-REAL", base_url: "https://api.example.com/v1/" });
-    const { modelsJson, modelString } = await resolvePrepareModel({ credential_id: "c1" } as any);
+  it("resolvePrepareModel uses unified buildModelsJson ($ENV_VAR key, no plaintext)", async () => {
+    getCredentialByIdMock.mockResolvedValue({ id: "c1", proto_type: "openai-completions", model_id: "glm-4-plus", api_key: "sk-REAL", base_url: "https://api.example.com/v1/", thinking_effort: "off", context_window_tokens: 128000, advanced_config: null });
+    const { modelsJson, modelString, apiKeyEnv } = await resolvePrepareModel({ credential_id: "c1" } as any);
     const parsed = JSON.parse(modelsJson);
     const provider = parsed.providers.platform;
-    expect(provider.baseUrl).toBe("https://api.example.com/v1"); // as-is, trailing slash trimmed
-    expect(provider.apiKey).toBe("sk-REAL"); // real key, not task-id proxy
-    // fish 2026-08-05: completions endpoints default supportsDeveloperRole=false
-    expect(provider.models).toEqual([{ id: "glm-4-plus", compat: { supportsDeveloperRole: false } }]);
+    // Key is $ENV_VAR template (no plaintext)
+    expect(provider.apiKey).toBe("$VULNHUNTER_LLM_API_KEY");
+    expect(JSON.stringify(parsed)).not.toContain("sk-REAL");
+    // API key rides the env channel
+    expect(apiKeyEnv.VULNHUNTER_LLM_API_KEY).toBe("sk-REAL");
+    // openai-completions gets supportsDeveloperRole=false
+    expect(provider.models[0].compat?.supportsDeveloperRole).toBe(false);
     expect(provider.api).toBe("openai-completions");
     expect(modelString).toBe("platform/glm-4-plus");
   });
 
   it("resolvePrepareModel maps anthropic proto to anthropic-messages api", async () => {
-    getDefaultCredentialMock.mockResolvedValue({ id: "c2", proto_type: "anthropic", model_id: "claude-4", api_key: "sk-REAL", base_url: "https://api.anthropic.com" });
+    getDefaultCredentialMock.mockResolvedValue({ id: "c2", proto_type: "anthropic", model_id: "claude-4", api_key: "sk-REAL", base_url: "https://api.anthropic.com", thinking_effort: "off", context_window_tokens: 128000, advanced_config: null });
     const { modelsJson, modelString } = await resolvePrepareModel({ credential_id: null } as any);
     const parsed = JSON.parse(modelsJson).providers.platform;
     expect(parsed.api).toBe("anthropic-messages");
-    expect(parsed.models[0]).toEqual({ id: "claude-4" }); // no compat for anthropic
+    expect(parsed.models[0].id).toBe("claude-4");
     expect(modelString).toBe("platform/claude-4");
     expect(getDefaultCredentialMock).toHaveBeenCalled();
   });

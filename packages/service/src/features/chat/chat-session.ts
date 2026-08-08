@@ -547,7 +547,9 @@ export class ChatSession {
   }
 
   /** Forward set-model to a running worker. Before the first prompt there is
-   *  no runtime to update; the route persists the selection for start(). */
+   *  no runtime to update; the route persists the selection for start().
+   *  Batch 3 (fish 2026-08-08): switch uses pi reload RPC — service writes
+   *  new models.json to the bridge, bridge rewrites piDir + sends reload. */
   async setModel(credentialId: string): Promise<void> {
     if (!shouldForwardModelSwitch(this.state)) return;
     if (this.state === "starting") {
@@ -555,14 +557,41 @@ export class ChatSession {
     }
     if (!this.bridgeUrl) throw new Error("Bridge not available");
 
+    // Fetch the full credential
+    const cred = await getCredentialById(credentialId);
+    if (!cred) throw new Error("Credential not found");
+
+    // Build models.json with the bridge's env naming convention (VH_KEY_<id>)
+    // so the $ENV_VAR template matches what was injected at startup.
+    // Architect 2026-08-08: pi's child env is frozen at spawn — we can't
+    // inject new env vars at runtime; we must reference one already set.
+    const apiKeyEnvName = `VH_KEY_${credentialId.replace(/-/g, "_").slice(0, 12).toUpperCase()}`;
+    const { buildModelsJson } = await import("../settings/credential-models.js");
+    const result = await buildModelsJson({
+      proto_type: cred.proto_type,
+      base_url: cred.base_url,
+      model_id: cred.model_id,
+      thinking_effort: cred.thinking_effort,
+      context_window_tokens: cred.context_window_tokens,
+      api_key: cred.api_key,
+      advanced_config: (cred as any).advanced_config ?? null,
+    }, { apiKeyEnvName });
+
     const res = await fetch(`${this.bridgeUrl}/chat/set-model`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ credentialId }),
-      signal: AbortSignal.timeout(10000),
+      body: JSON.stringify({
+        credentialId,
+        modelsJson: result.modelsJson,
+        apiKeyEnvName, // bridge validates this was injected at startup
+        apiKeyPresent: !!cred.api_key,
+        providerKey: result.providerKey,
+        modelId: result.modelRef,
+      }),
+      signal: AbortSignal.timeout(15_000),
     });
-    const result = (await res.json()) as { ok: boolean; error?: string };
-    if (!result.ok) throw new Error(result.error ?? "Bridge rejected set-model");
+    const resp = (await res.json()) as { ok: boolean; error?: string };
+    if (!resp.ok) throw new Error(resp.error ?? "Bridge rejected set-model");
   }
 
   private async stopContainer(): Promise<void> {
