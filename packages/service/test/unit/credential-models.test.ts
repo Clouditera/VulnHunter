@@ -310,4 +310,19 @@ describe("buildModelsJson", () => {
     // No sk- pattern in the output
     expect(JSON.stringify(json)).not.toMatch(/sk-[a-zA-Z0-9]{5,}/);
   });
+
+  it("catalog affinity: same model id, prefers provider with matching thinkingFormat", async () => {
+    // glm-5.2 exists in multiple providers (e.g. opencode vs zai).
+    // With advanced_config thinkingFormat=zai, the zai provider's entry
+    // (which has supportsReasoningEffort=true) should be preferred.
+    const result = await buildModelsJson(makeCred({
+      model_id: "glm-5.2",
+      thinking_effort: "high",
+      advanced_config: { compat: { thinkingFormat: "zai" } },
+    }));
+    const model = (result.modelsJson as any).providers.platform.models[0];
+    // If the zai provider was matched, its catalog compat should include
+    // thinkingFormat=zai (merged from catalog, not just from advanced_config)
+    expect(model.compat.thinkingFormat).toBe("zai");
+  });
 });

@@ -120,6 +120,7 @@ async function loadCatalog(): Promise<typeof _catalogCache> {
 async function lookupCatalogModel(
   baseUrl: string,
   modelId: string,
+  opts?: { thinkingFormat?: string },
 ): Promise<CatalogModel | null> {
   const catalog = await loadCatalog();
   if (!catalog || catalog.length === 0) return null;
@@ -133,13 +134,26 @@ async function lookupCatalogModel(
     if (match) return match;
   }
 
-  // Fallback: match by model id across all providers
+  // Fallback: match by model id across all providers.
+  // Affinity (fish/architect 2026-08-08): if advanced_config has a
+  // thinkingFormat, prefer candidates whose compat.thinkingFormat matches.
+  const thinkingFormat = opts?.thinkingFormat?.toLowerCase();
+  const candidates: CatalogModel[] = [];
   for (const provider of catalog) {
     const match = provider.models.find((m) => m.id.toLowerCase() === modelId.toLowerCase());
-    if (match) return match;
+    if (match) candidates.push(match);
   }
-
-  return null;
+  if (candidates.length === 0) return null;
+  if (thinkingFormat) {
+    const affinity = candidates.find(
+      (m) => {
+        const tf = (m.compat as Record<string, unknown> | undefined)?.thinkingFormat;
+        return typeof tf === "string" && tf.toLowerCase() === thinkingFormat;
+      },
+    );
+    if (affinity) return affinity;
+  }
+  return candidates[0];
 }
 
 // ── Advanced config validation ────────────────────────────────────────
@@ -294,7 +308,9 @@ export async function buildModelsJson(
   const baseUrl = (cred.base_url ?? "").replace(/\/+$/, "");
 
   // Lookup pi catalog for real field values
-  const catalogModel = await lookupCatalogModel(baseUrl, cred.model_id);
+  const catalogModel = await lookupCatalogModel(baseUrl, cred.model_id, {
+    thinkingFormat: cred.advanced_config?.compat?.thinkingFormat,
+  });
 
   // ── Model entry assembly (merge priority: catalog ← scalar ← advanced) ──
   const modelEntry: Record<string, unknown> = {
