@@ -62,7 +62,7 @@ const PI_AGENT_DIR = ".pi-agent";
  * Pre-generate models.json and V_DEFAULT_MODEL for a worker.
  * Writes to `hostWorkDir/.pi-agent/`:
  *   - models.json     (pi-native config, $ENV_VAR key template)
- *   - model-env.json  ({ vDefaultModel: string, thinkingLevel: string })
+ *   - model-env.json  ({ vDefaultModel: string })
  *
  * The scan-mode.sh / report-mode.sh entrypoint copies models.json from
  * /workspace/.pi-agent/ to $FLOW_DIR/ and writes .env from model-env.json.
@@ -94,12 +94,11 @@ export async function writeWorkerModelsJson(
 
   // Write model-env.json for the shell script to consume
   const vDefaultModel = buildDefaultModelString(credLike);
-  const thinkingLevel = credLike.thinking_effort ?? "off";
   await writeFile(
     join(agentDir, "model-env.json"),
-    JSON.stringify({ vDefaultModel, thinkingLevel }, null, 2) + "\n",
+    JSON.stringify({ vDefaultModel }, null, 2) + "\n",
     "utf-8",
   );
 
-  logger.debug({ vDefaultModel, thinkingLevel }, "Pre-generated worker models.json + model-env");
+  logger.debug({ vDefaultModel }, "Pre-generated worker models.json + model-env");
 }

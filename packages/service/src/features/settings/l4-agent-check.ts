@@ -77,7 +77,7 @@ const CANARY_FILENAME = "diagnostic-canary.txt";
 const CANARY_CONTENT = "VHN-DIAG-CANARY-9F3A";
 const DIAGNOSTIC_PROMPT = `First, use the read tool to read ${CANARY_FILENAME}. Then answer: is 29 a prime number? Reply with the file content followed by yes or no.`;
 
-/** Built-in thinking levels that pi accepts via --thinking flag. */
+/** Built-in thinking levels that pi accepts via model suffix `:level`. */
 const BUILTIN_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 /** Read-only tools for diagnostic (fish 2026-08-08: no bash/edit/write —
@@ -125,28 +125,28 @@ export async function runCredentialCliCheck(
     // Pre-place canary file in workDir (read tool reads from cwd)
     await writeFile(join(workDir, CANARY_FILENAME), CANARY_CONTENT + "\n", "utf-8");
 
-    // Build args: pi CLI with read-only tools + thinking level
+    // Build args: pi CLI with read-only tools
+    // fish 2026-08-08: thinking level via model suffix (VulnForge same pattern:
+    // --model "<id>:<level>" — pi model-resolver parses the suffix).
+    const effort = cred.thinking_effort?.toLowerCase() ?? "";
+    const isBuiltinLevel = BUILTIN_THINKING_LEVELS.includes(effort);
+    if (effort && !isBuiltinLevel) {
+      logger.warn({ effort }, "Non-builtin thinking level — model suffix omitted");
+    }
+    const modelArg = (isBuiltinLevel && effort !== "off")
+      ? `${cred.model_id}:${effort}`
+      : cred.model_id;
+
     const args = [
       "-p",
       "--mode", "json",
       "--no-session",
       "--provider", "platform",
-      "--model", cred.model_id,
+      "--model", modelArg,
       // fish 2026-08-08: read-only tool surface — no bash/edit/write.
       "--tools", DIAGNOSTIC_TOOLS,
+      DIAGNOSTIC_PROMPT,
     ];
-
-    // fish 2026-08-08: pass the user's configured thinking level so the
-    // test exercises the real mapped value (not pi's default medium).
-    const effort = cred.thinking_effort?.toLowerCase() ?? "";
-    if (BUILTIN_THINKING_LEVELS.includes(effort) && effort !== "off") {
-      args.push("--thinking", effort);
-    } else if (effort && !BUILTIN_THINKING_LEVELS.includes(effort)) {
-      // Non-builtin level (historical dirty data) — skip the flag + warn
-      logger.warn({ effort }, "Non-builtin thinking level — skipping --thinking flag");
-    }
-
-    args.push(DIAGNOSTIC_PROMPT);
 
     const events: unknown[] = [];
     let stderr = "";

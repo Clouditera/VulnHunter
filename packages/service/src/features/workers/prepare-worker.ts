@@ -95,7 +95,7 @@ export interface SpawnPrepareWorkerOptions {
  * Key is written as $VULNHUNTER_LLM_API_KEY template (no plaintext) and
  * injected via the container env.
  */
-export async function resolvePrepareModel(task: DbTask): Promise<{ modelsJson: string; modelString: string; apiKeyEnv: Record<string, string>; thinkingEffort: string }> {
+export async function resolvePrepareModel(task: DbTask): Promise<{ modelsJson: string; modelString: string; apiKeyEnv: Record<string, string> }> {
   const cred = task.credential_id ? await getCredentialById(task.credential_id) : await getDefaultCredential();
   if (!cred || !cred.model_id) throw new AppError("ERR_MODEL_CREDENTIAL_UNAVAILABLE", { message: "Prepare 需要可用模型凭证，请在任务或 Settings 中配置模型" });
   const { buildModelsJson } = await import("../settings/credential-models.js");
@@ -115,7 +115,6 @@ export async function resolvePrepareModel(task: DbTask): Promise<{ modelsJson: s
     modelsJson: JSON.stringify(result.modelsJson, null, 2) + "\n",
     modelString,
     apiKeyEnv: result.childEnv,
-    thinkingEffort: cred.thinking_effort ?? "off",
   };
 }
 
@@ -137,7 +136,7 @@ export async function createPrepareWorker(opts: SpawnPrepareWorkerOptions): Prom
 
   // Direct credential: models.json now carries the $ENV_VAR key template
   // (fish 2026-08-08 batch 4: unified module — no plaintext on disk).
-  const { modelsJson, modelString, apiKeyEnv, thinkingEffort } = await resolvePrepareModel(task);
+  const { modelsJson, modelString, apiKeyEnv } = await resolvePrepareModel(task);
   const modelsJsonHostPath = join(sandboxTypesDir, "models.json");
   await writeFile(modelsJsonHostPath, modelsJson, { mode: 0o644 });
 
@@ -174,8 +173,6 @@ export async function createPrepareWorker(opts: SpawnPrepareWorkerOptions): Prom
       PREPARE_DYNAMIC_ENABLED: isDynamicEnabled(task) ? "true" : "false",
       PREPARE_SANDBOX_TYPES_FILE: CONTAINER_SANDBOX_TYPES_FILE,
       V_PREPARE_MODEL: modelString,
-      // fish 2026-08-08: thinking level for youngflow --thinking passthrough
-      V_THINKING_LEVEL: thinkingEffort,
       // Credential rides the env channel (pi resolves $VULNHUNTER_LLM_API_KEY
       // from the models.json template).
       ...apiKeyEnv,

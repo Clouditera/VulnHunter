@@ -222,13 +222,12 @@ fi
 # Copy models.json into the flow directory (youngflow reads it from here)
 cp "$PI_AGENT_SRC/models.json" "$FLOW_DIR/models.json"
 
-# Extract V_DEFAULT_MODEL + V_THINKING_LEVEL from model-env.json (written by service)
+# Extract V_DEFAULT_MODEL from model-env.json (written by service)
 V_DEFAULT_MODEL="$(python3 -c "import json; print(json.load(open('$PI_AGENT_SRC/model-env.json'))['vDefaultModel'])" 2>/dev/null || echo '')"
 if [ -z "$V_DEFAULT_MODEL" ]; then
   echo "[scan] FATAL: failed to read vDefaultModel from model-env.json" >&2
   exit 1
 fi
-V_THINKING_LEVEL="$(python3 -c "import json; d=json.load(open('$PI_AGENT_SRC/model-env.json')); print(d.get('thinkingLevel','off'))" 2>/dev/null || echo 'off')"
 
 # Write .env for youngflow: model selection + engine tuning. API key lives in
 # the container env (VULNHUNTER_LLM_API_KEY), expanded by pi via the
@@ -236,7 +235,6 @@ V_THINKING_LEVEL="$(python3 -c "import json; d=json.load(open('$PI_AGENT_SRC/mod
 cat > "$FLOW_DIR/.env" << EOF
 V_DEFAULT_MODEL=${V_DEFAULT_MODEL}
 V_STRONG_MODEL=${V_DEFAULT_MODEL}
-V_THINKING_LEVEL=${V_THINKING_LEVEL}
 YOUNGFLOW_IDLE_TIMEOUT=${YOUNGFLOW_IDLE_TIMEOUT:-3600}
 YOUNGFLOW_ERROR_RETRIES=${YOUNGFLOW_ERROR_RETRIES:-5}
 EOF
