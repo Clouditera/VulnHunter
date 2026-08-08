@@ -15,7 +15,6 @@ import { logger } from "../../infra/logger.js";
 import { CredentialDecryptError, CredentialKeyUnavailableError } from "../../infra/crypto/master-key-vault.js";
 import { runPiDiagnostics, type DiagnosticCheck, type DiagnosticEvent } from "./pi-diagnostics.js";
 import { updateDeepVerifiedStatus } from "./storage.js";
-import { runL4Check } from "./l4-agent-check.js";
 import { createHash } from "node:crypto";
 import { coreFieldsChanged, effectiveApiKey } from "./credential-core-fields.js";
 import { lookupModelMeta } from "./pi-model-catalog.js";
@@ -81,53 +80,18 @@ function freshTestPass(cred: Parameters<typeof credentialFingerprint>[0]): boole
 }
 
 /** Run L1-L3 (+ L4 when L1-L3 pass) and emit every event; returns merged result. */
+/**
+ * Four-in-one diagnostics (fish/architect 2026-08-08): a single pi CLI run
+ * produces all four layer assertions (L1-L4) from the same event stream.
+ * No separate L4 call — runPiDiagnostics returns all four checks.
+ */
 async function runFullDiagnostics(
   cred: Parameters<typeof credentialFingerprint>[0] & { context_window_tokens?: number },
   emit: (event: DiagnosticEvent) => void,
 ): Promise<{ ok: boolean; checks: DiagnosticCheck[] }> {
-  // B3 (QA-caught): runPiDiagnostics emits its own 3-layer report BEFORE L4 —
-  // the client would treat it as terminal. Suppress it; the single terminal
-  // report (all four layers) is emitted here at the end.
-  const diag = await runPiDiagnostics(cred as any, (e) => {
-    if (e.type !== "report") emit(e);
-  });
-  if (!diag.ok) {
-    recordTestPass(cred, false);
-    emit({ type: "report", checks: diag.checks, ok: false });
-    return diag;
-  }
-  // L4 — agent circuit with a real bash tool call (fish 2026-08-05)
-  const l4Check: DiagnosticCheck = {
-    id: "l4_agent",
-    label: "l4_agent",
-    layer: "L4",
-    status: "pass",
-    message: "testing",
-  };
-  emit({ type: "check_started", check: l4Check });
-  const t0 = Date.now();
-  const l4 = await runL4Check({
-    baseUrl: cred.base_url,
-    apiKey: cred.api_key,
-    modelId: cred.model_id,
-    protoType: cred.proto_type,
-    thinkingEffort: cred.thinking_effort,
-  });
-  const l4Done: DiagnosticCheck = {
-    id: "l4_agent",
-    label: "l4_agent",
-    layer: "L4",
-    status: l4.status === "pass" ? "pass" : "fail",
-    message: l4.status === "pass" ? "agent_circuit_ok" : `agent_circuit_failed: ${l4.detail.slice(0, 200)}`,
-    durationMs: Date.now() - t0,
-    detail: l4.detail,
-  };
-  emit({ type: l4.status === "pass" ? "check_passed" : "check_failed", check: l4Done });
-  const checks = [...diag.checks, l4Done];
-  const ok = l4.status === "pass";
-  recordTestPass(cred, ok);
-  emit({ type: "report", checks, ok });
-  return { ok, checks };
+  const diag = await runPiDiagnostics(cred as any, emit);
+  recordTestPass(cred, diag.ok);
+  return diag;
 }
 
 export const settingsRouter = new Hono();
@@ -220,6 +184,7 @@ settingsRouter.put("/credential", async (c) => {
     is_default?: boolean;
     context_window_tokens?: number;
     owner_id?: string | null;
+    advanced_config?: unknown;
   }>();
 
   if (!body.provider || !body.proto_type || !body.model_id || !body.base_url) {
@@ -253,6 +218,19 @@ settingsRouter.put("/credential", async (c) => {
     coreChanged = coreFieldsChanged(existing, body);
   }
 
+  // Validate advanced_config if present (fish 2026-08-08: unified credential module)
+  let validatedAdvancedConfig: unknown = undefined;
+  if (body.advanced_config !== undefined) {
+    try {
+      const { validateAdvancedConfig } = await import("./credential-models.js");
+      validatedAdvancedConfig = validateAdvancedConfig(body.advanced_config);
+    } catch (err: any) {
+      throw new AppError("ERR_VALIDATION", { details: { field: "advanced_config", reason: err?.message } });
+    }
+    // advanced_config change = core field change (must re-test)
+    coreChanged = true;
+  }
+
   // ── Save gate: all four layers must pass before persisting (fish
   // 2026-08-05: L4 joined the stream as the 4th layer and save requires
   // all-pass). A fresh server-side test verdict (same payload fingerprint,
@@ -268,6 +246,7 @@ settingsRouter.put("/credential", async (c) => {
       thinking_effort: body.thinking_effort,
       api_key: effectiveKey,
       context_window_tokens: contextWindowTokens,
+      advanced_config: validatedAdvancedConfig,
       is_default: false,
       created_at: new Date(),
       updated_at: new Date(),
@@ -304,6 +283,7 @@ settingsRouter.put("/credential", async (c) => {
       isDefault: body.is_default,
       contextWindowTokens,
       ownerId: ctx.role === "admin" ? (body.owner_id ?? null) : undefined,
+      advancedConfig: validatedAdvancedConfig,
       ctx,
     });
   } catch (err) {
