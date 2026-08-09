@@ -66,6 +66,8 @@ export interface TaskSummary {
   severity_counts: Record<Severity, number>;
   duration_ms?: number;
   total_duration_ms?: number;
+  /** Completed run segments; 0/absent = unknown (hide UI segment count). */
+  run_count?: number;
   created_at: string;
   started_at?: string;
   completed_at?: string;

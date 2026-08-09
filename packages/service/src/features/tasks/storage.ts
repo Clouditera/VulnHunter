@@ -32,6 +32,8 @@ export interface DbTask {
   completed_at: Date | null;
   duration_ms: number | null;
   total_duration_ms: number;
+  /** Completed run segments (first + continues). 0 = unknown/legacy. */
+  run_count: number;
   findings_indexed_at: Date | null;
   metadata: TaskMetadata;
   credential_id: string | null;
@@ -267,6 +269,7 @@ export async function updateTaskState(
           completed_at = ${extra.completedAt},
           duration_ms = ${extra.durationMs ?? null},
           total_duration_ms = COALESCE(total_duration_ms, 0) + COALESCE(${extra.durationMs ?? 0}, 0),
+          run_count = COALESCE(run_count, 0) + 1,
           failure_reason = ${extra.failureReason ?? null},
           completion_reason = ${extra.completionReason ?? "natural"}
       WHERE id = ${id}
@@ -320,6 +323,7 @@ export async function resetTaskForRestart(id: string): Promise<void> {
         completed_at = NULL,
         duration_ms = NULL,
         total_duration_ms = 0,
+        run_count = 0,
         failure_reason = NULL,
         findings_indexed_at = NULL,
         metadata = '{}'
