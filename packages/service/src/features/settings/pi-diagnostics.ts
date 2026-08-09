@@ -44,6 +44,8 @@ export interface DiagnosticEvent {
   /** Only for type="report" — full result array */
   checks?: DiagnosticCheck[];
   ok?: boolean;
+  /** Only for type="report" — human summary for the panel */
+  summary?: string;
 }
 
 export type DiagnosticEmitter = (event: DiagnosticEvent) => void;
@@ -64,81 +66,112 @@ export function formatRawError(error: string, httpStatus?: number, apiKey?: stri
   return msg.length > RAW_ERROR_MAX ? `${msg.slice(0, RAW_ERROR_MAX)}…` : msg;
 }
 
-// ── Event stream analysis ────────────────────────────────────────────
+// ── Progressive stream tracker ───────────────────────────────────────
+// fish/architect 2026-08-09: emit layer passes as positive evidence arrives
+// mid-stream (text → L1, thinking → L2, read tool → L3, settled → L4),
+// restoring progressive UI after the one-run-four-judgments merge.
 
-interface StreamAnalysis {
-  /** L1: assistant message has non-empty text content */
-  hasTextContent: boolean;
-  /** L2: thinking/reasoning content blocks present */
-  hasThinking: boolean;
-  /** L3: read toolCall in message_end + read toolResult in turn_end */
-  toolCallObserved: boolean;
-  /** L4: agent_settled event reached */
-  agentSettled: boolean;
-  /** Error in any assistant message stopReason */
+interface ProgressiveState {
+  l1: boolean;
+  l2: boolean;
+  l3Call: boolean;
+  l3Result: boolean;
+  l4: boolean;
   hasError: boolean;
-  /** Error message from upstream */
   errorMessage: string | null;
-  /** Count of assistant messages */
   assistantMessageCount: number;
+  /** Layer ids already emitted as pass (avoid double-emit). */
+  emitted: Set<DiagnosticCheckId>;
 }
 
-function analyzeEvents(events: unknown[]): StreamAnalysis {
-  const assistantMessages = events.filter(
-    (e) =>
-      (e as { type?: string }).type === "message_end" &&
-      (e as { message?: { role?: string } }).message?.role === "assistant",
-  );
+function contentBlocks(ev: unknown): Array<{ type?: string; name?: string }> {
+  const content = (ev as { message?: { content?: Array<{ type?: string; name?: string }> } })
+    .message?.content;
+  return Array.isArray(content) ? content : [];
+}
 
-  const hasError = assistantMessages.some(
-    (e) => (e as { message?: { stopReason?: string } }).message?.stopReason === "error",
-  );
+function hasBlock(ev: unknown, type: string): boolean {
+  return contentBlocks(ev).some((b) => b.type === type);
+}
 
-  const errMsgEvent = assistantMessages.find(
-    (e) => (e as { message?: { errorMessage?: string } }).message?.errorMessage,
-  );
-  const errorMessage =
-    (errMsgEvent as { message?: { errorMessage?: string } })?.message?.errorMessage ?? null;
+/**
+ * Feed one pi JSONL event into progressive state and emit check_passed
+ * the first time each layer's positive evidence appears.
+ */
+function feedProgressiveEvent(
+  state: ProgressiveState,
+  ev: unknown,
+  emit: DiagnosticEmitter,
+  opts: { isReasoning: boolean; t0: number },
+): void {
+  const type = (ev as { type?: string }).type;
+  const elapsed = () => Date.now() - opts.t0;
 
-  // L1: assistant message contains non-empty text content block
-  const hasTextContent = assistantMessages.some((e) => {
-    const content = (e as { message?: { content?: Array<{ type?: string }> } }).message?.content;
-    return Array.isArray(content) && content.some((b) => b.type === "text");
-  });
-
-  // L2: thinking content blocks present
-  const hasThinking = assistantMessages.some((e) => {
-    const content = (e as { message?: { content?: Array<{ type?: string }> } }).message?.content;
-    return Array.isArray(content) && content.some((b) => b.type === "thinking");
-  });
-
-  // L3: read tool call observed (fish 2026-08-08: bash → read for safety)
-  const readToolCalls = events.filter((e) => {
-    const ev = e as { type?: string; message?: { content?: Array<{ type?: string; name?: string }> } };
-    return ev.type === "message_end" && Array.isArray(ev.message?.content)
-      && ev.message!.content!.some((b) => b.type === "toolCall" && b.name === "read");
-  });
-  const readToolResults = events.filter((e) => {
-    const ev = e as { type?: string; toolResults?: Array<{ toolName?: string; content?: unknown[] }> };
-    return ev.type === "turn_end" && Array.isArray(ev.toolResults)
-      && ev.toolResults!.some((r) => r.toolName === "read" && Array.isArray(r.content) && r.content.length > 0);
-  });
-  const toolCallObserved = readToolCalls.length > 0 && readToolResults.length > 0;
-
-  // L4: agent settled
-  const agentSettled = events.some(
-    (e) => (e as { type?: string }).type === "agent_settled",
-  );
-
-  return {
-    hasTextContent,
-    hasThinking,
-    toolCallObserved,
-    agentSettled,
-    hasError,
-    errorMessage,
-    assistantMessageCount: assistantMessages.length,
+  const passOnce = (id: DiagnosticCheckId, layer: DiagnosticLayer, message: string) => {
+    if (state.emitted.has(id)) return;
+    state.emitted.add(id);
+    const check: DiagnosticCheck = {
+      id, label: id, layer, status: "pass", message, durationMs: elapsed(),
+    };
+    emit({ type: "check_passed", check });
   };
+
+  // Streaming deltas (pi-ai stream events inside message)
+  if (type === "message_update" || type === "message_delta") {
+    const assistantEvent = (ev as { assistantMessageEvent?: { type?: string } }).assistantMessageEvent
+      ?? (ev as { event?: { type?: string } }).event;
+    const deltaType = assistantEvent?.type;
+    if (deltaType === "text_delta" || deltaType === "text_start" || deltaType === "text_end") {
+      state.l1 = true;
+      passOnce("basic", "L1", "text_response_ok");
+    }
+    if (deltaType === "thinking_delta" || deltaType === "thinking_start" || deltaType === "thinking_end") {
+      state.l2 = true;
+      if (opts.isReasoning) passOnce("thinking", "L2", "thinking_confirmed");
+    }
+  }
+
+  if (type === "message_end") {
+    const role = (ev as { message?: { role?: string } }).message?.role;
+    if (role === "assistant") {
+      state.assistantMessageCount++;
+      const stopReason = (ev as { message?: { stopReason?: string } }).message?.stopReason;
+      if (stopReason === "error") {
+        state.hasError = true;
+        const errMsg = (ev as { message?: { errorMessage?: string } }).message?.errorMessage;
+        if (errMsg) state.errorMessage = errMsg;
+      }
+      if (hasBlock(ev, "text")) {
+        state.l1 = true;
+        passOnce("basic", "L1", "text_response_ok");
+      }
+      if (hasBlock(ev, "thinking")) {
+        state.l2 = true;
+        if (opts.isReasoning) passOnce("thinking", "L2", "thinking_confirmed");
+      }
+      if (contentBlocks(ev).some((b) => b.type === "toolCall" && b.name === "read")) {
+        state.l3Call = true;
+      }
+    }
+  }
+
+  if (type === "turn_end") {
+    const results = (ev as { toolResults?: Array<{ toolName?: string; content?: unknown[]; isError?: boolean }> }).toolResults;
+    if (Array.isArray(results)) {
+      const okRead = results.some(
+        (r) => r.toolName === "read" && Array.isArray(r.content) && r.content.length > 0 && !r.isError,
+      );
+      if (okRead) {
+        state.l3Result = true;
+        if (state.l3Call) passOnce("tool", "L3", "tool_call_observed");
+      }
+    }
+  }
+
+  if (type === "agent_settled") {
+    state.l4 = true;
+    // L4 pass deferred to finalization (need !hasError confirmed at end)
+  }
 }
 
 // ── Main entry ───────────────────────────────────────────────────────
@@ -146,16 +179,15 @@ function analyzeEvents(events: unknown[]): StreamAnalysis {
 export interface PiDiagnosticResult {
   ok: boolean;
   checks: DiagnosticCheck[];
+  summary?: string;
 }
 
 /**
  * Run four-layer credential diagnostics using a single pi CLI run.
  *
- * The CLI produces one JSONL event stream. All four layer assertions
- * (L1-L4) are derived from that same stream — "一跑四判" (one run, four
- * judgments).
- *
- * Each layer emits SSE events as it is evaluated; returns final result.
+ * Progressive emit (fish 2026-08-09): positive evidence for each layer is
+ * emitted as soon as it appears in the live event stream, so the UI lights
+ * up L1→L2→L3→L4 one by one. Failures are finalized at process end/timeout.
  */
 export async function runPiDiagnostics(
   cred: DecryptedLlmCredential,
@@ -166,119 +198,204 @@ export async function runPiDiagnostics(
     cred.thinking_effort !== "off" &&
     cred.thinking_effort !== "none";
 
-  // ── Run the CLI once ──
-  const cliResult: CredentialCliResult = await runCredentialCliCheck({
-    proto_type: cred.proto_type,
-    base_url: cred.base_url,
-    model_id: cred.model_id,
-    thinking_effort: cred.thinking_effort,
-    context_window_tokens: cred.context_window_tokens,
-    api_key: cred.api_key,
-    advanced_config: (cred as any).advanced_config ?? null,
-  });
+  const t0 = Date.now();
+  const state: ProgressiveState = {
+    l1: false,
+    l2: false,
+    l3Call: false,
+    l3Result: false,
+    l4: false,
+    hasError: false,
+    errorMessage: null,
+    assistantMessageCount: 0,
+    emitted: new Set(),
+  };
 
-  const analysis = analyzeEvents(cliResult.events);
-  const checks: DiagnosticCheck[] = [];
+  // Emit check_started for all applicable layers up front (progressive UI)
+  const startCheck = (id: DiagnosticCheckId, layer: DiagnosticLayer) => {
+    emit({
+      type: "check_started",
+      check: { id, label: id, layer, status: "pass", message: "testing" },
+    });
+  };
+  startCheck("basic", "L1");
+  if (isReasoning) startCheck("thinking", "L2");
+  else {
+    // Non-reasoning: L2 is N/A immediately
+    const na: DiagnosticCheck = {
+      id: "thinking", label: "thinking", layer: "L2", status: "na", message: "not_reasoning",
+    };
+    emit({ type: "check_passed", check: na });
+    state.emitted.add("thinking");
+  }
+  startCheck("tool", "L3");
+  startCheck("l4_agent", "L4");
+
+  // ── Run the CLI once, progressive onEvent ──
+  const cliResult: CredentialCliResult = await runCredentialCliCheck(
+    {
+      proto_type: cred.proto_type,
+      base_url: cred.base_url,
+      model_id: cred.model_id,
+      thinking_effort: cred.thinking_effort,
+      context_window_tokens: cred.context_window_tokens,
+      api_key: cred.api_key,
+      advanced_config: (cred as any).advanced_config ?? null,
+    },
+    {
+      onEvent: (ev) => feedProgressiveEvent(state, ev, emit, { isReasoning, t0 }),
+    },
+  );
+
+  const elapsed = cliResult.durationMs;
 
   // ── Derive error message for failure cases ──
   let failDetail: string;
   if (cliResult.timedOut) {
     failDetail = formatRawError(`timeout after ${120}s`);
-  } else if (analysis.hasError && analysis.errorMessage) {
-    failDetail = formatRawError(analysis.errorMessage, undefined, cred.api_key);
+  } else if (state.hasError && state.errorMessage) {
+    failDetail = formatRawError(state.errorMessage, undefined, cred.api_key);
   } else if (cliResult.events.length === 0) {
     failDetail = cliResult.stderr.trim().slice(0, 300) || "pi CLI produced no output";
     failDetail = formatRawError(failDetail, undefined, cred.api_key);
   } else {
     failDetail = formatRawError(
-      analysis.agentSettled
+      state.l4
         ? "Agent completed but layer assertions failed"
         : "pi CLI did not reach agent_settled state",
       undefined, cred.api_key,
     );
   }
 
-  // ── L1: Basic text ──
-  {
-    const id: DiagnosticCheckId = "basic";
-    const passed = cliResult.events.length > 0 && analysis.hasTextContent && !cliResult.timedOut;
-    const check: DiagnosticCheck = {
-      id, label: "basic", layer: "L1",
-      status: passed ? "pass" : "fail",
-      message: passed ? "text_response_ok" : failDetail,
-      durationMs: cliResult.durationMs,
-      detail: passed ? undefined : failDetail,
-    };
-    emit({ type: "check_started", check: { ...check, status: "pass", message: "testing" } });
-    emit({ type: passed ? "check_passed" : "check_failed", check });
-    checks.push(check);
-  }
+  // ── Finalize layers not yet passed ──
+  const checks: DiagnosticCheck[] = [];
 
-  // L1 fail = immediate stop (no point evaluating other layers)
-  if (checks[0].status === "fail") {
-    emit({ type: "report", checks, ok: false });
-    return { ok: false, checks };
-  }
-
-  // ── L2: Thinking ──
-  {
-    const id: DiagnosticCheckId = "thinking";
-    if (!isReasoning) {
-      const check: DiagnosticCheck = {
-        id, label: "thinking", layer: "L2", status: "na", message: "not_reasoning",
+  const finalize = (
+    id: DiagnosticCheckId,
+    layer: DiagnosticLayer,
+    passed: boolean,
+    passMsg: string,
+    failMsg: string,
+    failDetailMsg?: string,
+  ): DiagnosticCheck => {
+    if (passed) {
+      // May already have been progressive-emitted
+      if (!state.emitted.has(id)) {
+        const check: DiagnosticCheck = {
+          id, label: id, layer, status: "pass", message: passMsg, durationMs: elapsed,
+        };
+        emit({ type: "check_passed", check });
+        state.emitted.add(id);
+        return check;
+      }
+      return {
+        id, label: id, layer, status: "pass", message: passMsg, durationMs: elapsed,
       };
-      emit({ type: "check_passed", check });
-      checks.push(check);
-    } else {
-      const passed = analysis.hasThinking;
-      const check: DiagnosticCheck = {
-        id, label: "thinking", layer: "L2",
-        status: passed ? "pass" : "fail",
-        message: passed ? "thinking_confirmed" : "thinking_not_observed",
-        durationMs: cliResult.durationMs,
-        detail: passed ? undefined : "Reasoning was enabled but no thinking content blocks were observed in the response",
-      };
-      emit({ type: "check_started", check: { ...check, status: "pass", message: "testing" } });
-      emit({ type: passed ? "check_passed" : "check_failed", check });
-      checks.push(check);
     }
+    const check: DiagnosticCheck = {
+      id, label: id, layer, status: "fail",
+      message: failMsg,
+      durationMs: elapsed,
+      detail: failDetailMsg,
+    };
+    emit({ type: "check_failed", check });
+    return check;
+  };
+
+  // L1
+  checks.push(finalize(
+    "basic", "L1",
+    state.l1 && !cliResult.timedOut,
+    "text_response_ok",
+    failDetail,
+    failDetail,
+  ));
+
+  // L1 hard-fail → stop (still report remaining as fail/na for UI completeness)
+  if (checks[0].status === "fail") {
+    if (isReasoning && !state.emitted.has("thinking")) {
+      checks.push({
+        id: "thinking", label: "thinking", layer: "L2", status: "fail",
+        message: "skipped_after_l1_fail", durationMs: elapsed,
+      });
+    } else if (!isReasoning) {
+      checks.push({
+        id: "thinking", label: "thinking", layer: "L2", status: "na", message: "not_reasoning",
+      });
+    } else {
+      checks.push({
+        id: "thinking", label: "thinking", layer: "L2", status: "pass",
+        message: "thinking_confirmed", durationMs: elapsed,
+      });
+    }
+    checks.push({
+      id: "tool", label: "tool", layer: "L3", status: "fail",
+      message: "skipped_after_l1_fail", durationMs: elapsed,
+    });
+    checks.push({
+      id: "l4_agent", label: "l4_agent", layer: "L4", status: "fail",
+      message: "skipped_after_l1_fail", durationMs: elapsed,
+    });
+    const summary = failDetail;
+    emit({ type: "report", checks, ok: false, summary });
+    return { ok: false, checks, summary };
   }
 
-  // ── L3: Tool calling ──
-  {
-    const id: DiagnosticCheckId = "tool";
-    const passed = analysis.toolCallObserved;
-    const check: DiagnosticCheck = {
-      id, label: "tool", layer: "L3",
-      status: passed ? "pass" : "fail",
-      message: passed ? "tool_call_observed" : "tool_call_not_observed",
-      durationMs: cliResult.durationMs,
-      detail: passed ? undefined : "No clean read tool call was observed in the event stream",
-    };
-    emit({ type: "check_started", check: { ...check, status: "pass", message: "testing" } });
-    emit({ type: passed ? "check_passed" : "check_failed", check });
-    checks.push(check);
+  // L2
+  if (!isReasoning) {
+    checks.push({
+      id: "thinking", label: "thinking", layer: "L2", status: "na", message: "not_reasoning",
+    });
+  } else {
+    checks.push(finalize(
+      "thinking", "L2",
+      state.l2,
+      "thinking_confirmed",
+      "thinking_not_observed",
+      "Reasoning was enabled but no thinking content blocks were observed in the response",
+    ));
   }
 
-  // ── L4: Agent circuit ──
-  {
-    const id: DiagnosticCheckId = "l4_agent";
-    const passed = analysis.agentSettled && !analysis.hasError;
+  // L3
+  checks.push(finalize(
+    "tool", "L3",
+    state.l3Call && state.l3Result,
+    "tool_call_observed",
+    "tool_call_not_observed",
+    "No clean read tool call was observed in the event stream",
+  ));
+
+  // L4
+  const l4Pass = state.l4 && !state.hasError;
+  if (l4Pass && !state.emitted.has("l4_agent")) {
     const check: DiagnosticCheck = {
-      id, label: "l4_agent", layer: "L4",
-      status: passed ? "pass" : "fail",
-      message: passed
-        ? `agent_circuit_ok (pi ${PI_VERSION}, ${analysis.assistantMessageCount} assistant message(s))`
-        : "agent_circuit_failed",
-      durationMs: cliResult.durationMs,
-      detail: passed ? undefined : failDetail,
+      id: "l4_agent", label: "l4_agent", layer: "L4", status: "pass",
+      message: `agent_circuit_ok (pi ${PI_VERSION}, ${state.assistantMessageCount} assistant message(s))`,
+      durationMs: elapsed,
     };
-    emit({ type: "check_started", check: { ...check, status: "pass", message: "testing" } });
-    emit({ type: passed ? "check_passed" : "check_failed", check });
+    emit({ type: "check_passed", check });
+    state.emitted.add("l4_agent");
     checks.push(check);
+  } else if (l4Pass) {
+    checks.push({
+      id: "l4_agent", label: "l4_agent", layer: "L4", status: "pass",
+      message: `agent_circuit_ok (pi ${PI_VERSION}, ${state.assistantMessageCount} assistant message(s))`,
+      durationMs: elapsed,
+    });
+  } else {
+    checks.push(finalize(
+      "l4_agent", "L4",
+      false,
+      "",
+      "agent_circuit_failed",
+      failDetail,
+    ));
   }
 
   const ok = checks.every((c) => c.status === "pass" || c.status === "na");
-  emit({ type: "report", checks, ok });
-  return { ok, checks };
+  const summary = ok
+    ? `四层诊断通过（${elapsed}ms）`
+    : (checks.find((c) => c.status === "fail")?.message ?? "诊断未通过");
+  emit({ type: "report", checks, ok, summary });
+  return { ok, checks, summary };
 }

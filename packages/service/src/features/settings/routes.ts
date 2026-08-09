@@ -372,6 +372,9 @@ settingsRouter.post("/credential/diagnose-stream", async (c) => {
     model_id?: string;
     api_key?: string;
     thinking_effort?: string;
+    context_window_tokens?: number;
+    /** Form advanced_config (fish 2026-08-09: test what you see — form wins over saved). */
+    advanced_config?: unknown;
   }>();
 
   let protoType = body.proto_type ?? "";
@@ -379,9 +382,13 @@ settingsRouter.post("/credential/diagnose-stream", async (c) => {
   let modelId = body.model_id ?? "";
   let apiKey = body.api_key ?? "";
   let thinkingEffort = body.thinking_effort;
+  let contextWindowTokens: number | undefined =
+    typeof body.context_window_tokens === "number" && Number.isFinite(body.context_window_tokens)
+      ? body.context_window_tokens
+      : undefined;
 
-  // Load saved credential if id provided
-  let advancedConfig: unknown = null;
+  // Load saved credential if id provided (form values already win via || / ?? below)
+  let savedAdvancedConfig: unknown = null;
   if (body.credential_id) {
     const ctx = queryContextFromUser(c.get("user"));
     const saved = await getCredentialById(ctx, body.credential_id);
@@ -391,7 +398,29 @@ settingsRouter.post("/credential/diagnose-stream", async (c) => {
     modelId = modelId || saved.model_id;
     apiKey = apiKey || saved.api_key;
     thinkingEffort = thinkingEffort ?? saved.thinking_effort;
-    advancedConfig = saved.advanced_config ?? null;
+    if (contextWindowTokens === undefined) {
+      contextWindowTokens = saved.context_window_tokens ?? undefined;
+    }
+    savedAdvancedConfig = saved.advanced_config ?? null;
+  }
+
+  // advanced_config: form value preferred over saved (fish 2026-08-09 所见即所得).
+  // body.advanced_config === undefined → fall back to saved;
+  // body.advanced_config === null → explicitly clear (no advanced config for this test).
+  let advancedConfig: unknown = savedAdvancedConfig;
+  if (body.advanced_config !== undefined) {
+    if (body.advanced_config === null) {
+      advancedConfig = null;
+    } else {
+      try {
+        const { validateAdvancedConfig } = await import("./credential-models.js");
+        advancedConfig = validateAdvancedConfig(body.advanced_config);
+      } catch (err: any) {
+        throw new AppError("ERR_VALIDATION", {
+          details: { field: "advanced_config", reason: err?.message },
+        });
+      }
+    }
   }
 
   const cred = {
@@ -402,7 +431,8 @@ settingsRouter.post("/credential/diagnose-stream", async (c) => {
     model_id: modelId,
     thinking_effort: thinkingEffort,
     api_key: apiKey,
-    context_window_tokens: 128000,
+    // Form → saved → hard default 128000 (fish 2026-08-09: no more hard-code-only)
+    context_window_tokens: contextWindowTokens ?? 128000,
     advanced_config: advancedConfig,
     is_default: false,
     created_at: new Date(),

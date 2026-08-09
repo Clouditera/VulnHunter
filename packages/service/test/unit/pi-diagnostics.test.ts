@@ -1,14 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 /**
- * Four-in-one CLI diagnostics tests.
+ * Four-in-one CLI diagnostics tests (progressive emit, fish 2026-08-09).
  *
- * Mocks `runCredentialCliCheck` (the pi CLI subprocess runner) to inject
- * controlled event streams. Each test verifies that the four-layer
- * assertion logic correctly derives L1-L4 results from the event stream.
+ * Mocks `runCredentialCliCheck` to inject controlled event streams and
+ * invoke the progressive onEvent callback so mid-stream layer passes fire.
  */
 
-// Mock the CLI runner — returns controlled events
 const mockRunCredentialCliCheck = vi.fn();
 vi.mock("../../src/features/settings/l4-agent-check.js", () => ({
   runCredentialCliCheck: (...args: unknown[]) => mockRunCredentialCliCheck(...args),
@@ -31,7 +29,6 @@ const FAKE_CRED = {
   updated_at: new Date(),
 } as any;
 
-/** Build a successful agent event stream (all four layers pass). */
 function successEvents(): unknown[] {
   return [
     { type: "message_start", message: { role: "assistant" } },
@@ -40,8 +37,8 @@ function successEvents(): unknown[] {
       message: {
         role: "assistant",
         content: [
-          { type: "thinking", text: "I need to run ls" },
-          { type: "toolCall", name: "read", arguments: { command: "ls" } },
+          { type: "thinking", text: "I need to read the canary" },
+          { type: "toolCall", name: "read", arguments: { path: "diagnostic-canary.txt" } },
           { type: "text", text: "ok" },
         ],
         stopReason: "stop",
@@ -50,14 +47,13 @@ function successEvents(): unknown[] {
     {
       type: "turn_end",
       toolResults: [
-        { toolName: "read", content: [{ type: "text", text: "file1\nfile2" }] },
+        { toolName: "read", content: [{ type: "text", text: "VHN-DIAG-CANARY-9F3A" }] },
       ],
     },
     { type: "agent_settled" },
   ];
 }
 
-/** Events with NO thinking blocks (non-reasoning model). */
 function nonReasoningEvents(): unknown[] {
   return [
     {
@@ -65,7 +61,7 @@ function nonReasoningEvents(): unknown[] {
       message: {
         role: "assistant",
         content: [
-          { type: "toolCall", name: "read", arguments: { command: "ls" } },
+          { type: "toolCall", name: "read", arguments: { path: "diagnostic-canary.txt" } },
           { type: "text", text: "ok" },
         ],
         stopReason: "stop",
@@ -91,13 +87,21 @@ function makeCliResult(events: unknown[], overrides: Record<string, unknown> = {
   };
 }
 
-describe("pi-diagnostics (four-in-one CLI)", () => {
+/** Mock that feeds events through onEvent then resolves (progressive path). */
+function mockWithProgressive(events: unknown[], overrides: Record<string, unknown> = {}) {
+  mockRunCredentialCliCheck.mockImplementation(async (_cred: unknown, opts?: { onEvent?: (e: unknown) => void }) => {
+    for (const ev of events) opts?.onEvent?.(ev);
+    return makeCliResult(events, overrides);
+  });
+}
+
+describe("pi-diagnostics (four-in-one CLI, progressive)", () => {
   beforeEach(() => {
     mockRunCredentialCliCheck.mockReset();
   });
 
   it("all four layers pass on a successful agent circuit", async () => {
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(successEvents()));
+    mockWithProgressive(successEvents());
     const events: any[] = [];
     const result = await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, (e) => events.push(e));
 
@@ -107,18 +111,41 @@ describe("pi-diagnostics (four-in-one CLI)", () => {
     expect(result.checks.every((c) => c.status === "pass")).toBe(true);
   });
 
+  it("progressive: check_passed fires mid-stream before report", async () => {
+    mockWithProgressive(successEvents());
+    const events: any[] = [];
+    await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, (e) => events.push(e));
+
+    const types = events.map((e) => e.type);
+    // All started first
+    expect(types.filter((t) => t === "check_started").length).toBeGreaterThanOrEqual(3);
+    // At least one progressive pass before report
+    const reportIdx = types.lastIndexOf("report");
+    const firstPassIdx = types.indexOf("check_passed");
+    expect(firstPassIdx).toBeGreaterThanOrEqual(0);
+    expect(firstPassIdx).toBeLessThan(reportIdx);
+    // L1 pass should appear before L4 (order of evidence)
+    const l1Pass = events.findIndex((e) => e.type === "check_passed" && e.check?.id === "basic");
+    const l4Pass = events.findIndex((e) => e.type === "check_passed" && e.check?.id === "l4_agent");
+    // L4 is finalized at end; L1 progressive mid-stream
+    expect(l1Pass).toBeGreaterThanOrEqual(0);
+    expect(l1Pass).toBeLessThan(reportIdx);
+    if (l4Pass >= 0) expect(l1Pass).toBeLessThan(l4Pass);
+  });
+
   it("L1 fails when no events produced (CLI produced no output)", async () => {
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult([], { stderr: "pi: command not found" }));
+    mockWithProgressive([], { stderr: "pi: command not found" });
     const result = await runPiDiagnostics(FAKE_CRED, () => {});
 
     expect(result.ok).toBe(false);
-    expect(result.checks).toHaveLength(1); // only L1 (early stop)
     expect(result.checks[0].status).toBe("fail");
     expect(result.checks[0].message).toContain("pi: command not found");
+    // Progressive path still returns full 4-slot matrix (L2/L3/L4 skipped/fail)
+    expect(result.checks.length).toBe(4);
   });
 
   it("L1 fails when timeout fires", async () => {
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult([], { timedOut: true }));
+    mockWithProgressive([], { timedOut: true });
     const result = await runPiDiagnostics(FAKE_CRED, () => {});
 
     expect(result.ok).toBe(false);
@@ -138,25 +165,17 @@ describe("pi-diagnostics (four-in-one CLI)", () => {
         },
       },
     ];
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(events));
+    mockWithProgressive(events);
     const result = await runPiDiagnostics(FAKE_CRED, () => {});
 
     expect(result.ok).toBe(false);
     expect(result.checks[0].status).toBe("fail");
     expect(result.checks[0].message).toContain("HTTP 401");
-    // API key scrubbed from error
     expect(result.checks[0].message).not.toContain("sk-fake-key-12345");
   });
 
-  it("L1 stops further checks on fail (only 1 check returned)", async () => {
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult([], { stderr: "connection refused" }));
-    const result = await runPiDiagnostics(FAKE_CRED, () => {});
-
-    expect(result.checks).toHaveLength(1);
-  });
-
   it("L2 is N/A for non-reasoning model (thinking_effort=off)", async () => {
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(nonReasoningEvents()));
+    mockWithProgressive(nonReasoningEvents());
     const result = await runPiDiagnostics(FAKE_CRED, () => {});
 
     const l2 = result.checks.find((c) => c.id === "thinking");
@@ -164,7 +183,7 @@ describe("pi-diagnostics (four-in-one CLI)", () => {
   });
 
   it("L2 passes for reasoning model with thinking blocks", async () => {
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(successEvents()));
+    mockWithProgressive(successEvents());
     const result = await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, () => {});
 
     const l2 = result.checks.find((c) => c.id === "thinking");
@@ -172,8 +191,7 @@ describe("pi-diagnostics (four-in-one CLI)", () => {
   });
 
   it("L2 fails for reasoning model without thinking blocks", async () => {
-    // Reasoning model but response has no thinking blocks
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(nonReasoningEvents()));
+    mockWithProgressive(nonReasoningEvents());
     const result = await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, () => {});
 
     const l2 = result.checks.find((c) => c.id === "thinking");
@@ -181,7 +199,7 @@ describe("pi-diagnostics (four-in-one CLI)", () => {
   });
 
   it("L3 passes when read toolCall + toolResult observed", async () => {
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(successEvents()));
+    mockWithProgressive(successEvents());
     const result = await runPiDiagnostics(FAKE_CRED, () => {});
 
     const l3 = result.checks.find((c) => c.id === "tool");
@@ -200,7 +218,7 @@ describe("pi-diagnostics (four-in-one CLI)", () => {
       },
       { type: "agent_settled" },
     ];
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(events));
+    mockWithProgressive(events);
     const result = await runPiDiagnostics(FAKE_CRED, () => {});
 
     const l3 = result.checks.find((c) => c.id === "tool");
@@ -208,7 +226,7 @@ describe("pi-diagnostics (four-in-one CLI)", () => {
   });
 
   it("L4 passes when agent_settled and no error", async () => {
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(successEvents()));
+    mockWithProgressive(successEvents());
     const result = await runPiDiagnostics(FAKE_CRED, () => {});
 
     const l4 = result.checks.find((c) => c.id === "l4_agent");
@@ -230,17 +248,16 @@ describe("pi-diagnostics (four-in-one CLI)", () => {
         type: "turn_end",
         toolResults: [{ toolName: "read", content: [{ type: "text", text: "output" }] }],
       },
-      // No agent_settled
     ];
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(events));
+    mockWithProgressive(events);
     const result = await runPiDiagnostics(FAKE_CRED, () => {});
 
     const l4 = result.checks.find((c) => c.id === "l4_agent");
     expect(l4?.status).toBe("fail");
   });
 
-  it("emits check_started before each layer and report at end", async () => {
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(successEvents()));
+  it("emits check_started for all layers up front and report at end", async () => {
+    mockWithProgressive(successEvents());
     const events: any[] = [];
     await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, (e) => events.push(e));
 
@@ -249,11 +266,15 @@ describe("pi-diagnostics (four-in-one CLI)", () => {
     expect(startedIds).toContain("thinking");
     expect(startedIds).toContain("tool");
     expect(startedIds).toContain("l4_agent");
+    // starts come before passes
+    const lastStart = Math.max(...events.map((e, i) => (e.type === "check_started" ? i : -1)));
+    const firstPass = events.findIndex((e) => e.type === "check_passed");
+    expect(lastStart).toBeLessThan(firstPass);
     expect(events.some((e) => e.type === "report")).toBe(true);
   });
 
   it("passes credential fields to runCredentialCliCheck including advanced_config", async () => {
-    mockRunCredentialCliCheck.mockResolvedValue(makeCliResult(successEvents()));
+    mockWithProgressive(successEvents());
     const cred = {
       ...FAKE_CRED,
       thinking_effort: "high",

@@ -112,7 +112,11 @@ async function writeModelsJsonFromCredential(
  */
 export async function runCredentialCliCheck(
   cred: DecryptedCredentialLike,
-  opts?: { signal?: AbortSignal },
+  opts?: {
+    signal?: AbortSignal;
+    /** Called for each parsed JSONL event as it arrives (progressive diagnostics). */
+    onEvent?: (event: unknown) => void;
+  },
 ): Promise<CredentialCliResult> {
   const start = Date.now();
   let workDir: string | null = null;
@@ -198,7 +202,9 @@ export async function runCredentialCliCheck(
           const trimmed = line.trim();
           if (!trimmed || trimmed.startsWith("Warning:")) continue;
           try {
-            events.push(JSON.parse(trimmed));
+            const ev = JSON.parse(trimmed);
+            events.push(ev);
+            try { opts?.onEvent?.(ev); } catch { /* emitter must not kill the stream */ }
           } catch {
             // Non-JSON line — skip
           }
