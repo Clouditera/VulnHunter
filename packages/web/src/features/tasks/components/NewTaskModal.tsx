@@ -664,7 +664,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                 style={{ width: "100%", height: "40px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 12px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", fontFamily: "inherit" }}
               >
                 <option value="zh-CN">{i18n.t("newTask.outputLanguage.zh")}</option>
-                <option value="en-US">{i18n.t("newTask.outputLanguage.en")}</option>
+                <option value="en">{i18n.t("newTask.outputLanguage.en")}</option>
               </select>
             </div>
 
