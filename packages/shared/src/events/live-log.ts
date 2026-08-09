@@ -128,6 +128,11 @@ export interface PrepareEvent {
   reason?: string;
   /** present on prepare_failed (O1 remediation hint) */
   remediation?: string;
+  /**
+   * continue mode reused first-run prepare (task-c832309f / fish 2026-08-08).
+   * true when no prepare worker was spawned and metadata.prepare was reused.
+   */
+  reused?: boolean;
 }
 
 /**
