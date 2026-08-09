@@ -3,8 +3,9 @@
  * unified-credential-models-json-v1.0.md §3.1a; approved prototype v4).
  *
  * Collapsible「高级配置」inside the credential form — structured form first
- * (enum selects / toggles / cost fields / thinkingLevelMap 7-row table),
- * raw-JSON tab with two-way sync + whitelist validation. Sparse
+ * (enum selects / toggles / cost fields), raw-JSON tab with two-way sync
+ * + whitelist validation. (Level mapping retired fish 2026-08-09: single
+ * send-value override lives in the main form.) Sparse
  * serialization: only non-default values persist; an all-default state
  * saves null (「使用默认配置」). Copy is pm-final (no pi/GLM mentions).
  */
@@ -13,9 +14,6 @@ import type { CSSProperties } from "react";
 import { i18n } from "../../../shared/i18n/index.js";
 
 // ─── State shape & constants ───
-
-export const ADV_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
-export type AdvLevel = (typeof ADV_LEVELS)[number];
 
 export const THINKING_FORMATS = [
   "openai",
@@ -33,13 +31,6 @@ export const THINKING_FORMATS = [
 
 export const MAX_TOKENS_FIELDS = ["max_completion_tokens", "max_tokens"] as const;
 
-export interface LevelMapRow {
-  /** Vendor-native effort word; "" = passthrough the built-in level word. */
-  value: string;
-  /** true = don't send the thinking param at this level (null). */
-  skip: boolean;
-}
-
 export interface AdvancedConfigState {
   thinkingFormat: string;
   maxTokensField: string;
@@ -51,14 +42,6 @@ export interface AdvancedConfigState {
   costOutput: string;
   costCacheRead: string;
   costCacheWrite: string;
-  levelMap: Record<AdvLevel, LevelMapRow>;
-}
-
-function emptyLevelMap(): Record<AdvLevel, LevelMapRow> {
-  return Object.fromEntries(ADV_LEVELS.map((l) => [l, { value: "", skip: false }])) as Record<
-    AdvLevel,
-    LevelMapRow
-  >;
 }
 
 /** fish 2026-08-08 默认值口径: 有通用默认的预填, 无通用默认的留空. */
@@ -74,8 +57,29 @@ export function defaultAdvancedConfig(): AdvancedConfigState {
     costOutput: "",
     costCacheRead: "",
     costCacheWrite: "",
-    levelMap: emptyLevelMap(),
   };
+}
+
+/** Load the 发送值 override from a credential (fish 2026-08-09 简化案).
+ *  Legacy fallback: thinkingLevelValue absent AND a legacy thinkingLevelMap
+ *  present → take the row of the CURRENT thinking_effort (string values
+ *  only; null rows skipped) so yesterday's map-based credentials surface
+ *  their translation instead of silently losing it on the next save
+ *  (architect review 15864). Saving then writes thinkingLevelValue only —
+ *  the legacy map key is not carried back (migration completes). */
+export function loadThinkingOverride(c: {
+  thinking_effort?: string;
+  advanced_config?: Record<string, unknown> | null;
+}): string {
+  const cfg = c.advanced_config;
+  if (!cfg || typeof cfg !== "object") return "";
+  if (typeof cfg.thinkingLevelValue === "string") return cfg.thinkingLevelValue;
+  const legacy = cfg.thinkingLevelMap;
+  if (legacy && typeof legacy === "object" && !Array.isArray(legacy)) {
+    const v = (legacy as Record<string, unknown>)[c.thinking_effort ?? ""];
+    if (typeof v === "string") return v;
+  }
+  return "";
 }
 
 // ─── Parse (payload → form state) ───
@@ -105,12 +109,6 @@ export function parseAdvancedConfig(raw: unknown): AdvancedConfigState {
   ] as Array<[string, (v: string) => void]>) {
     const v = cost[key];
     if (typeof v === "number" && Number.isFinite(v)) setter(String(v));
-  }
-  const map = (cfg.thinkingLevelMap ?? {}) as Record<string, unknown>;
-  for (const lvl of ADV_LEVELS) {
-    const v = map[lvl];
-    if (typeof v === "string") s.levelMap[lvl] = { value: v, skip: false };
-    else if (v === null) s.levelMap[lvl] = { value: "", skip: true };
   }
   return s;
 }
@@ -145,14 +143,6 @@ export function serializeAdvancedConfig(s: AdvancedConfigState): Record<string, 
   }
   if (Object.keys(cost).length > 0) out.cost = cost;
 
-  const map: Record<string, string | null> = {};
-  for (const lvl of ADV_LEVELS) {
-    const row = s.levelMap[lvl];
-    if (row.skip) map[lvl] = null;
-    else if (row.value.trim() !== "") map[lvl] = row.value.trim();
-  }
-  if (Object.keys(map).length > 0) out.thinkingLevelMap = map;
-
   return Object.keys(out).length > 0 ? out : null;
 }
 
@@ -168,16 +158,12 @@ export function countCustomized(s: AdvancedConfigState): number {
   if (s.costOutput.trim() !== "") n++;
   if (s.costCacheRead.trim() !== "") n++;
   if (s.costCacheWrite.trim() !== "") n++;
-  for (const lvl of ADV_LEVELS) {
-    const row = s.levelMap[lvl];
-    if (row.skip || row.value.trim() !== "") n++;
-  }
   return n;
 }
 
 // ─── Raw-JSON validation (whitelist) ───
 
-const JSON_TOP_KEYS = new Set(["compat", "thinkingLevelMap", "input", "cost"]);
+const JSON_TOP_KEYS = new Set(["compat", "input", "cost", "thinkingLevelValue"]);
 const JSON_COMPAT_KEYS = new Set([
   "supportsDeveloperRole",
   "thinkingFormat",
@@ -213,15 +199,8 @@ export function validateAdvancedJson(text: string): { key: string; detail?: stri
         return { key: "settings.adv.json.err.boolean", detail: `compat.${k}` };
     }
   }
-  if (cfg.thinkingLevelMap !== undefined) {
-    if (!cfg.thinkingLevelMap || typeof cfg.thinkingLevelMap !== "object" || Array.isArray(cfg.thinkingLevelMap))
-      return { key: "settings.adv.json.err.mapShape" };
-    for (const [k, v] of Object.entries(cfg.thinkingLevelMap as Record<string, unknown>)) {
-      if (!(ADV_LEVELS as readonly string[]).includes(k))
-        return { key: "settings.adv.json.err.mapLevel", detail: k };
-      if (v !== null && typeof v !== "string") return { key: "settings.adv.json.err.mapValue", detail: k };
-    }
-  }
+  if (cfg.thinkingLevelValue !== undefined && typeof cfg.thinkingLevelValue !== "string")
+    return { key: "settings.adv.json.err.levelValue" };
   if (cfg.input !== undefined) {
     if (!Array.isArray(cfg.input) || cfg.input.some((x) => x !== "text" && x !== "image"))
       return { key: "settings.adv.json.err.inputShape" };
@@ -335,9 +314,6 @@ export function CredentialAdvancedConfig(props: {
 
   function patch(p: Partial<AdvancedConfigState>) {
     onChange({ ...value, ...p });
-  }
-  function patchLevel(lvl: AdvLevel, row: Partial<LevelMapRow>) {
-    onChange({ ...value, levelMap: { ...value.levelMap, [lvl]: { ...value.levelMap[lvl], ...row } } });
   }
   function switchTab(next: "structured" | "json") {
     if (next === "json") {
@@ -598,90 +574,7 @@ export function CredentialAdvancedConfig(props: {
                 ))}
               </div>
 
-              <div style={SUBSEC}>{i18n.t("settings.adv.map")}</div>
-              <div style={{ border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden" }}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "110px 1fr 84px",
-                    gap: "10px",
-                    padding: "7px 12px",
-                    background: "var(--bg-header)",
-                    fontSize: "10.5px",
-                    fontWeight: 700,
-                    color: "var(--text-tertiary)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                  }}
-                >
-                  <span>{i18n.t("settings.adv.map.head.level")}</span>
-                  <span>{i18n.t("settings.adv.map.head.value")}</span>
-                  <span />
-                </div>
-                {ADV_LEVELS.map((lvl) => {
-                  const row = value.levelMap[lvl];
-                  return (
-                    <div
-                      key={lvl}
-                      data-testid={`settings-adv-map-${lvl}`}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "110px 1fr 84px",
-                        gap: "10px",
-                        padding: "7px 12px",
-                        alignItems: "center",
-                        borderTop: "1px solid var(--divider)",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: "11px",
-                          padding: "2px 8px",
-                          border: "1px solid var(--border)",
-                          borderRadius: "4px",
-                          background: "var(--bg-page)",
-                          width: "fit-content",
-                        }}
-                      >
-                        {lvl}
-                      </span>
-                      <input
-                        data-testid={`settings-adv-map-${lvl}-value`}
-                        value={row.value}
-                        disabled={disabled || row.skip}
-                        onChange={(e) => patchLevel(lvl, { value: e.target.value })}
-                        style={{
-                          height: "32px",
-                          border: "1px solid var(--border)",
-                          borderRadius: "5px",
-                          padding: "0 10px",
-                          fontSize: "12px",
-                          fontFamily: "var(--font-mono)",
-                          background: row.skip ? "var(--bg-disabled)" : "var(--bg-card)",
-                          color: "var(--text-primary)",
-                          outline: "none",
-                          width: "100%",
-                          opacity: row.skip ? 0.45 : 1,
-                          boxSizing: "border-box",
-                        }}
-                      />
-                      <label style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "11px", color: "var(--text-secondary)", cursor: "pointer", whiteSpace: "nowrap" }}>
-                        <input
-                          data-testid={`settings-adv-map-${lvl}-skip`}
-                          type="checkbox"
-                          checked={row.skip}
-                          disabled={disabled}
-                          onChange={(e) => patchLevel(lvl, { skip: e.target.checked })}
-                          style={{ accentColor: "var(--brand)" }}
-                        />
-                        {i18n.t("settings.adv.map.skip")}
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ ...HINT, marginTop: "8px", lineHeight: 1.6 }}>{i18n.t("settings.adv.map.note")}</div>
+              
             </>
           )}
         </div>
