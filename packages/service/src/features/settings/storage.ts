@@ -381,38 +381,82 @@ export async function upsertCredential(params: {
     // Update existing credential. Blank apiKey on edit = keep the stored key
     // material (single-gate rule: PUT is the only save path and must be safe
     // for edits that don't re-enter the key).
-    const advancedConfig = params.advancedConfig !== undefined ? params.advancedConfig : undefined;
-    const rows = encrypted
-      ? await db<{ id: string }[]>`
-      UPDATE llm_credentials
-      SET provider = ${params.provider}, proto_type = ${params.protoType},
-          base_url = ${params.baseUrl ?? null}, model_id = ${params.modelId},
-          thinking_effort = ${params.thinkingEffort ?? "off"},
-          label = ${params.label ?? ""},
-          api_key_ciphertext = ${encrypted.ciphertext},
-          api_key_iv = ${encrypted.iv},
-          api_key_tag = ${encrypted.tag},
-          key_fingerprint = ${vault!.fingerprint()},
-          context_window_tokens = ${contextWindowTokens},
-          owner_id = ${ownerId}
-          ${advancedConfig !== undefined ? db.unsafe('advanced_config = ' + (advancedConfig === null ? 'NULL' : db.json(advancedConfig as any) + '::jsonb')) : db.unsafe('')}
-      WHERE id = ${params.id}
-        AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
-      RETURNING id
-    `
-      : await db<{ id: string }[]>`
-      UPDATE llm_credentials
-      SET provider = ${params.provider}, proto_type = ${params.protoType},
-          base_url = ${params.baseUrl ?? null}, model_id = ${params.modelId},
-          thinking_effort = ${params.thinkingEffort ?? "off"},
-          label = ${params.label ?? ""},
-          context_window_tokens = ${contextWindowTokens},
-          owner_id = ${ownerId}
-          ${advancedConfig !== undefined ? db.unsafe('advanced_config = ' + (advancedConfig === null ? 'NULL' : db.json(advancedConfig as any) + '::jsonb')) : db.unsafe('')}
-      WHERE id = ${params.id}
-        AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
-      RETURNING id
-    `;
+    // advanced_config: undefined = leave column untouched; null/object = write.
+    // fish 2026-08-09 ERR_INTERNAL: previous fragment omitted the comma after
+    // owner_id → SQL syntax error on every save that touched advanced_config.
+    // Fix: always include advanced_config as a proper SET term with leading comma
+    // when provided; use parameterized JSONB (no string concat).
+    const touchAdvanced = params.advancedConfig !== undefined;
+    // JSONB payload when writing: null clears the column; object stores it.
+    const advancedPayload =
+      params.advancedConfig === null || params.advancedConfig === undefined
+        ? null
+        : db.json(params.advancedConfig as Record<string, string | number | boolean | null>);
+
+    let rows: { id: string }[];
+    if (encrypted && touchAdvanced) {
+      rows = await db<{ id: string }[]>`
+        UPDATE llm_credentials
+        SET provider = ${params.provider}, proto_type = ${params.protoType},
+            base_url = ${params.baseUrl ?? null}, model_id = ${params.modelId},
+            thinking_effort = ${params.thinkingEffort ?? "off"},
+            label = ${params.label ?? ""},
+            api_key_ciphertext = ${encrypted.ciphertext},
+            api_key_iv = ${encrypted.iv},
+            api_key_tag = ${encrypted.tag},
+            key_fingerprint = ${vault!.fingerprint()},
+            context_window_tokens = ${contextWindowTokens},
+            owner_id = ${ownerId},
+            advanced_config = ${advancedPayload}
+        WHERE id = ${params.id}
+          AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
+        RETURNING id
+      `;
+    } else if (encrypted) {
+      rows = await db<{ id: string }[]>`
+        UPDATE llm_credentials
+        SET provider = ${params.provider}, proto_type = ${params.protoType},
+            base_url = ${params.baseUrl ?? null}, model_id = ${params.modelId},
+            thinking_effort = ${params.thinkingEffort ?? "off"},
+            label = ${params.label ?? ""},
+            api_key_ciphertext = ${encrypted.ciphertext},
+            api_key_iv = ${encrypted.iv},
+            api_key_tag = ${encrypted.tag},
+            key_fingerprint = ${vault!.fingerprint()},
+            context_window_tokens = ${contextWindowTokens},
+            owner_id = ${ownerId}
+        WHERE id = ${params.id}
+          AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
+        RETURNING id
+      `;
+    } else if (touchAdvanced) {
+      rows = await db<{ id: string }[]>`
+        UPDATE llm_credentials
+        SET provider = ${params.provider}, proto_type = ${params.protoType},
+            base_url = ${params.baseUrl ?? null}, model_id = ${params.modelId},
+            thinking_effort = ${params.thinkingEffort ?? "off"},
+            label = ${params.label ?? ""},
+            context_window_tokens = ${contextWindowTokens},
+            owner_id = ${ownerId},
+            advanced_config = ${advancedPayload}
+        WHERE id = ${params.id}
+          AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
+        RETURNING id
+      `;
+    } else {
+      rows = await db<{ id: string }[]>`
+        UPDATE llm_credentials
+        SET provider = ${params.provider}, proto_type = ${params.protoType},
+            base_url = ${params.baseUrl ?? null}, model_id = ${params.modelId},
+            thinking_effort = ${params.thinkingEffort ?? "off"},
+            label = ${params.label ?? ""},
+            context_window_tokens = ${contextWindowTokens},
+            owner_id = ${ownerId}
+        WHERE id = ${params.id}
+          AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
+        RETURNING id
+      `;
+    }
     if (rows.length === 0) return "";
     if (params.isDefault) {
       if (params.ctx) await setDefaultCredential(params.ctx, params.id);
