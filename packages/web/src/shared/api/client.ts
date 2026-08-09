@@ -100,6 +100,7 @@ export interface Task {
    * re-scan. Absent/zero on pre-migration rows → fall back to duration_ms.
    */
   total_duration_ms?: number | null;
+  run_count?: number | null;
   total_tokens_in: number;
   total_tokens_out: number;
   input_tokens: number;

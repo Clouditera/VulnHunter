@@ -437,7 +437,17 @@ export function OverviewTab() {
           label={i18n.t("overview.duration")}
           value={(() => {
             const ms = (task.total_duration_ms ?? 0) > 0 ? task.total_duration_ms! : task.duration_ms;
-            return ms ? `${Math.round(ms / 60_000)} min` : null;
+            if (!ms) return null;
+            const mins = `${Math.round(ms / 60_000)} min`;
+            // fish 2026-08-09: show 「共 N 段」 only when N≥2 (run_count=0 = legacy/unknown)
+            const n = task.run_count ?? 0;
+            if (n >= 2) {
+              return i18n
+                .t("overview.durationWithSegments")
+                .replace("{duration}", mins)
+                .replace("{n}", String(n));
+            }
+            return mins;
           })()}
         />
         <KV
