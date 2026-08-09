@@ -24,23 +24,30 @@ function makeCred(overrides: Partial<DecryptedCredentialLike> = {}): DecryptedCr
   };
 }
 
+/** Simplified zai config (fish 2026-08-09): single send-value override. */
 const ZAI_ADVANCED_CONFIG: AdvancedConfig = {
   compat: {
     thinkingFormat: "zai",
     supportsDeveloperRole: true,
     supportsReasoningEffort: true,
   },
+  thinkingLevelValue: "max", // xhigh → send "max" to zai
+  input: ["text", "image"],
+  cost: { input: 0.5, output: 2.0, cacheRead: 0.1, cacheWrite: 0.5 },
+};
+
+/** Legacy seven-row map (pre-simplification) for migration tests. */
+const LEGACY_ZAI_MAP: AdvancedConfig = {
+  compat: { thinkingFormat: "zai" },
   thinkingLevelMap: {
     off: "nothink",
-    minimal: null, // "don't send" for this level
+    minimal: null,
     low: null,
     medium: null,
     high: null,
-    xhigh: null,
+    xhigh: "max",
     max: "max",
   },
-  input: ["text", "image"],
-  cost: { input: 0.5, output: 2.0, cacheRead: 0.1, cacheWrite: 0.5 },
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────
@@ -77,14 +84,23 @@ describe("validateAdvancedConfig", () => {
     expect(() => validateAdvancedConfig({})).toThrow(/at least one field/);
   });
 
-  it("accepts valid zai config", () => {
+  it("accepts valid zai config with thinkingLevelValue", () => {
     const result = validateAdvancedConfig(ZAI_ADVANCED_CONFIG);
     expect(result).not.toBeNull();
     expect(result!.compat?.thinkingFormat).toBe("zai");
-    expect(result!.thinkingLevelMap?.off).toBe("nothink");
-    expect(result!.thinkingLevelMap?.minimal).toBeNull();
+    expect(result!.thinkingLevelValue).toBe("max");
     expect(result!.input).toEqual(["text", "image"]);
     expect(result!.cost?.input).toBe(0.5);
+  });
+
+  it("accepts thinkingLevelValue alone", () => {
+    const result = validateAdvancedConfig({ thinkingLevelValue: "max" });
+    expect(result?.thinkingLevelValue).toBe("max");
+  });
+
+  it("empty thinkingLevelValue is treated as absent", () => {
+    const result = validateAdvancedConfig({ thinkingLevelValue: "  ", compat: { thinkingFormat: "zai" } });
+    expect(result?.thinkingLevelValue).toBeUndefined();
   });
 
   it("rejects invalid thinkingFormat", () => {
@@ -198,24 +214,52 @@ describe("buildModelsJson", () => {
     expect(model.compat.supportsDeveloperRole).toBe(true); // overridden from false
   });
 
-  it("advanced_config thinkingLevelMap included when reasoning enabled", async () => {
+  it("thinkingLevelValue synthesizes single-row map when reasoning enabled", async () => {
+    // fish 2026-08-09: xhigh + send-value "max" → { xhigh: "max" }
     const result = await buildModelsJson(makeCred({
-      thinking_effort: "high",
+      thinking_effort: "xhigh",
       advanced_config: ZAI_ADVANCED_CONFIG,
     }));
     const model = (result.modelsJson as any).providers.platform.models[0];
-    expect(model.thinkingLevelMap).toBeDefined();
-    expect(model.thinkingLevelMap.off).toBe("nothink");
-    expect(model.thinkingLevelMap.max).toBe("max");
+    expect(model.thinkingLevelMap).toEqual({ xhigh: "max" });
   });
 
-  it("advanced_config thinkingLevelMap NOT included when reasoning disabled", async () => {
+  it("thinkingLevelValue NOT emitted when reasoning disabled", async () => {
     const result = await buildModelsJson(makeCred({
       thinking_effort: "off",
       advanced_config: ZAI_ADVANCED_CONFIG,
     }));
     const model = (result.modelsJson as any).providers.platform.models[0];
     expect(model.thinkingLevelMap).toBeUndefined();
+  });
+
+  it("identity thinkingLevelValue (same as effort) produces no map", async () => {
+    const result = await buildModelsJson(makeCred({
+      thinking_effort: "high",
+      advanced_config: { thinkingLevelValue: "high" },
+    }));
+    const model = (result.modelsJson as any).providers.platform.models[0];
+    expect(model.thinkingLevelMap).toBeUndefined();
+  });
+
+  it("legacy thinkingLevelMap migrates: takes current effort row as override", async () => {
+    // Legacy seven-row map with xhigh→max; credential at xhigh
+    const result = await buildModelsJson(makeCred({
+      thinking_effort: "xhigh",
+      advanced_config: LEGACY_ZAI_MAP,
+    }));
+    const model = (result.modelsJson as any).providers.platform.models[0];
+    // Only the selected effort's row is emitted
+    expect(model.thinkingLevelMap).toEqual({ xhigh: "max" });
+  });
+
+  it("legacy thinkingLevelMap null row → {effort: null}", async () => {
+    const result = await buildModelsJson(makeCred({
+      thinking_effort: "minimal",
+      advanced_config: LEGACY_ZAI_MAP,
+    }));
+    const model = (result.modelsJson as any).providers.platform.models[0];
+    expect(model.thinkingLevelMap).toEqual({ minimal: null });
   });
 
   it("advanced_config input overrides default", async () => {
@@ -253,11 +297,11 @@ describe("buildModelsJson", () => {
     expect(result.modelRef).toBe("gpt-4o");
   });
 
-  it("zai advanced config full integration (fish's zapi fixture)", async () => {
+  it("zai advanced config full integration (fish's zapi fixture, simplified)", async () => {
     const cred = makeCred({
       base_url: "https://open.bigmodel.cn/api/paas/v4",
       model_id: "glm-4.6",
-      thinking_effort: "high",
+      thinking_effort: "xhigh",
       advanced_config: ZAI_ADVANCED_CONFIG,
     });
     const result = await buildModelsJson(cred);
@@ -267,9 +311,8 @@ describe("buildModelsJson", () => {
     expect(model.compat.supportsDeveloperRole).toBe(true);
     expect(model.compat.supportsReasoningEffort).toBe(true);
     expect(model.reasoning).toBe(true);
-    expect(model.thinkingLevelMap.off).toBe("nothink");
-    expect(model.thinkingLevelMap.max).toBe("max");
-    expect(model.thinkingLevelMap.minimal).toBeNull();
+    // Single-row map: xhigh → max
+    expect(model.thinkingLevelMap).toEqual({ xhigh: "max" });
     expect(model.input).toEqual(["text", "image"]);
     expect(model.cost.input).toBe(0.5);
     // No plaintext key anywhere
