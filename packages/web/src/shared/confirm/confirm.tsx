@@ -132,8 +132,10 @@ export function ConfirmHost() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") cancel();
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    // CAPTURE phase too (same fish 2026-08-09 saga): the dialog's own
+    // ESC=cancel must work in the same environment where bubble ESC dies.
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [pending, cancel]);
 
   if (!pending) return null;

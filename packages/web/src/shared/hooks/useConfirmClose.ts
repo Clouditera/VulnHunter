@@ -43,8 +43,14 @@ export function useConfirmClose(onClose: () => void, isDirty: boolean, esc: bool
       if (hasPendingDialog()) return;
       requestClose();
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    // CAPTURE phase (fish 2026-08-09 ESC saga): a bubble listener never
+    // receives real keyboard ESC in the admin console — something on the
+    // target→document bubble path eats it (QA probe matrix: capture probe
+    // fires, bubble hook doesn't, document-target dispatch works). Document
+    // capture is the page-wide earliest point and cannot be cut off by any
+    // subtree stopPropagation.
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
   }, [esc, requestClose]);
 
   return requestClose;
