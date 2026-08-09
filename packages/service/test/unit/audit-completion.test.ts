@@ -79,17 +79,29 @@ describe("audit completion C01-C13", () => {
     const result = evaluateAuditCompletion({ outDir: out, engineRun: marker() });
     expect(result.status).toBe("incomplete");
     expect(result.reason).toContain("管理端导入链路");
-    expect(mapAuditCompletionFinalState(0, result)).toMatchObject({ state: "completed", severity: "warning" });
+    expect(mapAuditCompletionFinalState(0, result)).toMatchObject({
+      state: "completed",
+      completionReason: "timeout",
+      severity: "warning",
+    });
   });
 
-  it("C03 new missing fails while C12 legacy missing preserves completion", () => {
+  it("C03 new missing soft-completes as incomplete; C12 legacy missing still completed", () => {
     const { out } = workspace();
     const current = evaluateAuditCompletion({ outDir: out, engineRun: marker() });
     expect(current).toMatchObject({ status: "missing", error_code: "ERR_AUDIT_COMPLETION_MISSING" });
-    expect(mapAuditCompletionFinalState(0, current).state).toBe("failed");
+    // fish 2026-08-09: soft gate — no longer failed
+    expect(mapAuditCompletionFinalState(0, current)).toMatchObject({
+      state: "completed",
+      completionReason: "incomplete",
+      severity: "warning",
+    });
     const legacy = evaluateAuditCompletion({ outDir: out });
     expect(legacy.status).toBe("legacy_missing");
-    expect(mapAuditCompletionFinalState(0, legacy).state).toBe("completed");
+    expect(mapAuditCompletionFinalState(0, legacy)).toMatchObject({
+      state: "completed",
+      completionReason: "natural",
+    });
   });
 
   it.each([
@@ -274,5 +286,47 @@ describe("isTimeoutCompletion (fish 2026-08-04)", () => {
     expect(isTimeoutCompletion({ status: "complete" } as never)).toBe(false);
     expect(isTimeoutCompletion({ status: "missing" } as never)).toBe(false);
     expect(isTimeoutCompletion({ status: "legacy_observed" } as never)).toBe(false);
+  });
+});
+
+describe("soft completion gate (fish 2026-08-09)", () => {
+  it.each(["missing", "stale", "invalid", "unsafe"] as const)(
+    "exit 0 + %s → completed + incomplete (not failed)",
+    (status) => {
+      const completion = {
+        contract_version: "1",
+        status,
+        engine_status: null,
+        reason: `reason-${status}`,
+        error_code: "ERR_AUDIT_COMPLETION_INVALID",
+        artifact_key: null,
+        sha256: null,
+        run_id: "run-1",
+        evaluated_at: "now",
+      } as any;
+      const mapped = mapAuditCompletionFinalState(0, completion);
+      expect(mapped.state).toBe("completed");
+      expect(mapped.completionReason).toBe("incomplete");
+      expect(mapped.severity).toBe("warning");
+      expect(mapped.failureReason).toBeUndefined();
+    },
+  );
+
+  it("exit non-zero still failed regardless of completion file", () => {
+    const completion = {
+      contract_version: "1",
+      status: "missing",
+      engine_status: null,
+      reason: "x",
+      error_code: "ERR_AUDIT_COMPLETION_MISSING",
+      artifact_key: null,
+      sha256: null,
+      run_id: null,
+      evaluated_at: "now",
+    } as any;
+    expect(mapAuditCompletionFinalState(1, completion)).toMatchObject({
+      state: "failed",
+      completionReason: "natural",
+    });
   });
 });

@@ -57,6 +57,9 @@ export interface TaskMetadata {
   [key: string]: unknown;
 }
 
+/** Why a completed task ended (DB column; state enum stays unchanged). */
+export type TaskCompletionReason = "natural" | "timeout" | "incomplete";
+
 export interface TaskSummary {
   id: string;
   tenant_id: string;
@@ -68,6 +71,13 @@ export interface TaskSummary {
   total_duration_ms?: number;
   /** Completed run segments; 0/absent = unknown (hide UI segment count). */
   run_count?: number;
+  /**
+   * Present on terminal rows. API consumers MUST read this to tell natural
+   * finish apart from time-budget cut (timeout) or soft incomplete gate
+   * (missing/stale completion.yaml). state stays "completed" for all three
+   * (fish 2026-08-09; compatible with existing clients).
+   */
+  completion_reason?: TaskCompletionReason;
   created_at: string;
   started_at?: string;
   completed_at?: string;

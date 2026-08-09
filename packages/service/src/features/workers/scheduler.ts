@@ -66,7 +66,6 @@ import {
   mapAuditCompletionFinalState,
   mergeExecutionWarnings,
   needsTerminalStateReconciliation,
-  isTimeoutCompletion,
 } from "./audit-completion.js";
 import type { LiveLogEvent, TaskAuditCompletion, TaskEngineRun } from "@vulnhunter/shared";
 
@@ -315,7 +314,10 @@ export class TaskScheduler {
               completedAt: new Date(),
               durationMs,
               failureReason: mapped.failureReason,
-              completionReason: mapped.state === "completed" && isTimeoutCompletion(completion) ? "timeout" : "natural",
+              // fish 2026-08-09: completionReason comes from the soft gate map
+              // (natural | timeout | incomplete) — no longer inferred only via
+              // isTimeoutCompletion.
+              completionReason: mapped.state === "completed" ? mapped.completionReason : "natural",
             }).catch((err) => logger.error({ err, taskId }, "Failed to update task on die"));
             notify({ type: "task_state", taskId, state: mapped.state });
             // H2 §4: terminal (completed/failed) — stop the sandbox, keep it.
