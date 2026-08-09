@@ -408,6 +408,14 @@ export const createTaskSchema = {
     .boolean()
     .optional()
     .describe("漏洞利用（组合链）——需先开启动态验证/漏洞利用评估（EXP）（enable_dynamic_verify）。"),
+  output_language: z
+    .enum(["zh-CN", "en"])
+    .optional()
+    .describe("产物输出语言（BCP-47）。zh-CN=中文（默认）；en=English。不传=引擎默认中文。"),
+  vuln_focus: z
+    .string()
+    .optional()
+    .describe("漏洞关注要求。不传=引擎默认「关注可造成实际安全影响的漏洞」。"),
 };
 
 export async function createMcpTask(args: {
@@ -421,6 +429,8 @@ export async function createMcpTask(args: {
   timeout_mode?: "custom" | "auto";
   enable_dynamic_verify?: boolean;
   enable_dynamic_exploit?: boolean;
+  output_language?: "zh-CN" | "en";
+  vuln_focus?: string;
 }, ctx: McpContext): Promise<ToolResult> {
   const config = loadConfig();
 
@@ -444,6 +454,10 @@ export async function createMcpTask(args: {
       {
         enableDynamicVerify: args.enable_dynamic_verify,
         enableDynamicExploit: args.enable_dynamic_exploit,
+      },
+      {
+        outputLanguage: args.output_language,
+        vulnFocus: args.vuln_focus,
       },
     );
   } catch (err) {

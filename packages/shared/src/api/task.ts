@@ -75,4 +75,8 @@ export interface CreateTaskRequest {
   project_name: string;
   source: { type: "upload"; filename: string } | { type: "git"; url: string; branch?: string };
   auto_report_skill_ids?: string[];
+  /** Product output language (BCP-47). Default engine-side: zh-CN. */
+  output_language?: "zh-CN" | "en";
+  /** Vulnerability focus requirement. Empty = engine default. */
+  vuln_focus?: string;
 }
