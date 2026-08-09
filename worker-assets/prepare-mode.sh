@@ -53,7 +53,11 @@ runtime=$(mktemp -d "$runtime_root/prepare-runtime.XXXXXX")
 chmod 700 "$runtime"
 if [ ! -e "$PREPARE_OUTPUT_DIR" ]; then mkdir "$PREPARE_OUTPUT_DIR"; output_created=1; fi
 chmod 700 "$PREPARE_OUTPUT_DIR"
-result_path="$PREPARE_OUTPUT_DIR/prepare-result.json"
+# Result must land under youngflow --output-dir so the output-contract
+# extension (task-b451d2e9) can validate + steer-retry. Postflight still
+# consumes the durable file from PREPARE_OUTPUT_DIR only.
+result_path="$runtime/prepare-result.json"
+final_result_path="$PREPARE_OUTPUT_DIR/prepare-result.json"
 
 youngflow /opt/vulnhunter/flows/prepare/flow.prepare.yaml \
   --work-dir "$PREPARE_SOURCE_ROOT" --output-dir "$runtime" \
@@ -61,6 +65,15 @@ youngflow /opt/vulnhunter/flows/prepare/flow.prepare.yaml \
 child=$!
 wait "$child"
 child=""
+
+# Hand off the contract-validated result into the durable output dir.
+# Missing file → postflight fails closed (exit 4) after contract exhausted steers.
+if [ -f "$result_path" ]; then
+  cp -p -- "$result_path" "$final_result_path"
+  chmod 600 "$final_result_path"
+else
+  echo "[prepare] prepare-result.json missing after youngflow (contract did not deliver)" >&2
+fi
 
 if [ -n "${PREPARE_SANDBOX_TYPES_FILE:-}" ]; then
   /opt/prepare-result-postflight.py "$PREPARE_OUTPUT_DIR" "$PREPARE_DYNAMIC_ENABLED" "$PREPARE_SANDBOX_TYPES_FILE"
@@ -74,6 +87,6 @@ fi
 # AFTER postflight has validated the 0600/regular/nlink1 contract; modes stay
 # exactly 0700/0600. chown failure is a loud nonzero exit via set -eu.
 owner_uid="${PREPARE_OUTPUT_OWNER_UID:-1001}"
-chown "$owner_uid:$owner_uid" "$PREPARE_OUTPUT_DIR" "$result_path"
+chown "$owner_uid:$owner_uid" "$PREPARE_OUTPUT_DIR" "$final_result_path"
 rm -rf -- "$runtime"
 runtime=""

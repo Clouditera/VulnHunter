@@ -34,7 +34,8 @@ describe("minimal Prepare flow", () => {
     expect(spec.inputs.map((input) => input.name)).toEqual(["work_dir", "output_dir", "dynamic_enabled", "result_path"]);
     const raw = readFileSync(flowPath, "utf8");
     for (const legacy of ["prepare-restricted", "prepare-tools", "submit_plan", "compact-submit"]) expect(raw).not.toContain(legacy);
-    expect(raw).toContain("extensions: [sandbox-plane]");
+    // task-b451d2e9: output-contract joined sandbox-plane on the prepare stage
+    expect(raw).toContain("extensions: [sandbox-plane, output-contract]");
   });
 
   it("keeps the inspection prompt short and forbids execution/install/test", () => {
@@ -108,7 +109,9 @@ describe("minimal Prepare flow", () => {
     // The worker writes root:root 0700-dir/0600-file but the service reads as
     // its own uid — the handoff must exist and must come after postflight.
     expect(mode).toContain("PREPARE_OUTPUT_OWNER_UID");
-    expect(mode).toContain('chown "$owner_uid:$owner_uid" "$PREPARE_OUTPUT_DIR" "$result_path"');
+    // final_result_path = durable PREPARE_OUTPUT_DIR handoff (task-b451d2e9:
+    // youngflow writes into runtime/ for output-contract visibility).
+    expect(mode).toContain('chown "$owner_uid:$owner_uid" "$PREPARE_OUTPUT_DIR" "$final_result_path"');
     expect(mode.indexOf("prepare-result-postflight.py")).toBeLessThan(mode.indexOf("chown "));
     const spawn = readFileSync(join(root, "packages/service/src/features/workers/prepare-worker.ts"), "utf8");
     expect(spawn).toContain("PREPARE_OUTPUT_OWNER_UID: String(process.getuid");

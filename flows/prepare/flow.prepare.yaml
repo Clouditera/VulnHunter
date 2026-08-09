@@ -27,7 +27,10 @@ stages:
   - id: prepare
     name: Prepare
     type: single
-    extensions: [sandbox-plane]
+    # output-contract: steer-retry if prepare-result.json missing/invalid
+    # (task-b451d2e9 / fish 2026-08-09). Extension code is build-copied from
+    # vulnforge; contracts.json is prepare-owned (this repo).
+    extensions: [sandbox-plane, output-contract]
     task: prepare.md
     prompt: |
       Dynamic validation enabled: ${flow_inputs.dynamic_enabled}
