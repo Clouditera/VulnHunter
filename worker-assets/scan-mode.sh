@@ -24,6 +24,10 @@ build_youngflow_args() {
   if [ -n "${VULNFORGE_VULN_FOCUS:-}" ]; then
     YOUNGFLOW_ARGS+=(--vuln-focus "$VULNFORGE_VULN_FOCUS")
   fi
+  # fish 2026-08-09: output language (BCP-47). Empty → engine default zh-CN.
+  if [ -n "${VULNFORGE_OUTPUT_LANGUAGE:-}" ]; then
+    YOUNGFLOW_ARGS+=(--output-language "$VULNFORGE_OUTPUT_LANGUAGE")
+  fi
   if [ "${VULNFORGE_DYNAMIC_ENABLED:-false}" = "true" ]; then
     # H1/H5 §5: dynamic run — no static-only restriction; the task's own
     # sched_instr (if any) passes through, otherwise the flow default applies.
@@ -66,10 +70,10 @@ build_youngflow_args() {
 
 log_input_summary() {
   if [ "${VULNFORGE_DYNAMIC_ENABLED:-false}" = "true" ]; then
-    echo "[scan] VulnForge inputs: dynamic=true enable_poc=${VULNFORGE_ENABLE_POC:-false} enable_exp=${VULNFORGE_ENABLE_EXP:-false} enable_chain=${VULNFORGE_ENABLE_CHAIN:-false} sandbox_cfg_present=$([ -n "${VULNFORGE_SANDBOX_CFG:-}" ] && echo true || echo false) audit_scope_chars=${#VULNFORGE_AUDIT_SCOPE} vuln_focus_chars=${#VULNFORGE_VULN_FOCUS} user_instr_chars=${#VULNFORGE_USER_INSTR}" >&2
+    echo "[scan] VulnForge inputs: dynamic=true enable_poc=${VULNFORGE_ENABLE_POC:-false} enable_exp=${VULNFORGE_ENABLE_EXP:-false} enable_chain=${VULNFORGE_ENABLE_CHAIN:-false} sandbox_cfg_present=$([ -n "${VULNFORGE_SANDBOX_CFG:-}" ] && echo true || echo false) audit_scope_chars=${#VULNFORGE_AUDIT_SCOPE} vuln_focus_chars=${#VULNFORGE_VULN_FOCUS} user_instr_chars=${#VULNFORGE_USER_INSTR} output_language=${VULNFORGE_OUTPUT_LANGUAGE:-}" >&2
   else
     local effective_sched_instr="${EFFECTIVE_SCHED_INSTR:-${VULNFORGE_SCHED_INSTR:-$STATIC_ONLY_SCHED_INSTR}}"
-    echo "[scan] VulnForge inputs: audit_scope_present=$([ -n "${VULNFORGE_AUDIT_SCOPE:-}" ] && echo true || echo false) audit_scope_chars=${#VULNFORGE_AUDIT_SCOPE} vuln_focus_present=$([ -n "${VULNFORGE_VULN_FOCUS:-}" ] && echo true || echo false) vuln_focus_chars=${#VULNFORGE_VULN_FOCUS} user_instr_present=$([ -n "${VULNFORGE_USER_INSTR:-}" ] && echo true || echo false) user_instr_chars=${#VULNFORGE_USER_INSTR} sched_instr_present=true sched_instr_chars=${#effective_sched_instr} enable_poc=false enable_exp=false sandbox_cfg_present=false" >&2
+    echo "[scan] VulnForge inputs: audit_scope_present=$([ -n "${VULNFORGE_AUDIT_SCOPE:-}" ] && echo true || echo false) audit_scope_chars=${#VULNFORGE_AUDIT_SCOPE} vuln_focus_present=$([ -n "${VULNFORGE_VULN_FOCUS:-}" ] && echo true || echo false) vuln_focus_chars=${#VULNFORGE_VULN_FOCUS} user_instr_present=$([ -n "${VULNFORGE_USER_INSTR:-}" ] && echo true || echo false) user_instr_chars=${#VULNFORGE_USER_INSTR} sched_instr_present=true sched_instr_chars=${#effective_sched_instr} enable_poc=false enable_exp=false sandbox_cfg_present=false output_language=${VULNFORGE_OUTPUT_LANGUAGE:-}" >&2
   fi
 }
 

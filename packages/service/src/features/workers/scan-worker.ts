@@ -47,6 +47,8 @@ export function scanInputEnvFromMeta(meta: DbTask["source_meta"] | null | undefi
     VULNFORGE_AUDIT_SCOPE: optionalTextMeta(meta, "audit_scope"),
     VULNFORGE_VULN_FOCUS: optionalTextMeta(meta, "vuln_focus"),
     VULNFORGE_USER_INSTR: canonicalUserInstr || optionalTextMeta(meta, "audit_focus"),
+    // fish 2026-08-09: output language (BCP-47). Empty → engine default zh-CN.
+    VULNFORGE_OUTPUT_LANGUAGE: optionalTextMeta(meta, "output_language"),
   };
   if (opts?.dynamicEnabled) {
     // H5 §5/H1: dynamic runs must not carry the static-only scheduling

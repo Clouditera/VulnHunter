@@ -12,6 +12,40 @@ describe("scanMetaFromValues", () => {
     });
   });
 
+  it("persists output_language + vuln_focus (fish 2026-08-09)", () => {
+    expect(
+      scanMetaFromValues(undefined, undefined, undefined, undefined, undefined, {
+        outputLanguage: "en",
+        vulnFocus: "  关注 RCE  ",
+      }),
+    ).toEqual({
+      output_language: "en",
+      vuln_focus: "关注 RCE",
+    });
+  });
+
+  it("normalizes output_language aliases and rejects invalid", () => {
+    expect(
+      scanMetaFromValues(undefined, undefined, undefined, undefined, undefined, {
+        outputLanguage: "zh",
+      }),
+    ).toEqual({ output_language: "zh-CN" });
+    expect(() =>
+      scanMetaFromValues(undefined, undefined, undefined, undefined, undefined, {
+        outputLanguage: "fr",
+      }),
+    ).toThrow(/invalid output_language/);
+  });
+
+  it("omits empty output_language / vuln_focus (engine defaults apply)", () => {
+    expect(
+      scanMetaFromValues(undefined, undefined, undefined, undefined, undefined, {
+        outputLanguage: "  ",
+        vulnFocus: "",
+      }),
+    ).toEqual({});
+  });
+
   it("omits empty / whitespace audit_focus", () => {
     expect(scanMetaFromValues("   ", undefined, undefined)).toEqual({});
     expect(scanMetaFromValues(null, null, null)).toEqual({});

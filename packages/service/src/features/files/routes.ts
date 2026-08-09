@@ -39,12 +39,27 @@ export function parseAgentMaxParallel(raw: unknown): number | undefined {
   return n;
 }
 
+/** Allowed output_language values (BCP-47 tags exposed by the product UI). */
+const ALLOWED_OUTPUT_LANGUAGES = new Set(["zh-CN", "en"]);
+
+export function normalizeOutputLanguage(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  // Accept common aliases
+  if (trimmed === "zh" || trimmed === "zh_CN" || trimmed === "zh-cn") return "zh-CN";
+  if (trimmed === "en-US" || trimmed === "en_US" || trimmed === "english") return "en";
+  if (ALLOWED_OUTPUT_LANGUAGES.has(trimmed)) return trimmed;
+  throw new Error(`invalid output_language: ${trimmed}`);
+}
+
 export function scanMetaFromValues(
   auditFocus?: string | null,
   scanTimeout?: string | number | null,
   maxItemsPerRecon?: string | number | null,
   timeoutMode?: string | null,
   dynamicSwitches?: { enableDynamicVerify?: unknown; enableDynamicExploit?: unknown },
+  engineInputs?: { outputLanguage?: unknown; vulnFocus?: unknown },
 ): Record<string, string | number | boolean> {
   const meta: Record<string, string | number | boolean> = {};
   const focus = typeof auditFocus === "string" ? auditFocus.trim() : "";
@@ -66,6 +81,14 @@ export function scanMetaFromValues(
 
   // Dynamic capability switches (B3 single mapping, shared by form + chat).
   Object.assign(meta, resolveDynamicToggles(dynamicSwitches ?? {}));
+
+  // Engine inputs (fish 2026-08-09): output_language + vuln_focus.
+  // Empty/absent → engine defaults (zh-CN / "关注可造成实际安全影响的漏洞。").
+  const lang = normalizeOutputLanguage(engineInputs?.outputLanguage);
+  if (lang) meta.output_language = lang;
+  const vulnFocus = typeof engineInputs?.vulnFocus === "string" ? engineInputs.vulnFocus.trim() : "";
+  if (vulnFocus) meta.vuln_focus = vulnFocus;
+
   return meta;
 }
 
@@ -78,6 +101,10 @@ function scanMetaFromForm(formData: FormData): Record<string, string | number | 
     {
       enableDynamicVerify: formData.get("enable_dynamic_verify"),
       enableDynamicExploit: formData.get("enable_dynamic_exploit"),
+    },
+    {
+      outputLanguage: formData.get("output_language"),
+      vulnFocus: formData.get("vuln_focus"),
     },
   );
 }
@@ -279,6 +306,8 @@ filesRouter.post("/tasks", async (c) => {
     enable_dynamic_verify?: boolean;
     enable_dynamic_exploit?: boolean;
     agent_max_parallel?: number | string;
+    output_language?: string;
+    vuln_focus?: string;
   }>();
 
   if (!body.git_url) {
@@ -301,6 +330,9 @@ filesRouter.post("/tasks", async (c) => {
     gitScanMeta = scanMetaFromValues(body.audit_focus, body.scan_timeout, body.max_items_per_recon, body.timeout_mode, {
       enableDynamicVerify: body.enable_dynamic_verify,
       enableDynamicExploit: body.enable_dynamic_exploit,
+    }, {
+      outputLanguage: body.output_language,
+      vulnFocus: body.vuln_focus,
     });
   } catch (err) {
     throw new AppError("ERR_INVALID_SCAN_OPTIONS", { details: { reason: err instanceof Error ? err.message : String(err) } });

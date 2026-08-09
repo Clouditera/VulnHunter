@@ -37,11 +37,13 @@ describe("scanInputEnvFromMeta", () => {
       vuln_focus: " auth and RCE ",
       user_instr: " canonical\nvalue ",
       audit_focus: "legacy value",
+      output_language: " en ",
     })).toEqual({
       VULNFORGE_AUDIT_SCOPE: "whole project",
       VULNFORGE_VULN_FOCUS: "auth and RCE",
       VULNFORGE_SCHED_INSTR: STATIC_ONLY_SCHED_INSTR,
       VULNFORGE_USER_INSTR: "canonical\nvalue",
+      VULNFORGE_OUTPUT_LANGUAGE: "en",
     });
   });
 
@@ -79,6 +81,7 @@ describe("scanInputEnvFromMeta", () => {
       VULNFORGE_AUDIT_SCOPE: "scope",
       VULNFORGE_VULN_FOCUS: "",
       VULNFORGE_USER_INSTR: "",
+      VULNFORGE_OUTPUT_LANGUAGE: "",
       VULNFORGE_DYNAMIC_ENABLED: "true",
       VULNFORGE_SCHED_INSTR: "focus poc first",
       VULNFORGE_ENABLE_POC: "true",
@@ -126,11 +129,13 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
       vuln_focus: "focus",
       user_instr: "canonical",
       audit_focus: "legacy",
+      output_language: "en",
     });
     const { argv } = captureArgv(mapped);
     expect(valueAfter(argv, "--audit-scope")).toBe("scope");
     expect(valueAfter(argv, "--vuln-focus")).toBe("focus");
     expect(valueAfter(argv, "--user-instr")).toBe("canonical");
+    expect(valueAfter(argv, "--output-language")).toBe("en");
     expect(argv).not.toContain("legacy");
 
     const legacy = captureArgv(scanInputEnvFromMeta({ audit_focus: "重点认证" })).argv;
@@ -138,10 +143,11 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
   });
 
   it("A04 omits normalized empty optional text", () => {
-    const { argv } = captureArgv(scanInputEnvFromMeta({ audit_scope: " \n", vuln_focus: "\t", user_instr: "  " }));
+    const { argv } = captureArgv(scanInputEnvFromMeta({ audit_scope: " \n", vuln_focus: "\t", user_instr: "  ", output_language: "  " }));
     expect(argv).not.toContain("--audit-scope");
     expect(argv).not.toContain("--vuln-focus");
     expect(argv).not.toContain("--user-instr");
+    expect(argv).not.toContain("--output-language");
   });
 
   it("A05 preserves shell payload as one value and cannot alter dynamic flags", () => {
