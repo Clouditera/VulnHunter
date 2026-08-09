@@ -69,6 +69,23 @@ RUN cd /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access \
       @earendil-works/pi-ai@$PI_VERSION
 COPY flows/prepare /opt/vulnhunter/flows/prepare
 COPY packages/service/src/features/prepare/schemas/source-manifest-v1.schema.json /opt/vulnhunter/flows/prepare/schemas/source-manifest-v1.schema.json
+# output-contract for prepare (task-b451d2e9): extension code single-sourced from
+# vulnforge submodule; prepare-owned contracts.json overlays the vulnforge rules.
+# No runtime symlink — Docker COPY would leave a dangling link.
+RUN mkdir -p /opt/vulnhunter/flows/prepare/extensions/output-contract \
+    && cp /opt/vulnhunter/flows/prepare/extensions/output-contract/contracts.json \
+      /tmp/prepare-output-contract.contracts.json \
+    && cp -a /opt/vulnhunter/flows/vulnforge/extensions/output-contract/. \
+      /opt/vulnhunter/flows/prepare/extensions/output-contract/ \
+    && cp /tmp/prepare-output-contract.contracts.json \
+      /opt/vulnhunter/flows/prepare/extensions/output-contract/contracts.json \
+    && cd /opt/vulnhunter/flows/prepare/extensions/output-contract \
+    && npm install --omit=dev --no-audit --no-fund \
+    && npm install --omit=dev --no-audit --no-fund @earendil-works/pi-coding-agent@$PI_VERSION \
+    && test -f /opt/vulnhunter/flows/prepare/extensions/output-contract/index.ts \
+    && test -f /opt/vulnhunter/flows/prepare/extensions/output-contract/contracts.json \
+    && test -d /opt/vulnhunter/flows/prepare/extensions/output-contract/node_modules \
+    && grep -q '"prepare"' /opt/vulnhunter/flows/prepare/extensions/output-contract/contracts.json
 RUN youngflow /opt/vulnhunter/flows/prepare/flow.prepare.yaml --list-stages >/tmp/prepare-stages.txt \
     && grep -qE '^  prepare[[:space:]]' /tmp/prepare-stages.txt
 RUN test -f /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-tracker/index.ts \

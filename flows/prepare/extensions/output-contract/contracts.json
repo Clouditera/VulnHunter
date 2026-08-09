@@ -1,0 +1,13 @@
+{
+  "prepare": {
+    "strict": true,
+    "max_retries": 2,
+    "rules": [
+      {
+        "pattern": "prepare-result.json",
+        "schema": "schemas/prepare-result-v1.schema.json",
+        "min_count": 1
+      }
+    ]
+  }
+}
