@@ -79,7 +79,11 @@ export const CONFIRM_OVERLAY_STYLE: CSSProperties = {
   justifyContent: "center",
   padding: 20,
   background: "rgba(0,0,0,0.45)",
-  zIndex: 3000,
+  // Layer contract (fish 2026-08-09 z-war): business modals ≤ 9999 <
+  // confirm 10000 < toast 10001. The dirty-close confirm must render ABOVE
+  // every form modal — at 3000 it sat beneath 9999-series modals and the
+  // ESC confirm was invisible ("有内容时 ESC 没反应").
+  zIndex: 10000,
 };
 
 const DIALOG_STYLE: CSSProperties = {
