@@ -89,6 +89,78 @@ assert_eq "degraded: new key appended"  "$(grep -c '^NEW_KEY=fresh-default$' "$t
 assert_eq "degraded: nothing updated"   "$(grep -c '^OLD_DEFAULT=old-value$' "$tmp/.env2")" "1"
 assert_eq "degraded: user value kept"   "$(grep -c '^DB_PASSWORD=my-real-password-123$' "$tmp/.env2")" "1"
 
+# ── EDITION preserve (task-09560333, fish 2026-08-09) ─────────────────
+# Mirrors deploy/lib/instance-upgrade.sh: keep user EDITION; only backfill
+# package default when missing. Does not run full upgrade_instance (needs docker).
+sync_edition_like_instance_upgrade() {
+  local instance_env="$1" pkg_example="$2"
+  local edition pkg_edition
+  edition="$(grep -E '^EDITION=' "$instance_env" | tail -n 1 | cut -d= -f2- || true)"
+  pkg_edition="$(grep -E '^EDITION=' "$pkg_example" | tail -n 1 | cut -d= -f2- || true)"
+  if [[ -z "$edition" && "$pkg_edition" == "enterprise" ]]; then
+    if grep -qE '^EDITION=' "$instance_env"; then
+      sed -i "s|^EDITION=.*|EDITION=enterprise|" "$instance_env"
+    else
+      printf 'EDITION=enterprise\n' >> "$instance_env"
+    fi
+  fi
+}
+
+echo "== EDITION preserve (task-09560333) =="
+cat > "$tmp/pkg.env.example" << 'EOF'
+EDITION=enterprise
+SERVICE_IMAGE=vulnhunter-service:2.3.7
+EOF
+
+# Case A: user saas must survive enterprise package upgrade
+cat > "$tmp/inst-saas.env" << 'EOF'
+EDITION=saas
+WEB_PORT=23000
+EOF
+sync_edition_like_instance_upgrade "$tmp/inst-saas.env" "$tmp/pkg.env.example"
+assert_eq "saas kept on enterprise pack" "$(grep -E '^EDITION=' "$tmp/inst-saas.env" | cut -d= -f2-)" "saas"
+
+# Case B: user enterprise stays enterprise
+cat > "$tmp/inst-ent.env" << 'EOF'
+EDITION=enterprise
+EOF
+sync_edition_like_instance_upgrade "$tmp/inst-ent.env" "$tmp/pkg.env.example"
+assert_eq "enterprise kept" "$(grep -E '^EDITION=' "$tmp/inst-ent.env" | cut -d= -f2-)" "enterprise"
+
+# Case C: missing EDITION → backfill package default
+cat > "$tmp/inst-missing.env" << 'EOF'
+WEB_PORT=23000
+EOF
+sync_edition_like_instance_upgrade "$tmp/inst-missing.env" "$tmp/pkg.env.example"
+assert_eq "missing backfilled enterprise" "$(grep -E '^EDITION=' "$tmp/inst-missing.env" | cut -d= -f2-)" "enterprise"
+
+# Case D: upgrade.sh path — same guard (user value present → no overwrite)
+# Inline the fixed upgrade.sh condition against a temp .env
+cat > "$tmp/up.env" << 'EOF'
+EDITION=saas
+EOF
+cat > "$tmp/up.env.example" << 'EOF'
+EDITION=enterprise
+EOF
+(
+  cd "$tmp"
+  env_value() { local key="$1" file="${2:-.env}"; grep -E "^${key}=" "$file" 2>/dev/null | tail -n 1 | cut -d= -f2-; }
+  set_env_key() {
+    local key="$1" value="$2"
+    if grep -qE "^${key}=" .env; then sed -i "s|^${key}=.*|${key}=${value}|" .env
+    else printf '%s=%s\n' "$key" "$value" >> .env; fi
+  }
+  cp up.env .env
+  cp up.env.example .env.example
+  edition="$(env_value EDITION .env)"
+  pkg_edition="$(env_value EDITION .env.example)"
+  if [[ -z "$edition" && "$pkg_edition" == "enterprise" ]]; then
+    set_env_key EDITION enterprise
+  fi
+  cp .env up.env.result
+)
+assert_eq "upgrade.sh path keeps saas" "$(grep -E '^EDITION=' "$tmp/up.env.result" | cut -d= -f2-)" "saas"
+
 if [[ "$fail" == "0" ]]; then
   echo "ALL PASSED"
 else

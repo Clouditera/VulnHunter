@@ -128,11 +128,22 @@ sync_release_env() {
     echo "[upgrade] synced release image key: $key=$value"
   done
 
-  local edition
-  edition="$(env_value EDITION .env.example)"
-  if [[ "$edition" == "enterprise" ]]; then
+  # EDITION is a user choice on top of the package flavor (enterprise pack +
+  # EDITION=saas = SaaS). Only backfill the package default when the user .env
+  # has no EDITION yet — never overwrite an existing value (fish 2026-08-09,
+  # task-09560333: 31.106 saas→enterprise silent flip on 2.3.5→2.3.6).
+  local edition pkg_edition
+  edition="$(env_value EDITION .env)"
+  pkg_edition="$(env_value EDITION .env.example)"
+  if [[ -z "$edition" && "$pkg_edition" == "enterprise" ]]; then
     set_env_key EDITION enterprise
-    echo "[upgrade] synced enterprise edition"
+    echo "[upgrade] backfilled missing EDITION=enterprise"
+  elif [[ -n "$edition" ]]; then
+    echo "[upgrade] kept user EDITION=$edition"
+  fi
+  # License public-key paths are package-owned fixed locations (not a user
+  # choice) — keep syncing them whenever the package is enterprise-flavored.
+  if [[ "$pkg_edition" == "enterprise" ]]; then
     local license_key_file license_key_container
     license_key_file="$(env_value LICENSE_PUBLIC_KEY_FILE .env.example)"
     license_key_container="$(env_value VULNHUNTER_LICENSE_PUBLIC_KEY_FILE .env.example)"
