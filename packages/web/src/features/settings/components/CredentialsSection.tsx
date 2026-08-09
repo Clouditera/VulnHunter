@@ -405,12 +405,7 @@ export function CredentialsSection() {
           thinking_effort: thinking,
           label: label || undefined,
           context_window_tokens: contextWindowTokens,
-          advanced_config: (() => {
-            const base = serializeAdvancedConfig(advConfig) ?? {};
-            const ov = thinkingOverride.trim();
-            if (ov !== "" && thinking !== "off") base.thinkingLevelValue = ov;
-            return Object.keys(base).length > 0 ? base : null;
-          })(),
+          advanced_config: formAdvancedConfig(),
           api_key: apiKey,
         }),
       );
@@ -531,6 +526,15 @@ export function CredentialsSection() {
    * from ever seeing a click-then-fail. */
   const normUrl = (u: string) => u.trim().replace(/\/+$/, "");
   const advSerialized = () => JSON.stringify(serializeAdvancedConfig(advConfig));
+  /** Sparse advanced_config for save/test payloads — section serialization
+   *  + 发送值 merged (fish 2026-08-09; thinkingLevelValue only when a level
+   *  is active). null when fully default: save clears, test omits. */
+  const formAdvancedConfig = (): Record<string, unknown> | null => {
+    const base = serializeAdvancedConfig(advConfig) ?? {};
+    const ov = thinkingOverride.trim();
+    if (ov !== "" && thinking !== "off") base.thinkingLevelValue = ov;
+    return Object.keys(base).length > 0 ? base : null;
+  };
   const coreFingerprint = () =>
     [protoType, normUrl(baseUrl), modelId.trim(), thinking, thinkingOverride.trim(), apiKey.trim() ? "newkey" : "keep", advSerialized()].join("|");
   // fish 2026-08-06 ③: thinking_effort is a core field (it changes the
@@ -610,14 +614,11 @@ export function CredentialsSection() {
       api_key: apiKey || undefined,
       thinking_effort: thinking,
       context_window_tokens: contextWindowTokens,
-      // fish 2026-08-09 所见即所得: form advanced_config (incl. thinkingLevelValue)
-      // wins over saved — same sparse shape as save.
-      advanced_config: (() => {
-        const base = serializeAdvancedConfig(advConfig) ?? {};
-        const ov = thinkingOverride.trim();
-        if (ov !== "" && thinking !== "off") base.thinkingLevelValue = ov;
-        return Object.keys(base).length > 0 ? base : null;
-      })(),
+      // fish 2026-08-09 所见即所得 (task-ee5d8912): the test runs against the
+      // FORM's advanced config (incl. 发送值 thinkingLevelValue), not the stored
+      // one — form-priority; omitted when fully default → backend falls back
+      // to the stored credential's config.
+      advanced_config: formAdvancedConfig() ?? undefined,
       async: true,
     };
 
