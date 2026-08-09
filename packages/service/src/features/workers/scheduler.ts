@@ -495,12 +495,19 @@ export class TaskScheduler {
         published = await this.prepareWorkspace(task, token);
       }
 
-      // H5: run the Prepare phase (source completeness + dynamic sandbox
-      // selection) for any mode that (re)prepared source. Resume reuses the
-      // paused container's existing source and does not re-prepare.
+      // H5: Prepare phase.
+      // - fresh: always run (source completeness + sandbox selection).
+      // - continue (fish 2026-08-08 / task-c832309f): source is fixed at create
+      //   time — re-running prepare is pure failure surface + wasted tokens.
+      //   Reuse metadata.prepare from the first run; only fall back to a real
+      //   prepare when the persisted result is missing (legacy / corrupt data).
+      // - resume: paused container already has source; no prepare.
       let prepareResult: PrepareResult | null = null;
-      if (claim.mode === "fresh" || claim.mode === "continue") {
+      if (claim.mode === "fresh") {
         prepareResult = await this.runPreparePhase(task, token, hostWorkDir);
+        await this.assertSchedulerOwnership(task.id, token);
+      } else if (claim.mode === "continue") {
+        prepareResult = await this.resolveContinuePrepare(task, token, hostWorkDir);
         await this.assertSchedulerOwnership(task.id, token);
       }
 
@@ -585,6 +592,101 @@ export class TaskScheduler {
         logger.warn({ err, taskId: task.id, token }, "Failed to clean token-private scheduler workspace"),
       );
     }
+  }
+
+
+  /**
+   * Continue-mode prepare resolution (task-c832309f / fish 2026-08-08):
+   * prefer the first-run result persisted in metadata.prepare. When present,
+   * emit a reused timeline event and skip the prepare worker entirely. When
+   * missing (legacy tasks / corrupt metadata), fall back to a real prepare
+   * so continue never hard-crashes on absent state.
+   */
+  private async resolveContinuePrepare(
+    task: ClaimedScanTask,
+    token: string,
+    hostWorkDir: string,
+  ): Promise<PrepareResult> {
+    const persisted = (task.metadata as Record<string, unknown> | undefined)?.prepare as
+      | { project_complete?: unknown; sandbox_type?: unknown; reason?: unknown }
+      | undefined;
+
+    const reusable =
+      persisted &&
+      typeof persisted.project_complete === "boolean" &&
+      (persisted.sandbox_type === null || typeof persisted.sandbox_type === "string") &&
+      typeof persisted.reason === "string" &&
+      ["complete", "partial_source", "fragment_collection", "no_compatible_sandbox"].includes(
+        persisted.reason,
+      );
+
+    if (reusable) {
+      const result: PrepareResult = {
+        project_complete: persisted!.project_complete as boolean,
+        sandbox_type: (persisted!.sandbox_type as string | null) ?? null,
+        reason: persisted!.reason as PrepareResult["reason"],
+      };
+      const dynamicEnabled = isDynamicEnabled(task);
+      appendAndBroadcastCompletionEvent(task.id, {
+        type: "prepare_completed",
+        source: "scan",
+        seq: 0,
+        ts: new Date().toISOString(),
+        project_complete: result.project_complete,
+        sandbox_type: result.sandbox_type,
+        reason: result.reason,
+        reused: true,
+      });
+      logger.info(
+        { taskId: task.id, token, result, dynamicEnabled },
+        "Continue mode: reused first-run prepare result (skipped prepare worker)",
+      );
+
+      // Re-apply the same branch matrix as a live prepare so a previously
+      // incomplete / no-sandbox first run cannot silently proceed on continue.
+      if (!result.project_complete) {
+        await mergeTaskMetadata(task.id, { source_incomplete: true }).catch((err) =>
+          logger.warn({ err, taskId: task.id }, "Failed to set source_incomplete flag"),
+        );
+        const remediation = "请补充完整项目源码后重新创建任务";
+        appendAndBroadcastCompletionEvent(task.id, {
+          type: "prepare_failed",
+          source: "scan",
+          seq: 0,
+          ts: new Date().toISOString(),
+          reason: "source_incomplete",
+          remediation,
+          reused: true,
+        });
+        throw new AppError("ERR_PREPARE_FAILED", {
+          message: `源码不完整：功能代码缺失，无法建立完整的代码功能语义。审计目标应是自洽完整的功能项目（如 web 应用、CLI 应用、库）。${remediation}。`,
+          details: { phase: "prepare", reason: "source_incomplete", remediation, reused: true },
+        });
+      }
+      if (dynamicEnabled && result.sandbox_type === null) {
+        const remediation = "关闭动态验证后重试，或联系管理员启用对应的沙箱类型";
+        appendAndBroadcastCompletionEvent(task.id, {
+          type: "prepare_failed",
+          source: "scan",
+          seq: 0,
+          ts: new Date().toISOString(),
+          reason: "no_compatible_sandbox",
+          remediation,
+          reused: true,
+        });
+        throw new AppError("ERR_PREPARE_FAILED", {
+          message: `未找到兼容的沙箱类型（项目的主要运行方式没有可用的沙箱）。处理办法：${remediation}。`,
+          details: { phase: "prepare", reason: "no_compatible_sandbox", remediation, reused: true },
+        });
+      }
+      return result;
+    }
+
+    logger.warn(
+      { taskId: task.id, token, hasPrepareMeta: Boolean(persisted) },
+      "Continue mode: metadata.prepare missing/invalid — falling back to live prepare",
+    );
+    return this.runPreparePhase(task, token, hostWorkDir);
   }
 
   /**
