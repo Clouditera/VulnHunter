@@ -97,7 +97,7 @@ function formatContextWindow(tokens?: number | null): string {
   return String(value);
 }
 
-const THINKING_VALUES = ["off", "minimal", "low", "medium", "high"] as const;
+const THINKING_VALUES = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 type ThinkingValue = (typeof THINKING_VALUES)[number];
 
 
@@ -165,12 +165,18 @@ export function CredentialsSection() {
   const [editCoreSnap, setEditCoreSnap] = useState<{
     proto: string; baseUrl: string; modelId: string;
     label: string; thinking: string; contextWindow: string;
+    /** Vendor send-value override for the chosen level (发送值, fish 2026-08-09). */
+    thinkingOverride: string;
     /** Serialized advanced_config at load time (sparse JSON string). */
     adv: string;
   } | null>(null);
   /** Vendor-adaptation config form state (fish 2026-08-08 §3.1a). Changes
    *  count as core-field changes (save requires a fresh passing test). */
   const [advConfig, setAdvConfig] = useState<AdvancedConfigState>(defaultAdvancedConfig());
+  /** 发送值 (fish 2026-08-09 简化案): vendor-native value for the selected
+   *  thinking level; stored as advanced_config.thinkingLevelValue. Empty =
+   *  the level word is sent as-is. Core field (requires retest). */
+  const [thinkingOverride, setThinkingOverride] = useState("");
   /** Fingerprint of the form values the last successful test ran against. */
   const [testedFingerprint, setTestedFingerprint] = useState<string | null>(null);
   const [testChecks, setTestChecks] = useState<import("../../../shared/api/client").ModelDiagnosticCheck[]>([]);
@@ -221,6 +227,11 @@ export function CredentialsSection() {
     setContextWindow(formatContextWindow(c.context_window_tokens));
     setLabel(c.label ?? "");
     setAdvConfig(parseAdvancedConfig(c.advanced_config));
+    setThinkingOverride(
+      typeof c.advanced_config?.thinkingLevelValue === "string"
+        ? c.advanced_config.thinkingLevelValue
+        : "",
+    );
     setApiKey(""); // loaded only after an explicit reveal action
     setShowKey(false);
     setTestState({ kind: "idle" });
@@ -233,6 +244,10 @@ export function CredentialsSection() {
       label: c.label ?? "",
       thinking: (c.thinking_effort as ThinkingValue) ?? "medium",
       contextWindow: formatContextWindow(c.context_window_tokens),
+      thinkingOverride:
+        typeof c.advanced_config?.thinkingLevelValue === "string"
+          ? c.advanced_config.thinkingLevelValue
+          : "",
       adv: JSON.stringify(serializeAdvancedConfig(parseAdvancedConfig(c.advanced_config))),
     });
     setTestedFingerprint(null);
@@ -260,6 +275,7 @@ export function CredentialsSection() {
     setEditCoreSnap(null);
     setTestedFingerprint(null);
     setAdvConfig(defaultAdvancedConfig());
+    setThinkingOverride("");
   }
 
   /** Open the "+ New credential" draft row at the top of the list. */
@@ -275,6 +291,7 @@ export function CredentialsSection() {
     setContextWindow("128k");
     setLabel("");
     setAdvConfig(defaultAdvancedConfig());
+    setThinkingOverride("");
     setApiKey("");
     setTestState({ kind: "idle" });
     showToast(null);
@@ -393,7 +410,12 @@ export function CredentialsSection() {
           thinking_effort: thinking,
           label: label || undefined,
           context_window_tokens: contextWindowTokens,
-          advanced_config: serializeAdvancedConfig(advConfig),
+          advanced_config: (() => {
+            const base = serializeAdvancedConfig(advConfig) ?? {};
+            const ov = thinkingOverride.trim();
+            if (ov !== "" && thinking !== "off") base.thinkingLevelValue = ov;
+            return Object.keys(base).length > 0 ? base : null;
+          })(),
           api_key: apiKey,
         }),
       );
@@ -515,7 +537,7 @@ export function CredentialsSection() {
   const normUrl = (u: string) => u.trim().replace(/\/+$/, "");
   const advSerialized = () => JSON.stringify(serializeAdvancedConfig(advConfig));
   const coreFingerprint = () =>
-    [protoType, normUrl(baseUrl), modelId.trim(), thinking, apiKey.trim() ? "newkey" : "keep", advSerialized()].join("|");
+    [protoType, normUrl(baseUrl), modelId.trim(), thinking, thinkingOverride.trim(), apiKey.trim() ? "newkey" : "keep", advSerialized()].join("|");
   // fish 2026-08-06 ③: thinking_effort is a core field (it changes the
   // reasoning params sent to the model) — editing it requires a fresh test.
   const coreChanged =
@@ -525,6 +547,7 @@ export function CredentialsSection() {
       normUrl(baseUrl) !== normUrl(editCoreSnap.baseUrl) ||
       modelId.trim() !== editCoreSnap.modelId ||
       thinking !== editCoreSnap.thinking ||
+      thinkingOverride.trim() !== editCoreSnap.thinkingOverride.trim() ||
       advSerialized() !== editCoreSnap.adv ||
       apiKey.trim() !== "");
   /** Un-gate ONLY when the last test run PASSED against the current form
@@ -546,22 +569,16 @@ export function CredentialsSection() {
    *  when editing) — fish: 模型列表依赖 key/url，排在其后且未填禁用. */
   const canFetchModels =
     baseUrl.trim() !== "" && (apiKey.trim() !== "" || (!isNewDraft && editingCredentialId != null));
-  /** Thinking levels for the UI: model-specific when known, standard five otherwise. */
-  const thinkingLevelsForUi: string[] = activeModelCaps?.thinkingLevels ?? [...THINKING_VALUES];
+  /** fish 2026-08-09 简化案: 七档全量, 不再按目录声明的支持集过滤
+   *  (厂商特殊档位词走「发送值」覆盖, 不需要预过滤). */
+  const thinkingLevelsForUi: string[] = [...THINKING_VALUES];
 
-  /** Clamp thinking when the selected model's supported levels change. */
+  /** Non-reasoning models: thinking fixed to off + select disabled. */
   useEffect(() => {
     if (!activeModelCaps) return;
-    if (!activeModelCaps.reasoning) {
-      if (thinking !== "off") setThinking("off");
-      return;
-    }
-    if (!activeModelCaps.thinkingLevels.includes(thinking)) {
-      const preferred = ["medium", "low", "high"].find((l) => activeModelCaps.thinkingLevels.includes(l));
-      setThinking((preferred ?? activeModelCaps.thinkingLevels[0] ?? "medium") as ThinkingValue);
-    }
+    if (!activeModelCaps.reasoning && thinking !== "off") setThinking("off");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, activeModelCaps?.reasoning, activeModelCaps?.thinkingLevels?.join("|")]);
+  }, [modelId, activeModelCaps?.reasoning]);
 
   /** Test the CURRENT form values against L1-L3 (SSE progressive).
    *  Key fallback: in edit mode with the key left blank, credential_id lets
@@ -943,18 +960,40 @@ export function CredentialsSection() {
 
             <Field
               label={i18n.t("settings.model.thinking")}
-              hint={i18n.t("settings.model.thinking.hint")}
+              hint={
+                activeModelCaps !== null && !activeModelCaps.reasoning
+                  ? undefined
+                  : thinking === "off"
+                    ? i18n.t("settings.model.thinking.hintOff")
+                    : thinkingOverride.trim() !== ""
+                      ? i18n.t("settings.model.thinking.hintOverride")
+                          .replace("{level}", i18n.t(`settings.model.thinking.${thinking}`))
+                          .replace("{value}", thinkingOverride.trim())
+                      : i18n.t("settings.model.thinking.hintBase").replace("{level}", thinking)
+              }
             >
-              <Select
-                testid="settings-thinking-select"
-                value={thinking}
-                disabled={activeModelCaps !== null && !activeModelCaps.reasoning}
-                onChange={(v) => setThinking(v as ThinkingValue)}
-                options={thinkingLevelsForUi.map((v) => ({
-                  value: v,
-                  label: i18n.t(`settings.model.thinking.${v}`),
-                }))}
-              />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <Select
+                  testid="settings-thinking-select"
+                  value={thinking}
+                  disabled={activeModelCaps !== null && !activeModelCaps.reasoning}
+                  onChange={(v) => setThinking(v as ThinkingValue)}
+                  options={thinkingLevelsForUi.map((v) => ({
+                    value: v,
+                    label: i18n.t(`settings.model.thinking.${v}`),
+                  }))}
+                />
+                {thinking !== "off" && !(activeModelCaps !== null && !activeModelCaps.reasoning) ? (
+                  <input
+                    data-testid="settings-thinking-override"
+                    type="text"
+                    value={thinkingOverride}
+                    onChange={(e) => setThinkingOverride(e.target.value)}
+                    placeholder={i18n.t("settings.model.thinking.overridePlaceholder")}
+                    style={{ ...FIELD_INPUT, fontFamily: "var(--font-mono)" }}
+                  />
+                ) : null}
+              </div>
               {activeModelCaps && !activeModelCaps.reasoning ? (
                 <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--text-secondary)" }}>
                   {i18n.t("settings.model.thinking.notSupported")}

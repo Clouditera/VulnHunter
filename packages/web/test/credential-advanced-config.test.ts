@@ -25,15 +25,13 @@ describe("credential advanced_config helpers (fish 2026-08-08 §3.1a)", () => {
     expect(countCustomized(s)).toBe(2);
   });
 
-  it("thinkingLevelMap: skip → null, value → string, empty rows dropped", () => {
-    const s = defaultAdvancedConfig();
-    s.levelMap.off = { value: "nothink", skip: false };
-    s.levelMap.minimal = { value: "", skip: true };
-    s.levelMap.max = { value: " max ", skip: false }; // trimmed on save
-    expect(serializeAdvancedConfig(s)).toEqual({
-      thinkingLevelMap: { off: "nothink", minimal: null, max: "max" },
-    });
-    expect(countCustomized(s)).toBe(3);
+  it("thinkingLevelValue passthrough: allowed in JSON validation, not consumed by the section (main form owns it)", () => {
+    expect(validateAdvancedJson('{"thinkingLevelValue":"max"}')).toBeNull();
+    expect(validateAdvancedJson('{"thinkingLevelValue":5}')?.key).toBe("settings.adv.json.err.levelValue");
+    // legacy thinkingLevelMap is rejected outright (architect 2026-08-09: 白名单移除, 不留双轨)
+    expect(validateAdvancedJson('{"thinkingLevelMap":{"off":"nothink"}}')?.key).toBe(
+      "settings.adv.json.err.unknownKey",
+    );
   });
 
   it("input: [text] is default (dropped); [text,image] persists", () => {
@@ -52,14 +50,12 @@ describe("credential advanced_config helpers (fish 2026-08-08 §3.1a)", () => {
   it("parse ↔ serialize roundtrips a fish-shaped zapi-style payload (explicit defaults normalized away)", () => {
     const payload = {
       compat: { supportsDeveloperRole: false, thinkingFormat: "zai", supportsReasoningEffort: true },
-      thinkingLevelMap: { off: "nothink", minimal: null, max: "max" },
       cost: { input: 0.6, output: 2.2, cacheRead: 0.11, cacheWrite: 0 },
     };
     const parsed = parseAdvancedConfig(payload);
     // supportsReasoningEffort: true IS the default — sparse output drops it.
     expect(serializeAdvancedConfig(parsed)).toEqual({
       compat: { supportsDeveloperRole: false, thinkingFormat: "zai" },
-      thinkingLevelMap: { off: "nothink", minimal: null, max: "max" },
       cost: { input: 0.6, output: 2.2, cacheRead: 0.11, cacheWrite: 0 },
     });
   });
@@ -76,12 +72,6 @@ describe("credential advanced_config helpers (fish 2026-08-08 §3.1a)", () => {
     expect(validateAdvancedJson('{"nope":1}')?.key).toBe("settings.adv.json.err.unknownKey");
     expect(validateAdvancedJson('{"compat":{"thinkingFormat":"bogus"}}')?.key).toBe(
       "settings.adv.json.err.thinkingFormat",
-    );
-    expect(validateAdvancedJson('{"thinkingLevelMap":{"off":5}}')?.key).toBe(
-      "settings.adv.json.err.mapValue",
-    );
-    expect(validateAdvancedJson('{"thinkingLevelMap":{"ultra":"x"}}')?.key).toBe(
-      "settings.adv.json.err.mapLevel",
     );
     expect(validateAdvancedJson('{"input":["text","video"]}')?.key).toBe(
       "settings.adv.json.err.inputShape",
