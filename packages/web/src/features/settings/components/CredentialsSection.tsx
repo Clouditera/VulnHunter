@@ -26,6 +26,7 @@ import {
 import {
   CredentialAdvancedConfig,
   defaultAdvancedConfig,
+  loadThinkingOverride,
   parseAdvancedConfig,
   serializeAdvancedConfig,
   type AdvancedConfigState,
@@ -98,6 +99,7 @@ function formatContextWindow(tokens?: number | null): string {
 }
 
 const THINKING_VALUES = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
 type ThinkingValue = (typeof THINKING_VALUES)[number];
 
 
@@ -227,11 +229,7 @@ export function CredentialsSection() {
     setContextWindow(formatContextWindow(c.context_window_tokens));
     setLabel(c.label ?? "");
     setAdvConfig(parseAdvancedConfig(c.advanced_config));
-    setThinkingOverride(
-      typeof c.advanced_config?.thinkingLevelValue === "string"
-        ? c.advanced_config.thinkingLevelValue
-        : "",
-    );
+    setThinkingOverride(loadThinkingOverride(c));
     setApiKey(""); // loaded only after an explicit reveal action
     setShowKey(false);
     setTestState({ kind: "idle" });
@@ -244,10 +242,7 @@ export function CredentialsSection() {
       label: c.label ?? "",
       thinking: (c.thinking_effort as ThinkingValue) ?? "medium",
       contextWindow: formatContextWindow(c.context_window_tokens),
-      thinkingOverride:
-        typeof c.advanced_config?.thinkingLevelValue === "string"
-          ? c.advanced_config.thinkingLevelValue
-          : "",
+      thinkingOverride: loadThinkingOverride(c),
       adv: JSON.stringify(serializeAdvancedConfig(parseAdvancedConfig(c.advanced_config))),
     });
     setTestedFingerprint(null);

@@ -3,8 +3,9 @@
  * unified-credential-models-json-v1.0.md §3.1a; approved prototype v4).
  *
  * Collapsible「高级配置」inside the credential form — structured form first
- * (enum selects / toggles / cost fields / thinkingLevelMap 7-row table),
- * raw-JSON tab with two-way sync + whitelist validation. Sparse
+ * (enum selects / toggles / cost fields), raw-JSON tab with two-way sync
+ * + whitelist validation. (Level mapping retired fish 2026-08-09: single
+ * send-value override lives in the main form.) Sparse
  * serialization: only non-default values persist; an all-default state
  * saves null (「使用默认配置」). Copy is pm-final (no pi/GLM mentions).
  */
@@ -57,6 +58,28 @@ export function defaultAdvancedConfig(): AdvancedConfigState {
     costCacheRead: "",
     costCacheWrite: "",
   };
+}
+
+/** Load the 发送值 override from a credential (fish 2026-08-09 简化案).
+ *  Legacy fallback: thinkingLevelValue absent AND a legacy thinkingLevelMap
+ *  present → take the row of the CURRENT thinking_effort (string values
+ *  only; null rows skipped) so yesterday's map-based credentials surface
+ *  their translation instead of silently losing it on the next save
+ *  (architect review 15864). Saving then writes thinkingLevelValue only —
+ *  the legacy map key is not carried back (migration completes). */
+export function loadThinkingOverride(c: {
+  thinking_effort?: string;
+  advanced_config?: Record<string, unknown> | null;
+}): string {
+  const cfg = c.advanced_config;
+  if (!cfg || typeof cfg !== "object") return "";
+  if (typeof cfg.thinkingLevelValue === "string") return cfg.thinkingLevelValue;
+  const legacy = cfg.thinkingLevelMap;
+  if (legacy && typeof legacy === "object" && !Array.isArray(legacy)) {
+    const v = (legacy as Record<string, unknown>)[c.thinking_effort ?? ""];
+    if (typeof v === "string") return v;
+  }
+  return "";
 }
 
 // ─── Parse (payload → form state) ───

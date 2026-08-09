@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   countCustomized,
+  loadThinkingOverride,
   defaultAdvancedConfig,
   parseAdvancedConfig,
   serializeAdvancedConfig,
@@ -58,6 +59,32 @@ describe("credential advanced_config helpers (fish 2026-08-08 §3.1a)", () => {
       compat: { supportsDeveloperRole: false, thinkingFormat: "zai" },
       cost: { input: 0.6, output: 2.2, cacheRead: 0.11, cacheWrite: 0 },
     });
+  });
+
+  it("loadThinkingOverride: direct key wins; legacy map falls back to current level row only", () => {
+    // direct key present → use it (ignore legacy map)
+    expect(
+      loadThinkingOverride({
+        thinking_effort: "xhigh",
+        advanced_config: { thinkingLevelValue: "max", thinkingLevelMap: { xhigh: "ignored" } },
+      }),
+    ).toBe("max");
+    // legacy map: current level row (string) → migrated
+    expect(
+      loadThinkingOverride({
+        thinking_effort: "xhigh",
+        advanced_config: { thinkingLevelMap: { xhigh: "max", minimal: null } },
+      }),
+    ).toBe("max");
+    // legacy map: current level row is null → no override
+    expect(
+      loadThinkingOverride({
+        thinking_effort: "minimal",
+        advanced_config: { thinkingLevelMap: { xhigh: "max", minimal: null } },
+      }),
+    ).toBe("");
+    // neither → empty
+    expect(loadThinkingOverride({ thinking_effort: "high", advanced_config: null })).toBe("");
   });
 
   it("parse tolerates null/garbage and falls back to defaults", () => {
