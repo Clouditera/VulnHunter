@@ -1,0 +1,12 @@
+VulnHunter
+Copyright 2026 Clouditera
+
+This product includes software developed by Clouditera and contributors.
+Product name: VulnHunter
+Project site: https://github.com/Clouditera/VulnHunter
+
+Licensed under the VulnHunter License (Apache License 2.0 with additional
+conditions). See the LICENSE file in the project root.
+
+Third-party components bundled or used by this project remain under their
+respective licenses. See package manifests and vendor notices where applicable.

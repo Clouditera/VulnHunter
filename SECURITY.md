@@ -1,5 +1,15 @@
 # Security Policy
 
+## Lawful use (users of VulnHunter)
+
+VulnHunter is for **authorized security research and testing only**.
+
+- Test **only** systems, codebases, and services you **own** or are **explicitly authorized** to assess.
+- **Do not** use VulnHunter for unauthorized scanning, intrusion, data theft, extortion, disruption, or any other illegal activity.
+- Unauthorized or illegal use is solely the operator's responsibility.
+
+This section is about **how people must use the product**. The rest of this document is about **reporting defects in VulnHunter itself**.
+
 ## Supported versions
 
 | Version | Supported |
@@ -41,6 +51,7 @@ Report privately so we can fix and coordinate disclosure before public discussio
 - **In scope:** VulnHunter open-source platform code in this repository, default deploy scripts, and documented configurations.
 - **Out of scope (examples):** third-party model providers, customer-deployed infrastructure misconfiguration, social engineering, DoS without a security boundary bug.
 - Findings in **commercial / SaaS-only** modules belong to the private product line — still welcome via the same email; they are not tracked in this public repo.
+- Reports that describe **unauthorized testing of third-party systems** (using VulnHunter or otherwise) are not a vulnerability report to this project; we do not accept or coordinate such activity.
 
 ## Safe harbor
 

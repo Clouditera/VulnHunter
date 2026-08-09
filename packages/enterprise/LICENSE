@@ -1,0 +1,22 @@
+VulnHunter Enterprise Components
+Copyright 2026 Clouditera
+
+This directory and its contents (the "Enterprise Components") are proprietary
+software of Clouditera. They are NOT licensed under the VulnHunter License
+(Apache License 2.0 with additional conditions) that applies to the open-source
+core of the VulnHunter project.
+
+You may not use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell the Enterprise Components except under a separate written commercial
+license agreement with Clouditera.
+
+These components are provided for Clouditera's commercial Enterprise and SaaS
+offerings. Access to source in a private repository does not grant any license
+beyond what your commercial agreement expressly provides.
+
+This is a conventional proprietary / closed-source commercial license.
+It is not a Business Source License (BSL) and does not convert to an open-source
+license on a fixed date.
+
+For licensing inquiries: contact Clouditera through the channels published on
+the VulnHunter project site.
