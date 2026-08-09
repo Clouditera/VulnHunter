@@ -105,10 +105,21 @@ describe("UsersSection dirty-ESC unsaved confirm (fish 2026-08-09 ESC saga)", ()
     expect(dlg).not.toBeNull();
     expect(container.querySelector('input[type="email"]')).not.toBeNull(); // modal still open
 
-    // ③ confirm dialog's own ESC cancels it (keep editing), modal content intact
+    // ③ confirm dialog's own ESC cancels it (keep editing), modal content intact.
+    // REAL propagation path: dispatch at the focused element inside the modal so
+    // the event walks window-capture (host) → document-capture (underlying hook).
+    // The underlying hook must NOT reopen the confirm on the same keypress
+    // (fish 2026-08-09 layer 3 race: host settle clears pending synchronously).
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      const target = document.activeElement instanceof HTMLElement ? document.activeElement : document.body;
+      target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
       await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(document.querySelector('[data-testid="confirm-dialog"]')).toBeNull();
+    // and it must STAY closed (no same-keypress reopen)
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
     });
     expect(document.querySelector('[data-testid="confirm-dialog"]')).toBeNull();
     const stillThere = container.querySelector('input[type="email"]') as HTMLInputElement | null;
