@@ -44,12 +44,34 @@ function parseContextWindowTokens(value: unknown): number {
 const LAST_TEST_TTL_MS = 5 * 60_000;
 const lastTestPass = new Map<string, { at: number; ok: boolean }>();
 
+/** Stable fingerprint of the advanced_config payload for test-cache keys. */
+function advancedConfigFingerprint(cfg: unknown): string {
+  if (cfg == null) return "";
+  // Canonical JSON: sort top-level keys so key order doesn't bust the cache.
+  try {
+    const obj = typeof cfg === "object" && !Array.isArray(cfg) ? (cfg as Record<string, unknown>) : { raw: cfg };
+    const keys = Object.keys(obj).sort();
+    const ordered: Record<string, unknown> = {};
+    for (const k of keys) ordered[k] = obj[k];
+    return JSON.stringify(ordered);
+  } catch {
+    return String(cfg);
+  }
+}
+
+/** Compare two advanced_config values for equality (null/undefined both = empty). */
+function advancedConfigEqual(a: unknown, b: unknown): boolean {
+  return advancedConfigFingerprint(a ?? null) === advancedConfigFingerprint(b ?? null);
+}
+
 function credentialFingerprint(cred: {
   proto_type: string;
   base_url: string;
   model_id: string;
   thinking_effort?: string;
   api_key: string;
+  /** fish 2026-08-09: include advanced_config so send-value / compat changes bust cache */
+  advanced_config?: unknown;
 }): string {
   const h = createHash("sha256");
   h.update(cred.proto_type);
@@ -61,6 +83,8 @@ function credentialFingerprint(cred: {
   h.update(cred.thinking_effort ?? "");
   h.update("|");
   h.update(createHash("sha256").update(cred.api_key).digest("hex"));
+  h.update("|");
+  h.update(advancedConfigFingerprint(cred.advanced_config ?? null));
   return h.digest("hex");
 }
 
@@ -207,28 +231,42 @@ settingsRouter.put("/credential", async (c) => {
   const ctx = queryContextFromUser(c.get("user"));
 
   // ── Edit gate refinement (fish 2026-08-04): core-field changes
-  // (proto/base_url/api_key/model_id) require a fresh L1-L3 pass;
-  // optional-only edits (label etc.) save directly. ──
+  // (proto/base_url/api_key/model_id/thinking) require a fresh test;
+  // optional-only edits (label, context_window) save directly. ──
   let coreChanged = true;
   let effectiveKey = body.api_key;
+  let existingCred: Awaited<ReturnType<typeof getCredentialById>> = null;
   if (body.id) {
-    const existing = await getCredentialById(ctx, body.id).catch(() => null);
-    if (!existing) throw new AppError("ERR_NOT_FOUND");
-    effectiveKey = effectiveApiKey(existing, body);
-    coreChanged = coreFieldsChanged(existing, body);
+    existingCred = await getCredentialById(ctx, body.id).catch(() => null);
+    if (!existingCred) throw new AppError("ERR_NOT_FOUND");
+    effectiveKey = effectiveApiKey(existingCred, body);
+    coreChanged = coreFieldsChanged(existingCred, body);
   }
 
-  // Validate advanced_config if present (fish 2026-08-08: unified credential module)
+  // Validate advanced_config if present (fish 2026-08-08: unified credential module).
+  // fish 2026-08-09: only force coreChanged when the value *actually differs*
+  // from what's stored. Frontend always sends the sparse advanced_config on
+  // save (even when untouched) — treating presence as a change forced a
+  // silent re-gate that ignored the just-passed test fingerprint (missing
+  // advanced_config in the fingerprint made cache miss worse).
   let validatedAdvancedConfig: unknown = undefined;
   if (body.advanced_config !== undefined) {
     try {
       const { validateAdvancedConfig } = await import("./credential-models.js");
-      validatedAdvancedConfig = validateAdvancedConfig(body.advanced_config);
+      // null = explicit clear; object = validate
+      validatedAdvancedConfig =
+        body.advanced_config === null ? null : validateAdvancedConfig(body.advanced_config);
     } catch (err: any) {
       throw new AppError("ERR_VALIDATION", { details: { field: "advanced_config", reason: err?.message } });
     }
-    // advanced_config change = core field change (must re-test)
-    coreChanged = true;
+    if (body.id) {
+      const stored = existingCred?.advanced_config ?? null;
+      if (!advancedConfigEqual(validatedAdvancedConfig, stored)) {
+        coreChanged = true;
+      }
+    } else if (validatedAdvancedConfig != null) {
+      coreChanged = true;
+    }
   }
 
   // ── Save gate: all four layers must pass before persisting (fish
@@ -246,7 +284,12 @@ settingsRouter.put("/credential", async (c) => {
       thinking_effort: body.thinking_effort,
       api_key: effectiveKey,
       context_window_tokens: contextWindowTokens,
-      advanced_config: validatedAdvancedConfig,
+      // Prefer body-validated config; else stored — same as diagnose-stream
+      // fallback, so the test-pass cache key matches the just-run diagnose.
+      advanced_config:
+        validatedAdvancedConfig !== undefined
+          ? validatedAdvancedConfig
+          : (existingCred?.advanced_config ?? null),
       is_default: false,
       created_at: new Date(),
       updated_at: new Date(),
