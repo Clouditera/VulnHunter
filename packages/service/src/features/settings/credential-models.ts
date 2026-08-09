@@ -37,6 +37,18 @@ export interface AdvancedConfig {
     thinkingFormat?: string;
     maxTokensField?: string;
   };
+  /**
+   * Single-level send-value override (fish 2026-08-09 simplified thinking UI).
+   * When set, buildModelsJson synthesizes a one-row thinkingLevelMap:
+   *   { [thinking_effort]: thinkingLevelValue }
+   * When absent, pi receives the level word as-is (no map).
+   */
+  thinkingLevelValue?: string;
+  /**
+   * @deprecated fish 2026-08-09 — seven-row map retired in favor of
+   * thinkingLevelValue. Still accepted on read for migration: the row
+   * matching the credential's thinking_effort becomes thinkingLevelValue.
+   */
   thinkingLevelMap?: Record<string, string | null>;
   input?: ("text" | "image")[];
   cost?: {
@@ -209,7 +221,19 @@ export function validateAdvancedConfig(raw: unknown): AdvancedConfig | null {
     result.compat = compat;
   }
 
-  // thinkingLevelMap
+  // thinkingLevelValue (fish 2026-08-09 simplified: single send-value override)
+  if (obj.thinkingLevelValue !== undefined) {
+    if (typeof obj.thinkingLevelValue !== "string") {
+      throw new AdvancedConfigError("thinkingLevelValue must be a string");
+    }
+    // Empty string = clear override (treat as absent)
+    if (obj.thinkingLevelValue.trim() !== "") {
+      result.thinkingLevelValue = obj.thinkingLevelValue.trim();
+    }
+  }
+
+  // thinkingLevelMap — still accepted for backward-compat / migration reads
+  // (UI no longer writes it; buildModelsJson migrates to single-row map)
   if (obj.thinkingLevelMap !== undefined) {
     if (typeof obj.thinkingLevelMap !== "object" || Array.isArray(obj.thinkingLevelMap)) {
       throw new AdvancedConfigError("thinkingLevelMap must be an object");
@@ -227,12 +251,6 @@ export function validateAdvancedConfig(raw: unknown): AdvancedConfig | null {
         map[key] = val;
       } else {
         throw new AdvancedConfigError(`thinkingLevelMap["${key}"] must be string or null`);
-      }
-    }
-    // Ensure all seven keys exist (fill missing with undefined → omit)
-    for (const level of VALID_THINKING_LEVELS) {
-      if (level in mapRaw) {
-        map[level] = mapRaw[level] as string | null;
       }
     }
     result.thinkingLevelMap = map;
@@ -272,7 +290,7 @@ export function validateAdvancedConfig(raw: unknown): AdvancedConfig | null {
 
   // Must have at least one key
   if (Object.keys(result).length === 0) {
-    throw new AdvancedConfigError("advanced_config must contain at least one field (compat/thinkingLevelMap/input/cost)");
+    throw new AdvancedConfigError("advanced_config must contain at least one field (compat/thinkingLevelValue/input/cost)");
   }
 
   return result;
@@ -370,10 +388,26 @@ export async function buildModelsJson(
     modelEntry.compat = compat;
   }
 
-  // ── reasoning + thinkingLevelMap ──
-  if (hasThinking && cred.advanced_config?.thinkingLevelMap) {
-    // Include the thinkingLevelMap in the model entry — pi translates at request time
-    modelEntry.thinkingLevelMap = cred.advanced_config.thinkingLevelMap;
+  // ── reasoning + thinkingLevelMap (single-row synthesis, fish 2026-08-09) ──
+  // Platform stores one selected level (thinking_effort) + optional send-value
+  // override (thinkingLevelValue). Pi still consumes a thinkingLevelMap — we
+  // synthesize a one-row map for the selected level only.
+  // Migration: if legacy seven-row thinkingLevelMap is present and no
+  // thinkingLevelValue, take the row matching thinking_effort as the override.
+  if (hasThinking) {
+    const effort = cred.thinking_effort;
+    let sendValue: string | null | undefined = cred.advanced_config?.thinkingLevelValue;
+    if (sendValue === undefined && cred.advanced_config?.thinkingLevelMap) {
+      // Legacy map migration: use the current effort's row if present
+      if (effort in cred.advanced_config.thinkingLevelMap) {
+        sendValue = cred.advanced_config.thinkingLevelMap[effort];
+      }
+    }
+    if (sendValue !== undefined && sendValue !== effort) {
+      // Only emit a map when the send value differs from the level word
+      // (or is null = "don't send for this level"). Identity override is a no-op.
+      modelEntry.thinkingLevelMap = { [effort]: sendValue };
+    }
   }
 
   // ── cost ──

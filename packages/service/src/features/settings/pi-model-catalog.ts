@@ -16,7 +16,8 @@ for (const provider of allProviders) {
   for (const model of models) {
     if (!model?.id) continue;
     const levels = getSupportedThinkingLevels(model);
-    modelIndex.set(model.id, {
+    // Case-insensitive key (fish 2026-08-09: GLM-5.2 vs glm-5.2 miss)
+    modelIndex.set(model.id.toLowerCase(), {
       reasoning: !!model.reasoning,
       thinkingLevels: levels,
     });
@@ -29,12 +30,13 @@ for (const provider of allProviders) {
  *
  * Returns empty arrays for unknown models — the L2 thinking test is the
  * final arbiter (per spec ⑤: "目录管展示、测试管真相").
+ * Lookup is case-insensitive (fish 2026-08-09).
  */
 export function lookupModelMeta(modelId: string): {
   reasoning: boolean;
   thinking_levels: string[];
 } {
-  const hit = modelIndex.get(modelId);
+  const hit = modelIndex.get(modelId.toLowerCase());
   if (!hit) return { reasoning: false, thinking_levels: [] };
   return { reasoning: hit.reasoning, thinking_levels: hit.thinkingLevels };
 }
