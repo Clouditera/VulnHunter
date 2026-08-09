@@ -88,7 +88,7 @@ export interface Task {
    * Why a completed task ended: "natural" (default) | "timeout" (scan time
    * budget exhausted). Absent on older rows / until backend lands (mock-ready).
    */
-  completion_reason?: "natural" | "timeout" | null;
+  completion_reason?: "natural" | "timeout" | "incomplete" | null;
   sandbox_queue?: SandboxQueueInfo | null;
   risk_score: number | null;
   failure_reason: string | null;
