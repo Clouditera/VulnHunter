@@ -610,6 +610,14 @@ export function CredentialsSection() {
       api_key: apiKey || undefined,
       thinking_effort: thinking,
       context_window_tokens: contextWindowTokens,
+      // fish 2026-08-09 所见即所得: form advanced_config (incl. thinkingLevelValue)
+      // wins over saved — same sparse shape as save.
+      advanced_config: (() => {
+        const base = serializeAdvancedConfig(advConfig) ?? {};
+        const ov = thinkingOverride.trim();
+        if (ov !== "" && thinking !== "off") base.thinkingLevelValue = ov;
+        return Object.keys(base).length > 0 ? base : null;
+      })(),
       async: true,
     };
 
