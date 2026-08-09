@@ -962,20 +962,7 @@ export function CredentialsSection() {
               {fieldErrors.modelId && <div style={{ color: "var(--danger)", fontSize: "12px", marginTop: "4px" }}>{fieldErrors.modelId}</div>}
             </div>
 
-            <Field
-              label={i18n.t("settings.model.thinking")}
-              hint={
-                activeModelCaps !== null && !activeModelCaps.reasoning
-                  ? undefined
-                  : thinking === "off"
-                    ? i18n.t("settings.model.thinking.hintOff")
-                    : thinkingOverride.trim() !== ""
-                      ? i18n.t("settings.model.thinking.hintOverride")
-                          .replace("{level}", i18n.t(`settings.model.thinking.${thinking}`))
-                          .replace("{value}", thinkingOverride.trim())
-                      : i18n.t("settings.model.thinking.hintBase").replace("{level}", thinking)
-              }
-            >
+            <Field label={i18n.t("settings.model.thinking")}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
                 <Select
                   testid="settings-thinking-select"
@@ -1002,7 +989,31 @@ export function CredentialsSection() {
                 <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--text-secondary)" }}>
                   {i18n.t("settings.model.thinking.notSupported")}
                 </p>
-              ) : null}
+              ) : (
+                /* fish 2026-08-09 (task-edc3682b 终稿): single dynamic hint —
+                   「当前使用：<实际值>」= override when filled, else the level
+                   word; updates live with either control. */
+                <p
+                  data-testid="settings-thinking-actual-send"
+                  style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--text-secondary)", lineHeight: 1.5 }}
+                >
+                  {i18n.t("settings.model.thinking.currentUse")}
+                  <code
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 11,
+                      padding: "1px 6px",
+                      borderRadius: "4px",
+                      background: thinkingOverride.trim() !== "" ? "var(--bg-active-filter)" : "var(--bg-hover)",
+                      color: thinkingOverride.trim() !== "" ? "var(--brand)" : "var(--text-primary)",
+                      fontWeight: thinkingOverride.trim() !== "" ? 600 : 500,
+                    }}
+                  >
+                    {thinkingOverride.trim() !== "" ? thinkingOverride.trim() : thinking}
+                  </code>
+                  {i18n.t("settings.model.thinking.currentUse.end")}
+                </p>
+              )}
             </Field>
 
             <Field
