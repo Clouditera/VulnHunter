@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { i18n } from "../i18n/index.js";
-import { confirm, hasPendingDialog } from "../confirm/confirm.js";
+import { confirm, hasPendingDialog, wasEscHandledByHost } from "../confirm/confirm.js";
 
 /**
  * Unified modal close guard (fish 2026-08-07 定稿, task-d3f85fe5):
@@ -40,6 +40,10 @@ export function useConfirmClose(onClose: () => void, isDirty: boolean, esc: bool
       if (e.key !== "Escape") return;
       // The shared confirm host handles its own ESC (= 继续填写/cancel);
       // don't let the same keypress also fire the underlying modal's guard.
+      // Identity check FIRST: the host's window-capture settle() clears the
+      // pending flag synchronously, so a state check alone can't see that
+      // this very keypress was already consumed (fish 2026-08-09 layer 3).
+      if (wasEscHandledByHost(e)) return;
       if (hasPendingDialog()) return;
       requestClose();
     };

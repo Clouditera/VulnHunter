@@ -71,6 +71,18 @@ export function hasPendingDialog(): boolean {
   return current !== null;
 }
 
+/** Same-keypress race guard (fish 2026-08-09 ESC saga, layer 3): capture
+ *  propagation runs window BEFORE document, so when the host's ESC cancels
+ *  the dialog, settle() clears `current` SYNCHRONOUSLY — the underlying
+ *  modal's document-capture handler then sees hasPendingDialog()=false and
+ *  reopens the confirm on the SAME keypress (net effect: ESC looks dead).
+ *  The host records the KeyboardEvent it handled; modal guards skip the
+ *  identical event object. */
+let escHandledByHost: KeyboardEvent | null = null;
+export function wasEscHandledByHost(e: KeyboardEvent): boolean {
+  return escHandledByHost === e;
+}
+
 export const CONFIRM_OVERLAY_STYLE: CSSProperties = {
   position: "fixed",
   inset: 0,
@@ -130,7 +142,10 @@ export function ConfirmHost() {
   useEffect(() => {
     if (!pending) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") cancel();
+      if (event.key === "Escape") {
+        escHandledByHost = event;
+        cancel();
+      }
     };
     // CAPTURE phase too (same fish 2026-08-09 saga): the dialog's own
     // ESC=cancel must work in the same environment where bubble ESC dies.
