@@ -342,6 +342,8 @@ export const api = {
             display_name?: string;
             credential_id?: string;
             audit_focus?: string;
+            vuln_focus?: string;
+            output_language?: string;
             scan_timeout?: number;
             timeout_mode?: "custom" | "auto";
             max_items_per_recon?: number;

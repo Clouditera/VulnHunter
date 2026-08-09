@@ -43,6 +43,10 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   const [branchFallback, setBranchFallback] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [auditFocus, setAuditFocus] = useState("");
+  // Engine params (fish 2026-08-09, task-4606eb72): output_language select
+  // (zh-CN default) + vuln_focus free text — optional; omitted = engine default.
+  const [outputLanguage, setOutputLanguage] = useState("zh-CN");
+  const [vulnFocus, setVulnFocus] = useState("");
   const [scanDuration, setScanDuration] = useState<string>("10"); // hours (custom mode default 10h)
   const [timeoutMode, setTimeoutMode] = useState<"custom" | "auto">("custom");
   const [agentMaxParallel, setAgentMaxParallel] = useState("3");
@@ -178,6 +182,8 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
         if (credentialId) fd.append("credential_id", credentialId);
         fd.append("display_name", normalizedDisplayName);
         if (focus) fd.append("audit_focus", focus);
+        if (vulnFocus.trim()) fd.append("vuln_focus", vulnFocus.trim());
+        if (outputLanguage !== "zh-CN") fd.append("output_language", outputLanguage);
         fd.append("timeout_mode", timeoutMode);
         if (timeoutMode === "custom" && scanTimeout !== undefined) fd.append("scan_timeout", String(scanTimeout));
         fd.append("agent_max_parallel", String(Math.max(1, Math.trunc(Number(agentMaxParallel) || 3))));
@@ -194,6 +200,8 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
           display_name: normalizedDisplayName,
           credential_id: credentialId || undefined,
           audit_focus: focus || undefined,
+          vuln_focus: vulnFocus.trim() || undefined,
+          output_language: outputLanguage !== "zh-CN" ? outputLanguage : undefined,
           timeout_mode: timeoutMode,
           scan_timeout: timeoutMode === "custom" ? scanTimeout : undefined,
           agent_max_parallel: Math.max(1, Math.trunc(Number(agentMaxParallel) || 3)),
@@ -246,7 +254,9 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
     file != null ||
     gitUrl.trim() !== "" ||
     displayName.trim() !== "" ||
-    auditFocus.trim() !== "";
+    auditFocus.trim() !== "" ||
+    vulnFocus.trim() !== "" ||
+    outputLanguage !== "zh-CN";
   const requestClose = useConfirmClose(onClose, isDirty, true);
 
   return (
@@ -626,6 +636,36 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                 maxLength={2000}
                 style={{ width: "100%", border: "1px solid var(--border)", borderRadius: "6px", padding: "8px 10px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit", lineHeight: 1.5 }}
               />
+            </div>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
+                {i18n.t("newTask.vulnFocus")}
+              </label>
+              <textarea
+                data-testid="new-task-vuln-focus"
+                value={vulnFocus}
+                onChange={(e) => setVulnFocus(e.target.value)}
+                placeholder={i18n.t("newTask.vulnFocusPlaceholder")}
+                rows={2}
+                maxLength={1000}
+                style={{ width: "100%", border: "1px solid var(--border)", borderRadius: "6px", padding: "8px 10px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit", lineHeight: 1.5 }}
+              />
+            </div>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
+                {i18n.t("newTask.outputLanguage")}
+              </label>
+              <select
+                data-testid="new-task-output-language"
+                value={outputLanguage}
+                onChange={(e) => setOutputLanguage(e.target.value)}
+                style={{ width: "100%", height: "40px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 12px", fontSize: "13px", background: "var(--bg-page)", color: "var(--text-primary)", outline: "none", fontFamily: "inherit" }}
+              >
+                <option value="zh-CN">{i18n.t("newTask.outputLanguage.zh")}</option>
+                <option value="en-US">{i18n.t("newTask.outputLanguage.en")}</option>
+              </select>
             </div>
 
             <div>
