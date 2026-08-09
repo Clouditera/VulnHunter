@@ -182,11 +182,22 @@ run_instance_upgrade() {
     fi
     echo "[upgrade] synced release image key: $key=$value"
   done
-  local edition
-  edition="$(grep -E '^EDITION=' "$pkg_root/.env.example" | tail -n 1 | cut -d= -f2-)"
-  if [[ "$edition" == "enterprise" ]]; then
-    sed -i "s|^EDITION=.*|EDITION=enterprise|" "$instance_dir/.env"
-    echo "[upgrade] synced enterprise edition"
+  # EDITION is a user choice (enterprise pack + EDITION=saas = SaaS). Keep any
+  # existing value; only backfill package default when missing (task-09560333).
+  local edition pkg_edition
+  edition="$(grep -E '^EDITION=' "$instance_dir/.env" | tail -n 1 | cut -d= -f2- || true)"
+  pkg_edition="$(grep -E '^EDITION=' "$pkg_root/.env.example" | tail -n 1 | cut -d= -f2- || true)"
+  if [[ -z "$edition" && "$pkg_edition" == "enterprise" ]]; then
+    if grep -qE '^EDITION=' "$instance_dir/.env"; then
+      sed -i "s|^EDITION=.*|EDITION=enterprise|" "$instance_dir/.env"
+    else
+      printf 'EDITION=enterprise\n' >> "$instance_dir/.env"
+    fi
+    echo "[upgrade] backfilled missing EDITION=enterprise"
+  elif [[ -n "$edition" ]]; then
+    echo "[upgrade] kept user EDITION=$edition"
+  fi
+  if [[ "$pkg_edition" == "enterprise" ]]; then
     if [[ ! -s "$instance_dir/.secrets/license-public.pem" ]]; then
       echo "[upgrade] enterprise instance missing license public key at $instance_dir/.secrets/license-public.pem" >&2
       return 1
