@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   closeSync,
   constants,
+  existsSync,
   fstatSync,
   openSync,
   readSync,
@@ -252,19 +253,35 @@ export function evaluateAuditCompletion(options: AuditCompletionEvaluationOption
   };
 }
 
-function eventLine(value: string): string {
-  return value.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+/** Platform completion posture (API). Only natural | timeout — fish 2026-08-09. */
+export type TaskCompletionReason = "natural" | "timeout";
+
+/** Platform-owned timeout marker written by scan-mode timeout finalizer. */
+export const PLATFORM_TIMEOUT_MARKER = ".vulnhunter-timeout" as const;
+
+/**
+ * True when scan-mode wrote the platform timeout marker under outDir.
+ * This is the ONLY source of completion_reason=timeout after the
+ * completion.yaml platform gate was retired (fish 2026-08-09).
+ */
+export function hasPlatformTimeoutMarker(outDir: string): boolean {
+  try {
+    return existsSync(join(outDir, PLATFORM_TIMEOUT_MARKER));
+  } catch {
+    return false;
+  }
 }
 
-export type TaskCompletionReason = "natural" | "timeout" | "incomplete";
-
-export function mapAuditCompletionFinalState(
+/**
+ * Map worker exit + optional platform timeout marker → task terminal state.
+ * Does NOT read completion.yaml (engine-internal).
+ */
+export function mapWorkerTerminalState(
   workerExitCode: number,
-  completion: TaskAuditCompletion,
+  timedOut: boolean,
 ): {
   state: TaskState;
   failureReason?: string;
-  /** Set when state=completed — drives API + yellow UI family. */
   completionReason: TaskCompletionReason;
   severity: "info" | "warning" | "error";
   eventReason: string;
@@ -278,62 +295,52 @@ export function mapAuditCompletionFinalState(
       eventReason: `Worker exited with code ${workerExitCode}`,
     };
   }
-  // fish 2026-08-09: do not hard-fail on missing/stale/invalid/unsafe completion.yaml.
-  // That file is an engine-internal handoff; platform already has yellow
-  // "unfinished + continue" UX for timeout. Soften the gate into the same
-  // family (completed + completion_reason=incomplete) instead of failed.
-  if (["missing", "stale", "invalid", "unsafe"].includes(completion.status)) {
-    const reason = eventLine(
-      completion.reason ?? ERROR_MESSAGES.ERR_AUDIT_COMPLETION_INVALID,
-    );
-    return {
-      state: "completed",
-      completionReason: "incomplete",
-      severity: "warning",
-      eventReason: `审计可能未完整：${reason}`,
-    };
-  }
-  if (completion.status === "incomplete") {
-    // Engine timeout-finalizer path (writes status=incomplete).
-    const reason = eventLine(`审计未完整：${completion.reason}`);
+  if (timedOut) {
     return {
       state: "completed",
       completionReason: "timeout",
       severity: "warning",
-      eventReason: reason,
+      eventReason: "扫描因达到设定时长而结束",
     };
   }
   return {
     state: "completed",
     completionReason: "natural",
     severity: "info",
-    eventReason: completion.status === "complete" ? "审计完成度检查通过" : "扫描完成",
+    eventReason: "扫描完成",
   };
 }
 
-/**
- * Timeout-finalized scan predicate (fish 2026-08-04): the engine's timeout
- * path writes completion.yaml with status=incomplete + a time-limit reason
- * (enforced by worker-assets/timeout-finalize-artifacts.py); that is the only
- * producer of "incomplete" in the pipeline.
- */
-export function isTimeoutCompletion(completion: TaskAuditCompletion): boolean {
-  return completion.status === "incomplete";
+/** @deprecated Use mapWorkerTerminalState. Kept for test migration period. */
+export function mapAuditCompletionFinalState(
+  workerExitCode: number,
+  completion: TaskAuditCompletion,
+): {
+  state: TaskState;
+  failureReason?: string;
+  completionReason: TaskCompletionReason;
+  severity: "info" | "warning" | "error";
+  eventReason: string;
+} {
+  // Ignore completion file contents for state — only worker exit matters.
+  // Timeout is NOT inferred from completion.status anymore.
+  void completion;
+  return mapWorkerTerminalState(workerExitCode, false);
 }
 
-export function mergeExecutionWarnings(existing: unknown, completion: TaskAuditCompletion): string | undefined {
+/**
+ * @deprecated Timeout is platform-marker based. Always false when used with
+ * completion.yaml; callers must use hasPlatformTimeoutMarker instead.
+ */
+export function isTimeoutCompletion(_completion: TaskAuditCompletion): boolean {
+  return false;
+}
+
+export function mergeExecutionWarnings(existing: unknown, _completion: TaskAuditCompletion): string | undefined {
+  // completion.yaml no longer contributes execution warnings.
+  void _completion;
   const existingWarning = typeof existing === "string" ? existing.trim() : "";
-  const softGate = ["incomplete", "missing", "stale", "invalid", "unsafe"].includes(completion.status);
-  if (!softGate || !completion.reason) {
-    return existingWarning || undefined;
-  }
-  const prefix =
-    completion.status === "incomplete" ? "审计未完整" : "审计可能未完整";
-  const completionWarning = `${prefix}：${completion.reason}`;
-  if (existingWarning === completionWarning || existingWarning.endsWith(`；${completionWarning}`)) {
-    return existingWarning;
-  }
-  return existingWarning ? `${existingWarning}；${completionWarning}` : completionWarning;
+  return existingWarning || undefined;
 }
 
 export function needsTerminalStateReconciliation(

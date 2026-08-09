@@ -252,7 +252,7 @@ export async function updateTaskState(
     completedAt?: Date;
     durationMs?: number;
     failureReason?: string;
-    completionReason?: "natural" | "timeout" | "incomplete";
+    completionReason?: "natural" | "timeout";
   },
 ): Promise<void> {
   const db = getDb();
