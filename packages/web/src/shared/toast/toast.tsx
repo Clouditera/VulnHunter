@@ -78,7 +78,9 @@ export const TOAST_HOST_STYLE: CSSProperties = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  zIndex: 2000,
+  // Layer contract: business modals ≤ 9999 < confirm 10000 < toast 10001 —
+  // feedback toasts must stay visible even above the confirm dialog.
+  zIndex: 10001,
   display: "flex",
   flexDirection: "column-reverse",
   gap: 10,
