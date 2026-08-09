@@ -9,7 +9,9 @@ import {
   evaluateAuditCompletion,
   fingerprintAuditCompletion,
   isSameAuditCompletion,
+  hasPlatformTimeoutMarker,
   mapAuditCompletionFinalState,
+  mapWorkerTerminalState,
   mergeExecutionWarnings,
   needsTerminalStateReconciliation,
 } from "../../src/features/workers/audit-completion.js";
@@ -73,28 +75,28 @@ describe("audit completion C01-C13", () => {
     expect(mapAuditCompletionFinalState(0, result)).toMatchObject({ state: "completed", severity: "info" });
   });
 
-  it("C02 preserves incomplete reason and maps completed/warning", () => {
+  it("C02 evaluates incomplete artifact as metadata only (no platform timeout)", () => {
     const { out, file } = workspace();
     writeFileSync(file, fixture("incomplete.yaml"));
     const result = evaluateAuditCompletion({ outDir: out, engineRun: marker() });
     expect(result.status).toBe("incomplete");
     expect(result.reason).toContain("管理端导入链路");
+    // mapAuditCompletionFinalState ignores file — timeout needs platform marker
     expect(mapAuditCompletionFinalState(0, result)).toMatchObject({
       state: "completed",
-      completionReason: "timeout",
-      severity: "warning",
+      completionReason: "natural",
+      severity: "info",
     });
   });
 
-  it("C03 new missing soft-completes as incomplete; C12 legacy missing still completed", () => {
+  it("C03 new missing is natural completed (no platform gate); C12 legacy same", () => {
     const { out } = workspace();
     const current = evaluateAuditCompletion({ outDir: out, engineRun: marker() });
     expect(current).toMatchObject({ status: "missing", error_code: "ERR_AUDIT_COMPLETION_MISSING" });
-    // fish 2026-08-09: soft gate — no longer failed
     expect(mapAuditCompletionFinalState(0, current)).toMatchObject({
       state: "completed",
-      completionReason: "incomplete",
-      severity: "warning",
+      completionReason: "natural",
+      severity: "info",
     });
     const legacy = evaluateAuditCompletion({ outDir: out });
     expect(legacy.status).toBe("legacy_missing");
@@ -203,24 +205,20 @@ describe("audit completion C14-C18 and security", () => {
     expect(first.sha256).toBe(second.sha256);
   });
 
-  it("C16 clears prior-run warning and de-duplicates current warnings", () => {
+  it("C16 mergeExecutionWarnings no longer appends completion.yaml reasons", () => {
     const completeWs = workspace();
     writeFileSync(completeWs.file, fixture("complete.yaml"));
     const complete = evaluateAuditCompletion({ outDir: completeWs.out, engineRun: marker() });
-    // New run marker and extractMetadata both write null when the current run
-    // has no warning; this removes a Continue run's stale warning.
     expect(mergeExecutionWarnings(null, complete)).toBeUndefined();
     const scanWorker = readFileSync(new URL("../../src/features/workers/scan-worker.ts", import.meta.url), "utf8");
     expect(scanWorker).toContain("execution: { warning: null }");
 
+    // fish 2026-08-09: completion.yaml does not contribute warnings; existing kept as-is.
     const incompleteWs = workspace();
     writeFileSync(incompleteWs.file, fixture("incomplete.yaml"));
     const incomplete = evaluateAuditCompletion({ outDir: incompleteWs.out, engineRun: marker() });
-    const once = mergeExecutionWarnings("2 agent/stage failures", incomplete)!;
-    const twice = mergeExecutionWarnings(once, incomplete)!;
-    expect(twice).toBe(once);
-    expect(twice.match(/2 agent\/stage failures/g)).toHaveLength(1);
-    expect(twice.match(/审计未完整：/g)).toHaveLength(1);
+    expect(mergeExecutionWarnings("2 agent/stage failures", incomplete)).toBe("2 agent/stage failures");
+    expect(mergeExecutionWarnings(null, incomplete)).toBeUndefined();
   });
 
   it("reconciles metadata-present/running tasks but not settled terminal tasks", () => {
@@ -234,7 +232,7 @@ describe("audit completion C14-C18 and security", () => {
     writeFileSync(file, 'status: incomplete\nreason: "first\\nsecond\\tthird"\n');
     const completion = evaluateAuditCompletion({ outDir: out, engineRun: marker() });
     expect(completion.reason).toBe("first\nsecond\tthird");
-    expect(mapAuditCompletionFinalState(0, completion).eventReason).toBe("审计未完整：first second third");
+    expect(mapAuditCompletionFinalState(0, completion).eventReason).toBe("扫描完成");
   });
 
   it("appends then broadcasts the stored event with its real sequence", async () => {
@@ -279,19 +277,47 @@ describe("audit completion C14-C18 and security", () => {
   });
 });
 
-describe("isTimeoutCompletion (fish 2026-08-04)", () => {
-  it("incomplete engine status => timeout", async () => {
+describe("isTimeoutCompletion retired (fish 2026-08-09)", () => {
+  it("always false — timeout is platform marker based", async () => {
     const { isTimeoutCompletion } = await import("../../src/features/workers/audit-completion.js");
-    expect(isTimeoutCompletion({ status: "incomplete" } as never)).toBe(true);
+    expect(isTimeoutCompletion({ status: "incomplete" } as never)).toBe(false);
     expect(isTimeoutCompletion({ status: "complete" } as never)).toBe(false);
     expect(isTimeoutCompletion({ status: "missing" } as never)).toBe(false);
-    expect(isTimeoutCompletion({ status: "legacy_observed" } as never)).toBe(false);
   });
 });
 
-describe("soft completion gate (fish 2026-08-09)", () => {
+describe("platform terminal state (fish 2026-08-09 — no completion.yaml gate)", () => {
+  it("exit 0 without marker → completed + natural", () => {
+    const { out } = workspace();
+    expect(hasPlatformTimeoutMarker(out)).toBe(false);
+    expect(mapWorkerTerminalState(0, false)).toMatchObject({
+      state: "completed",
+      completionReason: "natural",
+      severity: "info",
+    });
+  });
+
+  it("exit 0 with platform timeout marker → completed + timeout", () => {
+    const { out } = workspace();
+    writeFileSync(join(out, ".vulnhunter-timeout"), '{"reason":"scan_timeout"}\n');
+    expect(hasPlatformTimeoutMarker(out)).toBe(true);
+    expect(mapWorkerTerminalState(0, true)).toMatchObject({
+      state: "completed",
+      completionReason: "timeout",
+      severity: "warning",
+    });
+  });
+
+  it("exit non-zero → failed regardless of marker", () => {
+    expect(mapWorkerTerminalState(1, true)).toMatchObject({
+      state: "failed",
+      completionReason: "natural",
+      severity: "error",
+    });
+  });
+
   it.each(["missing", "stale", "invalid", "unsafe"] as const)(
-    "exit 0 + %s → completed + incomplete (not failed)",
+    "mapAuditCompletionFinalState ignores %s file status (always natural on exit 0)",
     (status) => {
       const completion = {
         contract_version: "1",
@@ -304,29 +330,10 @@ describe("soft completion gate (fish 2026-08-09)", () => {
         run_id: "run-1",
         evaluated_at: "now",
       } as any;
-      const mapped = mapAuditCompletionFinalState(0, completion);
-      expect(mapped.state).toBe("completed");
-      expect(mapped.completionReason).toBe("incomplete");
-      expect(mapped.severity).toBe("warning");
-      expect(mapped.failureReason).toBeUndefined();
+      expect(mapAuditCompletionFinalState(0, completion)).toMatchObject({
+        state: "completed",
+        completionReason: "natural",
+      });
     },
   );
-
-  it("exit non-zero still failed regardless of completion file", () => {
-    const completion = {
-      contract_version: "1",
-      status: "missing",
-      engine_status: null,
-      reason: "x",
-      error_code: "ERR_AUDIT_COMPLETION_MISSING",
-      artifact_key: null,
-      sha256: null,
-      run_id: null,
-      evaluated_at: "now",
-    } as any;
-    expect(mapAuditCompletionFinalState(1, completion)).toMatchObject({
-      state: "failed",
-      completionReason: "natural",
-    });
-  });
 });

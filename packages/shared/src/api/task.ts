@@ -58,7 +58,7 @@ export interface TaskMetadata {
 }
 
 /** Why a completed task ended (DB column; state enum stays unchanged). */
-export type TaskCompletionReason = "natural" | "timeout" | "incomplete";
+export type TaskCompletionReason = "natural" | "timeout";
 
 export interface TaskSummary {
   id: string;
@@ -72,10 +72,9 @@ export interface TaskSummary {
   /** Completed run segments; 0/absent = unknown (hide UI segment count). */
   run_count?: number;
   /**
-   * Present on terminal rows. API consumers MUST read this to tell natural
-   * finish apart from time-budget cut (timeout) or soft incomplete gate
-   * (missing/stale completion.yaml). state stays "completed" for all three
-   * (fish 2026-08-09; compatible with existing clients).
+   * Present on terminal completed rows. natural = finished; timeout = platform
+   * scan-time budget cut (marker file). state stays "completed" for both.
+   * completion.yaml is NOT a platform signal (fish 2026-08-09).
    */
   completion_reason?: TaskCompletionReason;
   created_at: string;

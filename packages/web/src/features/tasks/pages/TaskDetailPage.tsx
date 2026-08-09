@@ -7,7 +7,7 @@ import { LiveLog } from "../../live-log/components/LiveLog.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
-import { effectiveTaskState, isTaskIncomplete, isTaskUnfinished } from "../task-timeout.js";
+import { effectiveTaskState, isTaskTimedOut } from "../task-timeout.js";
 import { formatDateTime } from "../../../shared/utils/format.js";
 import { getTaskNameError, normalizeTaskName, TASK_NAME_MAX_LENGTH } from "../task-name.js";
 
@@ -451,12 +451,7 @@ export function TaskDetailPage() {
 
         {/* Timeout banner — time budget exhausted, dynamic verification
             didn't finish; nudge to continue-scan (task-a3d095ad). */}
-        {isTaskUnfinished(task) && (
-          <TimeoutBanner
-            variant={isTaskIncomplete(task) ? "incomplete" : "timeout"}
-            onContinue={openContinueDialog}
-          />
-        )}
+        {isTaskTimedOut(task) && <TimeoutBanner onContinue={openContinueDialog} />}
 
         {/* Continue-scan dialog */}
         {continueDialogOpen && (
@@ -688,13 +683,10 @@ export interface TaskOutletContext {
  * Timeout banner (task-a3d095ad): the scan hit its time budget — tell the user
  * it's not "verification skipped", it's "time ran out", and offer continue-scan.
  */
-function TimeoutBanner({ onContinue, variant = "timeout" }: { onContinue: () => void; variant?: "timeout" | "incomplete" }) {
-  const titleKey = variant === "incomplete" ? "taskDetail.incomplete.title" : "taskDetail.timeout.title";
-  const bodyKey = variant === "incomplete" ? "taskDetail.incomplete.body" : "taskDetail.timeout.body";
-  const continueKey = variant === "incomplete" ? "taskDetail.incomplete.continue" : "taskDetail.timeout.continue";
+function TimeoutBanner({ onContinue }: { onContinue: () => void }) {
   return (
     <div
-      data-testid={variant === "incomplete" ? "task-incomplete-banner" : "task-timeout-banner"}
+      data-testid="task-timeout-banner"
       style={{
         marginTop: "14px",
         display: "flex",
@@ -722,7 +714,7 @@ function TimeoutBanner({ onContinue, variant = "timeout" }: { onContinue: () => 
             lineHeight: 1.3,
           }}
         >
-          {i18n.t(titleKey)}
+          {i18n.t("taskDetail.timeout.title")}
         </div>
         <div
           style={{
@@ -731,7 +723,7 @@ function TimeoutBanner({ onContinue, variant = "timeout" }: { onContinue: () => 
             lineHeight: 1.55,
           }}
         >
-          {i18n.t(bodyKey)}
+          {i18n.t("taskDetail.timeout.body")}
         </div>
       </div>
       <button
@@ -751,7 +743,7 @@ function TimeoutBanner({ onContinue, variant = "timeout" }: { onContinue: () => 
           lineHeight: 1,
         }}
       >
-        {i18n.t(continueKey)}
+        {i18n.t("taskDetail.timeout.continue")}
       </button>
     </div>
   );

@@ -5,16 +5,7 @@ import { i18n } from "../i18n/index.js";
  * Matches prototype: soft-tinted bg + colored text, 2px·8px padding, 12px radius.
  * States with a running dot get a pulse.
  */
-type State =
-  | "running"
-  | "preparing"
-  | "completed"
-  | "failed"
-  | "queued"
-  | "cancelled"
-  | "paused"
-  | "timed_out"
-  | "incomplete";
+type State = "running" | "preparing" | "completed" | "failed" | "queued" | "cancelled" | "paused" | "timed_out";
 
 const STATE_STYLES: Record<State, { bg: string; fg: string; dot?: boolean }> = {
   running: { bg: "rgba(40, 209, 255, 0.14)", fg: "var(--text-primary)", dot: true },
@@ -26,8 +17,6 @@ const STATE_STYLES: Record<State, { bg: string; fg: string; dot?: boolean }> = {
   paused: { bg: "rgba(255, 115, 60, 0.12)", fg: "var(--sev-high)" },
   /** Virtual — completed + completion_reason=timeout (task-timeout.ts). Yellow family. */
   timed_out: { bg: "rgba(247, 197, 48, 0.14)", fg: "var(--text-primary)" },
-  /** Virtual — completed + completion_reason=incomplete (soft gate). Same yellow family. */
-  incomplete: { bg: "rgba(247, 197, 48, 0.14)", fg: "var(--text-primary)" },
 };
 
 export function StatusPill({ state, size = "md" }: { state: string; size?: "sm" | "md" }) {

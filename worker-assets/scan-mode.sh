@@ -165,6 +165,13 @@ run_timeout_finalizer() {
     --out-dir /workspace/out \
     --control-dir "$FINALIZE_CONTROL")" || return 3
   echo "[scan] Timeout artifact verify: $verify_result" >&2
+  # Platform-owned timeout marker (fish 2026-08-09): scheduler reads this
+  # file — NOT engine completion.yaml — to set completion_reason=timeout.
+  mkdir -p /workspace/out
+  printf '%s\n' "{\"reason\":\"scan_timeout\",\"at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+    > /workspace/out/.vulnhunter-timeout
+  chmod 644 /workspace/out/.vulnhunter-timeout 2>/dev/null || true
+  echo "[scan] Wrote platform timeout marker /workspace/out/.vulnhunter-timeout" >&2
   cleanup_finalize_control || return 3
   return 0
 }

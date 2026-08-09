@@ -61,13 +61,11 @@ import { resolveArchiveIdentity } from "../source-archives/detect.js";
 import { extractSourceArchive } from "../source-archives/extract.js";
 import { getSourceArchivePolicy } from "../source-archives/policy.js";
 import {
-  evaluateAuditCompletion,
-  isSameAuditCompletion,
-  mapAuditCompletionFinalState,
-  mergeExecutionWarnings,
+  hasPlatformTimeoutMarker,
+  mapWorkerTerminalState,
   needsTerminalStateReconciliation,
 } from "./audit-completion.js";
-import type { LiveLogEvent, TaskAuditCompletion, TaskEngineRun } from "@vulnhunter/shared";
+import type { LiveLogEvent } from "@vulnhunter/shared";
 
 export function summarizeExecutionEvents(lines: string[]): {
   inputTokens: number;
@@ -260,13 +258,10 @@ export class TaskScheduler {
           const workerExitCode = exitCode ?? -1;
           const ok = workerExitCode === 0;
           const hostWorkDir = getHostWorkDir(this.config.dataDir, taskId);
-          const engineRun = currentTask?.metadata?.engine_run as TaskEngineRun | undefined;
-          const completion = evaluateAuditCompletion({
-            outDir: join(hostWorkDir, "out"),
-            engineRun,
-          });
-          const previousCompletion = currentTask?.metadata?.audit_completion;
-          const shouldEmitTerminal = !isSameAuditCompletion(previousCompletion, completion);
+          // fish 2026-08-09: do NOT read completion.yaml. Terminal state is
+          // exit code only; timeout posture is the platform marker file.
+          const timedOut = hasPlatformTimeoutMarker(join(hostWorkDir, "out"));
+          const mapped = mapWorkerTerminalState(workerExitCode, timedOut);
 
           // Clear continue_mode flag (whether success or failure) so a later
           // restart isn't misread as a continue run.
@@ -298,11 +293,6 @@ export class TaskScheduler {
             }
           }
 
-          const mapped = mapAuditCompletionFinalState(workerExitCode, completion);
-          await this.persistAuditCompletion(taskId, completion).catch((err) =>
-            logger.error({ err, taskId }, "Failed to persist audit completion metadata"),
-          );
-
           const reconcileState = needsTerminalStateReconciliation(
             currentTask?.state,
             currentTask?.completed_at,
@@ -314,9 +304,6 @@ export class TaskScheduler {
               completedAt: new Date(),
               durationMs,
               failureReason: mapped.failureReason,
-              // fish 2026-08-09: completionReason comes from the soft gate map
-              // (natural | timeout | incomplete) — no longer inferred only via
-              // isTimeoutCompletion.
               completionReason: mapped.state === "completed" ? mapped.completionReason : "natural",
             }).catch((err) => logger.error({ err, taskId }, "Failed to update task on die"));
             notify({ type: "task_state", taskId, state: mapped.state });
@@ -324,27 +311,15 @@ export class TaskScheduler {
             await stopSandboxForTask(taskId, `task_${mapped.state}`).catch(() => undefined);
           }
 
-          if (shouldEmitTerminal) {
-            if (workerExitCode === 0 && completion.error_code) {
-              appendAndBroadcastCompletionEvent(taskId, {
-                type: "error",
-                source: "service",
-                seq: 0,
-                ts: new Date().toISOString(),
-                code: completion.error_code,
-                summary: completion.reason ?? "Audit completion gate failed",
-              });
-            }
-            appendAndBroadcastCompletionEvent(taskId, {
-              type: "task_status",
-              source: "service",
-              seq: 0,
-              ts: new Date().toISOString(),
-              status: mapped.state === "completed" ? "completed" : "failed",
-              severity: mapped.severity,
-              reason: mapped.eventReason,
-            });
-          }
+          appendAndBroadcastCompletionEvent(taskId, {
+            type: "task_status",
+            source: "service",
+            seq: 0,
+            ts: new Date().toISOString(),
+            status: mapped.state === "completed" ? "completed" : "failed",
+            severity: mapped.severity,
+            reason: mapped.eventReason,
+          });
         }
       }
     });
@@ -916,20 +891,6 @@ export class TaskScheduler {
     await publishSchedulerWorkspace(hostWorkDir, token);
     logger.info({ taskId: task.id, token, minioKey, filename: archive.filename }, "Claim-owned code package published to workspace");
     return true;
-  }
-
-  private async persistAuditCompletion(taskId: string, completion: TaskAuditCompletion): Promise<void> {
-    const task = await getTaskById(taskId);
-    const execution = task?.metadata?.execution;
-    const existingWarning = execution && typeof execution === "object"
-      ? (execution as Record<string, unknown>).warning
-      : undefined;
-    const warning = mergeExecutionWarnings(existingWarning, completion);
-    const patch: import("@vulnhunter/shared").TaskMetadata = {
-      audit_completion: completion,
-      execution: { warning: warning ?? null },
-    };
-    await mergeTaskMetadata(taskId, patch);
   }
 
   private async extractMetadata(taskId: string): Promise<void> {
