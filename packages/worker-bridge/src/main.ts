@@ -568,17 +568,17 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
 }
 
 /**
- * Batch 3 (fish 2026-08-08) + architect fix: model switch via pi reload RPC.
+ * Model switch (fish 2026-08-10 / architect):
+ * - Rewrite models.json in piDir
+ * - Call set_model directly (pi re-reads models.json via file mtime / lazy load)
+ * - Do NOT send `reload` — that is an extension-context action, not an RPC
+ *   command (Unknown command: reload on pi 0.83.0).
  *
- * Architect 2026-08-08 env-freeze fix: pi's child env is frozen at spawn.
- * We CANNOT set new env vars at runtime. Instead, we validate that the
- * $ENV_VAR referenced in models.json was already injected at startup
- * (via ALL_CREDENTIALS / primary credential). If not in the startup set,
- * reject with a clear message.
+ * Env freeze: child env is frozen at spawn. apiKeyEnvName must already exist
+ * in process.env (injected at startup via ALL_CREDENTIALS).
  *
- * Keyless credentials (noAuthProxy): the service sends apiKeyPresent=false;
- * the bridge rewrites baseUrl to the local _llm_proxy and points apiKey
- * at the NO_AUTH_DUMMY_KEY env (already set for keyless providers at startup).
+ * Keyless credentials: service sends apiKeyPresent=false; bridge rewrites
+ * baseUrl to local _llm_proxy and points apiKey at VH_LLM_API_KEY dummy.
  */
 async function handleSetModel(body: string, res: ServerResponse): Promise<void> {
   let parsed: {
@@ -631,16 +631,12 @@ async function handleSetModel(body: string, res: ServerResponse): Promise<void> 
       console.log(`[bridge] Keyless credential → proxy ${proxyUrl}`);
     }
 
-    // 1. Rewrite models.json in piDir
+    // 1. Rewrite models.json in piDir (mtime bump triggers pi lazy re-read)
     const piDir = getPiDir();
     writeFileSync(join(piDir, "models.json"), JSON.stringify(modelsToWrite, null, 2) + "\n");
     console.log(`[bridge] Rewrote models.json for credential=${parsed.credentialId ?? "unknown"} (env=$${parsed.apiKeyEnvName})`);
 
-    // 2. Send reload RPC — pi re-reads models.json + resetApiProviders
-    await rpcCommands.send({ type: "reload" });
-    console.log("[bridge] reload confirmed → pi re-read models.json");
-
-    // 3. Switch active model to the new provider/model
+    // 2. Switch active model directly — no reload RPC (not a valid RPC command)
     await rpcCommands.send({ type: "set_model", provider: parsed.providerKey, modelId: parsed.modelId });
     console.log(`[bridge] set_model confirmed → provider=${parsed.providerKey}, model=${parsed.modelId}`);
 
