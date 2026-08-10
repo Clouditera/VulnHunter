@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Task, type FindingMeta, type ProfilerData } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon, type IconName } from "../../../../shared/components/Icon.js";
-import { formatDateTime } from "../../../../shared/utils/format.js";
+import { formatDateTime, formatDurationMinutes, toDurationMs } from "../../../../shared/utils/format.js";
 
 /**
  * Normalize `task.source_meta` — backend postgres returns it as a JSON
@@ -436,11 +436,12 @@ export function OverviewTab() {
         <KV
           label={i18n.t("overview.duration")}
           value={(() => {
-            const ms = (task.total_duration_ms ?? 0) > 0 ? task.total_duration_ms! : task.duration_ms;
-            if (!ms) return null;
-            const mins = `${Math.round(ms / 60_000)} min`;
+            const total = toDurationMs(task.total_duration_ms);
+            const ms = total != null && total > 0 ? total : toDurationMs(task.duration_ms);
+            if (ms == null || ms <= 0) return null;
+            const mins = formatDurationMinutes(ms);
             // fish 2026-08-09: show 「共 N 段」 only when N≥2 (run_count=0 = legacy/unknown)
-            const n = task.run_count ?? 0;
+            const n = Number(task.run_count) || 0;
             if (n >= 2) {
               return i18n
                 .t("overview.durationWithSegments")
