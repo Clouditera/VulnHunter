@@ -324,8 +324,9 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
       // server ERR_VALIDATION carries details.field; email gets an inline
       // message under its input instead of the generic「请求参数有误」.
       if (err instanceof ApiError && err.code === "ERR_INVALID_EMAIL") {
-        // Dedicated code (developer 57d5a9fa): message already localized server-side.
-        setEmailError(err.message || i18n.t("userModal.err.emailInvalid"));
+        // Dedicated code (developer 57d5a9fa). Copy stays frontend-owned
+        // (fish 2026-08-10 verbatim wording) — do not surface err.message here.
+        setEmailError(i18n.t("userModal.err.emailInvalid"));
         return;
       }
       if (err instanceof ApiError && err.code === "ERR_VALIDATION" && err.details?.field === "email") {
