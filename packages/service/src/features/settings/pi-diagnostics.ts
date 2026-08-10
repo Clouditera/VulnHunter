@@ -31,7 +31,7 @@ export interface DiagnosticCheck {
   id: DiagnosticCheckId;
   label: string;
   layer: DiagnosticLayer;
-  status: "pass" | "fail" | "na";
+  status: "pass" | "fail" | "na" | "warn";
   message: string;
   httpStatus?: number;
   durationMs?: number;
@@ -347,13 +347,27 @@ export async function runPiDiagnostics(
       id: "thinking", label: "thinking", layer: "L2", status: "na", message: "not_reasoning",
     });
   } else {
-    checks.push(finalize(
-      "thinking", "L2",
-      state.l2,
-      "thinking_confirmed",
-      "thinking_not_observed",
-      "Reasoning was enabled but no thinking content blocks were observed in the response",
-    ));
+    // fish 2026-08-10: L2 "no thinking blocks" is a WARN, not a hard fail.
+    // Some gateways (CloudRouter) don't pass through reasoning_content even
+    // though the model reasons inline. The credential is still usable.
+    if (state.l2) {
+      checks.push(finalize(
+        "thinking", "L2",
+        true,
+        "thinking_confirmed",
+        "thinking_not_observed",
+        "Reasoning was enabled but no thinking content blocks were observed in the response",
+      ));
+    } else {
+      const warnCheck: DiagnosticCheck = {
+        id: "thinking", label: "thinking", layer: "L2", status: "warn",
+        message: "thinking_not_observed",
+        durationMs: elapsed,
+        detail: "Reasoning was enabled but no thinking content blocks were observed in the response",
+      };
+      emit({ type: "check_passed", check: warnCheck });
+      checks.push(warnCheck);
+    }
   }
 
   // L3
@@ -392,7 +406,12 @@ export async function runPiDiagnostics(
     ));
   }
 
-  const ok = checks.every((c) => c.status === "pass" || c.status === "na");
+  // ok = all pass/na, OR only L2 is warn (rest pass/na). fish 2026-08-10.
+  const hasFail = checks.some((c) => c.status === "fail");
+  const ok = !hasFail && checks.every((c) =>
+    c.status === "pass" || c.status === "na" ||
+    (c.id === "thinking" && c.status === "warn"),
+  );
   const summary = ok
     ? `四层诊断通过（${elapsed}ms）`
     : (checks.find((c) => c.status === "fail")?.message ?? "诊断未通过");

@@ -66,10 +66,31 @@ function FailureGuidance({ checks }: { checks: ModelDiagnosticCheck[] }) {
   );
 }
 
+function WarnGuidance({ checks }: { checks: ModelDiagnosticCheck[] }) {
+  const warnChecks = checks.filter((c) => c.status === "warn");
+  if (warnChecks.length === 0) return null;
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        borderTop: "1px solid rgba(232,163,23,0.28)",
+        background: "rgba(232,163,23,0.06)",
+        color: "#9a7400",
+        fontSize: 11.5,
+        lineHeight: 1.6,
+      }}
+    >
+      {i18n.t("diagnostics.check.warnHint")}
+    </div>
+  );
+}
+
 function TestConclusion({ checks, ok }: { checks: ModelDiagnosticCheck[]; ok: boolean }) {
-  // Success renders nothing (fish 2026-08-06: 成功结论块多此一举——四行
-  // 绿勾已说明一切). Failure keeps the reason+solution guidance block.
-  if (ok) return null;
+  // Success renders nothing (fish 2026-08-06). Failure keeps the guidance block.
+  // Warn (L2 only, ok=true) renders the warning hint.
+  if (ok) {
+    return checks.some((c) => c.status === "warn") ? <WarnGuidance checks={checks} /> : null;
+  }
   return <FailureGuidance checks={checks} />;
 }
 
@@ -82,6 +103,7 @@ function checkStatusText(c: ModelDiagnosticCheck): string {
   if (c.id === "l4_agent") {
     return i18n.t(c.status === "pass" ? "diagnostics.l4.passed" : "diagnostics.l4.failed");
   }
+  if (c.status === "warn") return i18n.t("diagnostics.check.warn") || "未通过·警告";
   if (c.status === "pass") return i18n.t("settings.model.testProgress.pass");
   if (c.status === "fail") return i18n.t("settings.model.testProgress.fail");
   if (c.status === "na") return i18n.t("settings.model.testProgress.na");
@@ -92,6 +114,8 @@ function checkStatusText(c: ModelDiagnosticCheck): string {
 function StatusIcon({ status }: { status: string }) {
   if (status === "pass")
     return <Icon name="check-circle" size={14} style={{ color: "var(--status-completed)" }} />;
+  if (status === "warn")
+    return <Icon name="alert-circle" size={14} style={{ color: "#e8a317" }} />;
   if (status === "fail")
     return <Icon name="alert-circle" size={14} style={{ color: "var(--danger)" }} />;
   if (status === "na" || status === "skip")

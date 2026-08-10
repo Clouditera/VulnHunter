@@ -190,12 +190,13 @@ describe("pi-diagnostics (four-in-one CLI, progressive)", () => {
     expect(l2?.status).toBe("pass");
   });
 
-  it("L2 fails for reasoning model without thinking blocks", async () => {
+  it("L2 warns for reasoning model without thinking blocks (fish 2026-08-10)", async () => {
     mockWithProgressive(nonReasoningEvents());
     const result = await runPiDiagnostics({ ...FAKE_CRED, thinking_effort: "high" }, () => {});
 
     const l2 = result.checks.find((c) => c.id === "thinking");
-    expect(l2?.status).toBe("fail");
+    expect(l2?.status).toBe("warn");
+    expect(result.ok).toBe(true);
   });
 
   it("L3 passes when read toolCall + toolResult observed", async () => {
