@@ -50,6 +50,21 @@ export class SandboxQuotaError extends Error {
 
 export { SandboxPlaneCapacityError };
 
+/**
+ * Plane sandbox is in a terminal state and must be rebuilt (not resumed).
+ * Thrown from resumeAndReconcile when 409 reconciliation finds a dead sandbox.
+ */
+export class SandboxUnavailableForRebuildError extends Error {
+  readonly sandboxId: string;
+  readonly planeStatus: string;
+  constructor(sandboxId: string, planeStatus: string, reason?: string | null) {
+    super(`Sandbox ${sandboxId} is ${planeStatus} (terminal); rebuild required${reason ? `: ${reason}` : ""}`);
+    this.name = "SandboxUnavailableForRebuildError";
+    this.sandboxId = sandboxId;
+    this.planeStatus = planeStatus;
+  }
+}
+
 const PLANE_TERMINAL_STATUSES = new Set(["released", "failed", "expired"]);
 const CREATE_POLL_INTERVAL_MS = 2_000;
 const CREATE_POLL_TIMEOUT_MS = 180_000;
@@ -249,6 +264,25 @@ async function resumeAndReconcile(
         { sandboxId, timeoutMs: err.timeoutMs },
         "Sandbox resume POST timed out; polling plane status (POST may still complete)",
       );
+    } else if (
+      err instanceof SandboxPlaneUnavailableError &&
+      err.httpStatus === 409 &&
+      err.planeCode === "SANDBOX_INVALID_STATE"
+    ) {
+      // fish/architect 2026-08-10: 409 means plane state conflicts with our
+      // expectation (e.g. sandbox already running). GET truth and adopt or rebuild.
+      logger.warn({ sandboxId, planeCode: err.planeCode }, "Sandbox resume got 409 SANDBOX_INVALID_STATE; reconciling");
+      const cur = await getSandboxPlaneSandbox(sandboxId);
+      if (cur && cur.status === "running") {
+        logger.info({ sandboxId, status: cur.status }, "Sandbox adopted (already running after 409)");
+        return cur;
+      }
+      if (cur && PLANE_TERMINAL_STATUSES.has(cur.status)) {
+        // Terminal — caller should delete mapping and rebuild
+        throw new SandboxUnavailableForRebuildError(sandboxId, cur.status, cur.failure_reason);
+      }
+      // Other state (stopped/provisioning/etc) — poll until running
+      return pollUntilRunning(sandboxId, pollTimeoutMs);
     } else {
       // HTTP / capacity / true unavailability — do not empty-wait
       throw err;
@@ -385,23 +419,34 @@ export async function ensureSandboxForTask(
   // Continue/resume path: a stopped instance comes back instead of a new one.
   if (existing && (existing.state === "ready" || existing.state === "stopped")) {
     if (existing.state === "stopped") {
-      const ready = await resumeAndReconcile(
-        existing.sandbox_id,
-        opts?.pollTimeoutMs ?? RESUME_RECONCILE_TIMEOUT_MS,
-      );
-      const endpoint = await persistResumeEndpoint(task.id, existing, ready);
-      await updateTaskSandboxState(task.id, "ready");
-      logger.info({ taskId: task.id, sandboxId: existing.sandbox_id }, "Sandbox resumed for task");
-      return {
-        mapping: {
-          ...existing,
-          state: "ready",
-          ...endpoint,
-        },
-        reused: true,
-      };
+      try {
+        const ready = await resumeAndReconcile(
+          existing.sandbox_id,
+          opts?.pollTimeoutMs ?? RESUME_RECONCILE_TIMEOUT_MS,
+        );
+        const endpoint = await persistResumeEndpoint(task.id, existing, ready);
+        await updateTaskSandboxState(task.id, "ready");
+        logger.info({ taskId: task.id, sandboxId: existing.sandbox_id }, "Sandbox resumed for task");
+        return {
+          mapping: {
+            ...existing,
+            state: "ready",
+            ...endpoint,
+          },
+          reused: true,
+        };
+      } catch (err) {
+        if (err instanceof SandboxUnavailableForRebuildError) {
+          // 409 reconciliation found terminal sandbox — delete mapping, fall through to rebuild
+          logger.warn({ taskId: task.id, sandboxId: existing.sandbox_id, planeStatus: err.planeStatus }, "Sandbox terminal after 409; rebuilding");
+          await deleteTaskSandbox(task.id);
+          existing = null;
+        } else {
+          throw err;
+        }
+      }
     }
-    return { mapping: existing, reused: true };
+    if (existing) return { mapping: existing, reused: true };
   }
 
   // Selection snapshot comes from the Prepare result recorded in metadata.
