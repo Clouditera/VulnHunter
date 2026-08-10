@@ -252,6 +252,68 @@ describe("ensureSandboxForTask", () => {
     expect(store.updateTaskSandboxState).toHaveBeenCalledWith(TASK_ID, "ready");
   });
 
+  it("resume 409 SANDBOX_INVALID_STATE + plane running → adopt + refresh endpoint", async () => {
+    ensureTaskSshKeypair(TASK_ID);
+    store.getTaskSandbox.mockResolvedValue({
+      task_id: TASK_ID,
+      sandbox_id: "sb-1",
+      state: "stopped",
+      ssh_host: "10.0.0.5",
+      ssh_port: 32825,
+      ssh_user: "sandbox",
+    });
+    plane.resume.mockRejectedValue(
+      new SandboxPlaneUnavailableError("HTTP 409 (SANDBOX_INVALID_STATE)", {
+        httpStatus: 409,
+        planeCode: "SANDBOX_INVALID_STATE",
+      }),
+    );
+    plane.get.mockResolvedValue(runningInstance({ ssh: { host: "10.0.0.5", port: 32828, user: "sandbox" } }));
+    const result = await ensureSandboxForTask(task(), { pollTimeoutMs: 5_000 });
+    expect(result.reused).toBe(true);
+    expect(result.mapping.state).toBe("ready");
+    expect(result.mapping.ssh_port).toBe(32828);
+    expect(store.updateTaskSandboxState).toHaveBeenCalledWith(TASK_ID, "ready");
+    expect(store.updateTaskSandboxConnection).toHaveBeenCalledWith(
+      TASK_ID,
+      expect.objectContaining({ ssh_port: 32828 }),
+    );
+  });
+
+  it("resume 409 + plane released → delete mapping and rebuild", async () => {
+    ensureTaskSshKeypair(TASK_ID);
+    store.getTaskSandbox.mockResolvedValueOnce({
+      task_id: TASK_ID,
+      sandbox_id: "sb-dead",
+      state: "stopped",
+      ssh_host: "h",
+      ssh_port: 22,
+      ssh_user: "u",
+    }).mockResolvedValue({ task_id: TASK_ID, sandbox_id: "sb-new", state: "ready" });
+    plane.resume.mockRejectedValue(
+      new SandboxPlaneUnavailableError("HTTP 409", { httpStatus: 409, planeCode: "SANDBOX_INVALID_STATE" }),
+    );
+    plane.get.mockResolvedValue(runningInstance({ sandbox_id: "sb-dead", status: "released" }));
+    plane.getProfile.mockResolvedValue({ profile_id: "linux-docker", status: "available", backend_type: "docker", capabilities: [] });
+    plane.create.mockResolvedValue(runningInstance({ sandbox_id: "sb-new", status: "running" }));
+    const result = await ensureSandboxForTask(task());
+    expect(store.deleteTaskSandbox).toHaveBeenCalledWith(TASK_ID);
+    expect(plane.create).toHaveBeenCalled();
+    expect(result.mapping).toBeTruthy();
+  });
+
+  it("resume 409 without SANDBOX_INVALID_STATE code → original error thrown", async () => {
+    ensureTaskSshKeypair(TASK_ID);
+    store.getTaskSandbox.mockResolvedValue({ task_id: TASK_ID, sandbox_id: "sb-1", state: "stopped" });
+    plane.resume.mockRejectedValue(
+      new SandboxPlaneUnavailableError("HTTP 409 (OTHER_CODE)", { httpStatus: 409, planeCode: "OTHER_CODE" }),
+    );
+    await expect(ensureSandboxForTask(task(), { pollTimeoutMs: 5_000 })).rejects.toBeInstanceOf(
+      SandboxPlaneUnavailableError,
+    );
+    expect(plane.get).not.toHaveBeenCalled();
+  });
+
   it("resume HTTP 404 fails fast — no empty poll wait", async () => {
     ensureTaskSshKeypair(TASK_ID);
     store.getTaskSandbox.mockResolvedValue({ task_id: TASK_ID, sandbox_id: "sb-gone", state: "stopped" });

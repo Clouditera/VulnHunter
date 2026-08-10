@@ -36,9 +36,16 @@ export interface SandboxPlaneSandbox {
 }
 
 export class SandboxPlaneUnavailableError extends Error {
-  constructor(message: string) {
+  readonly httpStatus?: number;
+  readonly planeCode?: string;
+  constructor(
+    message: string,
+    opts?: { httpStatus?: number; planeCode?: string },
+  ) {
     super(message);
     this.name = "SandboxPlaneUnavailableError";
+    this.httpStatus = opts?.httpStatus;
+    this.planeCode = opts?.planeCode;
   }
 }
 
@@ -100,7 +107,9 @@ async function request(path: string, allow404 = false): Promise<unknown | null> 
     });
     if (res.status === 404 && allow404) return null;
     if (!res.ok) {
-      throw new SandboxPlaneUnavailableError(`SandboxPlane returned HTTP ${res.status}`);
+      throw new SandboxPlaneUnavailableError(`SandboxPlane returned HTTP ${res.status}`, {
+        httpStatus: res.status,
+      });
     }
     return await res.json();
   } catch (err) {
@@ -156,6 +165,7 @@ async function writeRequest(
       }
       throw new SandboxPlaneUnavailableError(
         `SandboxPlane ${method} ${path} returned HTTP ${res.status}${code ? ` (${code})` : ""}`,
+        { httpStatus: res.status, planeCode: code },
       );
     }
     return await res.json();
