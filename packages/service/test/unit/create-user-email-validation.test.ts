@@ -28,7 +28,7 @@ describe("createUserAccount email validation", () => {
           password: "Passw0rd!",
           role: "member",
         }),
-      ).rejects.toMatchObject({ code: "ERR_VALIDATION" });
+      ).rejects.toMatchObject({ code: "ERR_INVALID_EMAIL", details: { field: "email" } });
 
       expect(hash).not.toHaveBeenCalled();
       expect(createUser).not.toHaveBeenCalled();
