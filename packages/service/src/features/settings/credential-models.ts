@@ -408,6 +408,13 @@ export async function buildModelsJson(
       // (or is null = "don't send for this level"). Identity override is a no-op.
       modelEntry.thinkingLevelMap = { [effort]: sendValue };
     }
+    // Pi rule (models.js:399-400): xhigh/max MUST be explicitly declared in
+    // thinkingLevelMap to be selectable — the declaration itself is the switch.
+    // Always emit a map row for these two levels even when sendValue === effort.
+    const needsDeclaration = effort === "xhigh" || effort === "max";
+    if (needsDeclaration && !modelEntry.thinkingLevelMap) {
+      modelEntry.thinkingLevelMap = { [effort]: sendValue ?? effort };
+    }
   }
 
   // ── cost ──
