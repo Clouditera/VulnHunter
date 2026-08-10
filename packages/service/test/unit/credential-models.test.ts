@@ -242,6 +242,45 @@ describe("buildModelsJson", () => {
     expect(model.thinkingLevelMap).toBeUndefined();
   });
 
+  // fish 2026-08-10: xhigh/max MUST always declare thinkingLevelMap even when
+  // sendValue === effort (pi rule models.js:399-400 — declaration is the switch).
+  it("effort=max, no advanced_config → always declares {max:'max'}", async () => {
+    const result = await buildModelsJson(makeCred({ thinking_effort: "max" }));
+    const model = (result.modelsJson as any).providers.platform.models[0];
+    expect(model.thinkingLevelMap).toEqual({ max: "max" });
+    expect(model.reasoning).toBe(true);
+  });
+
+  it("effort=xhigh, no advanced_config → always declares {xhigh:'xhigh'}", async () => {
+    const result = await buildModelsJson(makeCred({ thinking_effort: "xhigh" }));
+    const model = (result.modelsJson as any).providers.platform.models[0];
+    expect(model.thinkingLevelMap).toEqual({ xhigh: "xhigh" });
+  });
+
+  it("effort=high, no override → no map (regression anchor)", async () => {
+    const result = await buildModelsJson(makeCred({ thinking_effort: "high" }));
+    const model = (result.modelsJson as any).providers.platform.models[0];
+    expect(model.thinkingLevelMap).toBeUndefined();
+  });
+
+  it("effort=max + thinkingLevelValue override → {max:'<override>'}", async () => {
+    const result = await buildModelsJson(makeCred({
+      thinking_effort: "max",
+      advanced_config: { thinkingLevelValue: "xhigh" },
+    }));
+    const model = (result.modelsJson as any).providers.platform.models[0];
+    expect(model.thinkingLevelMap).toEqual({ max: "xhigh" });
+  });
+
+  it("effort=max + thinkingLevelValue=null → {max:null} (explicit disable)", async () => {
+    const result = await buildModelsJson(makeCred({
+      thinking_effort: "max",
+      advanced_config: { thinkingLevelValue: null },
+    }));
+    const model = (result.modelsJson as any).providers.platform.models[0];
+    expect(model.thinkingLevelMap).toEqual({ max: null });
+  });
+
   it("legacy thinkingLevelMap migrates: takes current effort row as override", async () => {
     // Legacy seven-row map with xhigh→max; credential at xhigh
     const result = await buildModelsJson(makeCred({
