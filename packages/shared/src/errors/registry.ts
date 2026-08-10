@@ -208,6 +208,11 @@ export const ERROR_REGISTRY = {
     i18nKey: "errors.ERR_VALIDATION",
     httpStatus: 400,
   },
+  /** Admin/member create: email must look like a@b.c */
+  ERR_INVALID_EMAIL: {
+    i18nKey: "errors.ERR_INVALID_EMAIL",
+    httpStatus: 400,
+  },
   // E3 wave — credential/settings specific codes
   ERR_CREDENTIAL_KEY_UNAVAILABLE: {
     i18nKey: "errors.ERR_CREDENTIAL_KEY_UNAVAILABLE",

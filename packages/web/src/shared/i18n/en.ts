@@ -1226,6 +1226,7 @@ export const EN: Record<string, string> = {
   "errors.ERR_SOURCE_ARCHIVE_UNSUPPORTED_FORMAT": "Unsupported source archive format.",
   "errors.ERR_SOURCE_ARCHIVE_CORRUPT": "The source archive is corrupted and cannot be read.",
   "errors.ERR_VALIDATION": "Invalid request parameters.",
+  "errors.ERR_INVALID_EMAIL": "Please enter a valid email address.",
   "errors.ERR_NOT_FOUND": "The requested resource does not exist.",
   "errors.ERR_CREDENTIAL_KEY_UNAVAILABLE": "Credential encryption key is not configured. Contact your administrator.",
   "errors.ERR_CREDENTIAL_DECRYPT_FAILED": "Credential cannot be decrypted. Re-enter the API key.",

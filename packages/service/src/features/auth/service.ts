@@ -158,7 +158,9 @@ export async function createUserAccount(params: {
 }): Promise<storage.DbUser> {
   const email = params.email.trim().toLowerCase();
   if (!isValidEmail(email)) {
-    throw new AppError("ERR_VALIDATION", { details: { field: "email" } });
+    // Dedicated code so admin UI shows "please enter a valid email" instead of
+    // the generic ERR_VALIDATION copy (fish 2026-08-10, task-476d9cdb).
+    throw new AppError("ERR_INVALID_EMAIL", { details: { field: "email" } });
   }
 
   const passwordHash = await bcrypt.hash(params.password, BCRYPT_COST);
