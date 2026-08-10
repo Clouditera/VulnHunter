@@ -122,6 +122,36 @@ export async function updateTaskSandboxState(taskId: string, state: TaskSandboxS
   return rows.length === 1;
 }
 
+/**
+ * Persist latest plane SSH endpoint onto the mapping after resume
+ * (fish 2026-08-10: docker may reassign HostPort on container restart).
+ * Only non-null fields from `endpoint` overwrite; omit/null keeps prior column.
+ */
+export async function updateTaskSandboxConnection(
+  taskId: string,
+  endpoint: {
+    ssh_host?: string | null;
+    ssh_port?: number | null;
+    ssh_user?: string | null;
+    ssh_internal_host?: string | null;
+    ssh_host_public_key?: string | null;
+  },
+): Promise<boolean> {
+  const db = getDb();
+  const rows = await db<{ task_id: string }[]>`
+    UPDATE task_sandboxes SET
+      ssh_host = COALESCE(${endpoint.ssh_host ?? null}, ssh_host),
+      ssh_port = COALESCE(${endpoint.ssh_port ?? null}, ssh_port),
+      ssh_user = COALESCE(${endpoint.ssh_user ?? null}, ssh_user),
+      ssh_internal_host = COALESCE(${endpoint.ssh_internal_host ?? null}, ssh_internal_host),
+      ssh_host_public_key = COALESCE(${endpoint.ssh_host_public_key ?? null}, ssh_host_public_key),
+      updated_at = now()
+    WHERE task_id = ${taskId}
+    RETURNING task_id
+  `;
+  return rows.length === 1;
+}
+
 export async function deleteTaskSandbox(taskId: string): Promise<boolean> {
   const db = getDb();
   const rows = await db<{ task_id: string }[]>`
