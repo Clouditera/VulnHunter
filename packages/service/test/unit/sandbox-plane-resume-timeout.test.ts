@@ -12,6 +12,7 @@ vi.mock("../../src/infra/logger.js", () => ({
 }));
 
 const {
+  createSandboxPlaneSandbox,
   resumeSandboxPlaneSandbox,
   stopSandboxPlaneSandbox,
   releaseSandboxPlaneSandbox,
@@ -110,5 +111,36 @@ describe("stop/release timeout tier", () => {
     });
     await expect(stopSandboxPlaneSandbox("sb-1")).resolves.toMatchObject({ sandbox_id: "sb-1" });
     await expect(releaseSandboxPlaneSandbox("sb-1")).resolves.toMatchObject({ sandbox_id: "sb-1" });
+  });
+});
+
+describe("createSandboxPlaneSandbox timeouts", () => {
+  const createInput = {
+    request_id: "task-x-main",
+    profile_id: "linux-docker",
+    ssh_public_key: "ssh-ed25519 AAAA",
+  };
+
+  it("uses writeTimeoutMs for create POST", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => sandboxBody,
+    });
+    await createSandboxPlaneSandbox(createInput);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://plane.test/sandboxes",
+      expect.objectContaining({ method: "POST", signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("maps AbortError → SandboxPlaneTimeoutError on create", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const abortErr = new Error("aborted");
+    abortErr.name = "AbortError";
+    fetchMock.mockRejectedValue(abortErr);
+    await expect(createSandboxPlaneSandbox(createInput)).rejects.toBeInstanceOf(SandboxPlaneTimeoutError);
+    await expect(createSandboxPlaneSandbox(createInput)).rejects.toThrow(/timed out after 60s/);
   });
 });

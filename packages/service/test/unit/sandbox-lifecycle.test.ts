@@ -300,6 +300,30 @@ describe("ensureSandboxForTask", () => {
     await expect(ensureSandboxForTask(task())).rejects.toBeInstanceOf(SandboxPlaneCapacityError);
   });
 
+  it("create POST timeout → idempotent replay then poll to running", async () => {
+    plane.create
+      .mockRejectedValueOnce(new SandboxPlaneTimeoutError("create timed out after 60s", 60_000))
+      .mockResolvedValueOnce(runningInstance({ status: "provisioning" }));
+    plane.get.mockResolvedValue(runningInstance({ status: "running" }));
+    store.getTaskSandbox.mockResolvedValueOnce(null).mockResolvedValue({
+      task_id: TASK_ID,
+      sandbox_id: "sb-1",
+      state: "ready",
+    });
+    const result = await ensureSandboxForTask(task(), { pollTimeoutMs: 5_000 });
+    expect(plane.create).toHaveBeenCalledTimes(2);
+    expect(plane.get).toHaveBeenCalled();
+    expect(result.mapping).toBeTruthy();
+  });
+
+  it("create HTTP 404 fails fast without empty replay loop", async () => {
+    plane.create.mockRejectedValue(
+      new SandboxPlaneUnavailableError("SandboxPlane POST /sandboxes returned HTTP 404"),
+    );
+    await expect(ensureSandboxForTask(task())).rejects.toBeInstanceOf(SandboxPlaneUnavailableError);
+    expect(plane.create).toHaveBeenCalledTimes(1);
+  });
+
   it("P0-2 regression: explicit profileId wins over stale/empty task metadata", async () => {
     // The scheduler gate resolves the selection from the FRESH prepare result
     // while the in-memory task may predate prepare persistence — the explicit

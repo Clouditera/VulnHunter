@@ -326,13 +326,34 @@ export interface EnsureSandboxResult {
  */
 const MAX_REQUEST_EPOCH = 8;
 
+/**
+ * Create POST may abort while plane still provisions (same family as resume).
+ * consumer+request_id is idempotent — on TimeoutError re-POST once to fetch
+ * the in-flight/completed record; callers still pollUntilRunning after.
+ */
+async function createPlaneSandboxReconcile(
+  input: Parameters<typeof createSandboxPlaneSandbox>[0],
+): Promise<SandboxPlaneSandbox> {
+  try {
+    return await createSandboxPlaneSandbox(input);
+  } catch (err) {
+    if (!(err instanceof SandboxPlaneTimeoutError)) throw err;
+    logger.warn(
+      { requestId: input.request_id, timeoutMs: err.timeoutMs },
+      "Sandbox create POST timed out; replaying idempotent create (POST may still complete)",
+    );
+    // Second attempt: if plane finished, returns existing; if still slow, may timeout again.
+    return await createSandboxPlaneSandbox(input);
+  }
+}
+
 async function createSkippingTerminalReplays(
   baseRequestId: string,
   build: (requestId: string) => Parameters<typeof createSandboxPlaneSandbox>[0],
 ): Promise<{ sandbox: SandboxPlaneSandbox; requestId: string }> {
   for (let epoch = 1; epoch <= MAX_REQUEST_EPOCH; epoch++) {
     const requestId = epoch === 1 ? baseRequestId : `${baseRequestId}-r${epoch}`;
-    const sandbox = await createSandboxPlaneSandbox(build(requestId));
+    const sandbox = await createPlaneSandboxReconcile(build(requestId));
     if (!PLANE_TERMINAL_STATUSES.has(sandbox.status)) return { sandbox, requestId };
     logger.warn({ requestId, status: sandbox.status }, "Idempotent replay returned a terminal record; advancing request epoch");
   }
