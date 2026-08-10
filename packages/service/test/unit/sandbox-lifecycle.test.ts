@@ -52,7 +52,8 @@ const {
   dropTaskSshKeypair,
   SandboxQuotaError,
 } = await import("../../src/features/sandboxes/lifecycle.js");
-const { SandboxPlaneCapacityError } = await import("../../src/features/sandbox-plane/client.js");
+const { SandboxPlaneCapacityError, SandboxPlaneTimeoutError, SandboxPlaneUnavailableError } =
+  await import("../../src/features/sandbox-plane/client.js");
 
 const TASK_ID = "11111111-1111-1111-1111-111111111111";
 const runningInstance = (over: Record<string, unknown> = {}) => ({
@@ -164,6 +165,48 @@ describe("ensureSandboxForTask", () => {
     expect(plane.create).not.toHaveBeenCalled();
   });
 
+  it("resume POST timeout → poll until running (does not fail task)", async () => {
+    ensureTaskSshKeypair(TASK_ID);
+    store.getTaskSandbox.mockResolvedValue({
+      task_id: TASK_ID,
+      sandbox_id: "sb-1",
+      state: "stopped",
+      ssh_host: "10.0.0.5",
+      ssh_port: 22,
+      ssh_user: "sandbox",
+    });
+    plane.resume.mockRejectedValue(new SandboxPlaneTimeoutError("write timed out after 60s", 60_000));
+    plane.get
+      .mockResolvedValueOnce(runningInstance({ status: "provisioning" }))
+      .mockResolvedValueOnce(runningInstance({ status: "running" }));
+    const result = await ensureSandboxForTask(task(), { pollTimeoutMs: 5_000 });
+    expect(result.reused).toBe(true);
+    expect(result.mapping.state).toBe("ready");
+    expect(plane.resume).toHaveBeenCalledWith("sb-1");
+    expect(plane.get).toHaveBeenCalled();
+    expect(store.updateTaskSandboxState).toHaveBeenCalledWith(TASK_ID, "ready");
+  });
+
+  it("resume HTTP 404 fails fast — no empty poll wait", async () => {
+    ensureTaskSshKeypair(TASK_ID);
+    store.getTaskSandbox.mockResolvedValue({ task_id: TASK_ID, sandbox_id: "sb-gone", state: "stopped" });
+    plane.resume.mockRejectedValue(
+      new SandboxPlaneUnavailableError("SandboxPlane POST /sandboxes/sb-gone/resume returned HTTP 404"),
+    );
+    await expect(ensureSandboxForTask(task(), { pollTimeoutMs: 5_000 })).rejects.toBeInstanceOf(
+      SandboxPlaneUnavailableError,
+    );
+    expect(plane.get).not.toHaveBeenCalled();
+  });
+
+  it("resume timeout then plane dead on GET fails without long empty wait", async () => {
+    ensureTaskSshKeypair(TASK_ID);
+    store.getTaskSandbox.mockResolvedValue({ task_id: TASK_ID, sandbox_id: "sb-1", state: "stopped" });
+    plane.resume.mockRejectedValue(new SandboxPlaneTimeoutError("timed out", 60_000));
+    plane.get.mockResolvedValue(null);
+    await expect(ensureSandboxForTask(task(), { pollTimeoutMs: 50 })).rejects.toThrow(/disappeared/);
+  });
+
   it("recycles when the in-memory key was lost (service restart): release + fresh create", async () => {
     // no ensureTaskSshKeypair call — key absent, mapping says ready
     store.getTaskSandbox.mockResolvedValue({ task_id: TASK_ID, sandbox_id: "sb-old", state: "ready" });
@@ -257,6 +300,14 @@ describe("stop / resume / release transitions", () => {
     store.getTaskSandbox.mockResolvedValue({ task_id: TASK_ID, sandbox_id: "sb-1", state: "stopped" });
     await resumeSandboxForTask(TASK_ID);
     expect(plane.resume).toHaveBeenCalledWith("sb-1");
+    expect(store.updateTaskSandboxState).toHaveBeenCalledWith(TASK_ID, "ready");
+  });
+
+  it("resumeSandboxForTask: POST timeout then poll success → ready", async () => {
+    store.getTaskSandbox.mockResolvedValue({ task_id: TASK_ID, sandbox_id: "sb-1", state: "stopped" });
+    plane.resume.mockRejectedValue(new SandboxPlaneTimeoutError("timed out after 60s", 60_000));
+    plane.get.mockResolvedValue(runningInstance({ status: "running" }));
+    await resumeSandboxForTask(TASK_ID);
     expect(store.updateTaskSandboxState).toHaveBeenCalledWith(TASK_ID, "ready");
   });
 
