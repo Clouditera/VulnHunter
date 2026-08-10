@@ -12,6 +12,7 @@ const store = vi.hoisted(() => ({
   getTaskSandbox: vi.fn(),
   upsertTaskSandbox: vi.fn(),
   updateTaskSandboxState: vi.fn(),
+  updateTaskSandboxConnection: vi.fn(),
   deleteTaskSandbox: vi.fn(),
   listActiveTaskSandboxes: vi.fn(),
   listTaskSandboxesWithMissingTask: vi.fn(),
@@ -162,7 +163,71 @@ describe("ensureSandboxForTask", () => {
     await ensureSandboxForTask(task());
     expect(plane.resume).toHaveBeenCalledWith("sb-1");
     expect(store.updateTaskSandboxState).toHaveBeenCalledWith(TASK_ID, "ready");
+    expect(store.updateTaskSandboxConnection).toHaveBeenCalled();
     expect(plane.create).not.toHaveBeenCalled();
+  });
+
+  it("resume persists new ssh endpoint from plane and returns it on mapping", async () => {
+    ensureTaskSshKeypair(TASK_ID);
+    store.getTaskSandbox.mockResolvedValue({
+      task_id: TASK_ID,
+      sandbox_id: "sb-1",
+      state: "stopped",
+      ssh_host: "10.0.0.5",
+      ssh_port: 32823,
+      ssh_user: "sandbox",
+      ssh_internal_host: "172.18.0.2",
+      ssh_host_public_key: "ssh-ed25519 AAAA old",
+    });
+    plane.resume.mockResolvedValue(
+      runningInstance({
+        ssh: { host: "10.0.0.5", port: 32827, user: "sandbox" },
+        ssh_internal_host: "172.18.0.9",
+        ssh_host_public_key: "ssh-ed25519 AAAA new",
+      }),
+    );
+    const result = await ensureSandboxForTask(task());
+    expect(store.updateTaskSandboxConnection).toHaveBeenCalledWith(TASK_ID, {
+      ssh_host: "10.0.0.5",
+      ssh_port: 32827,
+      ssh_user: "sandbox",
+      ssh_internal_host: "172.18.0.9",
+      ssh_host_public_key: "ssh-ed25519 AAAA new",
+    });
+    expect(result.mapping.ssh_port).toBe(32827);
+    expect(result.mapping.ssh_internal_host).toBe("172.18.0.9");
+  });
+
+  it("resume with missing plane ssh keeps prior endpoint (no null overwrite)", async () => {
+    ensureTaskSshKeypair(TASK_ID);
+    store.getTaskSandbox.mockResolvedValue({
+      task_id: TASK_ID,
+      sandbox_id: "sb-1",
+      state: "stopped",
+      ssh_host: "10.0.0.5",
+      ssh_port: 32823,
+      ssh_user: "sandbox",
+      ssh_internal_host: "172.18.0.2",
+      ssh_host_public_key: "ssh-ed25519 AAAA old",
+    });
+    plane.resume.mockResolvedValue(
+      runningInstance({
+        ssh: null,
+        ssh_internal_host: null,
+        ssh_host_public_key: null,
+      }),
+    );
+    const result = await ensureSandboxForTask(task());
+    expect(store.updateTaskSandboxConnection).toHaveBeenCalledWith(TASK_ID, {
+      ssh_host: null,
+      ssh_port: null,
+      ssh_user: null,
+      ssh_internal_host: null,
+      ssh_host_public_key: null,
+    });
+    // mapping still uses prior values when plane omits ssh
+    expect(result.mapping.ssh_port).toBe(32823);
+    expect(result.mapping.ssh_host).toBe("10.0.0.5");
   });
 
   it("resume POST timeout → poll until running (does not fail task)", async () => {
@@ -309,6 +374,24 @@ describe("stop / resume / release transitions", () => {
     plane.get.mockResolvedValue(runningInstance({ status: "running" }));
     await resumeSandboxForTask(TASK_ID);
     expect(store.updateTaskSandboxState).toHaveBeenCalledWith(TASK_ID, "ready");
+    expect(store.updateTaskSandboxConnection).toHaveBeenCalled();
+  });
+
+  it("resumeSandboxForTask persists endpoint when plane returns new port", async () => {
+    store.getTaskSandbox.mockResolvedValue({
+      task_id: TASK_ID,
+      sandbox_id: "sb-1",
+      state: "stopped",
+      ssh_port: 32823,
+      ssh_host: "h",
+      ssh_user: "u",
+    });
+    plane.resume.mockResolvedValue(runningInstance({ ssh: { host: "h", port: 40001, user: "u" } }));
+    await resumeSandboxForTask(TASK_ID);
+    expect(store.updateTaskSandboxConnection).toHaveBeenCalledWith(
+      TASK_ID,
+      expect.objectContaining({ ssh_port: 40001 }),
+    );
   });
 
   it("release: API → released → row dropped; failure marks releasing and throws", async () => {

@@ -31,6 +31,7 @@ import {
   listTaskSandboxesWithMissingTask,
   sandboxRequestId,
   sumRunningSandboxesForUser,
+  updateTaskSandboxConnection,
   updateTaskSandboxState,
   upsertTaskSandbox,
   type TaskSandbox,
@@ -256,6 +257,60 @@ async function resumeAndReconcile(
   return pollUntilRunning(sandboxId, pollTimeoutMs);
 }
 
+/**
+ * Merge plane SSH endpoint into mapping, persist to task_sandboxes, warn on change.
+ * Missing plane ssh fields keep prior values (architect 2026-08-10).
+ */
+async function persistResumeEndpoint(
+  taskId: string,
+  prior: Pick<
+    TaskSandbox,
+    "ssh_host" | "ssh_port" | "ssh_user" | "ssh_internal_host" | "ssh_host_public_key" | "sandbox_id"
+  >,
+  plane: SandboxPlaneSandbox,
+): Promise<{
+  ssh_host: string | null;
+  ssh_port: number | null;
+  ssh_user: string | null;
+  ssh_internal_host: string | null;
+  ssh_host_public_key: string | null;
+}> {
+  const next = {
+    ssh_host: plane.ssh?.host ?? prior.ssh_host,
+    ssh_port: plane.ssh?.port ?? prior.ssh_port,
+    ssh_user: plane.ssh?.user ?? prior.ssh_user,
+    ssh_internal_host: plane.ssh_internal_host ?? prior.ssh_internal_host,
+    ssh_host_public_key: plane.ssh_host_public_key ?? prior.ssh_host_public_key,
+  };
+
+  const hostChanged = next.ssh_host !== prior.ssh_host;
+  const portChanged = next.ssh_port !== prior.ssh_port;
+  if (hostChanged || portChanged) {
+    logger.warn(
+      {
+        taskId,
+        sandboxId: prior.sandbox_id,
+        old_host: prior.ssh_host,
+        old_port: prior.ssh_port,
+        new_host: next.ssh_host,
+        new_port: next.ssh_port,
+      },
+      "sandbox connection endpoint changed after resume",
+    );
+  }
+
+  // Only push fields plane actually provided (null plane ssh → COALESCE keeps DB).
+  await updateTaskSandboxConnection(taskId, {
+    ssh_host: plane.ssh?.host ?? null,
+    ssh_port: plane.ssh?.port ?? null,
+    ssh_user: plane.ssh?.user ?? null,
+    ssh_internal_host: plane.ssh_internal_host ?? null,
+    ssh_host_public_key: plane.ssh_host_public_key ?? null,
+  });
+
+  return next;
+}
+
 export interface EnsureSandboxResult {
   mapping: TaskSandbox;
   reused: boolean;
@@ -313,17 +368,14 @@ export async function ensureSandboxForTask(
         existing.sandbox_id,
         opts?.pollTimeoutMs ?? RESUME_RECONCILE_TIMEOUT_MS,
       );
+      const endpoint = await persistResumeEndpoint(task.id, existing, ready);
       await updateTaskSandboxState(task.id, "ready");
       logger.info({ taskId: task.id, sandboxId: existing.sandbox_id }, "Sandbox resumed for task");
       return {
         mapping: {
           ...existing,
           state: "ready",
-          ssh_host: ready.ssh?.host ?? existing.ssh_host,
-          ssh_port: ready.ssh?.port ?? existing.ssh_port,
-          ssh_user: ready.ssh?.user ?? existing.ssh_user,
-          ssh_internal_host: ready.ssh_internal_host ?? existing.ssh_internal_host,
-          ssh_host_public_key: ready.ssh_host_public_key ?? existing.ssh_host_public_key,
+          ...endpoint,
         },
         reused: true,
       };
@@ -418,7 +470,8 @@ export async function stopSandboxForTask(taskId: string, reason = "task_terminal
 export async function resumeSandboxForTask(taskId: string): Promise<void> {
   const mapping = await getTaskSandbox(taskId);
   if (!mapping || mapping.state !== "stopped") return;
-  await resumeAndReconcile(mapping.sandbox_id, RESUME_RECONCILE_TIMEOUT_MS);
+  const ready = await resumeAndReconcile(mapping.sandbox_id, RESUME_RECONCILE_TIMEOUT_MS);
+  await persistResumeEndpoint(taskId, mapping, ready);
   await updateTaskSandboxState(taskId, "ready");
   logger.info({ taskId, sandboxId: mapping.sandbox_id }, "Sandbox resumed");
 }
