@@ -59,6 +59,7 @@ export function MessageFlow({
   activity,
   onSuggest,
   persistedArtifacts,
+  onDraftCredentialChange,
 }: {
   session: ChatSession | null;
   messages: ChatMessage[];
@@ -70,6 +71,8 @@ export function MessageFlow({
   persistedArtifacts?: ChatArtifactUnion[];
   activity?: ChatActivity | null;
   onSuggest?: (text: string, submit?: boolean) => void;
+  /** Draft session: remember credential until first message creates the session. */
+  onDraftCredentialChange?: (credentialId: string) => void;
 }) {
   const streamRef = useRef<HTMLDivElement | null>(null);
 
@@ -149,6 +152,7 @@ export function MessageFlow({
           sessionId={session.id}
           credentials={credentials}
           credentialId={session.credential_id ?? null}
+          onDraftCredentialChange={onDraftCredentialChange}
         />
       </header>
 
@@ -327,15 +331,19 @@ function ModelChip({
   sessionId,
   credentials,
   credentialId,
+  onDraftCredentialChange,
 }: {
   sessionId: string;
   credentials: LlmCredential[];
   credentialId: string | null;
+  /** Draft (no real session yet): parent stores credential locally. */
+  onDraftCredentialChange?: (credentialId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [activeId, setActiveId] = useState(credentialId);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const isDraft = sessionId === "draft";
 
   // Keep activeId in sync when the session changes (e.g. switching sessions).
   useEffect(() => setActiveId(credentialId), [credentialId]);
@@ -359,6 +367,14 @@ function ModelChip({
 
   async function handleSelect(cred: LlmCredential) {
     if (resolved && cred.id === resolved.id) {
+      setOpen(false);
+      return;
+    }
+    // Draft: no session id yet — remember locally; create will send credential_id.
+    // Never call /sessions/draft/set-model (404).
+    if (isDraft) {
+      setActiveId(cred.id);
+      onDraftCredentialChange?.(cred.id);
       setOpen(false);
       return;
     }

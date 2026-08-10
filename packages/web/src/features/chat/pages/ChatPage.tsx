@@ -49,6 +49,7 @@ function ChatPageInner() {
     loading,
     selectSession,
     startDraftSession,
+    setDraftCredential,
     ensureSession,
     sendPrompt,
     abort,
@@ -106,6 +107,7 @@ function ChatPageInner() {
         onArtifactSelect={handleArtifactSelect}
         persistedArtifacts={artifacts}
         activity={activity}
+        onDraftCredentialChange={setDraftCredential}
         onSuggest={(text, submit = false) => {
           if (!activeId) {
             startDraftSession();

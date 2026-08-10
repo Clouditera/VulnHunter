@@ -567,8 +567,7 @@ export class ChatSession {
 
   /** Forward set-model to a running worker. Before the first prompt there is
    *  no runtime to update; the route persists the selection for start().
-   *  Batch 3 (fish 2026-08-08): switch uses pi reload RPC — service writes
-   *  new models.json to the bridge, bridge rewrites piDir + sends reload. */
+   *  fish 2026-08-10: bridge rewrites models.json then set_model (no reload RPC). */
   async setModel(credentialId: string): Promise<void> {
     if (!shouldForwardModelSwitch(this.state)) return;
     if (this.state === "starting") {

@@ -613,9 +613,24 @@ export function useChat() {
     window.dispatchEvent(new CustomEvent("vh:active-session", { detail: { id: null } }));
   }, []);
 
-  const createSession = useCallback(async () => {
+  /** Draft-only: remember model pick until first message materializes the session. */
+  const setDraftCredential = useCallback((credentialId: string) => {
+    setDraftSession((prev) => {
+      if (!prev || prev.id !== "draft") return prev;
+      return { ...prev, credential_id: credentialId };
+    });
+  }, []);
+
+  const createSession = useCallback(async (opts?: { credential_id?: string | null }) => {
     try {
-      const res = await api.chat.sessions.create();
+      // Prefer explicit credential (draft picker); else draft session's stored choice.
+      const draftCred =
+        opts?.credential_id ??
+        (draftSession && activeId === draftSession.id ? draftSession.credential_id : null) ??
+        null;
+      const res = await api.chat.sessions.create({
+        credential_id: draftCred || undefined,
+      });
       const s = toDomainSession(res.session);
       setDraftSession(null);
       setSessions((prev) => [s, ...prev]);
@@ -626,7 +641,7 @@ export function useChat() {
       setLastError((err as Error)?.message ?? "ERR_INTERNAL");
       return null;
     }
-  }, []);
+  }, [draftSession, activeId]);
 
   // Materialize a draft into a real (UUID) session and return its id, so callers
   // that need a persisted session before acting (e.g. uploading an attachment in
@@ -780,6 +795,7 @@ export function useChat() {
     createSession,
     ensureSession,
     startDraftSession,
+    setDraftCredential,
     deleteSession,
     sendPrompt,
     abort,

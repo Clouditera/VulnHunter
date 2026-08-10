@@ -713,10 +713,13 @@ export const api = {
           method: "PATCH",
           body: JSON.stringify({ title }),
         }),
-      create: (title?: string) =>
+      create: (opts?: { title?: string; credential_id?: string | null }) =>
         request<{ session: ChatSessionApi }>("/api/chat/sessions", {
           method: "POST",
-          body: JSON.stringify(title ? { title } : {}),
+          body: JSON.stringify({
+            ...(opts?.title ? { title: opts.title } : {}),
+            ...(opts?.credential_id ? { credential_id: opts.credential_id } : {}),
+          }),
         }),
       get: (id: string) =>
         request<{ session: ChatSessionApi }>(`/api/chat/sessions/${id}`),
