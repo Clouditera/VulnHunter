@@ -731,6 +731,8 @@ export const ZH: Record<string, string> = {
   "diagnostics.check.thinking": "模型思考",
   "diagnostics.check.tool": "工具调用",
   "diagnostics.check.l4_agent": "Agent 工具测试",
+  "diagnostics.check.warn": "未通过·警告",
+  "diagnostics.check.warnHint": "该模型/网关未输出思考内容，不影响基础使用。",
   "diagnostics.l4.passed": "通过",
   "diagnostics.l4.failed": "未通过",
   "settings.model.testProgress.suggestion": "建议",

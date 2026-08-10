@@ -730,6 +730,8 @@ export const EN: Record<string, string> = {
   "diagnostics.check.thinking": "Model thinking",
   "diagnostics.check.tool": "Tool invocation",
   "diagnostics.check.l4_agent": "Agent tool test",
+  "diagnostics.check.warn": "Not passed · warning",
+  "diagnostics.check.warnHint": "This model/gateway does not output thinking content; basic functionality is unaffected.",
   "diagnostics.l4.passed": "Passed",
   "diagnostics.l4.failed": "Failed",
   "settings.model.testProgress.suggestion": "Suggestion",
