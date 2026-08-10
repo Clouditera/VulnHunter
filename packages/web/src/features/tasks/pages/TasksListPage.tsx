@@ -15,13 +15,9 @@ import { confirm } from "../../../shared/confirm/confirm.js";
 import { toast } from "../../../shared/toast/toast.js";
 import {
   formatDateTime,
+  formatDurationMinutes,
+  toDurationMs,
 } from "../../../shared/utils/format.js";
-
-function formatDuration(ms: number | null): string {
-  if (!ms) return "—";
-  const min = Math.round(ms / 60_000);
-  return `${min} min`;
-}
 
 /**
  * Per-row findings cell:
@@ -495,8 +491,12 @@ export function TasksListPage() {
                     <td
                       style={{ padding: "14px 20px", color: "var(--text-secondary)", fontSize: "12px" }}
                     >
-                      {formatDuration(
-                        (task.total_duration_ms ?? 0) > 0 ? (task.total_duration_ms ?? null) : (task.duration_ms ?? null),
+                      {formatDurationMinutes(
+                        (() => {
+                          const total = toDurationMs(task.total_duration_ms);
+                          if (total != null && total > 0) return total;
+                          return toDurationMs(task.duration_ms);
+                        })(),
                       )}
                     </td>
                     <td

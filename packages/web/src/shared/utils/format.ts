@@ -21,6 +21,8 @@ export function formatDateTime(value: string | Date | null | undefined): string 
   return `${monthName} ${d.getDate()}, ${y} ${hh}:${mm}`;
 }
 
+export { toDurationMs, formatDurationMs, formatDurationMinutes } from "./duration.js";
+
 /**
  * Relative "N min ago / N hours ago / yesterday" style. Used for dashboard recent scans.
  */

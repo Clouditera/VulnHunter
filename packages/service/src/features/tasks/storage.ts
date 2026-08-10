@@ -43,6 +43,24 @@ export interface DbTask {
   completion_reason: string;
 }
 
+/**
+ * postgres.js may return BIGINT as string. Coerce duration/count fields so
+ * JSON clients never do string+number concat (fish 2026-08-10 2417352h bug).
+ */
+function normalizeTaskRow(row: DbTask): DbTask {
+  const num = (v: unknown): number | null => {
+    if (v == null || v === "") return null;
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  return {
+    ...row,
+    duration_ms: num(row.duration_ms),
+    total_duration_ms: num(row.total_duration_ms) ?? 0,
+    run_count: num(row.run_count) ?? 0,
+  };
+}
+
 function tenantIdOf(ctx?: QueryContext): string {
   return ctx?.tenantId ?? DEFAULT_TENANT_ID;
 }
@@ -122,7 +140,7 @@ export async function getTaskById(a: QueryContext | string, b?: string): Promise
       WHERE id = ${id} AND tenant_id = ${tenantIdOf(ctx)}
       LIMIT 1
     `;
-  return rows[0] ?? null;
+  return rows[0] ? normalizeTaskRow(rows[0]) : null;
 }
 
 export type TaskSortMode = "newest" | "oldest" | "name";
@@ -206,12 +224,13 @@ export async function listTasks(
   const offset = params.offset ?? 0;
   const { where, order } = taskListFragments(db, tenantId, filteredUserId, params);
 
-  return db<DbTask[]>`
+  const rows = await db<DbTask[]>`
     SELECT t.* FROM tasks t
     WHERE ${where}
     ORDER BY ${order}
     LIMIT ${limit} OFFSET ${offset}
   `;
+  return rows.map((r) => normalizeTaskRow(r));
 }
 
 /** COUNT(*) with the same filter matrix as listTasks. */

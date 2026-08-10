@@ -8,7 +8,7 @@ import { i18n } from "../../../shared/i18n/index.js";
 import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
 import { effectiveTaskState, isTaskTimedOut } from "../task-timeout.js";
-import { formatDateTime } from "../../../shared/utils/format.js";
+import { formatDateTime, formatDurationMs, toDurationMs } from "../../../shared/utils/format.js";
 import { getTaskNameError, normalizeTaskName, TASK_NAME_MAX_LENGTH } from "../task-name.js";
 
 const TABS = [
@@ -20,18 +20,6 @@ const TABS = [
   { labelKey: "taskDetail.tab.reports", path: "reports" },
 ];
 
-function formatDuration(ms: number | null): string {
-  if (!ms || ms < 0) return "—";
-  const totalSec = Math.floor(ms / 1000);
-  if (totalSec < 60) return `${totalSec}s`;
-  const min = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
-  if (min < 60) return sec > 0 ? `${min}m ${sec}s` : `${min}m`;
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return `${h}h ${m}m`;
-}
-
 /**
  * Cumulative live duration (fish 2026-08-08, task-70ebb6d0):
  * - running/paused: accumulated total from previous segments + the current
@@ -39,8 +27,10 @@ function formatDuration(ms: number | null): string {
  *   instead of restarting from zero
  * - finished: accumulated total (each completed segment was added by the
  *   backend); legacy rows without the column fall back to duration_ms
- * Re-renders every second via a timer hook so the value ticks without
- * waiting for the 3s poll.
+ *
+ * fish 2026-08-10: ALWAYS coerce BIGINT-as-string via toDurationMs before
+ * arithmetic — string + number concatenates and yields multi-million-hour
+ * displays (e.g. 2417352h).
  */
 function useLiveDurationMs(
   task: {
@@ -59,14 +49,16 @@ function useLiveDurationMs(
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [isLive]);
-  const accumulated = task.total_duration_ms ?? 0;
+  const accumulated = toDurationMs(task.total_duration_ms) ?? 0;
   if (isLive && task.started_at) {
-    return accumulated + Math.max(0, now - Date.parse(task.started_at));
+    const started = Date.parse(task.started_at);
+    const segment = Number.isFinite(started) ? Math.max(0, now - started) : 0;
+    return accumulated + segment;
   }
   // Completed: prefer the accumulated column; legacy rows (pre-migration,
   // total = 0) still have their single segment in duration_ms.
   if (accumulated > 0) return accumulated;
-  return task.duration_ms;
+  return toDurationMs(task.duration_ms);
 }
 
 export function TaskDetailPage() {
@@ -322,7 +314,7 @@ export function TaskDetailPage() {
               <MetaItem icon="clock">
                 {i18n.t("taskDetail.meta.duration")}:{" "}
                 <strong style={{ color: "var(--text-primary)", marginLeft: "4px" }}>
-                  {formatDuration(liveDurationMs)}
+                  {formatDurationMs(liveDurationMs)}
                 </strong>
               </MetaItem>
               <MetaItem icon="calendar">

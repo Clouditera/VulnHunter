@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../../../../shared/components/Icon.js";
 import { i18n } from "../../../../shared/i18n/index.js";
+import { formatDurationMs } from "../../../../shared/utils/format.js";
 
 export const SECTION: CSSProperties = {
   padding: "14px 18px",
@@ -202,10 +203,9 @@ export function stringifySection(value: unknown): string {
   }
 }
 
-export function formatDuration(ms?: number | null): string {
-  if (!ms) return "—";
-  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
-  return `${Math.round(ms / 60_000)}min`;
+export function formatDuration(ms?: number | null | string): string {
+  // Shared ms-safe formatter (BIGINT may arrive as string from API).
+  return formatDurationMs(ms);
 }
 
 export function formatTime(value?: string | null): string {
