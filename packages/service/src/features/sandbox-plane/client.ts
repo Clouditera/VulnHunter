@@ -237,17 +237,29 @@ export interface CreateSandboxInput {
   metadata?: Record<string, unknown>;
 }
 
-/** POST /sandboxes — idempotent on (consumer, request_id): a replay returns the existing record. */
+/**
+ * POST /sandboxes — idempotent on (consumer, request_id): a replay returns the existing record.
+ * Uses write timeout tier (default 60s). Callers must treat SandboxPlaneTimeoutError as
+ * "POST may still complete" and re-POST (idempotent) then poll until running
+ * (fish 2026-08-10 create same-family as resume).
+ */
 export async function createSandboxPlaneSandbox(input: CreateSandboxInput): Promise<SandboxPlaneSandbox> {
-  const body = await writeRequest("POST", "/sandboxes", {
-    consumer: "vulnhunter",
-    request_id: input.request_id,
-    profile_id: input.profile_id,
-    ssh_public_key: input.ssh_public_key,
-    ...(input.resources ? { resources: input.resources } : {}),
-    ...(input.external_ref ? { external_ref: input.external_ref } : {}),
-    ...(input.metadata ? { metadata: input.metadata } : {}),
-  });
+  const c = client();
+  if (!c) throw new SandboxPlaneUnavailableError("SandboxPlane is not configured");
+  const body = await writeRequest(
+    "POST",
+    "/sandboxes",
+    {
+      consumer: "vulnhunter",
+      request_id: input.request_id,
+      profile_id: input.profile_id,
+      ssh_public_key: input.ssh_public_key,
+      ...(input.resources ? { resources: input.resources } : {}),
+      ...(input.external_ref ? { external_ref: input.external_ref } : {}),
+      ...(input.metadata ? { metadata: input.metadata } : {}),
+    },
+    { timeoutMs: c.writeTimeoutMs },
+  );
   return unwrapSandbox(body, "create");
 }
 
