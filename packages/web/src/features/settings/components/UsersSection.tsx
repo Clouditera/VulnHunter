@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CSSProperties } from "react";
 import { api, type UserApi } from "../../../shared/api/client.js";
+import { ApiError } from "../../../shared/api/error.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
 import { useConfirmClose } from "../../../shared/hooks/useConfirmClose.js";
@@ -305,6 +306,7 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   const [taskLimit, setTaskLimit] = useState("0");
   const [adminRemark, setAdminRemark] = useState("");
   const [error, setError] = useState("");
+  const [emailError, setEmailError] = useState("");
   // Unified modal base (fish 2026-08-07): ESC closes, dirty asks first,
   // backdrop never closes (ModalOverlay has no backdrop handler).
   const requestClose = useConfirmClose(
@@ -320,15 +322,49 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
       return api.users.create({ email, password, display_name: displayName || undefined, role: "member", must_change_password: forceChange, task_limit: Math.max(0, Number(taskLimit) || 0), admin_remark: adminRemark.trim() || null });
     },
     onSuccess,
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => {
+      // fish 2026-08-10 (task-476d9cdb): surface the SPECIFIC field reason —
+      // server ERR_VALIDATION carries details.field; email gets an inline
+      // message under its input instead of the generic「请求参数有误」.
+      if (err instanceof ApiError && err.code === "ERR_INVALID_EMAIL") {
+        // Dedicated code (developer 57d5a9fa): message already localized server-side.
+        setEmailError(err.message || i18n.t("userModal.err.emailInvalid"));
+        return;
+      }
+      if (err instanceof ApiError && err.code === "ERR_VALIDATION" && err.details?.field === "email") {
+        setEmailError(i18n.t("userModal.err.emailInvalid"));
+        return;
+      }
+      setError(err.message);
+    },
   });
+
+  // fish 2026-08-10: same email rule as backend (a@b.c) — client pre-check,
+  // inline error, submit blocked while invalid (前置禁用+原因提示).
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emailInvalid = email.trim() !== "" && !EMAIL_RE.test(email.trim());
+  const emailEmpty = email.trim() === "";
 
   return (
     <ModalOverlay onClose={onClose}>
       <div style={MODAL}>
         <div style={MODAL_HEADER}><span style={{ fontSize: "15px", fontWeight: 600 }}>{i18n.t("userModal.create.title")}</span><CloseBtn onClick={requestClose} /></div>
         <div style={MODAL_BODY}>
-          <Field label={i18n.t("userModal.email")}><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={INPUT} placeholder="user@example.com" /></Field>
+          <Field label={i18n.t("userModal.email")}>
+            <input
+              data-testid="user-create-email"
+              type="email"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setEmailError(""); }}
+              style={{ ...INPUT, borderColor: emailInvalid || emailError ? "var(--danger)" : undefined }}
+              placeholder="user@example.com"
+            />
+            {(emailInvalid || emailError) && (
+              <div data-testid="user-create-email-error" style={{ color: "var(--danger)", fontSize: "12px", marginTop: "4px" }}>
+                {i18n.t("userModal.err.emailInvalid")}
+              </div>
+            )}
+          </Field>
           <Field label={i18n.t("userModal.displayName.optional")}><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={INPUT} /></Field>
           {/* Admin role removed — singleton system admin is deploy-provisioned only. */}
           <Field label={i18n.t("userModal.taskLimit")}><input type="number" min={0} value={taskLimit} onChange={(e) => setTaskLimit(e.target.value)} style={INPUT} /></Field>
@@ -351,7 +387,7 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
         </div>
         <div style={MODAL_FOOTER}>
           <button onClick={requestClose} style={GHOST_BTN_STYLED}>{i18n.t("userModal.cancel")}</button>
-          <button onClick={() => mut.mutate()} disabled={!email || password.length < 8 || confirmPassword.length < 8 || password !== confirmPassword || mut.isPending} style={{ ...PRIMARY_BTN, opacity: !email || password.length < 8 || confirmPassword.length < 8 || password !== confirmPassword ? 0.5 : 1 }}>
+          <button data-testid="user-create-submit" onClick={() => mut.mutate()} disabled={emailEmpty || emailInvalid || password.length < 8 || confirmPassword.length < 8 || password !== confirmPassword || mut.isPending} style={{ ...PRIMARY_BTN, opacity: emailEmpty || emailInvalid || password.length < 8 || confirmPassword.length < 8 || password !== confirmPassword ? 0.5 : 1 }}>
             {mut.isPending ? "..." : i18n.t("userModal.create")}
           </button>
         </div>
