@@ -281,6 +281,8 @@ export class ChatSession {
         ...credentialToWorkerEnv(cred),
         ALL_CREDENTIALS: allCredsJson,
         MODELS_JSON: modelsJsonStr,
+        // Bridge maps primary credential → provider key "vulnhunter"
+        PRIMARY_CREDENTIAL_ID: cred.id,
         // Inject all API key env vars (VH_LLM_API_KEY + VH_KEY_<id12> for each)
         ...Object.fromEntries(Object.entries(multiResult.childEnv)),
         SERVICE_URL: config.docker.workerServiceUrl,
@@ -565,9 +567,13 @@ export class ChatSession {
     if (!result.ok) throw new Error("Bridge rejected prompt");
   }
 
-  /** Forward set-model to a running worker. Before the first prompt there is
-   *  no runtime to update; the route persists the selection for start().
-   *  fish 2026-08-10: bridge rewrites models.json then set_model (no reload RPC). */
+  /**
+   * Forward set-model to a running worker (fish 2026-08-10 architect).
+   * Before first prompt there is no runtime — route still persists selection.
+   * Runtime switch: only credentialId. Bridge looks up startup-registered
+   * provider key (vulnhunter / va-<id8>) and calls set_model. No models.json
+   * rewrite (pi registry is spawn-time only).
+   */
   async setModel(credentialId: string): Promise<void> {
     if (!shouldForwardModelSwitch(this.state)) return;
     if (this.state === "starting") {
@@ -575,37 +581,21 @@ export class ChatSession {
     }
     if (!this.bridgeUrl) throw new Error("Bridge not available");
 
-    // Fetch the full credential
-    const cred = await getCredentialById(credentialId);
-    if (!cred) throw new Error("Credential not found");
-
-    // Build models.json with the bridge's env naming convention (VH_KEY_<id>)
-    // so the $ENV_VAR template matches what was injected at startup.
-    // Architect 2026-08-08: pi's child env is frozen at spawn — we can't
-    // inject new env vars at runtime; we must reference one already set.
-    const apiKeyEnvName = `VH_KEY_${credentialId.replace(/-/g, "_").slice(0, 12).toUpperCase()}`;
-    const { buildModelsJson } = await import("../settings/credential-models.js");
-    const result = await buildModelsJson({
-      proto_type: cred.proto_type,
-      base_url: cred.base_url,
-      model_id: cred.model_id,
-      thinking_effort: cred.thinking_effort,
-      context_window_tokens: cred.context_window_tokens,
-      api_key: cred.api_key,
-      advanced_config: (cred as any).advanced_config ?? null,
-    }, { apiKeyEnvName });
+    // Optional thinking level from credential (non-fatal if missing)
+    let thinkingEffort = "off";
+    try {
+      const cred = await getCredentialById(credentialId);
+      thinkingEffort = cred?.thinking_effort ?? "off";
+    } catch {
+      /* bridge only needs credentialId; thinking is best-effort */
+    }
 
     const res = await fetch(`${this.bridgeUrl}/chat/set-model`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         credentialId,
-        modelsJson: result.modelsJson,
-        apiKeyEnvName, // bridge validates this was injected at startup
-        apiKeyPresent: !!cred.api_key,
-        thinkingEffort: cred.thinking_effort ?? "off",
-        providerKey: result.providerKey,
-        modelId: result.modelRef,
+        thinkingEffort,
       }),
       signal: AbortSignal.timeout(15_000),
     });

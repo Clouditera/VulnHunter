@@ -178,15 +178,22 @@ function setupPiConfig(): void {
   }
 
   // ── Build credProviderMap for runtime switching (from ALL_CREDENTIALS) ──
+  // Chat MODELS_JSON registers: primary → "vulnhunter", others → "va-<id8>".
+  // Map must match those keys exactly or set_model fails with Model not found.
   if (allCredsJson) {
     try {
       const allCreds = JSON.parse(allCredsJson) as Array<{
         id: string; model_id: string;
       }>;
+      const primaryId = process.env.PRIMARY_CREDENTIAL_ID ?? "";
       for (const cred of allCreds) {
-        const providerKey = `va-${cred.id.slice(0, 8)}`;
+        const providerKey =
+          cred.id === primaryId ? "vulnhunter" : `va-${cred.id.slice(0, 8)}`;
         credProviderMap.set(cred.id, { providerKey, modelId: cred.model_id });
       }
+      console.log(
+        `[bridge] credProviderMap: ${credProviderMap.size} credentials (primary=${primaryId.slice(0, 8) || "none"})`,
+      );
     } catch { /* ignore */ }
   }
 
@@ -568,28 +575,15 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
 }
 
 /**
- * Model switch (fish 2026-08-10 / architect):
- * - Rewrite models.json in piDir
- * - Call set_model directly (pi re-reads models.json via file mtime / lazy load)
- * - Do NOT send `reload` — that is an extension-context action, not an RPC
- *   command (Unknown command: reload on pi 0.83.0).
+ * Model switch within the startup-registered set (fish 2026-08-10 architect).
  *
- * Env freeze: child env is frozen at spawn. apiKeyEnvName must already exist
- * in process.env (injected at startup via ALL_CREDENTIALS).
- *
- * Keyless credentials: service sends apiKeyPresent=false; bridge rewrites
- * baseUrl to local _llm_proxy and points apiKey at VH_LLM_API_KEY dummy.
+ * pi's provider registry is built at spawn from MODELS_JSON — set_model does
+ * NOT re-read models.json. So we only switch to a credentialId already mapped
+ * at startup (credProviderMap: primary→vulnhunter, others→va-<id8>).
+ * Credential edits (key/URL) take effect on the next session.
  */
 async function handleSetModel(body: string, res: ServerResponse): Promise<void> {
-  let parsed: {
-    credentialId?: string;
-    modelsJson?: Record<string, unknown>;
-    apiKeyEnvName?: string;
-    apiKeyPresent?: boolean;
-    thinkingEffort?: string;
-    providerKey?: string;
-    modelId?: string;
-  };
+  let parsed: { credentialId?: string; thinkingEffort?: string };
   try {
     parsed = JSON.parse(body);
   } catch {
@@ -597,65 +591,51 @@ async function handleSetModel(body: string, res: ServerResponse): Promise<void> 
     return;
   }
 
-  if (!parsed.modelsJson || !parsed.providerKey || !parsed.modelId || !parsed.apiKeyEnvName) {
-    sendJson(res, 400, { ok: false, error: "modelsJson, apiKeyEnvName, providerKey, modelId required" });
+  const credentialId = parsed.credentialId?.trim();
+  if (!credentialId) {
+    sendJson(res, 400, { ok: false, error: "credentialId required" });
     return;
   }
 
-  // Validate: the env var referenced in models.json MUST have been injected
-  // at startup. If it's not in process.env, the credential wasn't in
-  // ALL_CREDENTIALS — reject (new session needed).
-  if (!(parsed.apiKeyEnvName in process.env)) {
+  const mapping = credProviderMap.get(credentialId);
+  if (!mapping) {
     sendJson(res, 400, {
       ok: false,
-      error: `Credential not in this session's switchable list (env ${parsed.apiKeyEnvName} not injected at startup). Start a new session to use it.`,
+      error: `Credential not in this session's switchable list. Start a new session to use it.`,
     });
     return;
   }
 
   try {
-    let modelsToWrite = parsed.modelsJson;
+    await rpcCommands.send({
+      type: "set_model",
+      provider: mapping.providerKey,
+      modelId: mapping.modelId,
+    });
+    console.log(
+      `[bridge] set_model confirmed → credential=${credentialId.slice(0, 8)} provider=${mapping.providerKey} model=${mapping.modelId}`,
+    );
 
-    // Keyless credential: rewrite baseUrl to local proxy + point apiKey at dummy
-    if (parsed.apiKeyPresent === false) {
-      const proxyUrl = noAuthProxyBaseUrl(parsed.credentialId ?? "unknown");
-      const dummyEnv = "VH_LLM_API_KEY"; // NO_AUTH_DUMMY_KEY is set here at startup
-      // Deep-clone and patch the provider's baseUrl + apiKey
-      modelsToWrite = JSON.parse(JSON.stringify(parsed.modelsJson));
-      const providers = (modelsToWrite as any).providers;
-      const platform = providers?.platform;
-      if (platform) {
-        platform.baseUrl = proxyUrl;
-        platform.apiKey = `$${dummyEnv}`;
-      }
-      console.log(`[bridge] Keyless credential → proxy ${proxyUrl}`);
-    }
-
-    // 1. Rewrite models.json in piDir (mtime bump triggers pi lazy re-read)
-    const piDir = getPiDir();
-    writeFileSync(join(piDir, "models.json"), JSON.stringify(modelsToWrite, null, 2) + "\n");
-    console.log(`[bridge] Rewrote models.json for credential=${parsed.credentialId ?? "unknown"} (env=$${parsed.apiKeyEnvName})`);
-
-    // 2. Switch active model directly — no reload RPC (not a valid RPC command)
-    await rpcCommands.send({ type: "set_model", provider: parsed.providerKey, modelId: parsed.modelId });
-    console.log(`[bridge] set_model confirmed → provider=${parsed.providerKey}, model=${parsed.modelId}`);
-
-    // 4. Set thinking level (fish 2026-08-08: pass user's configured level)
     const effort = (parsed.thinkingEffort ?? "off").toLowerCase();
     if (effort && effort !== "off" && effort !== "none") {
       try {
         await rpcCommands.send({ type: "set_thinking_level", level: effort });
         console.log(`[bridge] set_thinking_level confirmed → level=${effort}`);
       } catch (err) {
-        // Non-fatal: thinking level is a tuning, not a hard requirement
-        console.warn(`[bridge] set_thinking_level failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+        console.warn(
+          `[bridge] set_thinking_level failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
-    sendJson(res, 200, { ok: true, provider: parsed.providerKey, modelId: parsed.modelId });
+    sendJson(res, 200, {
+      ok: true,
+      provider: mapping.providerKey,
+      modelId: mapping.modelId,
+    });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    console.warn(`[bridge] set-model (reload path) failed: ${error}`);
+    console.warn(`[bridge] set-model failed: ${error}`);
     sendJson(res, 503, { ok: false, error });
   }
 }
