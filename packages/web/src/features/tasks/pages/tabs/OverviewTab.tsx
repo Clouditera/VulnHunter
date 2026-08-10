@@ -248,6 +248,7 @@ export function OverviewTab() {
         })()}
         <CredentialField task={task} />
         <ScanBudgetField task={task} />
+        <CumulativeDurationField task={task} />
       </Card>
 
       {/* Vulnerability Overview — factual counts, no risk score */}
@@ -791,6 +792,53 @@ function ScanBudgetField({ task }: { task: Task }) {
   }
 
   return <KV label={i18n.t("overview.scanBudget")} value={`⏱ ${value}`} />;
+}
+
+/**
+ * Independent 「累积时长」 KV under 扫描时长 (fish 2026-08-10 scheme B).
+ * Spec: design-spec-cumulative-duration-row-v1.0.md
+ * Only when run_count ≥ 2. Running: total + live segment, 「第 N 段运行中」.
+ */
+function CumulativeDurationField({ task }: { task: Task }) {
+  const runCount = Number(task.run_count) || 0;
+  if (runCount < 2) return null;
+
+  const isRunning = task.state === "running";
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isRunning) return;
+    // Same cadence as ScanBudgetField (30s)
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, [isRunning]);
+
+  const accumulated = toDurationMs(task.total_duration_ms) ?? 0;
+  let ms = accumulated;
+  if (isRunning && task.started_at) {
+    const started = Date.parse(task.started_at);
+    const segment = Number.isFinite(started) ? Math.max(0, now - started) : 0;
+    ms = accumulated + segment;
+  } else if (ms <= 0) {
+    ms = toDurationMs(task.duration_ms) ?? 0;
+  }
+  if (ms <= 0) return null;
+
+  const durationText = formatMinutes(Math.max(0, Math.round(ms / 60_000)));
+  const value = isRunning
+    ? i18n
+        .t("overview.cumulativeRunning")
+        .replace("{duration}", durationText)
+        .replace("{n}", String(runCount))
+    : i18n
+        .t("overview.cumulativeWithSegments")
+        .replace("{duration}", durationText)
+        .replace("{n}", String(runCount));
+
+  return (
+    <div data-testid="overview-cumulative-duration">
+      <KV label={i18n.t("overview.cumulativeDuration")} value={value} />
+    </div>
+  );
 }
 
 function CredentialField({ task }: { task: Task }) {
