@@ -845,6 +845,7 @@ export const ZH: Record<string, string> = {
   "userModal.forceChangePassword": "首次登录强制修改密码",
   "userModal.passwordHint": "至少 8 位",
   "userModal.err.passwordMismatch": "两次密码输入不一致",
+  "userModal.err.emailInvalid": "请输入有效的邮箱地址",
   "userModal.cancel": "取消",
   "userModal.create": "创建",
   "userModal.save": "保存",

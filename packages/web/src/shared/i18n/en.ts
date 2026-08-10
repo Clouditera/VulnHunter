@@ -844,6 +844,7 @@ export const EN: Record<string, string> = {
   "userModal.forceChangePassword": "Force password change on first login",
   "userModal.passwordHint": "Min 8 characters",
   "userModal.err.passwordMismatch": "Passwords do not match",
+  "userModal.err.emailInvalid": "Please enter a valid email address",
   "userModal.cancel": "Cancel",
   "userModal.create": "Create",
   "userModal.save": "Save",
