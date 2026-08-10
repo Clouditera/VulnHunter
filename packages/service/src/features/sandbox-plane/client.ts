@@ -50,16 +50,41 @@ export class SandboxPlaneCapacityError extends Error {
   }
 }
 
+/**
+ * Client aborted the HTTP call (AbortController / timeout).
+ * Distinct from HTTP 4xx/5xx so callers can poll plane truth after a slow
+ * lifecycle POST that may still complete server-side (fish 2026-08-10).
+ */
+export class SandboxPlaneTimeoutError extends Error {
+  readonly timeoutMs: number;
+  constructor(message: string, timeoutMs: number) {
+    super(message);
+    this.name = "SandboxPlaneTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 function client() {
   const config = loadConfig();
-  const { baseUrl, token, timeoutMs } = config.sandboxPlane;
+  const { baseUrl, token, timeoutMs, writeTimeoutMs } = config.sandboxPlane;
   if (!baseUrl || !token) return null;
-  return { baseUrl: baseUrl.replace(/\/+$/, ""), token, timeoutMs };
+  return {
+    baseUrl: baseUrl.replace(/\/+$/, ""),
+    token,
+    timeoutMs,
+    writeTimeoutMs,
+  };
 }
 
 /** True when SANDBOXPLANE_BASE_URL + TOKEN are set (plane may still be down). */
 export function isSandboxPlaneConfigured(): boolean {
   return client() != null;
+}
+
+function isAbortError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { name?: string; code?: string };
+  return e.name === "AbortError" || e.code === "ABORT_ERR";
 }
 
 async function request(path: string, allow404 = false): Promise<unknown | null> {
@@ -80,6 +105,12 @@ async function request(path: string, allow404 = false): Promise<unknown | null> 
     return await res.json();
   } catch (err) {
     if (err instanceof SandboxPlaneUnavailableError) throw err;
+    if (isAbortError(err)) {
+      throw new SandboxPlaneTimeoutError(
+        `SandboxPlane request timed out after ${Math.round(c.timeoutMs / 1000)}s (${path})`,
+        c.timeoutMs,
+      );
+    }
     logger.warn({ err, path }, "SandboxPlane request failed");
     throw new SandboxPlaneUnavailableError("SandboxPlane request failed");
   } finally {
@@ -87,12 +118,25 @@ async function request(path: string, allow404 = false): Promise<unknown | null> 
   }
 }
 
-async function writeRequest(method: "POST", path: string, body?: unknown, allow404 = false): Promise<unknown | null> {
+export interface WriteRequestOpts {
+  allow404?: boolean;
+  /** Override default read timeout for this write. */
+  timeoutMs?: number;
+}
+
+async function writeRequest(
+  method: "POST",
+  path: string,
+  body?: unknown,
+  opts: WriteRequestOpts = {},
+): Promise<unknown | null> {
   const c = client();
   if (!c) throw new SandboxPlaneUnavailableError("SandboxPlane is not configured");
 
+  const timeoutMs = opts.timeoutMs ?? c.timeoutMs;
+  const allow404 = opts.allow404 ?? false;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), c.timeoutMs);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${c.baseUrl}${path}`, {
       method,
@@ -110,11 +154,25 @@ async function writeRequest(method: "POST", path: string, body?: unknown, allow4
       if (res.status === 429 && code === "RESOURCE_EXHAUSTED") {
         throw new SandboxPlaneCapacityError("SandboxPlane admission rejected create: capacity exhausted");
       }
-      throw new SandboxPlaneUnavailableError(`SandboxPlane ${method} ${path} returned HTTP ${res.status}${code ? ` (${code})` : ""}`);
+      throw new SandboxPlaneUnavailableError(
+        `SandboxPlane ${method} ${path} returned HTTP ${res.status}${code ? ` (${code})` : ""}`,
+      );
     }
     return await res.json();
   } catch (err) {
-    if (err instanceof SandboxPlaneUnavailableError || err instanceof SandboxPlaneCapacityError) throw err;
+    if (
+      err instanceof SandboxPlaneUnavailableError ||
+      err instanceof SandboxPlaneCapacityError ||
+      err instanceof SandboxPlaneTimeoutError
+    ) {
+      throw err;
+    }
+    if (isAbortError(err)) {
+      throw new SandboxPlaneTimeoutError(
+        `SandboxPlane write timed out after ${Math.round(timeoutMs / 1000)}s (${method} ${path})`,
+        timeoutMs,
+      );
+    }
     logger.warn({ err, path }, "SandboxPlane write request failed");
     throw new SandboxPlaneUnavailableError("SandboxPlane write request failed");
   } finally {
@@ -200,17 +258,33 @@ export async function getSandboxPlaneSandbox(id: string): Promise<SandboxPlaneSa
   return unwrapSandbox(body, "get");
 }
 
+/** stop/release: longer than read default, shorter than resume (architect 15s). */
+const STOP_RELEASE_TIMEOUT_MS = 15_000;
+
 export async function stopSandboxPlaneSandbox(id: string): Promise<SandboxPlaneSandbox> {
-  const body = await writeRequest("POST", `/sandboxes/${encodeURIComponent(id)}/stop`);
+  const body = await writeRequest("POST", `/sandboxes/${encodeURIComponent(id)}/stop`, undefined, {
+    timeoutMs: STOP_RELEASE_TIMEOUT_MS,
+  });
   return unwrapSandbox(body, "stop");
 }
 
+/**
+ * POST resume with write timeout (default 60s via SANDBOXPLANE_WRITE_TIMEOUT_MS).
+ * Callers must treat SandboxPlaneTimeoutError as "POST may still be in flight"
+ * and poll GET until running (see lifecycle resumeAndReconcile).
+ */
 export async function resumeSandboxPlaneSandbox(id: string): Promise<SandboxPlaneSandbox> {
-  const body = await writeRequest("POST", `/sandboxes/${encodeURIComponent(id)}/resume`);
+  const c = client();
+  if (!c) throw new SandboxPlaneUnavailableError("SandboxPlane is not configured");
+  const body = await writeRequest("POST", `/sandboxes/${encodeURIComponent(id)}/resume`, undefined, {
+    timeoutMs: c.writeTimeoutMs,
+  });
   return unwrapSandbox(body, "resume");
 }
 
 export async function releaseSandboxPlaneSandbox(id: string): Promise<SandboxPlaneSandbox> {
-  const body = await writeRequest("POST", `/sandboxes/${encodeURIComponent(id)}/release`);
+  const body = await writeRequest("POST", `/sandboxes/${encodeURIComponent(id)}/release`, undefined, {
+    timeoutMs: STOP_RELEASE_TIMEOUT_MS,
+  });
   return unwrapSandbox(body, "release");
 }

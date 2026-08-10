@@ -18,6 +18,7 @@ import {
   resumeSandboxPlaneSandbox,
   stopSandboxPlaneSandbox,
   SandboxPlaneCapacityError,
+  SandboxPlaneTimeoutError,
   SandboxPlaneUnavailableError,
   type SandboxPlaneSandbox,
 } from "../sandbox-plane/client.js";
@@ -51,6 +52,8 @@ export { SandboxPlaneCapacityError };
 const PLANE_TERMINAL_STATUSES = new Set(["released", "failed", "expired"]);
 const CREATE_POLL_INTERVAL_MS = 2_000;
 const CREATE_POLL_TIMEOUT_MS = 180_000;
+/** Resume POST may abort while plane still brings the container up — poll window. */
+const RESUME_RECONCILE_TIMEOUT_MS = 60_000;
 
 // ---------------------------------------------------------------------------
 // Per-task ed25519 keypair (H1 §2: never in DB/env/workspace/logs).
@@ -225,6 +228,34 @@ async function pollUntilRunning(sandboxId: string, timeoutMs: number): Promise<S
   }
 }
 
+/**
+ * Resume path: fire POST resume, then always reconcile via GET poll.
+ * fish/architect 2026-08-10: POST abort does NOT mean plane failed — container
+ * may still come up. Only HTTP errors (4xx/5xx via SandboxPlaneUnavailableError)
+ * fail fast without empty-waiting. Timeout → poll until running or deadline.
+ */
+async function resumeAndReconcile(
+  sandboxId: string,
+  pollTimeoutMs: number = RESUME_RECONCILE_TIMEOUT_MS,
+): Promise<SandboxPlaneSandbox> {
+  let postResult: SandboxPlaneSandbox | null = null;
+  try {
+    postResult = await resumeSandboxPlaneSandbox(sandboxId);
+    if (postResult.status === "running") return postResult;
+  } catch (err) {
+    if (err instanceof SandboxPlaneTimeoutError) {
+      logger.warn(
+        { sandboxId, timeoutMs: err.timeoutMs },
+        "Sandbox resume POST timed out; polling plane status (POST may still complete)",
+      );
+    } else {
+      // HTTP / capacity / true unavailability — do not empty-wait
+      throw err;
+    }
+  }
+  return pollUntilRunning(sandboxId, pollTimeoutMs);
+}
+
 export interface EnsureSandboxResult {
   mapping: TaskSandbox;
   reused: boolean;
@@ -278,9 +309,10 @@ export async function ensureSandboxForTask(
   // Continue/resume path: a stopped instance comes back instead of a new one.
   if (existing && (existing.state === "ready" || existing.state === "stopped")) {
     if (existing.state === "stopped") {
-      const resumed = await resumeSandboxPlaneSandbox(existing.sandbox_id);
-      if (resumed.status !== "running") await pollUntilRunning(existing.sandbox_id, opts?.pollTimeoutMs ?? CREATE_POLL_TIMEOUT_MS);
-      const ready = (await getSandboxPlaneSandbox(existing.sandbox_id)) ?? resumed;
+      const ready = await resumeAndReconcile(
+        existing.sandbox_id,
+        opts?.pollTimeoutMs ?? RESUME_RECONCILE_TIMEOUT_MS,
+      );
       await updateTaskSandboxState(task.id, "ready");
       logger.info({ taskId: task.id, sandboxId: existing.sandbox_id }, "Sandbox resumed for task");
       return {
@@ -330,9 +362,11 @@ export async function ensureSandboxForTask(
   // record — possibly already running or stopped from a previous attempt.
   let sandbox = createdRecord;
   if (sandbox.status === "stopped") {
-    sandbox = await resumeSandboxPlaneSandbox(sandbox.sandbox_id);
-  }
-  if (sandbox.status !== "running") {
+    sandbox = await resumeAndReconcile(
+      sandbox.sandbox_id,
+      opts?.pollTimeoutMs ?? RESUME_RECONCILE_TIMEOUT_MS,
+    );
+  } else if (sandbox.status !== "running") {
     sandbox = await pollUntilRunning(sandbox.sandbox_id, opts?.pollTimeoutMs ?? CREATE_POLL_TIMEOUT_MS);
   }
 
@@ -384,10 +418,7 @@ export async function stopSandboxForTask(taskId: string, reason = "task_terminal
 export async function resumeSandboxForTask(taskId: string): Promise<void> {
   const mapping = await getTaskSandbox(taskId);
   if (!mapping || mapping.state !== "stopped") return;
-  const resumed = await resumeSandboxPlaneSandbox(mapping.sandbox_id);
-  if (resumed.status !== "running") {
-    await pollUntilRunning(mapping.sandbox_id, CREATE_POLL_TIMEOUT_MS);
-  }
+  await resumeAndReconcile(mapping.sandbox_id, RESUME_RECONCILE_TIMEOUT_MS);
   await updateTaskSandboxState(taskId, "ready");
   logger.info({ taskId, sandboxId: mapping.sandbox_id }, "Sandbox resumed");
 }

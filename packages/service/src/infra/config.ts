@@ -34,7 +34,10 @@ export interface ServiceConfig {
   sandboxPlane: {
     baseUrl: string | null;
     token: string | null;
+    /** Read / fast ops (default 5s). */
     timeoutMs: number;
+    /** Slow lifecycle writes: resume etc. (default 60s). */
+    writeTimeoutMs: number;
   };
   /** H1: override the worker-facing ssh host when SandboxPlane is not on this host. */
   sandboxSshHostOverride: string | null;
@@ -83,6 +86,8 @@ export function loadConfig(): ServiceConfig {
       baseUrl: process.env.SANDBOXPLANE_BASE_URL || null,
       token: process.env.SANDBOXPLANE_TOKEN || null,
       timeoutMs: Number(optionalEnv("SANDBOXPLANE_TIMEOUT_MS", "5000")),
+      // Resume/release-class writes: plane may take >5s to start containers.
+      writeTimeoutMs: Number(optionalEnv("SANDBOXPLANE_WRITE_TIMEOUT_MS", "60000")),
     },
     // Worker-facing ssh host for sandbox instances. Default: the plane's
     // reported host, with loopback translated to host.docker.internal.
