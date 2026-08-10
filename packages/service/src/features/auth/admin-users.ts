@@ -99,20 +99,14 @@ adminUsersRouter.patch("/:id", async (c) => {
     );
   }
 
-  // is_system guard retired (fish 2026-08-07): DB is the single authority.
-  // Protect the LAST admin instead — cannot suspend/delete/demote to zero.
-  // (No early is_system return here anymore.)
-
-  if (body.status === "suspended") {
-    if (me.userId === id) {
-      throw new AppError("ERR_SELF_SUSPEND");
-    }
-    if (user.role === "admin") {
-      const adminCount = await authStorage.countAdmins();
-      if (adminCount <= 1) {
-        throw new AppError("ERR_LAST_ADMIN");
-      }
-    }
+  // fish 2026-08-10: unique admin — any role=admin is unsuspendable (self or other).
+  if (body.status === "suspended" && user.role === "admin") {
+    logger.warn({ actor: me.userId, target: id, action: "suspend", result: "denied_admin", ip });
+    throw new AppError("ERR_ADMIN_SINGLETON");
+  }
+  // Member cannot self-suspend either.
+  if (body.status === "suspended" && me.userId === id) {
+    throw new AppError("ERR_SELF_SUSPEND");
   }
 
   if (body.status === "active" || body.status === "suspended") {
@@ -142,17 +136,13 @@ adminUsersRouter.delete("/:id", async (c) => {
   const me = c.get("user");
   const ip = clientIp(c);
 
-  // is_system guard retired (fish 2026-08-07): protect the LAST admin instead.
-  // (No early is_system return here anymore.)
-
+  // fish 2026-08-10: any admin is undeletable.
+  if (user.role === "admin") {
+    logger.warn({ actor: me.userId, target: id, action: "delete", result: "denied_admin", ip });
+    throw new AppError("ERR_ADMIN_SINGLETON");
+  }
   if (me.userId === id) {
     throw new AppError("ERR_SELF_DELETE");
-  }
-  if (user.role === "admin") {
-    const adminCount = await authStorage.countAdmins();
-    if (adminCount <= 1) {
-      throw new AppError("ERR_LAST_ADMIN");
-    }
   }
 
   // Collect the user's MinIO artifact keys BEFORE the DB transaction removes

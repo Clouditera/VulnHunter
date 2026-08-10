@@ -256,13 +256,12 @@ function RoleBadge({ role }: { role: string }) {
   );
 }
 
-function ActionMenu({ user, users, onEdit, onResetPwd, onToggle, onDelete, onClose }: {
+function ActionMenu({ user, onEdit, onResetPwd, onToggle, onDelete, onClose }: {
   user: UserApi; users: UserApi[]; onEdit: () => void; onResetPwd: () => void; onToggle: () => void; onDelete: () => void; onClose: () => void;
 }) {
-  const isLastAdmin = user.role === "admin" && users.filter((x) => x.role === "admin" && x.status === "active").length <= 1;
-  // System admin: reset-password is a real action (DB sole authority,
-  // fish 2026-08-07); disable/delete/edit stay un-rendered (铁律).
-  if (user.is_system) {
+  // fish 2026-08-10: unique admin — any role=admin row only offers reset password
+  // (disable/delete/edit un-rendered). Members keep full menu.
+  if (user.role === "admin" || user.is_system) {
     return (
       <>
         <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 999 }} />
@@ -285,10 +284,8 @@ function ActionMenu({ user, users, onEdit, onResetPwd, onToggle, onDelete, onClo
           {user.status === "active" ? i18n.t("settings.users.menu.disable") : i18n.t("settings.users.menu.enable")}
         </button>
         <button
-          onClick={isLastAdmin ? undefined : onDelete}
-          disabled={isLastAdmin}
-          title={isLastAdmin ? i18n.t("userModal.err.lastAdmin") : ""}
-          style={{ ...MENU_ITEM, color: isLastAdmin ? "var(--text-secondary)" : "var(--brand)", opacity: isLastAdmin ? 0.5 : 1, cursor: isLastAdmin ? "not-allowed" : "pointer" }}
+          onClick={onDelete}
+          style={{ ...MENU_ITEM, color: "var(--brand)" }}
         >{i18n.t("settings.users.menu.delete")}</button>
       </div>
     </>
