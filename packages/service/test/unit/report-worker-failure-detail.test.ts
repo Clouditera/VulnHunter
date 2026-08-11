@@ -72,6 +72,18 @@ describe("readReportFailureDetail", () => {
     expect(detail.length).toBeLessThanOrEqual(300);
   });
 
+  it("redacts bare sk- tokens in failure details", async () => {
+    const root = workspace();
+    logs.mockResolvedValue(
+      Buffer.from("Error: 401 invalid api key sk-abc123def456ghi789jkl012mno"),
+    );
+
+    const detail = await readReportFailureDetail(root, "report-5");
+
+    expect(detail).not.toContain("sk-abc123def456ghi789jkl012mno");
+    expect(detail).toContain("sk-[REDACTED]");
+  });
+
   it("keeps the legacy failure message when evidence collection yields no detail", () => {
     expect(buildReportFailureReason(1, "")).toBe("Worker exited with code 1");
     expect(buildReportFailureReason(1, "upstream returned 503")).toBe(

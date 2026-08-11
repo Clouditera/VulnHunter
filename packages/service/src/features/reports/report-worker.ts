@@ -59,6 +59,7 @@ function sanitizeFailureDetail(detail: string): string {
       "$1$2[REDACTED]",
     )
     .replace(/\bBearer\s+[^\s,;}]+/gi, "Bearer [REDACTED]")
+    .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/g, "sk-[REDACTED]")
     .trim()
     .slice(0, FAILURE_DETAIL_MAX_LENGTH);
 }
