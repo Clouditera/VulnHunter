@@ -63,6 +63,19 @@ release_require_cmd docker
 release_require_cmd pnpm
 release_require_cmd node
 
+# Reject dirty source tree — stale untracked files pollute the docker build
+# context (e.g. deleted extensions resurface via COPY flows/). Architect 2026-08-11.
+# Exceptions: packages/enterprise and packages/saas hold prebuilt dists copied
+# from the private monorepo (not tracked in OSS). Their presence is expected.
+_dirty=$(git status --porcelain flows/ deploy/ worker-assets/ scripts/ 2>/dev/null | grep -v '^??' | head -1)
+_dirty_untracked=$(git status --porcelain flows/ deploy/ worker-assets/ scripts/ 2>/dev/null | grep '^??' | grep -v 'prepare-tools' | head -1)
+if [[ -n "$_dirty" || -n "$_dirty_untracked" ]]; then
+  echo "release: source tree is dirty (modified or unexpected untracked files)" >&2
+  echo "release: clean first, then re-run. Affected:" >&2
+  git status --porcelain flows/ deploy/ worker-assets/ scripts/ 2>/dev/null | grep -v '^??.*prepare-tools' | head -10 >&2
+  exit 1
+fi
+
 release_check_vulnforge
 
 rm -rf "$OUT"
