@@ -68,11 +68,11 @@ release_require_cmd node
 # Exceptions: packages/enterprise and packages/saas hold prebuilt dists copied
 # from the private monorepo (not tracked in OSS). Their presence is expected.
 _dirty=$(git status --porcelain flows/ deploy/ worker-assets/ scripts/ 2>/dev/null | grep -v '^??' | head -1) || true
-_dirty_untracked=$(git status --porcelain flows/ deploy/ worker-assets/ scripts/ 2>/dev/null | grep '^??' | grep -v 'prepare-tools' | head -1) || true
+_dirty_untracked=$(git status --porcelain flows/ deploy/ worker-assets/ scripts/ 2>/dev/null | grep '^??' | head -1) || true
 if [[ -n "$_dirty" || -n "$_dirty_untracked" ]]; then
   echo "release: source tree is dirty (modified or unexpected untracked files)" >&2
   echo "release: clean first, then re-run. Affected:" >&2
-  git status --porcelain flows/ deploy/ worker-assets/ scripts/ 2>/dev/null | grep -v '^??.*prepare-tools' | head -10 >&2
+  git status --porcelain flows/ deploy/ worker-assets/ scripts/ 2>/dev/null | head -10 >&2
   exit 1
 fi
 
