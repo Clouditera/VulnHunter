@@ -17,10 +17,12 @@ env_value() {
 }
 set_env_key() {
   local key="$1" value="$2"
-  if grep -qE "^${key}=" .env; then
-    sed -i "s|^${key}=.*|${key}=${value}|" .env
+  local env_file
+  env_file="$(readlink -f .env)"
+  if grep -qE "^${key}=" "$env_file"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
   else
-    printf '%s=%s\n' "$key" "$value" >> .env
+    printf '%s=%s\n' "$key" "$value" >> "$env_file"
   fi
   export "$key=$value"
 }

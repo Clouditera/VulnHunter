@@ -135,8 +135,8 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 arch="$(uname -m)"
-if [[ "$arch" != "x86_64" && "$arch" != "amd64" ]]; then
-  echo "[install] unsupported architecture: $arch (x86_64 required)" >&2
+if [[ "$arch" != "x86_64" && "$arch" != "amd64" && "$arch" != "aarch64" && "$arch" != "arm64" ]]; then
+  echo "[install] unsupported architecture: $arch (x86_64/arm64 required)" >&2
   exit 1
 fi
 
@@ -252,6 +252,7 @@ fi
 # Patch instance .env
 set_env_key() {
   local file="$1" key="$2" val="$3"
+  file="$(readlink -f "$file")"
   if grep -qE "^${key}=" "$file" 2>/dev/null; then
     sed -i "s|^${key}=.*|${key}=${val}|" "$file"
   else

@@ -277,7 +277,7 @@ rename_rewrite_env_file() {
   # Ensure DATA_DIR in the body reflects any move we just did
   if [[ -n "${DATA_DIR:-}" ]]; then
     if grep -qE '^DATA_DIR=' .env; then
-      sed -i "s|^DATA_DIR=.*|DATA_DIR=${DATA_DIR}|" .env
+      sed -i "s|^DATA_DIR=.*|DATA_DIR=${DATA_DIR}|" "$(readlink -f .env)"
     else
       printf 'DATA_DIR=%s\n' "$DATA_DIR" >> .env
     fi
@@ -750,7 +750,7 @@ rename_avoid_subnet_collision_with_old_network() {
   rename_log "old network holds $desired — setting DOCKER_SUBNET=$alternate for new network"
   if [[ -f .env ]]; then
     if grep -qE '^DOCKER_SUBNET=' .env; then
-      sed -i "s|^DOCKER_SUBNET=.*|DOCKER_SUBNET=${alternate}|" .env
+      sed -i "s|^DOCKER_SUBNET=.*|DOCKER_SUBNET=${alternate}|" "$(readlink -f .env)"
     else
       printf 'DOCKER_SUBNET=%s\n' "$alternate" >> .env
     fi

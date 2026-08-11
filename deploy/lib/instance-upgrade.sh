@@ -32,6 +32,7 @@ semver_lt() {
 #  6. generated secrets                              -> kept implicitly by rule 3
 merge_env_three_way() {
   local new_tpl="$1" old_tpl="$2" env_file="$3"
+  env_file="$(readlink -f "$env_file")"
   [[ -f "$new_tpl" && -f "$env_file" ]] || { echo "[upgrade] merge: missing inputs" >&2; return 1; }
   # No old template snapshot -> degrade to add-only (documented in design §4.4)
   local have_old=1
@@ -170,28 +171,29 @@ run_instance_upgrade() {
   ensure_system_admin_env "$instance_dir/.env"
 
   # .env: three-way merge, then sync release-owned keys (images / edition / license)
-  merge_env_three_way "$pkg_root/.env.example" "$instance_dir/.env.template" "$instance_dir/.env"
+  local real_env="$(readlink -f "$instance_dir/.env")"
+  merge_env_three_way "$pkg_root/.env.example" "$instance_dir/.env.template" "$real_env"
   local key value
   for key in SERVICE_IMAGE WEB_IMAGE WORKER_IMAGE POSTGRES_IMAGE MINIO_IMAGE; do
     value="$(grep -E "^${key}=" "$pkg_root/.env.example" | tail -n 1 | cut -d= -f2-)"
     [[ -n "$value" ]] || continue
-    if grep -qE "^${key}=" "$instance_dir/.env"; then
-      sed -i "s|^${key}=.*|${key}=${value}|" "$instance_dir/.env"
+    if grep -qE "^${key}=" "$real_env"; then
+      sed -i "s|^${key}=.*|${key}=${value}|" "$real_env"
     else
-      printf '%s=%s\n' "$key" "$value" >> "$instance_dir/.env"
+      printf '%s=%s\n' "$key" "$value" >> "$real_env"
     fi
     echo "[upgrade] synced release image key: $key=$value"
   done
   # EDITION is a user choice (enterprise pack + EDITION=saas = SaaS). Keep any
   # existing value; only backfill package default when missing (task-09560333).
   local edition pkg_edition
-  edition="$(grep -E '^EDITION=' "$instance_dir/.env" | tail -n 1 | cut -d= -f2- || true)"
+  edition="$(grep -E '^EDITION=' "$real_env" | tail -n 1 | cut -d= -f2- || true)"
   pkg_edition="$(grep -E '^EDITION=' "$pkg_root/.env.example" | tail -n 1 | cut -d= -f2- || true)"
   if [[ -z "$edition" && "$pkg_edition" == "enterprise" ]]; then
-    if grep -qE '^EDITION=' "$instance_dir/.env"; then
-      sed -i "s|^EDITION=.*|EDITION=enterprise|" "$instance_dir/.env"
+    if grep -qE '^EDITION=' "$real_env"; then
+      sed -i "s|^EDITION=.*|EDITION=enterprise|" "$real_env"
     else
-      printf 'EDITION=enterprise\n' >> "$instance_dir/.env"
+      printf 'EDITION=enterprise\n' >> "$real_env"
     fi
     echo "[upgrade] backfilled missing EDITION=enterprise"
   elif [[ -n "$edition" ]]; then

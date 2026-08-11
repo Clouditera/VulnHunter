@@ -161,6 +161,36 @@ EOF
 )
 assert_eq "upgrade.sh path keeps saas" "$(grep -E '^EDITION=' "$tmp/up.env.result" | cut -d= -f2-)" "saas"
 
+# ── .env symlink preservation (fish 2026-08-11) ─────────────────────
+# upgrade.sh's set_env_key must resolve symlinks — sed -i on a symlink
+# replaces the link with a regular file (breaking the data-dir layout).
+tmp2="$(mktemp -d)"
+mkdir -p "$tmp2/data"
+cat > "$tmp2/data/.env" << 'EOF'
+SERVICE_IMAGE=vulnhunter-service:2.3.7
+EDITION=saas
+EOF
+ln -s "$tmp2/data/.env" "$tmp2/.env"
+(
+  cd "$tmp2"
+  # Simulate upgrade.sh's set_env_key with readlink
+  set_env_key() {
+    local key="$1" value="$2"
+    local env_file
+    env_file="$(readlink -f .env)"
+    if grep -qE "^${key}=" "$env_file"; then
+      sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
+    else
+      printf '%s=%s\n' "$key" "$value" >> "$env_file"
+    fi
+  }
+  set_env_key SERVICE_IMAGE vulnhunter-service:2.3.8
+)
+assert_true ".env is still a symlink after set_env_key" test -L "$tmp2/.env"
+assert_eq "symlink target updated" "$(grep -E '^SERVICE_IMAGE=' "$tmp2/data/.env" | cut -d= -f2-)" "vulnhunter-service:2.3.8"
+assert_eq "symlink content not duplicated" "$(wc -l < "$tmp2/data/.env")" "2"
+rm -rf "$tmp2"
+
 if [[ "$fail" == "0" ]]; then
   echo "ALL PASSED"
 else
