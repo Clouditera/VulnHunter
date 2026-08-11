@@ -415,7 +415,6 @@ export const ZH: Record<string, string> = {
   "home.whyTitle": "为什么选择 VulnHunter",
   "home.stepsTitle": "四步上手",
   "home.footerTag": "AI-Powered Security Audit",
-  "home.footerIcpPlaceholder": "备案号：［待提供］ · vulnhunter.cn",
   "nav.feedback": "反馈",
   "nav.contactSupport": "联系支持",
   "support.contactLabel": "Contact:",
