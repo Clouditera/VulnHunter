@@ -14,6 +14,8 @@
 !packages/web/dist-business
 !packages/web/dist-admin
 !packages/worker-bridge/dist
+!packages/enterprise/dist
+!packages/saas/dist
 **/*.tsbuildinfo
 
 # ── Release artifacts / runtime data / secrets ──────────────────────
