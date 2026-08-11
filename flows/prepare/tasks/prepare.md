@@ -35,4 +35,17 @@ A project whose **purpose is explicitly a vulnerable demonstration target** AND 
 
 ## Output
 
-- Do not write any other output file or add any other JSON field.
+Write the final result JSON to ${flow_inputs.result_path} — nothing else, no other files.
+
+Example (complete project):
+```
+{
+  "project_complete": true,
+  "sandbox_type": "linux-docker",
+  "reason": "complete"
+}
+```
+
+Incomplete → `project_complete: false`, `sandbox_type: null`, `reason: "partial_source"` | `"fragment_collection"` | `"no_compatible_sandbox"`.
+
+Do NOT self-validate the schema with node/python — just write the file.
