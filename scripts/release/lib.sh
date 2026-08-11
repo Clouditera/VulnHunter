@@ -103,7 +103,8 @@ release_validate_service_web_images() {
 # an empty dir and research/hunt silently lose web search. The Dockerfile
 # build-time probes already fail the build; this re-checks the tagged image.
 release_validate_worker_image() {
-  docker run --rm "vulnhunter-worker:$VERSION" sh -lc '
+  # --entrypoint sh bypasses scan-mode.sh ENTRYPOINT (exits 1 without TASK_ID)
+  docker run --rm --entrypoint sh "vulnhunter-worker:$VERSION" -lc '
     test -f /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access/index.ts \
       || { echo "worker image: pi-web-access/index.ts missing" >&2; exit 1; }
     test -d /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access/node_modules \
@@ -195,6 +196,33 @@ release_validate_tree_clean() {
   fi
   [[ -x "$out/lib/rename-migrate.sh" ]] \
     || release_die "release validation failed: missing lib/rename-migrate.sh (required by upgrade.sh)"
+  release_validate_root_artifacts "$out"
+}
+
+# ── Root-level artifact checklist (architect 2026-08-11) ─────────────
+# Three packaging defects in one day traced to missing root files.
+# Hard-fail if any required root-level file is absent.
+release_validate_root_artifacts() {
+  local out="${1:-$OUT}"
+  local required=(
+    "upgrade.sh"
+    "install.sh"
+    "docker-compose.yml"
+    ".env.example"
+    "lib/common.sh"
+    "lib/instance-upgrade.sh"
+    "worker-assets/scan-mode.sh"
+    "VERSION.json"
+  )
+  for f in "${required[@]}"; do
+    [[ -f "$out/$f" ]] \
+      || release_die "release validation failed: missing root artifact: $f"
+  done
+  if [[ "${EDITION:-}" != "community" ]]; then
+    local pem="$out/.secrets/license-public.pem"
+    [[ -s "$pem" ]] \
+      || release_die "release validation failed: $EDITION edition requires non-empty .secrets/license-public.pem"
+  fi
 }
 
 # ── SandboxPlane substack ────────────────────────────────────────────
