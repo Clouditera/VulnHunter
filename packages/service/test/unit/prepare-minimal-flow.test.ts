@@ -34,8 +34,10 @@ describe("minimal Prepare flow", () => {
     expect(spec.inputs.map((input) => input.name)).toEqual(["work_dir", "output_dir", "dynamic_enabled", "result_path"]);
     const raw = readFileSync(flowPath, "utf8");
     for (const legacy of ["prepare-restricted", "prepare-tools", "submit_plan", "compact-submit"]) expect(raw).not.toContain(legacy);
-    // task-b451d2e9: output-contract joined sandbox-plane on the prepare stage
-    expect(raw).toContain("extensions: [sandbox-plane, output-contract]");
+    // output-contract removed (fish 2026-08-11): prepare now relies on
+    // prompt-level output example + postflight gate.
+    expect(raw).toContain("extensions: [sandbox-plane]");
+    expect(raw).not.toContain("output-contract");
   });
 
   it("keeps the inspection prompt short and forbids execution/install/test", () => {
