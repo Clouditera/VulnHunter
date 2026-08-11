@@ -19,10 +19,30 @@ When the top-level purpose is not a real production app/library:
 
 Examples of fragment collections: a repo whose top-level is a thin lint config / packaging wrapper, but all real content lives in `demo/`, `examples/`, `tutorial/`, `finetune/`, `inference/` directories that are independent showcase snippets with no single unified application or library identity.
 
-## Step 2 — Structural completeness (only when the purpose is a real app/library)
+## Step 2 — Self-contained auditable whole (only when the purpose is a real app/library)
 
-- A **complete** repository contains the core source and an understandable project structure needed to implement its stated purpose — a unified, buildable/runnable whole.
-- **Incomplete** sources: partial or missing core code (tests, fixtures, documentation, patches, generated fragments, or overlays without the base project). Set `project_complete: false` and `reason: "partial_source"`.
+A target is **complete** if its content constitutes a **self-contained, coherent
+auditable whole** — regardless of packaging form (source repo, deployment
+directory, compiled artifacts, firmware, appliance console, etc.).
+
+Check for the presence of **three elements** that together form a connected structure:
+
+1. **Recognizable entry points / routing** — URL paths, CLI commands, web.xml
+   routes, main() functions, message handlers, or equivalent dispatch structure.
+2. **Business logic** — source code OR compiled artifacts (JSP, .class, .pyc,
+   binaries) that implement the application's behavior.
+3. **Configuration / dependencies** — web.xml, package.json, requirements.txt,
+   pom.xml, Dockerfile, config files, or equivalent wiring that defines how
+   the application is assembled and configured.
+
+When all three are present and form a coherent structure → **complete**, even
+if there is no README, no build system, or no `.java`/source files (e.g. a
+Tomcat `webapps/` directory with JSP + web.xml + compiled classes is complete).
+
+**Incomplete** sources: only tests, only documentation, only patches, only
+generated fragments, or overlays without the base application they extend —
+the three elements above do not form a coherent whole. Set `project_complete:
+false` and `reason: "partial_source"`.
 
 ## Exemption — intentional vulnerable targets
 
