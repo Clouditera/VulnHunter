@@ -1,3 +1,4 @@
+import { displayedScanDurationMs } from "@vulnhunter/shared";
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -16,7 +17,6 @@ import { toast } from "../../../shared/toast/toast.js";
 import {
   formatDateTime,
   formatDurationMinutes,
-  toDurationMs,
 } from "../../../shared/utils/format.js";
 
 /**
@@ -491,13 +491,7 @@ export function TasksListPage() {
                     <td
                       style={{ padding: "14px 20px", color: "var(--text-secondary)", fontSize: "12px" }}
                     >
-                      {formatDurationMinutes(
-                        (() => {
-                          const total = toDurationMs(task.total_duration_ms);
-                          if (total != null && total > 0) return total;
-                          return toDurationMs(task.duration_ms);
-                        })(),
-                      )}
+                      {formatDurationMinutes(displayedScanDurationMs(task))}
                     </td>
                     <td
                       style={{ padding: "14px 20px", color: "var(--text-secondary)", fontSize: "12px" }}

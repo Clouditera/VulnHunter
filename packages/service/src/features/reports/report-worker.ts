@@ -6,6 +6,7 @@
  * uploads report files to MinIO.
  */
 
+import { displayedScanDurationMs } from "@vulnhunter/shared";
 import { dirname, join } from "node:path";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { execSync } from "node:child_process";
@@ -217,7 +218,9 @@ async function materializeReportContext(params: {
     created_at: task.created_at,
     started_at: task.started_at,
     completed_at: task.completed_at,
-    duration_ms: task.duration_ms,
+    duration_ms: displayedScanDurationMs(task),
+    total_duration_ms: task.total_duration_ms,
+    run_count: task.run_count,
     risk_score: task.risk_score,
     failure_reason: task.failure_reason,
     findings_indexed_at: task.findings_indexed_at,
