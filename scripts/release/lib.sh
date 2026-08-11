@@ -211,7 +211,6 @@ release_validate_root_artifacts() {
     ".env.example"
     "lib/common.sh"
     "lib/instance-upgrade.sh"
-    "worker-assets/scan-mode.sh"
     "VERSION.json"
   )
   for f in "${required[@]}"; do
