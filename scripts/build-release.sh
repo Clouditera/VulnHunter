@@ -67,8 +67,8 @@ release_require_cmd node
 # context (e.g. deleted extensions resurface via COPY flows/). Architect 2026-08-11.
 # Exceptions: packages/enterprise and packages/saas hold prebuilt dists copied
 # from the private monorepo (not tracked in OSS). Their presence is expected.
-_dirty=$(git status --porcelain flows/ deploy/ worker-assets/ scripts/ 2>/dev/null | grep -v '^??' | head -1)
-_dirty_untracked=$(git status --porcelain flows/ deploy/ worker-assets/ scripts/ 2>/dev/null | grep '^??' | grep -v 'prepare-tools' | head -1)
+_dirty=$(git status --porcelain flows/ deploy/ worker-assets/ scripts/ 2>/dev/null | grep -v '^??' | head -1) || true
+_dirty_untracked=$(git status --porcelain flows/ deploy/ worker-assets/ scripts/ 2>/dev/null | grep '^??' | grep -v 'prepare-tools' | head -1) || true
 if [[ -n "$_dirty" || -n "$_dirty_untracked" ]]; then
   echo "release: source tree is dirty (modified or unexpected untracked files)" >&2
   echo "release: clean first, then re-run. Affected:" >&2
