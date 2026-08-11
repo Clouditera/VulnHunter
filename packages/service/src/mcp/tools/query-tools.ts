@@ -1,6 +1,7 @@
 /**
  * MCP Query Tools — P0 tools for Chat Agent platform data access.
  */
+import { displayedScanDurationMs } from "@vulnhunter/shared";
 import { z } from "zod";
 import * as taskStorage from "../../features/tasks/storage.js";
 import * as findingsStorage from "../../features/findings/storage.js";
@@ -77,7 +78,10 @@ export async function getTaskDetail(args: { task_id: string }, ctx: McpContext):
     `- Created: ${task.created_at}`,
     task.started_at ? `- Started: ${task.started_at}` : null,
     task.completed_at ? `- Completed: ${task.completed_at}` : null,
-    task.duration_ms ? `- Duration: ${Math.round(task.duration_ms / 60000)} min` : null,
+    (() => {
+      const duration = displayedScanDurationMs(task);
+      return duration ? `- Duration: ${Math.round(duration / 60000)} min` : null;
+    })(),
     task.failure_reason ? `- Failure: ${task.failure_reason}` : null,
     "",
     "## Findings",

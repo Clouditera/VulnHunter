@@ -1,3 +1,4 @@
+import { displayedScanDurationMs } from "@vulnhunter/shared";
 import { getDb } from "../../infra/db/client.js";
 import type { QueryContext } from "../../infra/query-context.js";
 import { shouldFilterByUser } from "../../infra/query-context.js";
@@ -22,7 +23,9 @@ interface DashboardData {
     state: string;
     severity_counts: { h: number; m: number; l: number; i: number };
     risk_score: number | null;
-    duration_ms: number | null;
+    duration_ms: number | string | null;
+    total_duration_ms: number | string | null;
+    run_count: number | string | null;
     created_at: Date;
   }[];
 }
@@ -129,15 +132,25 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
       LIMIT 5
     `;
 
+  type RecentScanRow = {
+    id: string;
+    project_name: string;
+    state: string;
+    risk_score: number | null;
+    duration_ms: number | string | null;
+    total_duration_ms: number | string | null;
+    run_count: number | string | null;
+    created_at: Date;
+  };
   const recentRows = userId
-    ? await db<{ id: string; project_name: string; state: string; risk_score: number | null; duration_ms: number | null; created_at: Date }[]>`
-      SELECT id, project_name, state, risk_score, duration_ms, created_at
+    ? await db<RecentScanRow[]>`
+      SELECT id, project_name, state, risk_score, duration_ms, total_duration_ms, run_count, created_at
       FROM tasks
       WHERE tenant_id = ${tenantId} AND created_by = ${userId}
       ORDER BY created_at DESC LIMIT 5
     `
-    : await db<{ id: string; project_name: string; state: string; risk_score: number | null; duration_ms: number | null; created_at: Date }[]>`
-      SELECT id, project_name, state, risk_score, duration_ms, created_at
+    : await db<RecentScanRow[]>`
+      SELECT id, project_name, state, risk_score, duration_ms, total_duration_ms, run_count, created_at
       FROM tasks
       WHERE tenant_id = ${tenantId}
       ORDER BY created_at DESC LIMIT 5
@@ -219,7 +232,11 @@ async function computeDashboard(tenantId: string, userId: string | undefined, ra
         else if (r.severity === "low") counts.l = Number(r.count);
         else if (r.severity === "info") counts.i = Number(r.count);
       }
-      return { ...task, severity_counts: counts };
+      return {
+        ...task,
+        duration_ms: displayedScanDurationMs(task),
+        severity_counts: counts,
+      };
     }),
   );
 

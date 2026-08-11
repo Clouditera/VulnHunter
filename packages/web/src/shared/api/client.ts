@@ -1393,7 +1393,9 @@ export interface DashboardData {
     project_name: string;
     state: string;
     severity_counts: { h: number; m: number; l: number; i: number };
-    duration_ms: number | null;
+    duration_ms: number | string | null;
+    total_duration_ms?: number | string | null;
+    run_count?: number | string | null;
     created_at: string;
   }>;
 }

@@ -1,3 +1,4 @@
+import { displayedScanDurationMs } from "@vulnhunter/shared";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -498,7 +499,9 @@ export function DashboardPage() {
                   project_name: string;
                   state: string;
                   severity_counts: { h: number; m: number; l: number; i: number };
-                  duration_ms: number | null;
+                  duration_ms: number | string | null;
+                  total_duration_ms?: number | string | null;
+                  run_count?: number | string | null;
                   created_at: string;
                 }) => {
                   const sc = scan.severity_counts;
@@ -534,7 +537,10 @@ export function DashboardPage() {
                         )}
                       </td>
                       <td style={{ padding: "14px 20px", fontSize: "12px", color: "var(--text-secondary)" }}>
-                        {scan.duration_ms ? `${Math.round(scan.duration_ms / 60_000)} min` : "—"}
+                        {(() => {
+                          const duration = displayedScanDurationMs(scan);
+                          return duration ? `${Math.round(duration / 60_000)} min` : "—";
+                        })()}
                       </td>
                       <td style={{ padding: "14px 20px", fontSize: "12px", color: "var(--text-secondary)" }}>
                         {formatRelativeTime(scan.created_at)}

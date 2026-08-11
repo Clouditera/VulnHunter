@@ -1,3 +1,4 @@
+import { displayedScanDurationMs } from "@vulnhunter/shared";
 import { useState, useEffect, useRef } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -437,8 +438,7 @@ export function OverviewTab() {
         <KV
           label={i18n.t("overview.duration")}
           value={(() => {
-            const total = toDurationMs(task.total_duration_ms);
-            const ms = total != null && total > 0 ? total : toDurationMs(task.duration_ms);
+            const ms = displayedScanDurationMs(task);
             if (ms == null || ms <= 0) return null;
             const mins = formatDurationMinutes(ms);
             // fish 2026-08-09: show 「共 N 段」 only when N≥2 (run_count=0 = legacy/unknown)
@@ -812,14 +812,14 @@ function CumulativeDurationField({ task }: { task: Task }) {
     return () => clearInterval(t);
   }, [isRunning]);
 
-  const accumulated = toDurationMs(task.total_duration_ms) ?? 0;
+  const accumulated = displayedScanDurationMs({ total_duration_ms: task.total_duration_ms }) ?? 0;
   let ms = accumulated;
   if (isRunning && task.started_at) {
     const started = Date.parse(task.started_at);
     const segment = Number.isFinite(started) ? Math.max(0, now - started) : 0;
     ms = accumulated + segment;
   } else if (ms <= 0) {
-    ms = toDurationMs(task.duration_ms) ?? 0;
+    ms = displayedScanDurationMs(task) ?? 0;
   }
   if (ms <= 0) return null;
 

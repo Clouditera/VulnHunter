@@ -3,6 +3,7 @@
  * These tools allow Chat agents to query platform data.
  */
 
+import { displayedScanDurationMs } from "@vulnhunter/shared";
 import { z } from "zod";
 import { load as yamlLoad } from "js-yaml";
 import { execSync } from "node:child_process";
@@ -221,7 +222,10 @@ export async function readTaskMetadata(args: {
     `- **Created**: ${task.created_at}`,
     task.started_at ? `- **Started**: ${task.started_at}` : null,
     task.completed_at ? `- **Completed**: ${task.completed_at}` : null,
-    task.duration_ms ? `- **Duration**: ${(task.duration_ms / 1000).toFixed(1)}s` : null,
+    (() => {
+      const duration = displayedScanDurationMs(task);
+      return duration ? `- **Duration**: ${(duration / 1000).toFixed(1)}s` : null;
+    })(),
     task.failure_reason ? `- **Failure**: ${task.failure_reason}` : null,
     "",
     `### Findings Summary`,

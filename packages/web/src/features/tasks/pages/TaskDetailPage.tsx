@@ -1,3 +1,4 @@
+import { displayedScanDurationMs } from "@vulnhunter/shared";
 import { useState, useEffect } from "react";
 import { useConfirmClose } from "../../../shared/hooks/useConfirmClose.js";
 import { useParams, useNavigate, NavLink, Outlet } from "react-router-dom";
@@ -8,7 +9,7 @@ import { i18n } from "../../../shared/i18n/index.js";
 import { Icon, type IconName } from "../../../shared/components/Icon.js";
 import { StatusPill } from "../../../shared/components/StatusPill.js";
 import { effectiveTaskState, isTaskTimedOut } from "../task-timeout.js";
-import { formatDateTime, formatDurationMs, toDurationMs } from "../../../shared/utils/format.js";
+import { formatDateTime, formatDurationMs } from "../../../shared/utils/format.js";
 import { getTaskNameError, normalizeTaskName, TASK_NAME_MAX_LENGTH } from "../task-name.js";
 
 const TABS = [
@@ -49,7 +50,7 @@ function useLiveDurationMs(
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [isLive]);
-  const accumulated = toDurationMs(task.total_duration_ms) ?? 0;
+  const accumulated = displayedScanDurationMs({ total_duration_ms: task.total_duration_ms }) ?? 0;
   if (isLive && task.started_at) {
     const started = Date.parse(task.started_at);
     const segment = Number.isFinite(started) ? Math.max(0, now - started) : 0;
@@ -57,8 +58,7 @@ function useLiveDurationMs(
   }
   // Completed: prefer the accumulated column; legacy rows (pre-migration,
   // total = 0) still have their single segment in duration_ms.
-  if (accumulated > 0) return accumulated;
-  return toDurationMs(task.duration_ms);
+  return displayedScanDurationMs(task);
 }
 
 export function TaskDetailPage() {

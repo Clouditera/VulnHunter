@@ -1,3 +1,4 @@
+import { displayedScanDurationMs } from "@vulnhunter/shared";
 import { useEffect, useState } from "react";
 import { api, type FindingMeta, type Task } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
@@ -90,7 +91,7 @@ export function TaskRefDetail({ artifact }: { artifact: ChatReferenceArtifact })
         label="Model"
         value={task.credential_label || task.metadata?.execution?.model || "—"}
       />
-      <KvRow label="Duration" value={formatDuration(task.duration_ms)} />
+      <KvRow label="Duration" value={formatDuration(displayedScanDurationMs(task))} />
       <section style={SECTION}>
         <div style={TITLE}>{i18n.t("chat.ref.task.severity")}</div>
         {counts ? (
