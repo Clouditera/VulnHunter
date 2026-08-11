@@ -109,8 +109,8 @@ VULNFORGE_VERSION="$VULNFORGE_VERSION" VULNFORGE_COMMIT="$VULNFORGE_COMMIT" \
 docker tag "vulnhunter-worker:$VERSION" vulnhunter-worker:latest
 
 release_validate_worker_image
-docker pull "$POSTGRES_IMAGE"
-docker pull "$MINIO_IMAGE"
+docker pull --platform linux/amd64 "$POSTGRES_IMAGE"
+docker pull --platform linux/amd64 "$MINIO_IMAGE"
 
 release_validate_service_web_images
 release_docker_save_platform "$OUT"

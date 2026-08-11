@@ -223,6 +223,31 @@ release_validate_root_artifacts() {
     [[ -s "$pem" ]] \
       || release_die "release validation failed: $EDITION edition requires non-empty .secrets/license-public.pem"
   fi
+  release_validate_image_arches "$out"
+}
+
+# ── Image architecture assertion (architect 2026-08-11) ──────────────
+# ARM postgres/minio images mixed into an x86 package caused 15-min
+# crash-loop on 31.106. Verify every platform image has the expected
+# architecture via docker inspect (images are loaded locally during build).
+release_validate_image_arches() {
+  local out="${1:-$OUT}"
+  local expected_arch="${TARGET_ARCH:-amd64}"
+  local images=(
+    "vulnhunter-service:$VERSION"
+    "vulnhunter-web:$VERSION"
+    "vulnhunter-worker:$VERSION"
+    "${POSTGRES_IMAGE:-postgres:16-alpine}"
+    "${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}"
+  )
+  local img arch
+  for img in "${images[@]}"; do
+    arch=$(docker inspect "$img" --format '{{.Architecture}}' 2>/dev/null) || arch="inspect_failed"
+    if [[ "$arch" != "$expected_arch" ]]; then
+      release_die "release validation failed: $img architecture is '$arch', expected '$expected_arch'"
+    fi
+    echo "  $img: $arch ✓"
+  done
 }
 
 # ── SandboxPlane substack ────────────────────────────────────────────
