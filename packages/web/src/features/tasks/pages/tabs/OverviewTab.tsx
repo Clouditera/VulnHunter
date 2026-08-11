@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Task, type FindingMeta, type ProfilerData } from "../../../../shared/api/client.js";
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon, type IconName } from "../../../../shared/components/Icon.js";
-import { formatDateTime, formatDurationMinutes, toDurationMs } from "../../../../shared/utils/format.js";
+import { formatDateTime, formatDurationMinutes } from "../../../../shared/utils/format.js";
 
 /**
  * Normalize `task.source_meta` — backend postgres returns it as a JSON
