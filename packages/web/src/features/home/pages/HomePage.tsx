@@ -218,7 +218,15 @@ export function HomePage() {
           </div>
         </div>
         <div style={{ maxWidth: 1120, margin: "24px auto 0", paddingTop: 20, borderTop: "1px solid #e5e7eb", textAlign: "center", color: "#9ca3af", fontSize: 12.5 }} data-testid="home-footer-icp">
-          © {new Date().getFullYear()} VulnHunter · 云起无垠 · vulnhunter.cn · 备案号：京ICP备2024xxxxxxxx号-1
+          © {new Date().getFullYear()} VulnHunter · 云起无垠 · vulnhunter.pro · 备案号：
+          <a
+            href="https://beian.miit.gov.cn/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "inherit" }}
+          >
+            京ICP备2022020425号-4
+          </a>
         </div>
       </footer>
     </div>

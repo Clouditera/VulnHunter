@@ -414,7 +414,6 @@ export const EN: Record<string, string> = {
   "home.whyTitle": "Why VulnHunter",
   "home.stepsTitle": "Get started in four steps",
   "home.footerTag": "AI-Powered Security Audit",
-  "home.footerIcpPlaceholder": "ICP: [TBD] · vulnhunter.cn",
   "nav.feedback": "Feedback",
   "nav.contactSupport": "Contact support",
   "support.contactLabel": "Contact:",
