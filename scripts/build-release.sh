@@ -46,8 +46,6 @@ fi
 VERSION="${VERSION:-$(node -p "require('./package.json').version")}"
 if [[ -n "${OUT:-}" ]]; then
   : # caller override
-elif [[ "$EDITION" == "enterprise" ]]; then
-  OUT="$ROOT/release/vulnhunter-release-$VERSION"
 else
   OUT="$ROOT/release/vulnhunter-release-$VERSION-$EDITION"
 fi
