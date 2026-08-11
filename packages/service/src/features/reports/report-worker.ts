@@ -7,7 +7,7 @@
  */
 
 import { dirname, join } from "node:path";
-import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, rmSync, openSync, closeSync, fstatSync, readSync } from "node:fs";
 import { execSync } from "node:child_process";
 import {
   createWorkerContainer,
@@ -34,6 +34,63 @@ interface MaterializedReportContext {
   riskCount: number;
   wikiPages: number;
   sourceAvailable: boolean;
+}
+
+const FAILURE_LOG_TAIL_BYTES = 64 * 1024;
+const FAILURE_DETAIL_MAX_LENGTH = 300;
+
+function readFileTail(path: string): string {
+  const fd = openSync(path, "r");
+  try {
+    const size = fstatSync(fd).size;
+    const length = Math.min(size, FAILURE_LOG_TAIL_BYTES);
+    const buffer = Buffer.alloc(length);
+    readSync(fd, buffer, 0, length, size - length);
+    return buffer.toString("utf8");
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function sanitizeFailureDetail(detail: string): string {
+  return detail
+    .replace(
+      /\b(api[_-]?key|authorization|token|secret|password)\b(["']?\s*[=:]\s*["']?)[^\s",;}]+/gi,
+      "$1$2[REDACTED]",
+    )
+    .replace(/\bBearer\s+[^\s,;}]+/gi, "Bearer [REDACTED]")
+    .trim()
+    .slice(0, FAILURE_DETAIL_MAX_LENGTH);
+}
+
+function findLastErrorLine(raw: string): string {
+  const lines = raw.split(/\r?\n/);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (/error|fatal|\b[45]\d\d\b/i.test(lines[index])) return sanitizeFailureDetail(lines[index]);
+  }
+  return "";
+}
+
+export function buildReportFailureReason(exitCode: number | undefined, errorDetail: string): string {
+  return errorDetail
+    ? `报告生成失败（退出码 ${exitCode}）：${errorDetail}`
+    : `Worker exited with code ${exitCode}`;
+}
+
+export async function readReportFailureDetail(hostWorkDir: string, reportId: string): Promise<string> {
+  const logPath = join(hostWorkDir, "out", ".youngflow", "logs", "youngflow.service.jsonl");
+  try {
+    const detail = findLastErrorLine(readFileTail(logPath));
+    if (detail) return detail;
+  } catch { /* evidence collection must not mask the worker failure */ }
+
+  try {
+    const container = getDocker().getContainer(`va-report-${reportId}`);
+    const output = await container.logs({ stdout: true, stderr: true, tail: 50 });
+    return findLastErrorLine(output.toString("utf8"));
+  } catch {
+    return "";
+  }
 }
 
 export function safeContextFilename(name: string, fallback = "item"): string {
@@ -512,8 +569,9 @@ export async function onReportContainerDie(
       });
     }
   } else {
+    const errorDetail = await readReportFailureDetail(hostWorkDir, reportId);
     await updateReportStatus(reportId, "failed", {
-      failureReason: `Worker exited with code ${exitCode}`,
+      failureReason: buildReportFailureReason(exitCode, errorDetail),
     });
   }
 
