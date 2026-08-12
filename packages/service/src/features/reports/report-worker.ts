@@ -366,11 +366,26 @@ export async function spawnReportWorker(params: {
     skillName = skill.name;
   }
 
+  // Load task once for both credential resolution and context materialization
+  const task = await getTaskById(taskId);
+  if (!task) throw new Error(`Task not found: ${taskId}`);
+
   let cred;
   try {
-    cred = params.credentialId
-      ? await getCredentialById(params.credentialId)
-      : await getDefaultCredential();
+    // Credential resolution: 3-level fallback (architect 2026-08-12)
+    // 1. Explicit credentialId (from API request)
+    // 2. Task's credential_id (report should use the same credential as the scan)
+    // 3. getDefaultCredential() (legacy fallback for tasks without a credential)
+    // Boundary: task.credential_id set but credential deleted → explicit error, no silent fallback
+    if (params.credentialId) {
+      cred = await getCredentialById(params.credentialId);
+      if (!cred) throw new Error(`Specified credential not found: ${params.credentialId}`);
+    } else if (task.credential_id) {
+      cred = await getCredentialById(task.credential_id);
+      if (!cred) throw new Error(`任务关联的凭证已删除 (credential_id: ${task.credential_id})。请重新设置任务凭证或在报告参数中显式指定凭证。`);
+    } else {
+      cred = await getDefaultCredential();
+    }
   } catch (err) {
     if (err instanceof CredentialKeyUnavailableError) {
       throw new Error("凭证加密 key 未配置。请管理员设置 VULNHUNTER_MASTER_KEY_FILE 并重启服务，或挂载正确的 master key 文件。");
@@ -410,8 +425,7 @@ export async function spawnReportWorker(params: {
   // Materialize full report context as files. The YoungFlow report runtime is
   // file-based (not MCP-based), so report-context.json is only an entry index;
   // rich data lives under /workspace/context/*.
-  const task = await getTaskById(taskId);
-  if (!task) throw new Error(`Task not found: ${taskId}`);
+  // task already loaded above for credential resolution.
   const materializedContext = await materializeReportContext({
     task,
     reportId,
@@ -563,8 +577,10 @@ export async function onReportContainerDie(
         });
         logger.info({ reportId, primaryFile }, "Report completed (no manifest, found .md file)");
       } else {
+        // Exit 0 but no report files — read youngflow log for real error (fish 2026-08-12)
+        const detail = await readReportFailureDetail(hostWorkDir, reportId);
         await updateReportStatus(reportId, "failed", {
-          failureReason: "Worker exited without producing report files",
+          failureReason: buildReportFailureReason(exitCode, detail),
         });
       }
     } catch (err) {
