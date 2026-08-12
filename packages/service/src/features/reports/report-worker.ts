@@ -580,7 +580,9 @@ export async function onReportContainerDie(
         // Exit 0 but no report files — read youngflow log for real error (fish 2026-08-12)
         const detail = await readReportFailureDetail(hostWorkDir, reportId);
         await updateReportStatus(reportId, "failed", {
-          failureReason: buildReportFailureReason(exitCode, detail),
+          failureReason: detail
+            ? buildReportFailureReason(exitCode, detail)
+            : "Worker exited without producing report files",
         });
       }
     } catch (err) {
