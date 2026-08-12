@@ -68,6 +68,8 @@ export class SandboxUnavailableForRebuildError extends Error {
 const PLANE_TERMINAL_STATUSES = new Set(["released", "failed", "expired"]);
 const CREATE_POLL_INTERVAL_MS = 2_000;
 const CREATE_POLL_TIMEOUT_MS = 180_000;
+/** fish/architect 2026-08-12: poll GET may be slow under provisioning load. */
+const POLL_READ_TIMEOUT_MS = 15_000;
 /** Resume POST may abort while plane still brings the container up — poll window. */
 const RESUME_RECONCILE_TIMEOUT_MS = 60_000;
 
@@ -233,7 +235,21 @@ async function assertQuotaForTask(task: DbTask, request: { cpu: number; memory_m
 async function pollUntilRunning(sandboxId: string, timeoutMs: number): Promise<SandboxPlaneSandbox> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const sandbox = await getSandboxPlaneSandbox(sandboxId);
+    let sandbox: SandboxPlaneSandbox | null;
+    try {
+      // Poll with longer read timeout (plane may be slow under provisioning load)
+      sandbox = await getSandboxPlaneSandbox(sandboxId, { timeoutMs: POLL_READ_TIMEOUT_MS });
+    } catch (err) {
+      // fish/architect 2026-08-12: a single poll timeout must NOT kill the task.
+      // Plane may be slow under docker pull/start load. Keep polling until deadline.
+      if (err instanceof SandboxPlaneTimeoutError) {
+        logger.warn({ sandboxId, timeoutMs: err.timeoutMs }, "Sandbox poll GET timed out; retrying");
+        if (Date.now() > deadline) throw new Error(`Sandbox instance did not reach running within ${Math.round(timeoutMs / 1000)}s`);
+        await new Promise((resolve) => setTimeout(resolve, CREATE_POLL_INTERVAL_MS));
+        continue;
+      }
+      throw err;
+    }
     if (!sandbox) throw new Error(`Sandbox instance ${sandboxId} disappeared during provisioning`);
     if (sandbox.status === "running") return sandbox;
     if (PLANE_TERMINAL_STATUSES.has(sandbox.status)) {

@@ -94,12 +94,13 @@ function isAbortError(err: unknown): boolean {
   return e.name === "AbortError" || e.code === "ABORT_ERR";
 }
 
-async function request(path: string, allow404 = false): Promise<unknown | null> {
+async function request(path: string, allow404 = false, opts?: { timeoutMs?: number }): Promise<unknown | null> {
   const c = client();
   if (!c) throw new SandboxPlaneUnavailableError("SandboxPlane is not configured");
 
+  const timeoutMs = opts?.timeoutMs ?? c.timeoutMs;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), c.timeoutMs);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${c.baseUrl}${path}`, {
       headers: { Authorization: `Bearer ${c.token}` },
@@ -116,8 +117,8 @@ async function request(path: string, allow404 = false): Promise<unknown | null> 
     if (err instanceof SandboxPlaneUnavailableError) throw err;
     if (isAbortError(err)) {
       throw new SandboxPlaneTimeoutError(
-        `SandboxPlane request timed out after ${Math.round(c.timeoutMs / 1000)}s (${path})`,
-        c.timeoutMs,
+        `SandboxPlane request timed out after ${Math.round(timeoutMs / 1000)}s (${path})`,
+        timeoutMs,
       );
     }
     logger.warn({ err, path }, "SandboxPlane request failed");
@@ -274,8 +275,8 @@ export async function createSandboxPlaneSandbox(input: CreateSandboxInput): Prom
 }
 
 /** GET /sandboxes/:id — null when the instance is gone (404). */
-export async function getSandboxPlaneSandbox(id: string): Promise<SandboxPlaneSandbox | null> {
-  const body = await request(`/sandboxes/${encodeURIComponent(id)}`, true);
+export async function getSandboxPlaneSandbox(id: string, opts?: { timeoutMs?: number }): Promise<SandboxPlaneSandbox | null> {
+  const body = await request(`/sandboxes/${encodeURIComponent(id)}`, true, opts);
   if (body === null) return null;
   return unwrapSandbox(body, "get");
 }
