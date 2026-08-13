@@ -32,7 +32,8 @@ describe("H3 scan-duration two-tier semantics", () => {
 
   it("custom mode rejects out-of-range and invalid values", () => {
     expect(() => resolveScanDuration("custom", SCAN_TIMEOUT_MIN_S - 1)).toThrow();
-    expect(() => resolveScanDuration("custom", SCAN_TIMEOUT_MAX_S + 1)).toThrow();
+    // fish 2026-08-13: no upper bound on custom scan duration
+    expect(() => resolveScanDuration("custom", SCAN_TIMEOUT_MAX_S + 1)).not.toThrow();
     expect(() => resolveScanDuration("custom", 0)).not.toThrow(); // 0/invalid → default
     expect(() => resolveScanDuration("custom", "abc")).not.toThrow(); // invalid → default
   });

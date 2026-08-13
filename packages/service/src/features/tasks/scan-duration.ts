@@ -21,10 +21,10 @@ export type ScanTimeoutMode = typeof SCAN_TIMEOUT_MODE_CUSTOM | typeof SCAN_TIME
 export const SCAN_TIMEOUT_DEFAULT_CUSTOM_S = 10 * 3600;
 /** Lower bound for the custom tier: 30 minutes. */
 export const SCAN_TIMEOUT_MIN_S = 1800;
-/** Upper bound (shared ceiling for both tiers): 72 hours. */
-export const SCAN_TIMEOUT_MAX_S = 72 * 3600;
+/** fish 2026-08-13: no upper bound on custom scan duration. */
+export const SCAN_TIMEOUT_MAX_S = Number.MAX_SAFE_INTEGER;
 /** The auto tier always uses the fixed 72h safety ceiling. */
-export const SCAN_TIMEOUT_AUTO_S = SCAN_TIMEOUT_MAX_S;
+export const SCAN_TIMEOUT_AUTO_S = 72 * 3600;
 
 export interface ResolvedScanDuration {
   scan_timeout: number;
@@ -59,9 +59,9 @@ export function resolveScanDuration(
   if (raw === undefined) {
     return { scan_timeout: SCAN_TIMEOUT_DEFAULT_CUSTOM_S, timeout_mode: SCAN_TIMEOUT_MODE_CUSTOM };
   }
-  if (raw < SCAN_TIMEOUT_MIN_S || raw > SCAN_TIMEOUT_MAX_S) {
+  if (raw < SCAN_TIMEOUT_MIN_S) {
     throw new Error(
-      `scan_timeout must be between ${SCAN_TIMEOUT_MIN_S}s (30min) and ${SCAN_TIMEOUT_MAX_S}s (72h) for custom mode; got ${raw}s`,
+      `scan_timeout must be at least ${SCAN_TIMEOUT_MIN_S}s (30min); got ${raw}s`,
     );
   }
   return { scan_timeout: raw, timeout_mode: SCAN_TIMEOUT_MODE_CUSTOM };

@@ -691,7 +691,7 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                     <span style={{ display: "block", marginTop: "4px", fontSize: "11px", lineHeight: 1.45, color: "var(--text-secondary)" }}>{i18n.t("newTask.timeoutCustomDesc")}</span>
                     {timeoutMode === "custom" ? (
                       <span style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "8px" }}>
-                        <input data-testid="new-task-scan-duration" type="number" min={0.5} max={72} step={0.5} value={scanDuration} onChange={(e) => setScanDuration(e.target.value)} style={{ width: "72px", height: "32px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 8px", fontSize: "13px", background: "var(--bg-card)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box" }} />
+                        <input data-testid="new-task-scan-duration" type="number" min={0.5} step={0.5} value={scanDuration} onChange={(e) => setScanDuration(e.target.value)} style={{ width: "72px", height: "32px", border: "1px solid var(--border)", borderRadius: "6px", padding: "0 8px", fontSize: "13px", background: "var(--bg-card)", color: "var(--text-primary)", outline: "none", boxSizing: "border-box" }} />
                         <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>{i18n.t("newTask.hoursDefault")}</span>
                       </span>
                     ) : null}
