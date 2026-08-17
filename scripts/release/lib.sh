@@ -116,11 +116,37 @@ release_validate_worker_image() {
 release_docker_save_platform() {
   local out="${1:-$OUT}"
   mkdir -p "$out/images"
-  docker save "vulnhunter-service:$VERSION" -o "$out/images/vulnhunter-service.tar"
-  docker save "vulnhunter-web:$VERSION" -o "$out/images/vulnhunter-web.tar"
-  docker save "vulnhunter-worker:$VERSION" -o "$out/images/vulnhunter-worker.tar"
+
+  # Normalize tags before save: ARM builds use -arm64 suffix locally;
+  # the release tar must carry the canonical tag (VERSION.json value).
+  local arch_suffix=""
+  if [[ "${TARGET_ARCH:-amd64}" != "amd64" ]]; then
+    arch_suffix="-${TARGET_ARCH}"
+  fi
+
+  local img
+  for img in service web worker; do
+    local src_tag="vulnhunter-${img}:${VERSION}${arch_suffix}"
+    local dst_tag="vulnhunter-${img}:${VERSION}"
+    if [[ "$src_tag" != "$dst_tag" ]]; then
+      docker tag "$src_tag" "$dst_tag"
+    fi
+    docker save "$dst_tag" -o "$out/images/vulnhunter-${img}.tar"
+  done
   docker save "$POSTGRES_IMAGE" -o "$out/images/postgres-16-alpine.tar"
   docker save "$MINIO_IMAGE" -o "$out/images/minio.tar"
+
+  # Hard assertion: every tar's RepoTags must match VERSION.json declared tag
+  local tar_file repo_tag
+  for img in service web worker; do
+    tar_file="$out/images/vulnhunter-${img}.tar"
+    repo_tag=$(tar xf "$tar_file" -O manifest.json 2>/dev/null | python3 -c \
+      "import sys,json; d=json.load(sys.stdin); print(d[0]['RepoTags'][0])" 2>/dev/null) || repo_tag="parse_error"
+    if [[ "$repo_tag" != "vulnhunter-${img}:${VERSION}" ]]; then
+      release_die "release validation failed: $tar_file RepoTags=$repo_tag, expected vulnhunter-${img}:${VERSION}"
+    fi
+    echo "  $(basename "$tar_file") RepoTags=$repo_tag ✓"
+  done
 }
 
 # ── License public key (enterprise/saas only) ────────────────────────
