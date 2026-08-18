@@ -17,6 +17,7 @@ export const ZH: Record<string, string> = {
   "sidebar.collapse": "收起侧栏",
   "sidebar.expand": "展开侧栏",
   "nav.versionChangelog": "查看更新日志",
+  "beta.tooltip": "当前版本为测试版本，存在少量不稳定性问题，如您遇到使用问题，请通过“反馈”功能向我们报送问题，感谢您的理解。",
   "changelog.title": "更新日志",
   "changelog.currentVersion": "当前版本：{version}",
   "changelog.versionUnavailable": "版本信息不可用",

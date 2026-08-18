@@ -545,24 +545,26 @@ export function AppLayout() {
 function VersionEntry({ collapsed, version, onClick }: { collapsed: boolean; version?: string; onClick: () => void }) {
   const label = version ? `VulnHunter v${version}` : "VulnHunter";
   const compact = version ? `v${version}` : "V";
+  // While the beta bubble is showing, drop the button's native tooltip so the two never stack.
+  const [betaHover, setBetaHover] = useState(false);
   return (
     <button
       type="button"
       data-testid="nav-version-entry"
       className="va-sidebar-button"
       onClick={onClick}
-      title={`${label} Beta · ${i18n.t("nav.versionChangelog")}`}
+      title={betaHover ? undefined : `${label} Beta · ${i18n.t("nav.versionChangelog")}`}
       style={collapsed ? VERSION_COLLAPSED : VERSION_EXPANDED}
     >
       {collapsed ? (
         <>
           {compact}
-          <BetaBadge variant="dot" />
+          <BetaBadge variant="dot" placement="right" onHoverChange={setBetaHover} />
         </>
       ) : (
         <>
           <span style={VERSION_LABEL}>{label}</span>
-          <BetaBadge />
+          <BetaBadge onHoverChange={setBetaHover} />
         </>
       )}
     </button>

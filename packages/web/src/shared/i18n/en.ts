@@ -17,6 +17,7 @@ export const EN: Record<string, string> = {
   "sidebar.collapse": "Collapse sidebar",
   "sidebar.expand": "Expand sidebar",
   "nav.versionChangelog": "View changelog",
+  "beta.tooltip": "This is a beta release and may have minor instabilities. If you run into any issues, please report them via “Feedback”. Thank you for your understanding.",
   "changelog.title": "Changelog",
   "changelog.currentVersion": "Current version: {version}",
   "changelog.versionUnavailable": "Version unavailable",

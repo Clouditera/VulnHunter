@@ -41,7 +41,7 @@ export function ChangelogDrawer({ open, runtimeVersion, productName = "VulnHunte
               {runtimeVersion
                 ? i18n.t("changelog.currentVersion").replace("{version}", `v${runtimeVersion}`)
                 : i18n.t("changelog.versionUnavailable")}
-              {runtimeVersion ? <BetaBadge /> : null}
+              {runtimeVersion ? <BetaBadge placement="bottom" /> : null}
             </div>
           </div>
           <button data-testid="changelog-drawer-close" type="button" onClick={onClose} style={CLOSE} aria-label={i18n.t("changelog.close")}>✕</button>
