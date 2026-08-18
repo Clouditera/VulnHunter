@@ -70,10 +70,11 @@ export async function reconcileSchedulerClaims(config = loadConfig()): Promise<v
       }
       continue;
     }
-    // H3 §3: the claim's deadline_at expiry must carry the same +720s
-    // stuck-margin as the platform fallback — a worker adopted during
-    // preparation may be running its own bounded finalizer (660s cap), and
-    // force-stopping it inside that window would kill the report (form B).
+    // H3 §3: the claim's deadline_at expiry must carry the same stuck-margin
+    // (SCAN_FALLBACK_MARGIN_S) as the platform fallback. The timeout LLM
+    // finalizer is retired (2026-08-18): the worker writes the platform
+    // timeout marker directly at deadline exit, so the margin only covers the
+    // deadline runner's 30s grace + scheduler slack.
     // lease_expires_at is the owner-liveness lease and takes no margin.
     const leaseExpired = Date.parse(claim.lease_expires_at) <= Date.now();
     const deadlineStuck = Date.parse(claim.deadline_at) + SCAN_FALLBACK_MARGIN_S * 1000 <= Date.now();

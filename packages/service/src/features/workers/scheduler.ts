@@ -118,9 +118,10 @@ export function summarizeExecutionEvents(lines: string[]): {
         toolCallCount += Number(ev.tools ?? 0) || 0;
       }
       if (ev.event === "flow_end") {
-        // A timeout-finalized scan contains two flow_end events. Preserve the
-        // event only as a legacy fallback; observed stage_done events are the
-        // authoritative cumulative count across both runs.
+        // LEGACY (timeout finalizer retired 2026-08-18): historical logs from
+        // the finalizer era contain two flow_end events; observed stage_done
+        // events remain the authoritative cumulative count. Kept for old-log
+        // compatibility only.
         fallbackFlowStagesTotal = Number(ev.stages_total ?? 0) || 0;
         fallbackFlowStagesCompleted = Number(ev.stages_completed ?? 0) || 0;
         fallbackFlowStagesFailed = Number(ev.stages_failed ?? 0) || 0;
@@ -364,11 +365,12 @@ export class TaskScheduler {
     );
 
     // H3 §3 (form A): platform fallback for a running task whose accounted
-    // scan deadline is stuck (past deadline_at + 720s with no terminal state).
-    // The worker normally self-finalizes at its own deadline; this only fires
-    // when the worker became unresponsive / its clock was reset before its
-    // bounded finalizer finished. Force-stop the container and let the
-    // claim-aware die/terminal-reconcile path finalize the task as failed.
+    // scan deadline is stuck (past deadline_at + SCAN_FALLBACK_MARGIN_S with
+    // no terminal state). The worker normally self-terminates at its deadline
+    // (scan-mode writes the timeout marker directly — finalizer retired
+    // 2026-08-18); this only fires when the worker became unresponsive or its
+    // clock was reset. Force-stop the container and let the claim-aware
+    // die/terminal-reconcile path finalize the task as failed.
     await this.tickStuckDeadlineFallback().catch((err) =>
       logger.error({ err }, "Stuck-deadline fallback tick error"),
     );
@@ -399,13 +401,12 @@ export class TaskScheduler {
 
   /**
    * Force-stop running tasks whose platform-accounted scan deadline is stuck
-   * (H3 §3). Only acts when `now > deadline_at + 720s` — never inside the
-   * worker's own bounded-finalizer window, so it cannot kill a report being
-   * written. The container stop triggers the normal docker die event, whose
-   * claim-aware handler runs the terminal reconcile (task → failed, partial
-   * outputs preserved via output-sync). The platform does not inject a
-   * finalizer itself (the worker is unresponsive; re-running the finalize flow
-   * is out of H3 scope).
+   * (H3 §3). Only acts when `now > deadline_at + SCAN_FALLBACK_MARGIN_S` —
+   * past the deadline runner's grace window, so a responsive worker writing
+   * its timeout marker + outputs is never killed mid-write. The container
+   * stop triggers the normal docker die event, whose claim-aware handler runs
+   * the terminal reconcile (task → failed, partial outputs preserved via
+   * output-sync). No platform-injected finalizer exists (retired 2026-08-18).
    */
   private async tickStuckDeadlineFallback(): Promise<void> {
     const stuck = await listStuckDeadlineRunningTasks(SCAN_FALLBACK_MARGIN_S);

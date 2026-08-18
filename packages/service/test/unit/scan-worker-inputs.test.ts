@@ -229,7 +229,9 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
   it("uses trusted deadline provenance and never normalizes arbitrary 137/OOM", () => {
     const source = readFileSync(script, "utf8");
     expect(source).toContain("run-with-deadline.py");
-    expect(source).toContain('if [ "$analysis_exit" -eq 124 ]');
+    // 124 is the deadline runner's reserved exit; the marker block keys on it
+    // (finalizer retired 2026-08-18 — handle_analysis_exit is gone).
+    expect(source).toContain('if [ "$EXIT" -eq 124 ]; then');
     expect(source).not.toMatch(/timeout --signal|\"137\".*normal termination|analysis_exit.*137/);
   });
 

@@ -52,7 +52,6 @@ ARG VULNFORGE_COMMIT=0000000000000000000000000000000000000000
 LABEL org.opencontainers.image.vulnforge.version=$VULNFORGE_VERSION \
       org.opencontainers.image.vulnforge.revision=$VULNFORGE_COMMIT
 COPY flows/vulnforge /opt/vulnhunter/flows/vulnforge
-COPY flows/vulnforge-timeout /opt/vulnhunter/flows/vulnforge-timeout
 RUN printf '{\n  "version": "%s",\n  "commit": "%s"\n}\n' \
       "$VULNFORGE_VERSION" "$VULNFORGE_COMMIT" \
       > /opt/vulnhunter/VULNFORGE_VERSION.json
@@ -92,17 +91,10 @@ RUN test -f /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-tracker/ind
     && test -d /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access/node_modules \
     && test -f /opt/vulnhunter/flows/vulnforge/extensions/sandbox-plane/index.ts \
     && test -d /opt/vulnhunter/flows/vulnforge/extensions/sandbox-plane/node_modules \
-    && test -L /opt/vulnhunter/flows/vulnforge-timeout/schemas \
-    && test "$(readlink /opt/vulnhunter/flows/vulnforge-timeout/schemas)" = ../vulnforge/schemas \
-    && test "$(realpath /opt/vulnhunter/flows/vulnforge-timeout/schemas)" = /opt/vulnhunter/flows/vulnforge/schemas \
-    && test "$(sha256sum /opt/vulnhunter/flows/vulnforge-timeout/schemas/audit-completion.schema.yaml | awk '{print $1}')" = "$(sha256sum /opt/vulnhunter/flows/vulnforge/schemas/audit-completion.schema.yaml | awk '{print $1}')" \
-    && test "$(sha256sum /opt/vulnhunter/flows/vulnforge-timeout/schemas/audit-report.schema.yaml | awk '{print $1}')" = "$(sha256sum /opt/vulnhunter/flows/vulnforge/schemas/audit-report.schema.yaml | awk '{print $1}')" \
     && printf '{"providers":{}}\n' > /opt/vulnhunter/flows/vulnforge/models.json \
     && youngflow /opt/vulnhunter/flows/vulnforge/flow.audit.yaml --list-stages >/tmp/vulnforge-stages.txt \
-    && youngflow /opt/vulnhunter/flows/vulnforge-timeout/flow.timeout-finalize.yaml --list-stages >/tmp/vulnforge-timeout-stages.txt \
     && rm -f /opt/vulnhunter/flows/vulnforge/models.json \
     && grep -qE '^  complete[[:space:]]' /tmp/vulnforge-stages.txt \
-    && grep -qE '^  report[[:space:]]' /tmp/vulnforge-timeout-stages.txt \
     && youngflow /opt/vulnhunter/flows/vulnforge/flow.audit.yaml --help >/tmp/vulnforge-help.txt \
     && grep -q -- '--user-instr <value>' /tmp/vulnforge-help.txt \
     && grep -q -- '--sandbox-cfg <value>' /tmp/vulnforge-help.txt
@@ -110,12 +102,12 @@ COPY flows/vulnhunter-report /opt/vulnhunter/flows/vulnhunter-report
 
 # De-identified workers (non-root) treat flow dirs as per-run scratch:
 # scan/report regenerate models.json + .env there, and youngflow materializes
-# .pi-agent/ (PI_CODING_AGENT_DIR) under flowDir for EVERY flow —
-# vulnforge-timeout included (QA-caught EACCES mkdir .pi-agent).
+# .pi-agent/ (PI_CODING_AGENT_DIR) under flowDir for EVERY flow
+# (QA-caught EACCES mkdir .pi-agent).
 # The youngflow flowDir anchor is engine-owned (dist/model-config.js), so the
 # in-repo fix is uniform writability. Containers are single-use; nothing
 # secret persists in the image.
-RUN chmod 0777 /opt/vulnhunter/flows/vulnforge /opt/vulnhunter/flows/vulnforge-timeout \
+RUN chmod 0777 /opt/vulnhunter/flows/vulnforge \
     /opt/vulnhunter/flows/vulnhunter-report
 
 # Bake the ssh drop-in at build time: it is a static one-liner (Include the
@@ -137,11 +129,10 @@ COPY worker-assets/scan-mode.sh /opt/scan-mode.sh
 COPY worker-assets/chat-mode.sh /opt/chat-mode.sh
 COPY worker-assets/report-mode.sh /opt/report-mode.sh
 COPY worker-assets/run-with-deadline.py /opt/run-with-deadline.py
-COPY worker-assets/timeout-finalize-artifacts.py /opt/timeout-finalize-artifacts.py
 COPY worker-assets/submit-prepare-result.sh /opt/vulnhunter/bin/submit-prepare-result.sh
 COPY worker-assets/jar-unpack.sh /opt/vulnhunter/bin/jar-unpack.sh
 RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh /opt/report-mode.sh \
-    /opt/run-with-deadline.py /opt/timeout-finalize-artifacts.py /opt/vulnhunter/bin/submit-prepare-result.sh \
+    /opt/run-with-deadline.py /opt/vulnhunter/bin/submit-prepare-result.sh \
     /opt/vulnhunter/bin/jar-unpack.sh \
     && bash -n /opt/vulnhunter/bin/jar-unpack.sh \
     && test -x /opt/vulnhunter/bin/jar-unpack.sh

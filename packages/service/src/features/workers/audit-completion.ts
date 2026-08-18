@@ -256,7 +256,11 @@ export function evaluateAuditCompletion(options: AuditCompletionEvaluationOption
 /** Platform completion posture (API). Only natural | timeout — fish 2026-08-09. */
 export type TaskCompletionReason = "natural" | "timeout";
 
-/** Platform-owned timeout marker written by scan-mode timeout finalizer. */
+/**
+ * Platform-owned timeout marker. scan-mode.sh writes it directly when the
+ * deadline runner exits 124 (finalizer retired 2026-08-18 — no LLM second
+ * pass; timeout is a clean terminal state).
+ */
 export const PLATFORM_TIMEOUT_MARKER = ".vulnhunter-timeout" as const;
 
 /**

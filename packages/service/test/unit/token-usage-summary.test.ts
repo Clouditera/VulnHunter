@@ -30,7 +30,7 @@ describe("summarizeExecutionEvents", () => {
     });
   });
 
-  it("accumulates two-phase stage totals instead of accepting the finalizer flow_end=1 overwrite", () => {
+  it("LEGACY (finalizer retired 2026-08-18): accumulates two-phase stage totals instead of accepting the finalizer flow_end=1 overwrite", () => {
     const summary = summarizeExecutionEvents([
       JSON.stringify({ event: "stage_done", stage: "decide", exit_code: 0, tokens_total: 10, tools: 2 }),
       JSON.stringify({ event: "stage_done", stage: "verify/A", exit_code: 1, tokens_total: 20, tools: 3 }),

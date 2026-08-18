@@ -3,10 +3,7 @@ set -e
 
 FLOW_DIR="/opt/vulnhunter/flows/vulnforge"
 FLOW_FILE="$FLOW_DIR/flow.audit.yaml"
-TIMEOUT_FLOW_FILE="/opt/vulnhunter/flows/vulnforge-timeout/flow.timeout-finalize.yaml"
 DEADLINE_RUNNER="/opt/run-with-deadline.py"
-FINALIZE_ARTIFACTS="/opt/timeout-finalize-artifacts.py"
-FINALIZE_CONTROL="/workspace/.timeout-finalize"
 SUPERVISOR_PID=""
 STATIC_ONLY_SCHED_INSTR="平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；完成静态审计后进入报告阶段。"
 
@@ -77,18 +74,6 @@ log_input_summary() {
   fi
 }
 
-calculate_finalize_budget() {
-  local analysis="$1" budget
-  case "$analysis" in
-    ''|*[!0-9]*) return 1 ;;
-  esac
-  [ "$analysis" -gt 0 ] || return 1
-  budget=$(( (analysis + 4) / 5 ))
-  [ "$budget" -ge 120 ] || budget=120
-  [ "$budget" -le 600 ] || budget=600
-  printf '%s\n' "$budget"
-}
-
 run_supervised() {
   local timeout_seconds="$1" log_mode="$2"
   shift 2
@@ -106,10 +91,6 @@ run_supervised() {
   return "$result"
 }
 
-cleanup_finalize_control() {
-  [ ! -e "$FINALIZE_CONTROL" ] || python3 "$FINALIZE_ARTIFACTS" cleanup --control-dir "$FINALIZE_CONTROL"
-}
-
 terminate_scan() {
   local signal_name="$1" exit_code="$2"
   trap - EXIT TERM INT HUP
@@ -118,62 +99,8 @@ terminate_scan() {
     wait "$SUPERVISOR_PID" 2>/dev/null || true
     SUPERVISOR_PID=""
   fi
-  cleanup_finalize_control 2>/dev/null || true
   finish_log 2>/dev/null || true
   exit "$exit_code"
-}
-
-handle_analysis_exit() {
-  local analysis_exit="$1" analysis_seconds="$2"
-  if [ "$analysis_exit" -eq 124 ]; then
-    run_timeout_finalizer "$analysis_seconds"
-    return $?
-  fi
-  return "$analysis_exit"
-}
-
-run_timeout_finalizer() {
-  local analysis_seconds="$1" finalize_budget
-  finalize_budget="$(calculate_finalize_budget "$analysis_seconds")" || return 2
-  cleanup_finalize_control || return 3
-  local prepare_result
-  prepare_result="$(python3 "$FINALIZE_ARTIFACTS" prepare \
-    --out-dir /workspace/out \
-    --control-dir "$FINALIZE_CONTROL" \
-    --analysis-limit-seconds "$analysis_seconds")" || return 3
-  echo "[scan] Timeout artifact prepare: $prepare_result" >&2
-
-  # Finalization is a single bounded attempt. The shared ephemeral env keeps
-  # the selected provider but disables YoungFlow's outer stage retry loop.
-  sed -i 's/^YOUNGFLOW_ERROR_RETRIES=.*/YOUNGFLOW_ERROR_RETRIES=0/' "$FLOW_DIR/.env"
-
-  echo "[scan] Deadline reached; starting bounded report finalizer (budget=${finalize_budget}s)" >&2
-  local final_exit=0
-  run_supervised "$finalize_budget" append \
-    youngflow "$TIMEOUT_FLOW_FILE" \
-      --work-dir /workspace/src \
-      --output-dir /workspace/out \
-      --artifact-inventory "$FINALIZE_CONTROL/inventory.json" \
-      --analysis-limit-seconds "$analysis_seconds" \
-      --continue \
-      --json-log \
-      --max-parallel 1 || final_exit=$?
-  echo "[scan] Finalize phase exit=$final_exit" >&2
-  [ "$final_exit" -eq 0 ] || return "$final_exit"
-  local verify_result
-  verify_result="$(python3 "$FINALIZE_ARTIFACTS" verify \
-    --out-dir /workspace/out \
-    --control-dir "$FINALIZE_CONTROL")" || return 3
-  echo "[scan] Timeout artifact verify: $verify_result" >&2
-  # Platform-owned timeout marker (fish 2026-08-09): scheduler reads this
-  # file — NOT engine completion.yaml — to set completion_reason=timeout.
-  mkdir -p /workspace/out
-  printf '%s\n' "{\"reason\":\"scan_timeout\",\"at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-    > /workspace/out/.vulnhunter-timeout
-  chmod 644 /workspace/out/.vulnhunter-timeout 2>/dev/null || true
-  echo "[scan] Wrote platform timeout marker /workspace/out/.vulnhunter-timeout" >&2
-  cleanup_finalize_control || return 3
-  return 0
 }
 
 main() {
@@ -189,7 +116,7 @@ finish_log() {
 
 trap 'terminate_scan TERM 143' TERM HUP
 trap 'terminate_scan INT 130' INT
-trap 'cleanup_finalize_control 2>/dev/null || true; finish_log' EXIT
+trap 'finish_log' EXIT
 
 echo "[scan] Starting scan for task: $TASK_ID" >&2
 
@@ -198,13 +125,13 @@ if ! command -v python3 &>/dev/null; then
   echo "[scan] FATAL: python3 not found — required for worker runtime" >&2
   exit 1
 fi
-for required in "$FLOW_FILE" "$TIMEOUT_FLOW_FILE" "$DEADLINE_RUNNER" "$FINALIZE_ARTIFACTS"; do
+for required in "$FLOW_FILE" "$DEADLINE_RUNNER"; do
   if [ ! -f "$required" ]; then
     echo "[scan] FATAL: required scan asset not found: $required" >&2
     exit 1
   fi
 done
-echo "[scan] Preflight OK: python3 + main/finalizer flows + deadline gates available" >&2
+echo "[scan] Preflight OK: python3 + main flow + deadline runner available" >&2
 
 # Code already extracted to /workspace/src/ by service (bind mount)
 
@@ -274,7 +201,13 @@ log_input_summary
 # The supervisor reserves 124 exclusively for its own deadline. Child 137/OOM,
 # crash, provider failure, and external cancellation remain non-deadline exits.
 EFFECTIVE_TIMEOUT="${SCAN_TIMEOUT:-216000}"
-calculate_finalize_budget "$EFFECTIVE_TIMEOUT" >/dev/null || {
+case "$EFFECTIVE_TIMEOUT" in
+  ''|*[!0-9]*)
+    echo "[scan] FATAL: SCAN_TIMEOUT must be a positive integer" >&2
+    return 2
+    ;;
+esac
+[ "$EFFECTIVE_TIMEOUT" -gt 0 ] || {
   echo "[scan] FATAL: SCAN_TIMEOUT must be a positive integer" >&2
   return 2
 }
@@ -282,8 +215,18 @@ calculate_finalize_budget "$EFFECTIVE_TIMEOUT" >/dev/null || {
 echo "[scan] Running youngflow (version=$(youngflow --version), model=$V_DEFAULT_MODEL, max_parallel=$YOUNGFLOW_MAX_PARALLEL, timeout=${EFFECTIVE_TIMEOUT}s, flow=$FLOW_FILE)..." >&2
 EXIT=0
 run_supervised "$EFFECTIVE_TIMEOUT" truncate youngflow "${YOUNGFLOW_ARGS[@]}" || EXIT=$?
-if [ "$EXIT" -eq 124 ]; then FINALIZER_TRIGGERED=true; else FINALIZER_TRIGGERED=false; fi
-echo "[scan] Analysis phase exit=$EXIT finalizer_triggered=$FINALIZER_TRIGGERED analysis_budget=${EFFECTIVE_TIMEOUT}s" >&2
+echo "[scan] Analysis phase exit=$EXIT analysis_budget=${EFFECTIVE_TIMEOUT}s" >&2
+
+# Deadline reached: the platform reads the marker file to set
+# completion_reason=timeout (fish 2026-08-09; LLM finalizer retired
+# 2026-08-18 — no second flow, timeout is a clean terminal state).
+if [ "$EXIT" -eq 124 ]; then
+  echo "[scan] Deadline reached; writing platform timeout marker" >&2
+  mkdir -p /workspace/out
+  printf '%s\n' "{\"reason\":\"scan_timeout\",\"at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > /workspace/out/.vulnhunter-timeout
+  chmod 644 /workspace/out/.vulnhunter-timeout 2>/dev/null || true
+  EXIT=0
+fi
 
 # Onboard gate exit codes (submit-prepare-result.sh): 42 = gate rejected
 # (task already failed by the platform), 43 = gate submit hard error. NOTE:
@@ -296,17 +239,11 @@ if [ "$EXIT" -eq 42 ] || [ "$EXIT" -eq 43 ]; then
   echo "[scan] Onboard gate ended the run (exit=$EXIT)" >&2
   finish_log
   trap - EXIT TERM INT HUP
-  cleanup_finalize_control 2>/dev/null || true
   return "$EXIT"
 fi
 
-PHASE_EXIT=0
-handle_analysis_exit "$EXIT" "$EFFECTIVE_TIMEOUT" || PHASE_EXIT=$?
-EXIT=$PHASE_EXIT
-
 finish_log
 trap - EXIT TERM INT HUP
-cleanup_finalize_control 2>/dev/null || true
 
 echo "[scan] Done (exit=$EXIT)" >&2
 return "$EXIT"

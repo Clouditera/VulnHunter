@@ -77,15 +77,14 @@ export function computeScanDeadlineAt(scanTimeoutSeconds: number, from: Date = n
 }
 
 /**
- * Stuck-task fallback margin (H3 §3, form A). After deadline_at the worker may
- * still be running its own bounded finalizer (flow.timeout-finalize self-cap
- * 660s); the platform must not intervene before that window closes or it would
- * kill a report being written. The fallback therefore only fires when the task
- * is past deadline_at + FALLBACK_MARGIN_S with no terminal state. 720 = 660 +
- * 60s scheduling slack. If the finalize flow's own timeout changes, re-derive
- * this value.
+ * Stuck-task fallback margin (H3 §3, form A). The timeout LLM finalizer was
+ * retired (fish 2026-08-18): scan-mode.sh writes the platform timeout marker
+ * directly at deadline exit (124 → marker → exit 0), so after deadline_at the
+ * worker only needs the deadline runner's 30s grace + output sync/scheduler
+ * slack. 120 = 30s grace + 90s scheduling slack. If the deadline runner's
+ * grace changes, re-derive this value.
  */
-export const SCAN_FALLBACK_MARGIN_S = 720;
+export const SCAN_FALLBACK_MARGIN_S = 120;
 
 /**
  * Whether a task whose metadata deadline_at is `deadlineAtIso` is considered
