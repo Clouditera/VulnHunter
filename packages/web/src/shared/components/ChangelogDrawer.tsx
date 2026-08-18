@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { CHANGELOG_ENTRIES, getChangelogEntry, LATEST_CHANGELOG_ENTRY } from "../changelog.js";
 import { i18n } from "../i18n/index.js";
 import { ChangelogContent } from "./ChangelogModal.js";
+import { BetaBadge } from "./BetaBadge.js";
 
 interface ChangelogDrawerProps {
   open: boolean;
@@ -40,6 +41,7 @@ export function ChangelogDrawer({ open, runtimeVersion, productName = "VulnHunte
               {runtimeVersion
                 ? i18n.t("changelog.currentVersion").replace("{version}", `v${runtimeVersion}`)
                 : i18n.t("changelog.versionUnavailable")}
+              {runtimeVersion ? <BetaBadge /> : null}
             </div>
           </div>
           <button data-testid="changelog-drawer-close" type="button" onClick={onClose} style={CLOSE} aria-label={i18n.t("changelog.close")}>✕</button>
@@ -76,7 +78,7 @@ const PANEL: CSSProperties = { position: "relative", width: "min(520px, 92vw)", 
 const HEADER: CSSProperties = { padding: "22px 24px", borderBottom: "1px solid var(--divider)", display: "flex", justifyContent: "space-between", gap: "16px", flexShrink: 0 };
 const EYEBROW: CSSProperties = { fontSize: "11px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: "6px" };
 const TITLE: CSSProperties = { margin: 0, fontSize: "20px", fontWeight: 750, color: "var(--text-primary)" };
-const SUBTITLE: CSSProperties = { marginTop: "8px", fontSize: "13px", color: "var(--text-secondary)" };
+const SUBTITLE: CSSProperties = { marginTop: "8px", fontSize: "13px", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "6px" };
 const CLOSE: CSSProperties = { width: "32px", height: "32px", borderRadius: "8px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: "16px", flexShrink: 0 };
 const NOTICE: CSSProperties = { margin: "14px 24px 0", padding: "10px 12px", borderRadius: "8px", background: "var(--bg-page)", color: "var(--text-secondary)", fontSize: "12px", border: "1px solid var(--border)" };
 const BODY: CSSProperties = { padding: "18px 24px 28px", overflowY: "auto", flex: 1 };

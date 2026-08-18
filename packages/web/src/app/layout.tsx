@@ -8,6 +8,7 @@ import { theme } from "../shared/theme/index.js";
 import { Icon, type IconName } from "../shared/components/Icon.js";
 import { ChangelogModal } from "../shared/components/ChangelogModal.js";
 import { ChangelogDrawer } from "../shared/components/ChangelogDrawer.js";
+import { BetaBadge } from "../shared/components/BetaBadge.js";
 import { shouldShowChangelog, markChangelogSeen } from "../shared/changelog.js";
 import { useNotifications } from "../shared/hooks/useNotifications.js";
 import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
@@ -550,10 +551,20 @@ function VersionEntry({ collapsed, version, onClick }: { collapsed: boolean; ver
       data-testid="nav-version-entry"
       className="va-sidebar-button"
       onClick={onClick}
-      title={`${label} · ${i18n.t("nav.versionChangelog")}`}
+      title={`${label} Beta · ${i18n.t("nav.versionChangelog")}`}
       style={collapsed ? VERSION_COLLAPSED : VERSION_EXPANDED}
     >
-      {collapsed ? compact : label}
+      {collapsed ? (
+        <>
+          {compact}
+          <BetaBadge variant="dot" />
+        </>
+      ) : (
+        <>
+          <span style={VERSION_LABEL}>{label}</span>
+          <BetaBadge />
+        </>
+      )}
     </button>
   );
 }
@@ -978,8 +989,18 @@ const VERSION_EXPANDED: CSSProperties = {
   textAlign: "left",
   cursor: "pointer",
   boxSizing: "border-box",
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+};
+const VERSION_LABEL: CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 const VERSION_COLLAPSED: CSSProperties = {
+  position: "relative",
   width: "40px",
   minHeight: "28px",
   padding: "4px 2px",
