@@ -40,17 +40,18 @@ fi
 payload="${1:?usage: submit-prepare-result.sh '<json>'}"
 
 submit_once() {
-  local body status
-  body=$(curl -sS --max-time 120 \
+  # SINGLE request: a second POST would hit taskBearerAuth 401 after the
+  # first already transitioned the task out of `preparing` (architect rev1).
+  # `-w '\n%{http_code}'` appends the status line after the body; split below.
+  local raw
+  raw=$(curl -sS --max-time 120 \
     -X POST "$SERVICE_URL/internal/prepare-result" \
     -H "Authorization: Bearer $TASK_ID" \
     -H "Content-Type: application/json" \
-    -d "$payload" 2>&1) || return 75
-  status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 120 \
-    -X POST "$SERVICE_URL/internal/prepare-result" \
-    -H "Authorization: Bearer $TASK_ID" \
-    -H "Content-Type: application/json" \
-    -d "$payload" 2>/dev/null) || return 75
+    -d "$payload" \
+    -w '\n%{http_code}' 2>&1) || return 75
+  local status="${raw##*$'\n'}"
+  local body="${raw%$'\n'*}"
   printf '%s %s' "$status" "$body"
 }
 

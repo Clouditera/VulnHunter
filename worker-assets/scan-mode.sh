@@ -286,8 +286,12 @@ if [ "$EXIT" -eq 124 ]; then FINALIZER_TRIGGERED=true; else FINALIZER_TRIGGERED=
 echo "[scan] Analysis phase exit=$EXIT finalizer_triggered=$FINALIZER_TRIGGERED analysis_budget=${EFFECTIVE_TIMEOUT}s" >&2
 
 # Onboard gate exit codes (submit-prepare-result.sh): 42 = gate rejected
-# (task already failed by the platform), 43 = gate submit hard error. Neither
-# is a crash — surface the code as-is without the deadline finalizer.
+# (task already failed by the platform), 43 = gate submit hard error. NOTE:
+# a stage-internal bash exit does NOT become the youngflow process exit code
+# in general — this branch only catches the case where youngflow itself
+# propagates the gate script's code. The authoritative collection for gate
+# failure is the platform stopping the container (SIGTERM→143) after the
+# callback failed the claim; this passthrough is belt-and-braces.
 if [ "$EXIT" -eq 42 ] || [ "$EXIT" -eq 43 ]; then
   echo "[scan] Onboard gate ended the run (exit=$EXIT)" >&2
   finish_log

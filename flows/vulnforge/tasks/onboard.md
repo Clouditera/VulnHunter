@@ -51,18 +51,18 @@
 1. 调用 `list_sandbox_types()` 列出当前可用沙箱类型。
 2. 按项目主要运行方式选择：需完整系统/内核/固件或明确要求 KVM/QEMU → 选 kvm+qemu 均 true 的类型；标准运行方式是 Docker/Compose → 选 docker=true 的类型；其余 → 无特殊能力要求的 plain Linux。两者都需要时所选类型须同时满足。
 3. 用 `get_sandbox_type(profile_id)` 复核所选类型 `available: true`。
-4. 无可用类型满足要求 → 提交 `sandbox_type:null` + `reason:"no_compatible_sandbox"`。
+4. 无可用类型满足要求 → 提交 `{"project_complete":true,"sandbox_type":null,"reason":"no_compatible_sandbox"}`。
 
 随后提交**成功门禁**：
 
 ```bash
-/opt/vulnhunter/bin/submit-prepare-result.sh '{"project_complete":true,"sandbox_type":"<profile_id>"}'
+/opt/vulnhunter/bin/submit-prepare-result.sh '{"project_complete":true,"sandbox_type":"<profile_id>","reason":"complete"}'
 ```
 
 静态任务（未启用动态验证）本步不查沙箱，直接提交：
 
 ```bash
-/opt/vulnhunter/bin/submit-prepare-result.sh '{"project_complete":true,"sandbox_type":null}'
+/opt/vulnhunter/bin/submit-prepare-result.sh '{"project_complete":true,"sandbox_type":null,"reason":"complete"}'
 ```
 
 门禁提交遇到 503（沙箱配额/容量）由脚本自动退避重试；重试期间不要开始其它工作。脚本成功返回后门禁完成，平台会注入动态环境文件。

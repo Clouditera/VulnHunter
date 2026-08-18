@@ -574,10 +574,11 @@ export class TaskScheduler {
     } finally {
       clearInterval(heartbeat);
       this.claimHeartbeats.delete(heartbeat);
-      // NOTE: the fresh gate watchdog timer intentionally survives this
-      // method's return — the callback route owns the preparing→running
-      // transition and fireGateWatchdog no-ops on any other state/token.
-      this.gateWatchdogs.delete(task.id);
+      // The fresh gate watchdog timer intentionally survives this method's
+      // return (the callback route owns preparing→running; fireGateWatchdog
+      // no-ops on any other state/token) — so the map entry must survive too,
+      // otherwise stop() can never clear the still-pending timer. The timer
+      // removes its own map entry when it fires.
       await cleanupSchedulerWorkspace(hostWorkDir, token).catch((err) =>
         logger.warn({ err, taskId: task.id, token }, "Failed to clean token-private scheduler workspace"),
       );
@@ -697,6 +698,7 @@ export class TaskScheduler {
   }
 
   private async fireGateWatchdog(taskId: string, token: string): Promise<void> {
+    this.gateWatchdogs.delete(taskId); // self-remove: the timer is spent either way
     const current = await getTaskById(taskId).catch(() => null);
     if (!current || current.state !== "preparing") return;
     const claim = getSchedulerClaim(current);

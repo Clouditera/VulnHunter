@@ -214,7 +214,9 @@ async function findRunningScanContainer(taskId: string, token: string) {
 async function stopScanWorkerByToken(taskId: string, token: string): Promise<void> {
   const container = await findRunningScanContainer(taskId, token);
   if (container) {
-    // Exit code 42 tells entrypoint/scan-mode this is a gate rejection, not a crash.
+    // docker stop = SIGTERM (worker exits 143); the 42/43 distinction lives
+    // in the submit script only. The die handler in preparing state fails the
+    // claim either way.
     await container.stop({ t: 10 }).catch((err) => logger.warn({ err, taskId }, "Gate: failed stopping worker"));
   }
 }

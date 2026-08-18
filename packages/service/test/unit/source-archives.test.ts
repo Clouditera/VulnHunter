@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSyn
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { beforeEach, describe, expect, it } from "vitest";
-import { detectSourceArchive, stripSourceArchiveExtension } from "../../src/features/source-archives/detect.js";
+import { detectSourceArchive, stripSourceArchiveExtension, SUPPORTED_SOURCE_ARCHIVE_EXTENSIONS } from "../../src/features/source-archives/detect.js";
 import { assertSourceArchiveEntryCount, extractSourceArchive, inspectSourceArchive, prepareSourceArchiveDestination } from "../../src/features/source-archives/extract.js";
 import { buildSourceArchivePolicy, SOURCE_ARCHIVE_MAX_FILES } from "../../src/features/source-archives/policy.js";
 import { SourceArchiveError } from "../../src/features/source-archives/errors.js";
@@ -44,11 +44,22 @@ describe("source archive detection", () => {
     expect(detectSourceArchive("demo.rar")).toBeNull();
   });
 
+  it("detects .jar/.war as zip containers (batch 3 java upload path)", () => {
+    // format=zip drives extraction + listing through the zip reader; the
+    // original extension is preserved for provenance; storage stays .zip.
+    expect(detectSourceArchive("app.jar")).toEqual({ format: "zip", extension: ".jar", storageExtension: ".zip" });
+    expect(detectSourceArchive("target.WAR")).toEqual({ format: "zip", extension: ".war", storageExtension: ".zip" });
+    expect(SUPPORTED_SOURCE_ARCHIVE_EXTENSIONS).toContain(".jar");
+    expect(SUPPORTED_SOURCE_ARCHIVE_EXTENSIONS).toContain(".war");
+  });
+
   it("strips project names for supported archive extensions", () => {
     expect(stripSourceArchiveExtension("project.tar.gz")).toBe("project");
     expect(stripSourceArchiveExtension("project.tgz")).toBe("project");
     expect(stripSourceArchiveExtension("project.tar")).toBe("project");
     expect(stripSourceArchiveExtension("project.zip")).toBe("project");
+    expect(stripSourceArchiveExtension("project.jar")).toBe("project");
+    expect(stripSourceArchiveExtension("project.war")).toBe("project");
   });
 });
 
@@ -89,6 +100,42 @@ describe("source archive extraction", () => {
       execSync(`tar -czf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
       await extractSourceArchive(archive, "source.tar.gz", out, policy);
       expect(readFileSync(join(out, "app.c"), "utf-8")).toContain("int main");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("extracts .jar uploads through the zip path (batch 3)", async () => {
+    // A real jar IS a zip; build one with the zip CLI so the extraction path
+    // is the exact production route (detect → zip reader → src/).
+    const root = mkdtempSync(join(tmpdir(), "source-archive-jar-"));
+    try {
+      const input = join(root, "input");
+      const out = join(root, "out");
+      mkdirSync(input, { recursive: true });
+      writeFileSync(join(input, "Main.class"), Buffer.from([0xca, 0xfe, 0xba, 0xbe, 1, 2, 3, 4]));
+      const archive = join(root, "app.jar");
+      execSync(`zip -qry ${JSON.stringify(archive)} .`, { cwd: input });
+      await inspectSourceArchive(archive, "app.jar", policy);
+      await extractSourceArchive(archive, "app.jar", out, policy);
+      expect(readFileSync(join(out, "Main.class")).subarray(0, 4)).toEqual(Buffer.from([0xca, 0xfe, 0xba, 0xbe]));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("extracts .war uploads through the zip path (batch 3)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-war-"));
+    try {
+      const input = join(root, "input");
+      const out = join(root, "out");
+      mkdirSync(join(input, "WEB-INF", "classes"), { recursive: true });
+      writeFileSync(join(input, "WEB-INF", "classes", "App.class"), Buffer.from([0xca, 0xfe, 0xba, 0xbe]));
+      const archive = join(root, "target.war");
+      execSync(`zip -qry ${JSON.stringify(archive)} .`, { cwd: input });
+      await inspectSourceArchive(archive, "target.war", policy);
+      await extractSourceArchive(archive, "target.war", out, policy);
+      expect(existsSync(join(out, "WEB-INF", "classes", "App.class"))).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
