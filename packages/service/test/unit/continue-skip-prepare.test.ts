@@ -71,9 +71,6 @@ vi.mock("../../src/features/sandboxes/lifecycle.js", () => ({
   reconcileSandboxes: vi.fn(),
   SandboxQuotaError: class extends Error {},
 }));
-vi.mock("../../src/features/workers/sandbox-inject.js", () => ({
-  scanOutputsForKeyMaterial: vi.fn(),
-}));
 vi.mock("../../src/features/sandbox-plane/client.js", () => ({
   SandboxPlaneCapacityError: class extends Error {},
 }));
