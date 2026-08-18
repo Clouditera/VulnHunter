@@ -1,17 +1,17 @@
 /**
- * H1 worker SSH injection: renders the four runtime files and pushes them
- * into the worker container's tmpfs (/run/vulnhunter) after create, before
- * start. Also the §7 output key-material leak scan (defense in depth).
+ * H1 worker SSH injection: renders the runtime files and pushes them into
+ * the worker container's tmpfs (/run/vulnhunter) after start.
+ *
+ * The H1 §7 output key-material leak guard was retired (fish 2026-08-19,
+ * PR #38): the generic PEM marker false-positive quarantined targets that
+ * legitimately bundle test keys, blocking artifact sync. The agent-facing
+ * prohibition in the sandbox usage text remains the first line.
  */
 
-import { logger } from "../../infra/logger.js";
 import type Dockerode from "dockerode";
-import { readdir, readFile, stat } from "node:fs/promises";
-import { join, relative } from "node:path";
 import type { TaskSandbox } from "../sandboxes/storage.js";
 
 export const SANDBOX_RUNTIME_DIR = "/run/vulnhunter";
-export const SANDBOX_CFG_CONTAINER_PATH = `${SANDBOX_RUNTIME_DIR}/sandbox.md`;
 const SSH_DIR = `${SANDBOX_RUNTIME_DIR}/ssh`;
 /** OpenSSH drop-in so bare `ssh vulnhunter-sandbox` works without -F (fish 2026-08-02). */
 // The system drop-in (/etc/ssh/ssh_config.d/99-vulnhunter.conf → Include the
@@ -327,67 +327,4 @@ export async function injectSandboxFiles(container: Dockerode.Container, files: 
     const tail = Buffer.concat(output).toString("utf8").slice(-400);
     throw new Error(`Sandbox file injection failed (exit ${inspect.ExitCode}): ${tail}`);
   }
-}
-
-// ---------------------------------------------------------------------------
-// H1 §7: key-material leak scan before outputs leave the workspace.
-// Scans business-artifact dirs (not .youngflow — LLM session logs are huge
-// and never a scp target). A hit quarantines: sync is skipped and the task
-// gets a visible security anomaly.
-//
-// Dynamic verification artifacts intentionally contain payloads that may look
-// like secrets (POC/EXP scripts, verification logs). Whitelist those paths so
-// a successful exploit pipeline is not quarantined (fish core-flow 2026-08-01).
-// ---------------------------------------------------------------------------
-const KEY_MATERIAL_MARKER = "PRIVATE KEY-----";
-const SCAN_SUBDIRS = ["findings", "risks", "knowledge", "todo", "done", "exploits", "leads", "report", "wiki"];
-const MAX_SCAN_FILE_BYTES = 16 * 1024 * 1024;
-
-/**
- * Relative path (posix, from outDir) that is expected to hold attack payloads
- * / dynamic verification artifacts — not scanned for key-material leaks.
- *
- * - findings/<id>/poc/**
- * - findings/<id>/exp/**
- * - exploits/**
- */
-export function isDynamicPayloadPath(relPosix: string): boolean {
-  const p = relPosix.replace(/\\/g, "/").replace(/^\/+/, "");
-  if (p === "exploits" || p.startsWith("exploits/")) return true;
-  // findings/<seg>/poc/... or findings/<seg>/exp/...
-  const m = /^findings\/[^/]+\/(poc|exp)(\/|$)/.exec(p);
-  return m != null;
-}
-
-async function* walk(dir: string): AsyncGenerator<string> {
-  let entries;
-  try {
-    entries = await readdir(dir, { withFileTypes: true });
-  } catch {
-    return; // missing dir is fine (static tasks have no dynamic artifacts)
-  }
-  for (const entry of entries) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) yield* walk(full);
-    else if (entry.isFile()) yield full;
-  }
-}
-
-export async function scanOutputsForKeyMaterial(outDir: string): Promise<string[]> {
-  const hits: string[] = [];
-  for (const sub of SCAN_SUBDIRS) {
-    for await (const file of walk(join(outDir, sub))) {
-      const rel = relative(outDir, file).split("\\").join("/");
-      if (isDynamicPayloadPath(rel)) continue;
-      try {
-        const info = await stat(file);
-        if (info.size > MAX_SCAN_FILE_BYTES) continue;
-        const content = await readFile(file);
-        if (content.includes(KEY_MATERIAL_MARKER)) hits.push(file);
-      } catch (error) {
-        logger.debug({ err: error, file }, "Leak-scan skipped unreadable file");
-      }
-    }
-  }
-  return hits;
 }
