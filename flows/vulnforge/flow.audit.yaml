@@ -146,6 +146,10 @@ stages:
       - wiki-maintainer
     extensions:
       - output-contract
+      - sandbox-plane
+    tools:
+      - list_sandbox_types
+      - get_sandbox_type
     task: onboard.md
     prompt: |
       - 目标项目: ${work_dir}
@@ -155,6 +159,8 @@ stages:
       - 是否启用 EXP: ${flow_inputs.enable_exp}
       - 是否启用组合链: ${flow_inputs.enable_chain}
       - 沙箱配置: ${flow_inputs.sandbox_cfg}
+      - 平台门禁提交脚本: /opt/vulnhunter/bin/submit-prepare-result.sh（第 3 步不合格与第 5 步末成功时各提交一次；脚本幂等，$OUTPUT_DIR/.vulnhunter-gate.json 已存在则跳过）
+      - jar 反编译脚本: /opt/vulnhunter/bin/jar-unpack.sh "$YOUNGFLOW_WORK_DIR"（第 2 步；含 jar/war/裸 class 时运行）
       - templates: ${templates}/build.template.md
       - schema: ${schemas}/profiler.schema.yaml
       - 输出语言: ${flow_inputs.output_language}

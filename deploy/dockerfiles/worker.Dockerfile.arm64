@@ -67,16 +67,21 @@ RUN cd /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access \
     && npm install --omit=dev --no-audit --no-fund \
       @earendil-works/pi-coding-agent@$PI_VERSION \
       @earendil-works/pi-ai@$PI_VERSION
-COPY flows/prepare /opt/vulnhunter/flows/prepare
-COPY packages/service/src/features/prepare/schemas/source-manifest-v1.schema.json /opt/vulnhunter/flows/prepare/schemas/source-manifest-v1.schema.json
-RUN youngflow /opt/vulnhunter/flows/prepare/flow.prepare.yaml --list-stages >/tmp/prepare-stages.txt \
-    && grep -qE '^  prepare[[:space:]]' /tmp/prepare-stages.txt
+# sandbox-plane extension (onboard gate): read-only sandbox-type tools for
+# the five-step onboard. pi peer deps only (no runtime deps).
+RUN cd /opt/vulnhunter/flows/vulnforge/extensions/sandbox-plane \
+    && npm install --omit=dev --no-audit --no-fund \
+    && npm install --omit=dev --no-audit --no-fund \
+      @earendil-works/pi-coding-agent@$PI_VERSION \
+      @earendil-works/pi-ai@$PI_VERSION
 RUN test -f /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-tracker/index.ts \
     && test -f /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-viewer/index.ts \
     && test -f /opt/vulnhunter/flows/vulnforge/extensions/output-contract/contracts.json \
     && test -f /opt/vulnhunter/flows/vulnforge/extensions/workspace-diff/index.ts \
     && test -f /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access/index.ts \
     && test -d /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access/node_modules \
+    && test -f /opt/vulnhunter/flows/vulnforge/extensions/sandbox-plane/index.ts \
+    && test -d /opt/vulnhunter/flows/vulnforge/extensions/sandbox-plane/node_modules \
     && test -L /opt/vulnhunter/flows/vulnforge-timeout/schemas \
     && test "$(readlink /opt/vulnhunter/flows/vulnforge-timeout/schemas)" = ../vulnforge/schemas \
     && test "$(realpath /opt/vulnhunter/flows/vulnforge-timeout/schemas)" = /opt/vulnhunter/flows/vulnforge/schemas \
@@ -95,13 +100,13 @@ COPY flows/vulnhunter-report /opt/vulnhunter/flows/vulnhunter-report
 
 # De-identified workers (non-root) treat flow dirs as per-run scratch:
 # scan/report regenerate models.json + .env there, and youngflow materializes
-# .pi-agent/ (PI_CODING_AGENT_DIR) under flowDir for EVERY flow — prepare and
-# vulnforge-timeout included (QA-caught: prepare EACCES mkdir .pi-agent).
+# .pi-agent/ (PI_CODING_AGENT_DIR) under flowDir for EVERY flow —
+# vulnforge-timeout included (QA-caught EACCES mkdir .pi-agent).
 # The youngflow flowDir anchor is engine-owned (dist/model-config.js), so the
 # in-repo fix is uniform writability. Containers are single-use; nothing
 # secret persists in the image.
 RUN chmod 0777 /opt/vulnhunter/flows/vulnforge /opt/vulnhunter/flows/vulnforge-timeout \
-    /opt/vulnhunter/flows/prepare /opt/vulnhunter/flows/vulnhunter-report
+    /opt/vulnhunter/flows/vulnhunter-report
 
 # Bake the ssh drop-in at build time: it is a static one-liner (Include the
 # tmpfs config), so runtime injection never touches /etc — de-identified
@@ -121,12 +126,11 @@ COPY worker-assets/entrypoint.sh /opt/entrypoint.sh
 COPY worker-assets/scan-mode.sh /opt/scan-mode.sh
 COPY worker-assets/chat-mode.sh /opt/chat-mode.sh
 COPY worker-assets/report-mode.sh /opt/report-mode.sh
-COPY worker-assets/prepare-mode.sh /opt/prepare-mode.sh
-COPY worker-assets/prepare-result-postflight.py /opt/prepare-result-postflight.py
 COPY worker-assets/run-with-deadline.py /opt/run-with-deadline.py
 COPY worker-assets/timeout-finalize-artifacts.py /opt/timeout-finalize-artifacts.py
-RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh /opt/report-mode.sh /opt/prepare-mode.sh /opt/prepare-result-postflight.py \
-    /opt/run-with-deadline.py /opt/timeout-finalize-artifacts.py
+COPY worker-assets/submit-prepare-result.sh /opt/vulnhunter/bin/submit-prepare-result.sh
+RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh /opt/report-mode.sh \
+    /opt/run-with-deadline.py /opt/timeout-finalize-artifacts.py /opt/vulnhunter/bin/submit-prepare-result.sh
 
 WORKDIR /workspace
 ENTRYPOINT ["/opt/entrypoint.sh"]

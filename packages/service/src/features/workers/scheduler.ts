@@ -33,7 +33,8 @@ import { SCAN_FALLBACK_MARGIN_S } from "../tasks/scan-duration.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir, hasRunningScanWorkerByClaim, stopScanWorker, stopScanWorkerByClaim } from "./scan-worker.js";
 import { cleanupSchedulerWorkspace, getSchedulerPrepareDir, publishSchedulerWorkspace } from "./scheduler-workspace.js";
-import { isDynamicEnabled, runPrepareWorker, stopPrepareWorkerByClaim, type PrepareResult } from "./prepare-worker.js";
+import { GATE_WATCHDOG_MS } from "../internal/prepare-result-route.js";
+import { isDynamicEnabled, persistedPrepareResult, type PrepareResult } from "../prepare/contract.js";
 import {
   ensureSandboxForTask,
   stopSandboxForTask,
@@ -52,8 +53,7 @@ import { indexFindings } from "../findings/indexer.js";
 import { syncOutputsToMinio, downloadOutputsFromMinio } from "./sync-outputs.js";
 import { getMinio } from "../../infra/minio/client.js";
 import { onChatContainerDie } from "../chat/chat-session.js";
-import { appendEvent } from "../events/event-store.js";
-import { broadcastEvent } from "../events/ws-live-log.js";
+import { appendAndBroadcastCompletionEvent } from "./scheduler-events.js";
 import { onReportContainerDie } from "../reports/report-worker.js";
 import { notify } from "../notifications/index.js";
 import type { ServiceConfig } from "../../infra/config.js";
@@ -65,7 +65,6 @@ import {
   mapWorkerTerminalState,
   needsTerminalStateReconciliation,
 } from "./audit-completion.js";
-import type { LiveLogEvent } from "@vulnhunter/shared";
 
 export function summarizeExecutionEvents(lines: string[]): {
   inputTokens: number;
@@ -166,10 +165,6 @@ const SANDBOX_ALLOC_RETRY_MS = 5 * 60_000;
 /** H2 §5: incremental sandbox reconcile cadence (startup does the full pass). */
 const SANDBOX_RECONCILE_INTERVAL_MS = 60_000;
 
-export function appendAndBroadcastCompletionEvent(taskId: string, event: LiveLogEvent): void {
-  const entry = appendEvent(taskId, event);
-  broadcastEvent(taskId, entry.seq, entry.event);
-}
 const PROFILER_ARTIFACT_PATHS = [
   "profiler.yaml",
   "knowledge/profiler.yaml",
@@ -186,6 +181,8 @@ export class TaskScheduler {
   /** Last incremental sync+index time per running task (ms). */
   private lastIncrementalAt = new Map<string, number>();
   private lastSandboxReconcileAt = 0;
+  /** Fresh-gate watchdog timers per task (cleared on stop). */
+  private readonly gateWatchdogs = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(config: ServiceConfig) {
     this.config = config;
@@ -336,6 +333,8 @@ export class TaskScheduler {
     if (this.timer) clearInterval(this.timer);
     for (const heartbeat of this.claimHeartbeats) clearInterval(heartbeat);
     this.claimHeartbeats.clear();
+    for (const t of this.gateWatchdogs.values()) clearTimeout(t);
+    this.gateWatchdogs.clear();
     if (this.unsubscribeEvents) this.unsubscribeEvents();
     logger.info("TaskScheduler stopped");
   }
@@ -472,39 +471,53 @@ export class TaskScheduler {
         published = await this.prepareWorkspace(task, token);
       }
 
-      // H5: Prepare phase.
-      // - fresh: always run (source completeness + sandbox selection).
-      // - continue (fish 2026-08-08 / task-c832309f): source is fixed at create
-      //   time — re-running prepare is pure failure surface + wasted tokens.
-      //   Reuse metadata.prepare from the first run; only fall back to a real
-      //   prepare when the persisted result is missing (legacy / corrupt data).
-      // - resume: paused container already has source; no prepare.
-      let prepareResult: PrepareResult | null = null;
-      if (claim.mode === "fresh") {
-        prepareResult = await this.runPreparePhase(task, token, hostWorkDir);
+      // Prepare phase (v2 — prepare internalized into the onboard gate):
+      // - fresh: the scan worker starts IMMEDIATELY (dynamic tasks no longer
+      //   wait for a sandbox); the onboard stage runs the gate and POSTs
+      //   /internal/prepare-result, which allocates + injects into the
+      //   running container and performs the preparing→running CAS. The
+      //   scheduler only registers the gate watchdog (30min) and returns —
+      //   task ownership for fresh claims effectively hands over to the
+      //   callback route + reconciler.
+      // - continue (task-c832309f): source is fixed — reuse
+      //   metadata.prepare as the allocation basis (reused event kept for
+      //   timeline explainability); only fall back to a hard failure when
+      //   the persisted result is missing (the gate worker cannot re-run:
+      //   its flow skips the gate on continue via the done marker).
+      // - resume: paused container already has source and a completed gate;
+      //   no gate, no prepare worker.
+      if (claim.mode === "continue") {
+        const prepareResult = await this.resolveContinuePrepare(task, token, hostWorkDir);
         await this.assertSchedulerOwnership(task.id, token);
-      } else if (claim.mode === "continue") {
-        prepareResult = await this.resolveContinuePrepare(task, token, hostWorkDir);
-        await this.assertSchedulerOwnership(task.id, token);
-      }
-
-      // H2 §3: dynamic on + a sandbox selection (fresh prepare result OR the
-      // persisted one on resume) → allocate before the scan worker starts.
-      // ensureSandboxForTask is idempotent: ready→reuse, stopped→resume,
-      // key-lost (restart)→recycle. Quota/capacity rejections requeue the
-      // task with bounded backoff (see allocateSandboxForTask).
-      const persistedSelection = ((task.metadata as Record<string, unknown> | undefined)?.prepare as { sandbox_type?: string | null } | undefined)?.sandbox_type;
-      const resolvedSelection = prepareResult?.sandbox_type ?? persistedSelection;
-      if (isDynamicEnabled(task) && resolvedSelection) {
-        // Pass the freshly resolved selection down — the in-memory task can
-        // predate prepare persistence and must not be re-read for it (P0-2).
-        await this.allocateSandboxForTask(task, token, resolvedSelection);
-        await this.assertSchedulerOwnership(task.id, token);
+        // H2 §3 path (continue/resume only): allocate BEFORE spawn.
+        if (isDynamicEnabled(task) && prepareResult.sandbox_type) {
+          await this.allocateSandboxForTask(task, token, prepareResult.sandbox_type);
+          await this.assertSchedulerOwnership(task.id, token);
+        }
       }
 
       await this.assertSchedulerOwnership(task.id, token);
       await spawnScanWorker(task, this.config, llmEnv, token, claim.mode === "resume", claim.mode === "continue");
       workerStarted = true;
+
+      if (claim.mode === "fresh") {
+        // Emit prepare_started at worker start (event stream shape unchanged
+        // from the retired prepare worker; web consumes as before).
+        appendAndBroadcastCompletionEvent(task.id, {
+          type: "prepare_started",
+          source: "scan",
+          seq: 0,
+          ts: new Date().toISOString(),
+          dynamic_enabled: isDynamicEnabled(task),
+        });
+        this.registerGateWatchdog(task.id, token);
+        // Fresh claims do NOT markSchedulerClaimRunning here — the gate
+        // callback (or watchdog) completes preparing→running/failed. The
+        // reconciler adopts the running worker under the same token.
+        logger.info({ taskId: task.id, token }, "Fresh scan worker started; onboard gate armed");
+        this.startFreshTailing(task.id, hostWorkDir);
+        return;
+      }
       const marked = await markSchedulerClaimRunning(task.id, token, new Date());
       if (!marked) {
         const current = await getTaskById(task.id);
@@ -532,7 +545,6 @@ export class TaskScheduler {
       if ((err as { code?: string } | null)?.code === "ERR_SANDBOX_ALLOC_REQUEUE") {
         const requeued = await requeueSchedulerClaim(task.id, token).catch(() => false);
         if (requeued) {
-          await stopPrepareWorkerByClaim(task.id, token).catch(() => undefined);
           await cleanupSchedulerWorkspace(hostWorkDir, token).catch(() => undefined);
           logger.info({ taskId: task.id, token }, "Claim requeued for sandbox allocation backoff");
           return;
@@ -547,9 +559,6 @@ export class TaskScheduler {
       const failed = await failSchedulerClaim(task.id, token, failReason).catch(() => false);
       if (failed) {
         await stopScanWorkerByClaim(task.id, token);
-        await stopPrepareWorkerByClaim(task.id, token).catch((cleanupErr) =>
-          logger.warn({ cleanupErr, taskId: task.id, token }, "Failed to stop claim-owned prepare worker on failure"),
-        );
         // H2 §4: a sandbox allocated before the failure must not stay running.
         await stopSandboxForTask(task.id, "claim_failed").catch(() => undefined);
         if (published) await rm(join(hostWorkDir, "src"), { recursive: true, force: true }).catch((cleanupErr) =>
@@ -565,6 +574,10 @@ export class TaskScheduler {
     } finally {
       clearInterval(heartbeat);
       this.claimHeartbeats.delete(heartbeat);
+      // NOTE: the fresh gate watchdog timer intentionally survives this
+      // method's return — the callback route owns the preparing→running
+      // transition and fireGateWatchdog no-ops on any other state/token.
+      this.gateWatchdogs.delete(task.id);
       await cleanupSchedulerWorkspace(hostWorkDir, token).catch((err) =>
         logger.warn({ err, taskId: task.id, token }, "Failed to clean token-private scheduler workspace"),
       );
@@ -573,138 +586,43 @@ export class TaskScheduler {
 
 
   /**
-   * Continue-mode prepare resolution (task-c832309f / fish 2026-08-08):
-   * prefer the first-run result persisted in metadata.prepare. When present,
-   * emit a reused timeline event and skip the prepare worker entirely. When
-   * missing (legacy tasks / corrupt metadata), fall back to a real prepare
-   * so continue never hard-crashes on absent state.
+   * Continue-mode prepare resolution (task-c832309f): reuse the first-run
+   * result persisted in metadata.prepare and emit a reused timeline event.
+   * The retired live-prepare fallback is gone — the prepare worker no longer
+   * exists, and the gate cannot re-run on continue (its done marker makes
+   * the flow skip the submit). A missing/invalid persisted result is a hard
+   * failure with a clear reason: re-create the task instead.
    */
   private async resolveContinuePrepare(
     task: ClaimedScanTask,
     token: string,
-    hostWorkDir: string,
+    _hostWorkDir: string,
   ): Promise<PrepareResult> {
-    const persisted = (task.metadata as Record<string, unknown> | undefined)?.prepare as
-      | { project_complete?: unknown; sandbox_type?: unknown; reason?: unknown }
-      | undefined;
+    const persisted = (task.metadata as Record<string, unknown> | undefined)?.prepare;
+    const result = persistedPrepareResult(persisted);
 
-    const reusable =
-      persisted &&
-      typeof persisted.project_complete === "boolean" &&
-      (persisted.sandbox_type === null || typeof persisted.sandbox_type === "string") &&
-      typeof persisted.reason === "string" &&
-      ["complete", "partial_source", "fragment_collection", "no_compatible_sandbox"].includes(
-        persisted.reason,
+    if (!result) {
+      logger.warn(
+        { taskId: task.id, token, hasPrepareMeta: Boolean(persisted) },
+        "Continue mode: metadata.prepare missing/invalid — cannot continue",
       );
-
-    if (reusable) {
-      const result: PrepareResult = {
-        project_complete: persisted!.project_complete as boolean,
-        sandbox_type: (persisted!.sandbox_type as string | null) ?? null,
-        reason: persisted!.reason as PrepareResult["reason"],
-      };
-      const dynamicEnabled = isDynamicEnabled(task);
+      const remediation = "缺少首次运行的完整性判定结果，无法继续；请重新创建任务";
       appendAndBroadcastCompletionEvent(task.id, {
-        type: "prepare_completed",
+        type: "prepare_failed",
         source: "scan",
         seq: 0,
         ts: new Date().toISOString(),
-        project_complete: result.project_complete,
-        sandbox_type: result.sandbox_type,
-        reason: result.reason,
+        reason: "source_incomplete",
+        remediation,
         reused: true,
       });
-      logger.info(
-        { taskId: task.id, token, result, dynamicEnabled },
-        "Continue mode: reused first-run prepare result (skipped prepare worker)",
-      );
-
-      // Re-apply the same branch matrix as a live prepare so a previously
-      // incomplete / no-sandbox first run cannot silently proceed on continue.
-      if (!result.project_complete) {
-        await mergeTaskMetadata(task.id, { source_incomplete: true }).catch((err) =>
-          logger.warn({ err, taskId: task.id }, "Failed to set source_incomplete flag"),
-        );
-        const remediation = "请补充完整项目源码后重新创建任务";
-        appendAndBroadcastCompletionEvent(task.id, {
-          type: "prepare_failed",
-          source: "scan",
-          seq: 0,
-          ts: new Date().toISOString(),
-          reason: "source_incomplete",
-          remediation,
-          reused: true,
-        });
-        throw new AppError("ERR_PREPARE_FAILED", {
-          message: `源码不完整：功能代码缺失，无法建立完整的代码功能语义。审计目标应是自洽完整的功能项目（如 web 应用、CLI 应用、库）。${remediation}。`,
-          details: { phase: "prepare", reason: "source_incomplete", remediation, reused: true },
-        });
-      }
-      if (dynamicEnabled && result.sandbox_type === null) {
-        const remediation = "关闭动态验证后重试，或联系管理员启用对应的沙箱类型";
-        appendAndBroadcastCompletionEvent(task.id, {
-          type: "prepare_failed",
-          source: "scan",
-          seq: 0,
-          ts: new Date().toISOString(),
-          reason: "no_compatible_sandbox",
-          remediation,
-          reused: true,
-        });
-        throw new AppError("ERR_PREPARE_FAILED", {
-          message: `未找到兼容的沙箱类型（项目的主要运行方式没有可用的沙箱）。处理办法：${remediation}。`,
-          details: { phase: "prepare", reason: "no_compatible_sandbox", remediation, reused: true },
-        });
-      }
-      return result;
+      throw new AppError("ERR_PREPARE_FAILED", {
+        message: `源码不完整：功能代码缺失，无法建立完整的代码功能语义。审计目标应是自洽完整的功能项目（如 web 应用、CLI 应用、库）。${remediation}。`,
+        details: { phase: "prepare", reason: "source_incomplete", remediation, reused: true },
+      });
     }
 
-    logger.warn(
-      { taskId: task.id, token, hasPrepareMeta: Boolean(persisted) },
-      "Continue mode: metadata.prepare missing/invalid — falling back to live prepare",
-    );
-    return this.runPreparePhase(task, token, hostWorkDir);
-  }
-
-  /**
-   * Run the Prepare phase for a claimed task (H5 §1/§4/§8). Spawns the
-   * one-shot prepare worker against the published source, consumes the
-   * three-field result, records it in task metadata, emits the prepare events,
-   * and applies the branch matrix:
-   *   - partial_source        → interrupt: fail in preparing with a reason
-   *                              (dynamic/static alike; no scan, no sandbox);
-   *   - fragment_collection   → interrupt: same path (loose example/tutorial
-   *                              snippets have no audit value; fish 2026-08-07);
-   *   - complete + dynamic on + no compatible sandbox → O1: fail in preparing;
-   *   - otherwise             → proceed to the scan worker.
-   * All side effects run under the owner's scheduler claim (②). Throws on any
-   * prepare failure so processClaimedTask's catch fails the claim.
-   */
-  private async runPreparePhase(task: ClaimedScanTask, token: string, hostWorkDir: string): Promise<PrepareResult> {
     const dynamicEnabled = isDynamicEnabled(task);
-    appendAndBroadcastCompletionEvent(task.id, {
-      type: "prepare_started",
-      source: "scan",
-      seq: 0,
-      ts: new Date().toISOString(),
-      dynamic_enabled: dynamicEnabled,
-    });
-
-    const result = await runPrepareWorker({ task, config: this.config, hostWorkDir, claimToken: token });
-
-    // Record the three-field result verbatim for the task detail / branch
-    // provenance. The dynamic-allocation fields (sandbox_cfg etc.) are filled
-    // by the H2 batch; for now we persist the selection only.
-    await mergeTaskMetadata(task.id, {
-      prepare: {
-        project_complete: result.project_complete,
-        sandbox_type: result.sandbox_type,
-        reason: result.reason,
-        dynamic_enabled: dynamicEnabled,
-        at: new Date().toISOString(),
-      },
-    }).catch((err) => logger.warn({ err, taskId: task.id }, "Failed to persist prepare result metadata"));
-
     appendAndBroadcastCompletionEvent(task.id, {
       type: "prepare_completed",
       source: "scan",
@@ -713,14 +631,16 @@ export class TaskScheduler {
       project_complete: result.project_complete,
       sandbox_type: result.sandbox_type,
       reason: result.reason,
+      reused: true,
     });
+    logger.info(
+      { taskId: task.id, token, result, dynamicEnabled },
+      "Continue mode: reused first-run prepare result",
+    );
 
+    // Re-apply the branch matrix so a previously incomplete / no-sandbox
+    // first run cannot silently proceed on continue.
     if (!result.project_complete) {
-      // partial_source / fragment_collection: INTERRUPT (fish 2026-07-20 / 2026-08-07). The audit target must be a
-      // self-contained, complete functional project (web app / CLI / library);
-      // code fragments, docs, and case demos cannot establish complete code
-      // semantics, so the task fails in the prepare phase and reports why —
-      // dynamic and static alike (no downgrade, no scan worker, no sandbox).
       await mergeTaskMetadata(task.id, { source_incomplete: true }).catch((err) =>
         logger.warn({ err, taskId: task.id }, "Failed to set source_incomplete flag"),
       );
@@ -732,17 +652,14 @@ export class TaskScheduler {
         ts: new Date().toISOString(),
         reason: "source_incomplete",
         remediation,
+        reused: true,
       });
-      logger.warn({ taskId: task.id, token, reason: result.reason }, "Source is incomplete; interrupting task");
       throw new AppError("ERR_PREPARE_FAILED", {
         message: `源码不完整：功能代码缺失，无法建立完整的代码功能语义。审计目标应是自洽完整的功能项目（如 web 应用、CLI 应用、库）。${remediation}。`,
-        details: { phase: "prepare", reason: "source_incomplete", remediation },
+        details: { phase: "prepare", reason: "source_incomplete", remediation, reused: true },
       });
     }
-
     if (dynamicEnabled && result.sandbox_type === null) {
-      // O1 (fish-approved): complete project, dynamic on, but no compatible
-      // sandbox type → fail in preparing with reason + remediation.
       const remediation = "关闭动态验证后重试，或联系管理员启用对应的沙箱类型";
       appendAndBroadcastCompletionEvent(task.id, {
         type: "prepare_failed",
@@ -751,13 +668,70 @@ export class TaskScheduler {
         ts: new Date().toISOString(),
         reason: "no_compatible_sandbox",
         remediation,
+        reused: true,
       });
       throw new AppError("ERR_PREPARE_FAILED", {
         message: `未找到兼容的沙箱类型（项目的主要运行方式没有可用的沙箱）。处理办法：${remediation}。`,
-        details: { phase: "prepare", reason: "no_compatible_sandbox", remediation },
+        details: { phase: "prepare", reason: "no_compatible_sandbox", remediation, reused: true },
       });
     }
     return result;
+  }
+
+  /**
+   * Gate watchdog (plan §4.1): a fresh task whose worker never submitted a
+   * prepare-result within GATE_WATCHDOG_MS fails exactly like the retired
+   * prepare hard cap. The claim deadline is 15min but the heartbeat keeps
+   * renewing the lease, so this timer is the real cap for the gate phase.
+   * Fires only when the task is still preparing under OUR token (lost
+   * claims are the reconciler's business).
+   */
+  private registerGateWatchdog(taskId: string, token: string): void {
+    const timer = setTimeout(() => {
+      this.fireGateWatchdog(taskId, token).catch((err) =>
+        logger.error({ err, taskId, token }, "Gate watchdog fire failed"),
+      );
+    }, GATE_WATCHDOG_MS);
+    timer.unref?.();
+    this.gateWatchdogs.set(taskId, timer);
+  }
+
+  private async fireGateWatchdog(taskId: string, token: string): Promise<void> {
+    const current = await getTaskById(taskId).catch(() => null);
+    if (!current || current.state !== "preparing") return;
+    const claim = getSchedulerClaim(current);
+    if (!claim || claim.token !== token) return;
+    logger.warn({ taskId, token }, "Onboard gate timed out (30min); failing task");
+    appendAndBroadcastCompletionEvent(taskId, {
+      type: "prepare_failed",
+      source: "scan",
+      seq: 0,
+      ts: new Date().toISOString(),
+      reason: "gate_timeout",
+      remediation: "初始化超时（超过 30 分钟上限）。请重试或联系管理员。",
+    });
+    const failure = JSON.stringify({
+      code: "ERR_PREPARE_FAILED",
+      message: "Prepare 超时（onboard 门禁超过 30 分钟上限）",
+      details: { phase: "prepare", reason: "gate_timeout" },
+    });
+    const failed = await failSchedulerClaim(taskId, token, failure).catch(() => false);
+    if (failed) {
+      await stopScanWorkerByClaim(taskId, token);
+      await stopSandboxForTask(taskId, "preparing_failed").catch(() => undefined);
+      notify({ type: "task_state", taskId, state: "failed" });
+    }
+  }
+
+  /** Event tailing for a fresh task in the gate phase (preparing state). */
+  private startFreshTailing(taskId: string, hostWorkDir: string): void {
+    const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
+    const serviceLogsDir = join(hostWorkDir, ".service-logs");
+    try {
+      startTailing(taskId, [], [{ path: eventsDir, source: "scan" }, { path: serviceLogsDir, source: "scan" }]);
+    } catch (err) {
+      logger.warn({ err, taskId }, "Fresh worker tailing could not start");
+    }
   }
 
   /**

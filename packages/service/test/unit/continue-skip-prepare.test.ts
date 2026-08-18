@@ -17,11 +17,10 @@ const m = vi.hoisted(() => ({
   runPrepareWorker: vi.fn(async () => m.prepareResult),
 }));
 
-vi.mock("../../src/features/workers/prepare-worker.js", () => ({
-  isDynamicEnabled: () => m.dynamicEnabled,
-  runPrepareWorker: (...a: unknown[]) => m.runPrepareWorker(...a),
-  stopPrepareWorkerByClaim: vi.fn(async () => undefined),
-}));
+vi.mock("../../src/features/prepare/contract.js", async () => {
+  const actual = await vi.importActual<any>("../../src/features/prepare/contract.js");
+  return { ...actual, isDynamicEnabled: () => m.dynamicEnabled };
+});
 vi.mock("../../src/features/events/event-store.js", () => ({
   appendEvent: vi.fn((_taskId: string, event: any) => {
     m.events.push(event);
@@ -161,22 +160,23 @@ describe("resolveContinuePrepare (task-c832309f)", () => {
     expect(m.events.some((e) => e.type === "prepare_started")).toBe(false);
   });
 
-  it("missing metadata.prepare falls back to live prepare", async () => {
+  it("missing metadata.prepare hard-fails (no live-prepare fallback since internalization)", async () => {
     const task = makeTask(null);
-    await (scheduler() as any).resolveContinuePrepare(task, token, "/tmp/w");
-    expect(m.runPrepareWorker).toHaveBeenCalledTimes(1);
-    expect(m.events.map((e) => e.type)).toEqual(["prepare_started", "prepare_completed"]);
-    expect(m.events.find((e) => e.type === "prepare_completed")?.reused).toBeUndefined();
+    await expect(
+      (scheduler() as any).resolveContinuePrepare(task, token, "/tmp/w"),
+    ).rejects.toThrow(/缺少首次运行的完整性判定结果/);
+    expect(m.events.find((e) => e.type === "prepare_failed")).toMatchObject({ reused: true });
   });
 
-  it("invalid metadata.prepare (bad reason) falls back to live prepare", async () => {
+  it("invalid metadata.prepare (bad reason) hard-fails the same way", async () => {
     const task = makeTask({
       project_complete: true,
       sandbox_type: null,
       reason: "not-a-real-reason",
     });
-    await (scheduler() as any).resolveContinuePrepare(task, token, "/tmp/w");
-    expect(m.runPrepareWorker).toHaveBeenCalledTimes(1);
+    await expect(
+      (scheduler() as any).resolveContinuePrepare(task, token, "/tmp/w"),
+    ).rejects.toThrow(/缺少首次运行的完整性判定结果/);
   });
 
   it("reused incomplete result still interrupts (branch matrix)", async () => {

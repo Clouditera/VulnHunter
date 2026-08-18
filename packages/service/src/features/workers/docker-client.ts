@@ -28,7 +28,7 @@ export interface WorkerContainerSpec {
    *  worker de-identification, fish-approved 2026-08-05). */
   runAs?: string;
   taskId: string;
-  taskType: "scan" | "chat" | "report" | "eval" | "poc-run" | "diagnostic" | "prepare";
+  taskType: "scan" | "chat" | "report" | "eval" | "poc-run" | "diagnostic";
   image: string;
   env: Record<string, string>;
   cpuQuota?: number;  // default 200000 = 2 CPU

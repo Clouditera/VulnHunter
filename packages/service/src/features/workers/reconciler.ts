@@ -23,8 +23,8 @@ import { SCAN_FALLBACK_MARGIN_S } from "../tasks/scan-duration.js";
 import { getDb } from "../../infra/db/client.js";
 import { loadConfig } from "../../infra/config.js";
 import { getHostWorkDir, stopScanWorkerByClaim } from "./scan-worker.js";
-import { stopPrepareWorkerByClaim } from "./prepare-worker.js";
 import { cleanupSchedulerWorkspace } from "./scheduler-workspace.js";
+import { persistedPrepareResult } from "../prepare/contract.js";
 import { startTailing } from "../events/event-tail.js";
 import { reconcileSandboxes } from "../sandboxes/lifecycle.js";
 import { join } from "node:path";
@@ -40,6 +40,22 @@ export async function reconcileSchedulerClaims(config = loadConfig()): Promise<v
     );
     const running = matching.find((c) => c.State === "running" || c.State === "paused");
     if (running) {
+      if (claim.mode === "fresh") {
+        // v2 onboard gate: a fresh claim's worker runs the gate INSIDE the
+        // container. A running container under preparing+fresh is exactly
+        // the expected gate phase — adopting it as running here would skip
+        // the gate CAS (the callback owns preparing→running). Only a
+        // completed gate (metadata.prepare persisted by the callback before
+        // the CAS) may be adopted: that means the callback finished its
+        // work and died between persist and CAS — extremely narrow, adopt.
+        const gateDone = persistedPrepareResult(
+          ((task.metadata as Record<string, unknown> | undefined)?.prepare),
+        )?.project_complete === true;
+        if (!gateDone) {
+          logger.info({ taskId: task.id, token: claim.token }, "Fresh claim worker running in gate phase; leaving for callback");
+          continue;
+        }
+      }
       if (await markSchedulerClaimRunning(task.id, claim.token, new Date())) {
         const hostWorkDir = getHostWorkDir(config.dataDir, task.id);
         try {
@@ -65,9 +81,6 @@ export async function reconcileSchedulerClaims(config = loadConfig()): Promise<v
     if (!expired) continue;
     if (await releaseExpiredSchedulerClaim(task.id, claim.token)) {
       await stopScanWorkerByClaim(task.id, claim.token);
-      await stopPrepareWorkerByClaim(task.id, claim.token).catch((err) =>
-        logger.warn({ err, taskId: task.id, token: claim.token }, "Failed to stop expired-claim prepare worker"),
-      );
       await cleanupSchedulerWorkspace(getHostWorkDir(config.dataDir, task.id), claim.token).catch((err) =>
         logger.warn({ err, taskId: task.id, token: claim.token }, "Failed to clean expired claim workspace"),
       );

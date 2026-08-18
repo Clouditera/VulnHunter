@@ -1,0 +1,8 @@
+{
+  "name": "sandbox-plane",
+  "private": true,
+  "dependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}

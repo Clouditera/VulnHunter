@@ -26,13 +26,6 @@ import {
 
 export const STATIC_ONLY_SCHED_INSTR = "平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；完成静态审计后进入报告阶段。";
 
-export function assertDynamicInputPolicy(enablePoc: boolean, enableExp: boolean, sandboxCfg?: string): void {
-  if (enableExp && !enablePoc) throw new Error("enable_exp requires enable_poc");
-  if ((enablePoc || enableExp) && !sandboxCfg?.trim()) {
-    throw new Error("dynamic verification requires a validated sandbox_cfg");
-  }
-}
-
 function optionalTextMeta(meta: DbTask["source_meta"] | null | undefined, key: string): string {
   const value = meta?.[key];
   if (typeof value !== "string") return "";
@@ -127,12 +120,16 @@ export async function spawnScanWorker(
     const privateKey = mapping?.state === "ready" ? await peekTaskSshPrivateKey(task.id) : null;
     if (mapping?.state === "ready" && privateKey) {
       sandbox = { mapping, privateKey };
-    } else {
-      // H2 allocation (with key recycle) must run before spawn; reaching here
-      // means the pipeline order broke — fail loud, never run dynamic locally.
+    } else if (resume || continueMode) {
+      // H2 invariant (resume/continue): allocation ran in a prior lifecycle —
+      // a missing ready sandbox here is a broken pipeline; fail loud.
       throw new Error(`Dynamic task ${task.id} requires a ready sandbox + in-memory ssh key before worker start (mapping=${mapping?.state ?? "none"}, key=${privateKey ? "present" : "missing"})`);
     }
-    assertDynamicInputPolicy(true, true, SANDBOX_CFG_CONTAINER_PATH);
+    // Fresh dynamic tasks spawn WITHOUT a sandbox: the onboard gate runs
+    // inside this worker, POSTs /internal/prepare-result, and the callback
+    // allocates + injects the SSH files into the RUNNING container. The
+    // tmpfs is mounted up-front (files arrive later; ssh tolerates the
+    // absent config include until then — verified behavior).
   }
 
   const container = await createWorkerContainer({
@@ -144,15 +141,18 @@ export async function spawnScanWorker(
     cpuQuota: 200000,
     memoryBytes: 4 * 1024 * 1024 * 1024,
     labels: { [LABEL_SCHEDULER_CLAIM]: claimToken },
-    ...(sandbox ? { tmpfs: { [SANDBOX_RUNTIME_DIR]: "rw,nosuid,nodev,size=4m" } } : {}),
+    // Dynamic tasks always get the tmpfs — fresh tasks receive the SSH files
+    // via the gate callback's injection AFTER start; resume/continue get them
+    // here before start.
+    ...(dynamicEnabled ? { tmpfs: { [SANDBOX_RUNTIME_DIR]: "rw,nosuid,nodev,size=4m" } } : {}),
     env: {
       ...llmEnv,
       MODE: "scan",
       TASK_ID: task.id,
       RESUME: resume ? "1" : "0",
       CONTINUE: continueMode ? "1" : "0",
-      ...scanInputEnvFromMeta(task.source_meta, { dynamicEnabled: Boolean(sandbox) }),
-      ...(sandbox ? { VULNFORGE_SANDBOX_CFG: SANDBOX_CFG_CONTAINER_PATH } : {}),
+      ...scanInputEnvFromMeta(task.source_meta, { dynamicEnabled }),
+      ...(dynamicEnabled ? { VULNFORGE_SANDBOX_CFG: SANDBOX_CFG_CONTAINER_PATH } : {}),
       SCAN_TIMEOUT: stringMeta(task.source_meta, "scan_timeout"),
       TIMEOUT_MODE: stringMeta(task.source_meta, "timeout_mode"),
       MAX_ITEMS_PER_RECON: stringMeta(task.source_meta, "max_items_per_recon"),
@@ -166,10 +166,11 @@ export async function spawnScanWorker(
   });
 
   if (sandbox) {
-    // H1 §3: inject the four runtime files AFTER start — the tmpfs only
-    // exists once the container is running (putArchive before start lands in
-    // the image layer and gets mounted over). The agent only touches these
-    // files when it begins dynamic work, long after the ms-scale injection.
+    // Resume/continue (allocation already done): inject AFTER start — the
+    // tmpfs only exists once the container is running (putArchive before
+    // start lands in the image layer and gets mounted over). The agent only
+    // touches these files when it begins dynamic work, long after the
+    // ms-scale injection.
     const files = renderInjectionFiles(task, sandbox.mapping, sandbox.privateKey, {
       sshHostOverride: config.sandboxSshHostOverride ?? null,
       bastionSpec: config.sandboxSshBastion ?? null,
@@ -180,6 +181,8 @@ export async function spawnScanWorker(
     await injectSandboxFiles(container, files);
     logger.info({ taskId: task.id, sandboxId: sandbox.mapping.sandbox_id }, "Sandbox SSH files injected into worker tmpfs");
   } else {
+    // Fresh dynamic: the gate callback injects later. Static: nothing to
+    // inject.
     await container.start();
   }
   // NOTE: spawnScanWorker no longer updates task state. The Scheduler performs

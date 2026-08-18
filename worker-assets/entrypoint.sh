@@ -18,11 +18,8 @@ case "$MODE" in
   report)
     exec /opt/report-mode.sh
     ;;
-  prepare)
-    exec /opt/prepare-mode.sh
-    ;;
   *)
-    echo "Unknown MODE: $MODE (expected scan|chat|report|prepare)" >&2
+    echo "Unknown MODE: $MODE (expected scan|chat|report)" >&2
     exit 1
     ;;
 esac

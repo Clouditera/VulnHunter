@@ -285,6 +285,17 @@ run_supervised "$EFFECTIVE_TIMEOUT" truncate youngflow "${YOUNGFLOW_ARGS[@]}" ||
 if [ "$EXIT" -eq 124 ]; then FINALIZER_TRIGGERED=true; else FINALIZER_TRIGGERED=false; fi
 echo "[scan] Analysis phase exit=$EXIT finalizer_triggered=$FINALIZER_TRIGGERED analysis_budget=${EFFECTIVE_TIMEOUT}s" >&2
 
+# Onboard gate exit codes (submit-prepare-result.sh): 42 = gate rejected
+# (task already failed by the platform), 43 = gate submit hard error. Neither
+# is a crash — surface the code as-is without the deadline finalizer.
+if [ "$EXIT" -eq 42 ] || [ "$EXIT" -eq 43 ]; then
+  echo "[scan] Onboard gate ended the run (exit=$EXIT)" >&2
+  finish_log
+  trap - EXIT TERM INT HUP
+  cleanup_finalize_control 2>/dev/null || true
+  return "$EXIT"
+fi
+
 PHASE_EXIT=0
 handle_analysis_exit "$EXIT" "$EFFECTIVE_TIMEOUT" || PHASE_EXIT=$?
 EXIT=$PHASE_EXIT

@@ -2,11 +2,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import {
-  STATIC_ONLY_SCHED_INSTR,
-  assertDynamicInputPolicy,
-  scanInputEnvFromMeta,
-} from "../../src/features/workers/scan-worker.js";
+import { STATIC_ONLY_SCHED_INSTR, scanInputEnvFromMeta } from "../../src/features/workers/scan-worker.js";
 
 const script = fileURLToPath(new URL("../../../../worker-assets/scan-mode.sh", import.meta.url));
 
@@ -98,15 +94,8 @@ describe("scanInputEnvFromMeta", () => {
   });
 });
 
-describe("dynamic policy invariants", () => {
-  it("rejects EXP without POC and dynamic without sandbox", () => {
-    expect(() => assertDynamicInputPolicy(false, true, "/validated/sandbox.yaml")).toThrow(/requires enable_poc/);
-    expect(() => assertDynamicInputPolicy(true, false)).toThrow(/validated sandbox_cfg/);
-    expect(() => assertDynamicInputPolicy(true, true, "  ")).toThrow(/validated sandbox_cfg/);
-    expect(() => assertDynamicInputPolicy(false, false)).not.toThrow();
-    expect(() => assertDynamicInputPolicy(true, true, "/validated/sandbox.yaml")).not.toThrow();
-  });
-});
+// assertDynamicInputPolicy retired (prepare internalization): dynamic input
+// validation moved to the gate callback endpoint — see prepare-result-route.test.ts.
 
 describe("scan-mode VulnForge 2.0 argv contract", () => {
   it("A01 emits defaults/static gate in deterministic order", () => {

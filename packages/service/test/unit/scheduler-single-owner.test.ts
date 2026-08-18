@@ -40,11 +40,14 @@ vi.mock("../../src/features/workers/scan-worker.js", () => ({
 vi.mock("../../src/features/workers/scheduler-workspace.js", () => ({
   getSchedulerPrepareDir: () => "/tmp/scheduler-single-owner/stage", cleanupSchedulerWorkspace: vi.fn(), publishSchedulerWorkspace: m.publish,
 }));
-vi.mock("../../src/features/workers/prepare-worker.js", () => ({
-  isDynamicEnabled: () => false,
-  runPrepareWorker: m.prepare,
-  stopPrepareWorkerByClaim: vi.fn(async () => undefined),
-}));
+vi.mock("../../src/features/prepare/contract.js", async () => {
+  const actual = await vi.importActual<any>("../../src/features/prepare/contract.js");
+  return { ...actual, isDynamicEnabled: () => false };
+});
+vi.mock("../../src/features/internal/prepare-result-route.js", async () => {
+  const actual = await vi.importActual<any>("../../src/features/internal/prepare-result-route.js");
+  return { ...actual, GATE_WATCHDOG_MS: 60_000 };
+});
 vi.mock("../../src/features/workers/minio-download.js", () => ({ downloadObjectWithRetry: vi.fn() }));
 vi.mock("../../src/features/settings/storage.js", () => ({ getDefaultCredential: vi.fn(async () => ({ proto_type: "x", model_id: "m" })), getCredentialById: vi.fn() }));
 vi.mock("../../src/features/settings/credential-env.js", () => ({ credentialToWorkerEnv: () => ({}), writeWorkerModelsJson: vi.fn(async () => {}) }));
@@ -70,8 +73,11 @@ describe("scheduler overlapping ticks", () => {
     expect(m.claim).toHaveBeenCalledTimes(3);
     expect(m.extract).toHaveBeenCalledTimes(1);
     expect(m.publish).toHaveBeenCalledTimes(1);
-    expect(m.prepare).toHaveBeenCalledTimes(1);
+    // v2: fresh tasks spawn the scan worker immediately; the onboard gate runs
+    // inside it (no prepare worker). mark (CAS) is the callback's job now — the
+    // scheduler must NOT mark fresh claims itself.
+    expect(m.prepare).toHaveBeenCalledTimes(0);
     expect(m.spawn).toHaveBeenCalledTimes(1);
-    expect(m.mark).toHaveBeenCalledTimes(1);
+    expect(m.mark).toHaveBeenCalledTimes(0);
   });
 });

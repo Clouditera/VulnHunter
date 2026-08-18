@@ -1,5 +1,5 @@
 /**
- * SandboxPlane Extension (Prepare)
+ * SandboxPlane Extension (vulnforge onboard gate)
  *
  * Two read-only tools per design v1.0 §5:
  *   list_sandbox_types() — current available sandbox types, minimal shape.
@@ -15,10 +15,10 @@
  * Environment (set by the scan worker container launch):
  *   SERVICE_URL - VulnHunter service base URL (e.g. http://service:28080)
  *   TASK_ID     - this task's id; doubles as the internal proxy bearer token
- *   PREPARE_SANDBOX_TYPES_FILE - optional; if set, the extension writes the
- *     full list_sandbox_types() result here on every call, so the platform's
- *     postflight validator (worker-assets/prepare-result-postflight.py) can
- *     check the model's chosen sandbox_type against the types it actually saw.
+ *   SANDBOX_TYPES_SNAPSHOT_FILE - optional; if set, the extension writes the
+ *     full list_sandbox_types() result here on every call (audit evidence of
+ *     what the agent could legitimately choose from; the callback endpoint
+ *     validates the choice server-side against the live plane).
  */
 
 import { Type } from "@earendil-works/pi-ai";
@@ -36,7 +36,7 @@ interface ProjectedSandboxType {
 export default function (pi: ExtensionAPI) {
   const serviceUrl = process.env.SERVICE_URL;
   const taskId = process.env.TASK_ID;
-  const snapshotFile = process.env.PREPARE_SANDBOX_TYPES_FILE;
+  const snapshotFile = process.env.SANDBOX_TYPES_SNAPSHOT_FILE;
   if (!serviceUrl || !taskId) return;
 
   const base = serviceUrl.replace(/\/+$/, "");
@@ -50,9 +50,9 @@ export default function (pi: ExtensionAPI) {
   }
 
   // Snapshot accumulates every type the agent has actually seen this run
-  // (via either tool), regardless of call order, so platform postflight
-  // membership validation (worker-assets/prepare-result-postflight.py)
-  // reflects everything the agent could have legitimately chosen from.
+  // (via either tool), regardless of call order — audit evidence of what the
+  // agent could legitimately choose from (the service validates the submitted
+  // choice live at gate time).
   const seen = new Map<string, ProjectedSandboxType>();
 
   function recordSnapshot(types: ProjectedSandboxType[]): void {

@@ -41,7 +41,10 @@ describe("VulnForge 2.0 runtime flow compatibility", () => {
       "read", "bash", "write", "edit", "coverage", "workspace_diff", "workspace_snapshot",
     ]);
     expect(byId.get("report")?.tools).toEqual(["read", "bash", "write", "edit", "coverage"]);
-    for (const id of ["onboard", "cognize", "hunt", "verify", "poc-verify", "ev-assess", "exp-build", "cycle_join", "complete", "exit"]) {
+    // onboard owns the gate tools (v2 prepare internalization) — everything
+    // else inherits defaults only.
+    expect(byId.get("onboard")?.tools).toEqual(["list_sandbox_types", "get_sandbox_type"]);
+    for (const id of ["cognize", "hunt", "verify", "poc-verify", "ev-assess", "exp-build", "cycle_join", "complete", "exit"]) {
       expect(byId.get(id)?.tools, `${id} must inherit only defaults`).toBeUndefined();
     }
   });

@@ -11,9 +11,10 @@
  * Both off → pure static scan: no enable-poc/exp/chain or dynamic_enabled
  * fields written.
  *
- * `dynamic_enabled` is the prepare flow's dynamic switch (prepare-worker reads
- * source_meta.dynamic_enabled): when 动态验证/评估 is on, the platform selects
- * a sandbox for the dynamic pipeline, so Prepare must query SandboxPlane.
+ * `dynamic_enabled` is the onboard gate's dynamic switch (the in-worker gate
+ * reads source_meta.dynamic_enabled via the scheduler/env): when 动态验证/评估
+ * is on, the platform selects a sandbox for the dynamic pipeline, so the gate's
+ * sandbox step must query SandboxPlane.
  *
  * NOTE: the engine does not yet consume enable_poc/enable_exp/enable_chain
  * (scanInputEnvFromMeta / VULNFORGE_SCHED_INSTR is force-static). Flipping the

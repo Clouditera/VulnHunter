@@ -237,7 +237,7 @@ describe("audit completion C14-C18 and security", () => {
 
   it("appends then broadcasts the stored event with its real sequence", async () => {
     broadcastSpy.mockClear();
-    const { appendAndBroadcastCompletionEvent } = await import("../../src/features/workers/scheduler.js");
+    const { appendAndBroadcastCompletionEvent } = await import("../../src/features/workers/scheduler-events.js");
     const { clearTaskBuffer, getAllEvents } = await import("../../src/features/events/event-store.js");
     clearTaskBuffer("broadcast-task");
     appendAndBroadcastCompletionEvent("broadcast-task", {

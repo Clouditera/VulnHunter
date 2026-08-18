@@ -116,6 +116,10 @@
       {
         "pattern": "knowledge/build/**",
         "min_count": 0
+      },
+      {
+        "pattern": ".vulnhunter-gate.json",
+        "min_count": 0
       }
     ]
   },

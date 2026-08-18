@@ -28,7 +28,7 @@
 
 综合项目认知、覆盖率、任务池、上轮结果和用户指令选择本轮唯一方向，写入 `decision.yaml` 并准备任务文件；`completion reason` 中超出 `sched_instr` 的缺口留待后续运行。同一方向可派发多个任务，frontmatter 统一为 `round` / `id` / `status: pending`。
 
-- **onboard**：项目画像/初始化产物缺失；启用 POC/EXP 且缺少动态环境记录。创建 `todo/onboard-*.md`。
+- **onboard**：项目画像/初始化产物缺失，或 `$OUTPUT_DIR/.vulnhunter-gate.json` 门禁完成标记缺席（gate 未完成时唯一合法 next=onboard，不得派发其它方向）；启用 POC/EXP 且缺少动态环境记录。创建 `todo/onboard-*.md`。
 - **cognize**：有代码区域尚未被覆盖到时，可以创建一个或多个 `todo/COG-*.md`，由 `cognize` 阅读代码产出审计链路 `ADV`。
 - **research**：检索公开信息发现审计面。审计早期（onboard 完成后、覆盖率低时）优先派发；存在情报类回流线索时也可派发。创建 `todo/RES-*.md`，正文指定检索方向（项目、版本、关注面）。research 与 cognize 产出的 `ADV` 统一由 hunt 消费。
 - **hunt**：存在待执行 ADV。把本轮选中的一个或多个 ADV 从 `leads/` 移入 `todo/`，frontmatter 无需额外处理。
