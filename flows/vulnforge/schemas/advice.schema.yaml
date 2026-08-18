@@ -1,0 +1,22 @@
+# Audit Advice Frontmatter Contract — VulnForge
+# Strict validation applies to frontmatter only (routing fields).
+# Body structure (审计链路 / 锚点 / 认知依据 …) is taught by advice.template.md.
+$schema: http://json-schema.org/draft-07/schema#
+$id: advice.schema.yaml
+title: Audit Advice Frontmatter
+type: object
+required:
+  - round
+  - id
+  - status
+properties:
+  round:
+    type: integer
+    minimum: 0
+  id:
+    type: string
+    pattern: "^ADV-R\\d+-[CS]\\d+-A\\d+$"
+  status:
+    type: string
+    enum: [pending, done, closed]
+additionalProperties: false

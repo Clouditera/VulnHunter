@@ -1,0 +1,28 @@
+# Hypothesis Frontmatter Contract — VulnForge
+# Strict validation applies to frontmatter only (routing fields).
+# Body structure (假设 / 锚点 / 风险类型 / 原因 …) is taught by hypothesis.template.md.
+$schema: http://json-schema.org/draft-07/schema#
+$id: hypothesis.schema.yaml
+title: Hypothesis Frontmatter
+type: object
+required:
+  - round
+  - id
+  - status
+  - hyp_status
+properties:
+  round:
+    type: integer
+    minimum: 0
+  id:
+    type: string
+    pattern: "^HYP-R\\d+(-[A-Z]\\d+)+-H\\d+$"
+  status:
+    type: string
+    enum: [pending, done, closed]
+    description: 任务处理生命周期。
+  hyp_status:
+    type: string
+    enum: [pending, confirmed, refuted]
+    description: 风险假设的研判状态。HYP 生命周期在 verify 结束。
+additionalProperties: false

@@ -1,0 +1,168 @@
+# Bug Report Schema — VulnForge
+# 单条漏洞报告，作为 findings/<BUG-id>/report.yaml。四段式：metadata（索引 + 评分）/ description（业务背景 + 漏洞情况 + 攻击）/ code（数据流 + 修复补丁）/ references。
+$schema: http://json-schema.org/draft-07/schema#
+$id: bug-report.schema.yaml
+title: Bug Report
+
+type: object
+required:
+  - metadata
+  - description
+  - code
+
+properties:
+  metadata:
+    type: object
+    required:
+      - title
+      - vuln_type
+      - finding_class
+      - cvss_vector
+      - cvss_score
+      - ev_vector
+      - ev_score
+      - ev_priority
+      - poc_status
+      - exp_status
+      - anchors
+    properties:
+      title:
+        type: string
+        description: 三段式标题——功能组件/模块(带具体位置) + 漏洞类型 + 导致结果
+      vuln_type:
+        type: string
+        description: 漏洞类型简写（见 bug-report skill 枚举表）
+      finding_class:
+        type: string
+        enum:
+          - vulnerability
+          - risk
+        description: 结论分类。vulnerability=漏洞；risk=前提苛刻、影响有限或仅构成弱点的风险。
+      cwe:
+        type: string
+        description: CWE 编号（如 CWE-190）
+      cvss_vector:
+        type: string
+        description: CVSS v3.1 向量字符串
+      cvss_score:
+        type: number
+        minimum: 0.0
+        maximum: 10.0
+        description: CVSS v3.1 基础分数
+      ev_vector:
+        type: string
+        description: 利用价值向量（如 EV:1.0/R:N/E:D/C:D/I:X）
+      ev_score:
+        type: number
+        minimum: 0
+        maximum: 10
+        description: 利用价值评分
+      ev_priority:
+        type: string
+        enum: [P0, P1, P2, P3]
+        description: 利用价值优先级（由 ev_score 映射，供评审速择）
+      ev_rationale:
+        type: string
+        description: EV 各维度判断依据（逐维度说明）
+      poc_status:
+        type: string
+        enum:
+          - pending
+          - reproduced
+          - fail-reproduced
+          - blocked
+          - not-needed
+        description: 动态复现状态。pending=待复现；reproduced=已复现；fail-reproduced=已具备条件但复现失败（终态）；blocked=执行环境或外部条件不足，暂无法复现；not-needed=风险类 finding 不做动态复现。
+      exp_status:
+        type: string
+        enum:
+          - pending
+          - confirmed
+          - downgraded
+          - failed
+          - blocked
+          - not-needed
+        description: EXP/真实影响评估状态。pending=待评估；confirmed=真实业务场景下危害成立；downgraded=PoC 成立但真实影响需降级；failed=真实场景下攻击不成立；blocked=EXP 条件无法模拟；not-needed=PoC 已等价真实影响。**契约（2026-08-06）：漏洞类 finding 创建时必须初始化本字段（pending 或 not-needed 二选一），不得缺省；风险类必须 not-needed。**
+      affected_versions:
+        type: string
+        description: 已确认或合理推断的受影响版本范围；未知时写 unknown
+      anchors:
+        type: array
+        minItems: 1
+        description: 漏洞相关代码位置列表
+        items:
+          type: object
+          required:
+            - file_path
+            - line
+          properties:
+            file_path:
+              type: string
+              description: 文件路径（相对项目根）
+            line:
+              type: integer
+              minimum: 1
+            function:
+              type: string
+              description: 函数名（如适用）
+          additionalProperties: false
+    additionalProperties: false
+
+  description:
+    type: object
+    required:
+      - background
+      - detailed_description
+    properties:
+      background:
+        type: string
+        description: 先快速介绍目标项目，再略详介绍出问题的功能模块及其实际业务功能，帮助评审者理解上下文
+      detailed_description:
+        type: string
+        description: 漏洞的详细流程与成因
+      attack_payload_description:
+        type: string
+        description: 触发漏洞的 payload 大致情况
+      attack_description:
+        type: string
+        description: 攻击者在实际业务场景下如何触发漏洞
+    additionalProperties: false
+
+  code:
+    type: object
+    required:
+      - dataflow
+    properties:
+      dataflow:
+        type: array
+        minItems: 1
+        description: 一步步描述漏洞触发的代码流程
+        items:
+          type: object
+          required:
+            - step
+            - location
+            - description
+          properties:
+            step:
+              type: integer
+              minimum: 1
+            location:
+              type: string
+              description: file:line（关键代码锚点）
+            description:
+              type: string
+          additionalProperties: false
+      fix_patch:
+        type: string
+        pattern: "^(?:$|diff --git a/)"
+        description: 修复点明确时填写以 diff --git a/ 开头的最小 unified diff；仅无法安全给出可落地补丁时为空
+    additionalProperties: false
+
+  references:
+    type: array
+    description: 参考资料链接（CWE / OWASP / 相关文档）
+    items:
+      type: string
+
+additionalProperties: false

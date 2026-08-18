@@ -1,0 +1,14 @@
+# Audit Completion Schema — report gate
+$schema: http://json-schema.org/draft-07/schema#
+$id: audit-completion.schema.yaml
+title: Audit Completion
+type: object
+required: [status, reason]
+properties:
+  status:
+    type: string
+    enum: [complete, incomplete]
+  reason:
+    type: string
+    minLength: 1
+additionalProperties: false

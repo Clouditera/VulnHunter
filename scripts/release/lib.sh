@@ -55,22 +55,23 @@ release_write_version_json() {
 JSON
 }
 
-# ── VulnForge submodule pin ──────────────────────────────────────────
+# ── VulnForge vendored flow + pi-web-access submodule pin ────────────
 release_check_vulnforge() {
   local core
   core="$(release_core_root)"
   git -C "$core" submodule update --init --recursive
-  local actual
-  actual="$(git -C "$core/flows/vulnforge" rev-parse HEAD)"
-  if [[ "$actual" != "$VULNFORGE_COMMIT" ]]; then
-    release_die "VulnForge baseline mismatch: expected $VULNFORGE_COMMIT, got $actual"
+  # flows/vulnforge is vendored in-repo since 2.1-inrepo; it must NOT be a
+  # submodule anymore.
+  if git -C "$core" submodule status | grep -qE '[-+U]?[0-9a-f]{40} flows/vulnforge$'; then
+    release_die "flows/vulnforge is still a submodule; vendoring expected (FLOW_VERSION 2.1-inrepo)"
   fi
   [[ -f "$core/flows/vulnforge/flow.audit.yaml" ]] \
-    || release_die "missing flows/vulnforge/flow.audit.yaml; run git submodule update --init --recursive"
+    || release_die "missing flows/vulnforge/flow.audit.yaml; vendored tree incomplete"
   [[ -f "$core/flows/vulnforge/extensions/output-contract/package.json" ]] \
     || release_die "missing flows/vulnforge/extensions/output-contract/package.json"
-  # pi-web-access nested submodule must be materialized (empty submodule dirs
-  # pack silently and the worker image then lacks web search in research/hunt).
+  # pi-web-access stays a real submodule (third-party OSS) and must be
+  # materialized (empty submodule dirs pack silently and the worker image
+  # then lacks web search in research/hunt).
   [[ -f "$core/flows/vulnforge/extensions/pi-web-access/index.ts" ]] \
     || release_die "missing flows/vulnforge/extensions/pi-web-access/index.ts; run git submodule update --init --recursive"
 }
@@ -98,7 +99,7 @@ release_validate_service_web_images() {
 }
 
 # ── Worker image content gates ───────────────────────────────────────
-# pi-web-access is a NESTED submodule of flows/vulnforge — if the build tree
+# pi-web-access is an OSS submodule under vendored flows/vulnforge — if the build tree
 # never ran `git submodule update --init --recursive`, it lands in the image as
 # an empty dir and research/hunt silently lose web search. The Dockerfile
 # build-time probes already fail the build; this re-checks the tagged image.

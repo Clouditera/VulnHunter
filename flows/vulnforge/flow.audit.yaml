@@ -1,0 +1,414 @@
+# VulnForge — Cognition-Driven Decide-Spiral Flow
+# 组织轴: 认知锚点（wiki + coverage）驱动的 decide 螺旋
+# decide 每轮写 decision.yaml.next 作为路由信号，并维护 todo/leads/done 三池
+# 协议说明: flow.md
+
+version: "1.0"
+
+timeout: 216000
+recursion_limit: 20000
+
+artifacts:
+  agents: agents/
+  skills: skills/
+  tasks: tasks/
+  templates: templates
+  schemas: schemas
+  extensions: extensions/
+  env_file: .env
+  models_json: models.json
+
+defaults:
+  model: ${env.V_DEFAULT_MODEL}
+  max_parallel: 4
+  agent: agent.md
+  tools:
+    - read
+    - bash
+    - write
+    - edit
+
+inputs:
+  work_dir:
+    description: "目标项目路径"
+    type: path
+  output_dir:
+    description: "产物输出目录"
+    type: path
+  audit_scope:
+    description: "审计覆盖率/范围要求，如：全面审计、核心模块审计、只看认证与权限模块。"
+    type: str
+    default: "全面审计整个项目，确保所有外部可达的代码，都经过了安全审计。"
+  vuln_focus:
+    description: "漏洞筛选要求，如：仅关注高危和严重漏洞、关注任何代码问题、重点关注 RCE/权限绕过。"
+    type: str
+    default: "关注可造成实际安全影响的漏洞。"
+  sched_instr:
+    description: "任务调度要求，如：本次只执行 poc-verify、优先推进 EXP、不要进入 report。"
+    type: str
+    default: "无额外要求。"
+  user_instr:
+    description: "用户补充说明。默认空；仅作为 audit_scope / vuln_focus / sched_instr 之外的额外约束。"
+    type: str
+    default: "无额外补充说明。"
+  output_language:
+    description: "产物输出语言（BCP-47 语言标签），如 zh-CN、en。所有阶段产物的叙述性文本按此语言输出。"
+    type: str
+    default: "zh-CN"
+  enable_poc:
+    description: "启用动态验证（POC）。非空/true 时 decide 可为静态确认漏洞派发 poc-verify。"
+    type: str
+    default: "false"
+  enable_exp:
+    description: "启用单漏洞 EXP 影响评估（ev-assess）。非空/true 时 decide 可为已 POC 复现的 vulnerability finding 派发 ev-assess。"
+    type: str
+    default: "false"
+  enable_chain:
+    description: "启用组合 EXP 构造（exp-build）。非空/true 时 decide 可依据组合信号派发 exp-build；需在 enable_exp 已启用且有已完成 ev-assess 的原语基础时使用。"
+    type: str
+    default: "false"
+  sandbox_cfg:
+    description: "POC/EXP 沙箱配置说明文件路径；为空时动态阶段在本地执行。"
+    type: path
+    default: ""
+
+stages:
+  - id: decide
+    name: 调度决策
+    skills:
+      - threat-modeling
+      - wiki-maintainer
+    extensions:
+      - code-coverage-viewer
+      - output-contract
+      - workspace-diff
+    tools:
+      - read
+      - bash
+      - write
+      - edit
+      - coverage
+      - workspace_diff
+      - workspace_snapshot
+    task: decide.md
+    prompt: |
+      - 目标项目: ${work_dir}
+      - 输出目录: ${output_dir}（工作区结构见系统提示；coverage 用 coverage 工具查看）
+      - 是否启用 POC: ${flow_inputs.enable_poc}
+      - 是否启用 EXP: ${flow_inputs.enable_exp}
+      - 是否启用组合链: ${flow_inputs.enable_chain}
+      - 沙箱配置: ${flow_inputs.sandbox_cfg}
+      - 审计范围要求: ${flow_inputs.audit_scope}
+      - 漏洞关注要求: ${flow_inputs.vuln_focus}
+      - 任务调度要求: ${flow_inputs.sched_instr}
+      - 用户补充说明: ${flow_inputs.user_instr}
+      - templates: ${templates}/cog.template.md, ${templates}/advice.template.md, ${templates}/hypothesis.template.md, ${templates}/poc.template.md, ${templates}/exp.template.md, ${templates}/chain.template.md, ${templates}/lead.template.md, ${templates}/worklog.template.md
+      - schema: ${schemas}/decision.schema.yaml, ${schemas}/todo.schema.yaml, ${schemas}/cog.schema.yaml, ${schemas}/advice.schema.yaml, ${schemas}/hypothesis.schema.yaml, ${schemas}/poc.schema.yaml, ${schemas}/exp.schema.yaml, ${schemas}/chain-task.schema.yaml, ${schemas}/lead.schema.yaml
+      - 输出语言: ${flow_inputs.output_language}
+    timeout: 1800
+    state:
+      next:
+        file: decision.yaml
+        field: next
+    routes:
+      - to: onboard
+        when: decide.next == onboard
+      - to: cognize
+        when: decide.next == cognize
+      - to: research
+        when: decide.next == research
+      - to: hunt
+        when: decide.next == hunt
+      - to: verify
+        when: decide.next == verify
+      - to: poc-verify
+        when: decide.next == poc-verify
+      - to: ev-assess
+        when: decide.next == ev-assess
+      - to: exp-build
+        when: decide.next == exp-build
+      - to: report
+        when: decide.next == report
+      - to: exit
+        when: decide.next == exit
+
+  - id: onboard
+    name: 初始化
+    type: map
+    over: "todo/onboard-*.md"
+    filter:
+      field: status
+      match: pending
+      include_missing: true
+    skills:
+      - project-profiler
+      - threat-modeling
+      - wiki-maintainer
+    extensions:
+      - output-contract
+    task: onboard.md
+    prompt: |
+      - 目标项目: ${work_dir}
+      - 输出目录: ${output_dir}
+      - 当前 onboard 任务: ${iterate_file}
+      - 是否启用 POC: ${flow_inputs.enable_poc}
+      - 是否启用 EXP: ${flow_inputs.enable_exp}
+      - 是否启用组合链: ${flow_inputs.enable_chain}
+      - 沙箱配置: ${flow_inputs.sandbox_cfg}
+      - templates: ${templates}/build.template.md
+      - schema: ${schemas}/profiler.schema.yaml
+      - 输出语言: ${flow_inputs.output_language}
+    timeout: 1800
+    error_strategy: continue
+    routes:
+      - to: cycle_join
+
+  - id: cognize
+    name: 认知深化
+    type: map
+    over: "todo/COG-*.md"
+    filter:
+      field: status
+      match: pending
+      include_missing: true
+    skills:
+      - cognition-building
+      - wiki-maintainer
+    extensions:
+      - output-contract
+    task: cognize.md
+    prompt: |
+      - 目标项目: ${work_dir}
+      - 输出目录: ${output_dir}
+      - 当前 COG 任务: ${iterate_file}
+      - 审计范围要求: ${flow_inputs.audit_scope}
+      - 漏洞关注要求: ${flow_inputs.vuln_focus}
+      - templates: ${templates}/advice.template.md, ${templates}/exp.template.md, ${templates}/lead.template.md
+      - schema: ${schemas}/cog.schema.yaml, ${schemas}/advice.schema.yaml, ${schemas}/exp.schema.yaml
+      - 输出语言: ${flow_inputs.output_language}
+    timeout: 1800
+    error_strategy: continue
+    routes:
+      - to: cycle_join
+
+  - id: research
+    name: 信息搜集
+    type: map
+    over: "todo/RES-*.md"
+    filter:
+      field: status
+      match: pending
+      include_missing: true
+    extensions:
+      - pi-web-access
+      - output-contract
+    task: research.md
+    prompt: |
+      - 目标项目: ${work_dir}
+      - 输出目录: ${output_dir}
+      - 当前 RES 任务: ${iterate_file}
+      - 审计范围要求: ${flow_inputs.audit_scope}
+      - 漏洞关注要求: ${flow_inputs.vuln_focus}
+      - templates: ${templates}/advice.template.md, ${templates}/lead.template.md
+      - schema: ${schemas}/advice.schema.yaml
+      - 输出语言: ${flow_inputs.output_language}
+    timeout: 1800
+    error_strategy: continue
+    routes:
+      - to: cycle_join
+
+  - id: hunt
+    name: 漏洞狩猎
+    type: map
+    over: "todo/ADV-*.md"
+    filter:
+      field: status
+      match: pending
+      include_missing: true
+    skills:
+      - hypothesis-writer
+      - wiki-maintainer
+    extensions:
+      - code-coverage-tracker
+      - pi-web-access
+      - output-contract
+    task: hunt.md
+    prompt: |
+      - 目标项目: ${work_dir}
+      - 输出目录: ${output_dir}
+      - 当前 ADV: ${iterate_file}
+      - 漏洞关注要求: ${flow_inputs.vuln_focus}
+      - templates: ${templates}/hypothesis.template.md, ${templates}/lead.template.md
+      - schema: ${schemas}/hypothesis.schema.yaml, ${schemas}/advice.schema.yaml
+      - 输出语言: ${flow_inputs.output_language}
+    timeout: 1800
+    error_strategy: continue
+    routes:
+      - to: cycle_join
+
+  - id: verify
+    name: 双向论证
+    type: map
+    over: "todo/HYP-*.md"
+    filter:
+      field: status
+      match: pending
+      include_missing: true
+    skills:
+      - security-affirmer
+      - security-challenger
+      - bug-report
+      - wiki-maintainer
+    extensions:
+      - output-contract
+    task: verify-audit.md
+    prompt: |
+      - 目标项目: ${work_dir}
+      - 输出目录: ${output_dir}
+      - 当前 hypothesis: ${iterate_file}
+      - 漏洞关注要求: ${flow_inputs.vuln_focus}
+      - templates: ${templates}/lead.template.md
+      - schema: ${schemas}/hypothesis.schema.yaml, ${schemas}/bug-report.schema.yaml
+      - 输出语言: ${flow_inputs.output_language}
+      - 论证方式: 静态代码分析，通过阅读源码和检索查找防护机制，不编写或运行测试程序。
+    timeout: 1800
+    error_strategy: continue
+    routes:
+      - to: cycle_join
+
+  - id: poc-verify
+    name: 动态复现
+    type: map
+    over: "todo/POC-*.md"
+    filter:
+      field: status
+      match: pending
+      include_missing: true
+    concurrency: 3
+    model: ${env.V_STRONG_MODEL}
+    skills:
+      - bug-report
+    extensions:
+      - output-contract
+    task: poc-verify.md
+    prompt: |
+      - 目标项目: ${work_dir}
+      - 输出目录: ${output_dir}
+      - 当前 POC 任务: ${iterate_file}
+      - 漏洞关注要求: ${flow_inputs.vuln_focus}
+      - 沙箱配置: ${flow_inputs.sandbox_cfg}
+      - templates: ${templates}/lead.template.md, ${templates}/build.template.md
+      - schema: ${schemas}/poc.schema.yaml, ${schemas}/bug-report.schema.yaml
+      - 输出语言: ${flow_inputs.output_language}
+    timeout: 3600
+    error_strategy: continue
+    routes:
+      - to: cycle_join
+
+  - id: ev-assess
+    name: EXP 影响评估
+    type: map
+    over: "todo/EXP-*.md"
+    filter:
+      field: status
+      match: pending
+      include_missing: true
+    concurrency: 3
+    model: ${env.V_STRONG_MODEL}
+    skills:
+      - bug-report
+    extensions:
+      - output-contract
+    task: ev-assess.md
+    prompt: |
+      - 目标项目: ${work_dir}
+      - 输出目录: ${output_dir}
+      - 当前 EXP 任务: ${iterate_file}
+      - 漏洞关注要求: ${flow_inputs.vuln_focus}
+      - 沙箱配置: ${flow_inputs.sandbox_cfg}
+      - templates: ${templates}/build.template.md
+      - schema: ${schemas}/bug-report.schema.yaml
+      - 输出语言: ${flow_inputs.output_language}
+    timeout: 3600
+    error_strategy: continue
+    routes:
+      - to: cycle_join
+
+  - id: exp-build
+    name: 组合 EXP 构造
+    type: map
+    over: "todo/CHAIN-*.md"
+    filter:
+      field: status
+      match: pending
+      include_missing: true
+    concurrency: 3
+    model: ${env.V_STRONG_MODEL}
+    skills:
+      - bug-report
+    extensions:
+      - output-contract
+    task: exp-build.md
+    prompt: |
+      - 目标项目: ${work_dir}
+      - 输出目录: ${output_dir}
+      - 当前组合 EXP 任务: ${iterate_file}
+      - 漏洞关注要求: ${flow_inputs.vuln_focus}
+      - 沙箱配置: ${flow_inputs.sandbox_cfg}
+      - templates: ${templates}/build.template.md
+      - schema: ${schemas}/chain-task.schema.yaml, ${schemas}/chain-report.schema.yaml
+      - 输出语言: ${flow_inputs.output_language}
+    timeout: 3600
+    error_strategy: continue
+    routes:
+      - to: cycle_join
+
+  - id: cycle_join
+    type: join
+    routes:
+      - to: decide
+        max_loops: 400
+      - to: report
+
+  - id: report
+    name: 结果汇总
+    skills:
+      - report-generator
+    extensions:
+      - code-coverage-viewer
+      - output-contract
+    tools:
+      - read
+      - bash
+      - write
+      - edit
+      - coverage
+    task: report-audit.md
+    prompt: |
+      - 目标项目: ${work_dir}
+      - 输出目录: ${output_dir}
+      - schema: ${schemas}/audit-completion.schema.yaml, ${schemas}/audit-report.schema.yaml
+      - 审计范围要求: ${flow_inputs.audit_scope}
+      - 漏洞关注要求: ${flow_inputs.vuln_focus}
+      - 调度要求: ${flow_inputs.sched_instr}
+      - 用户补充说明: ${flow_inputs.user_instr}
+      - 输出语言: ${flow_inputs.output_language}
+    timeout: 1200
+    state:
+      status:
+        file: report/completion.yaml
+        field: status
+    routes:
+      - to: decide
+        when: report.status == incomplete
+        max_loops: 400
+      - to: complete
+        when: report.status == complete
+
+  - id: complete
+    name: 完成
+    type: join
+
+  - id: exit
+    name: 退出
+    type: join

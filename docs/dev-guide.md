@@ -87,9 +87,8 @@ import { ERROR_CATALOG } from "@vulnhunter/shared";
 ## submodules
 
 - `submodules/youngflow` — Youngflow CLI (github.com/Clouditera/Youngflow)
-- The `vulnhunter-flow` directory lives at `~/dev/llm/youngflow/flows/vulnhunter/` locally
-  - For the worker image build, copy it to `worker-assets/` or reference via build script
-  - `scripts/build-worker-bin.sh` handles the copy
+- `flows/vulnforge/extensions/pi-web-access` — OSS web-access extension (github.com/nicobailon/pi-web-access)
+- `flows/vulnforge` 本体已拍平进本仓维护（vendoring，见 `flows/vulnforge/FLOW_VERSION`）；新克隆后仍需 `git submodule update --init --recursive` 拉齐 youngflow 与 pi-web-access 两个 submodule
 
 ---
 

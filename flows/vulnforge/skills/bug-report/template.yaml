@@ -1,0 +1,33 @@
+metadata:
+  title: ""              # 三段式：功能组件/模块(带位置) + 漏洞类型 + 导致结果
+  vuln_type: other
+  finding_class: vulnerability # vulnerability=正式漏洞 | risk=前提苛刻/影响有限/弱点
+  cwe: ""
+  cvss_vector: ""
+  cvss_score: 0
+  ev_vector: ""
+  ev_score: 0
+  ev_priority: P3
+  ev_rationale: ""       # EV 各维度判断依据（逐维度）
+  poc_status: pending    # pending=待复现 | reproduced=已复现 | fail-reproduced=已具备条件但复现失败 | blocked=执行环境或外部条件不足
+  exp_status: pending    # 契约(2026-08-06)：漏洞类必填 pending|not-needed 二选一；风险类必填 not-needed
+  affected_versions: "unknown" # 已确认/推断的受影响版本范围；未知时写 unknown
+  anchors:
+    - file_path: ""
+      line: 1
+      function: ""
+
+description:
+  background: ""             # 先一句话项目，再略详出问题的功能模块及其业务功能
+  detailed_description: ""   # 漏洞详细流程与成因
+  attack_payload_description: ""  # 触发漏洞的 payload 大致情况
+  attack_description: ""          # 攻击者在实际业务场景下如何触发
+
+code:
+  dataflow:
+    - step: 1
+      location: ""    # file:line
+      description: ""
+  fix_patch: ""        # 修复点明确时写 diff --git a/ unified diff；仅无法安全给出补丁时留空
+
+references: []

@@ -7,19 +7,13 @@ cd "$ROOT"
 IMAGE_TAG="${1:-vulnhunter-worker:local}"
 if [[ $# -gt 0 ]]; then shift; fi
 
-VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0-13-geea046e}"
-VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-eea046e7ef7840d272c4d04dc5944ae33ec7d8da}"
+VULNFORGE_VERSION="${VULNFORGE_VERSION:-$(cat flows/vulnforge/FLOW_VERSION)}"
+VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-$(git rev-parse HEAD)}"
 PI_VERSION="${PI_VERSION:-$(sed -n 's/.*PI_VERSION = "\([^"]*\)".*/\1/p' "$ROOT/packages/shared/src/pi.version.ts" | head -1)}"
 
 # A clean checkout does not contain generated YoungFlow/worker-bridge outputs.
 # Build both exclusively from committed sources before Docker reads its context.
-git submodule update --init --recursive submodules/youngflow flows/vulnforge
-
-actual_vulnforge_commit="$(git -C flows/vulnforge rev-parse HEAD)"
-if [[ "$actual_vulnforge_commit" != "$VULNFORGE_COMMIT" ]]; then
-  echo "worker build failed: VulnForge baseline mismatch (expected $VULNFORGE_COMMIT, got $actual_vulnforge_commit)" >&2
-  exit 1
-fi
+git submodule update --init --recursive submodules/youngflow flows/vulnforge/extensions/pi-web-access
 
 (
   cd submodules/youngflow

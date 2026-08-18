@@ -1,0 +1,361 @@
+{
+  "decide": {
+    "strict": true,
+    "rules": [
+      {
+        "pattern": "decision.yaml",
+        "schema": "schemas/decision.schema.yaml",
+        "min_count": 0
+      },
+      {
+        "pattern": "todo/*.md",
+        "min_count": 0,
+        "schema": "schemas/todo.schema.yaml"
+      },
+      {
+        "pattern": "todo/COG-*.md",
+        "min_count": 0,
+        "schema": "schemas/cog.schema.yaml"
+      },
+      {
+        "pattern": "todo/ADV-*.md",
+        "min_count": 0,
+        "schema": "schemas/advice.schema.yaml"
+      },
+      {
+        "pattern": "todo/HYP-*.md",
+        "min_count": 0,
+        "schema": "schemas/hypothesis.schema.yaml"
+      },
+      {
+        "pattern": "todo/POC-*.md",
+        "min_count": 0,
+        "schema": "schemas/poc.schema.yaml"
+      },
+      {
+        "pattern": "todo/EXP-*.md",
+        "min_count": 0,
+        "schema": "schemas/exp.schema.yaml"
+      },
+      {
+        "pattern": "todo/onboard-*.md",
+        "min_count": 0,
+        "schema": "schemas/todo.schema.yaml"
+      },
+      {
+        "pattern": "done/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "leads/LEAD-*.md",
+        "min_count": 0,
+        "schema": "schemas/lead.schema.yaml"
+      },
+      {
+        "pattern": "leads/ADV-*.md",
+        "min_count": 0,
+        "schema": "schemas/advice.schema.yaml"
+      },
+      {
+        "pattern": "leads/HYP-*.md",
+        "min_count": 0,
+        "schema": "schemas/hypothesis.schema.yaml"
+      },
+      {
+        "pattern": "todo/CHAIN-*.md",
+        "min_count": 0,
+        "schema": "schemas/chain-task.schema.yaml"
+      },
+      {
+        "pattern": "knowledge/wiki/threat-model.md",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/wiki/index.md",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/wiki/**/*.md",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/worklog.md",
+        "min_count": 0
+      }
+    ]
+  },
+  "onboard": {
+    "strict": false,
+    "rules": [
+      {
+        "pattern": "todo/onboard-*.md",
+        "min_count": 0,
+        "schema": "schemas/todo.schema.yaml"
+      },
+      {
+        "pattern": "done/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/profiler.yaml",
+        "schema": "schemas/profiler.schema.yaml",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/wiki/index.md",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/wiki/overview.md",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/wiki/threat-model.md",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/build/**",
+        "min_count": 0
+      }
+    ]
+  },
+  "cognize": {
+    "strict": true,
+    "rules": [
+      {
+        "pattern": "todo/COG-*.md",
+        "min_count": 0,
+        "schema": "schemas/cog.schema.yaml"
+      },
+      {
+        "pattern": "done/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/wiki/index.md",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/wiki/**/*.md",
+        "min_count": 0
+      },
+      {
+        "pattern": "leads/ADV-*.md",
+        "min_count": 0,
+        "schema": "schemas/advice.schema.yaml"
+      },
+      {
+        "pattern": "leads/LEAD-*.md",
+        "min_count": 0,
+        "schema": "schemas/lead.schema.yaml"
+      }
+    ]
+  },
+  "hunt": {
+    "strict": true,
+    "rules": [
+      {
+        "pattern": "todo/ADV-*.md",
+        "min_count": 0,
+        "schema": "schemas/advice.schema.yaml"
+      },
+      {
+        "pattern": "done/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "leads/HYP-*.md",
+        "min_count": 0,
+        "schema": "schemas/hypothesis.schema.yaml"
+      },
+      {
+        "pattern": "knowledge/wiki/index.md",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/wiki/**/*.md",
+        "min_count": 0
+      },
+      {
+        "pattern": "leads/LEAD-*.md",
+        "min_count": 0,
+        "schema": "schemas/lead.schema.yaml"
+      }
+    ]
+  },
+  "verify": {
+    "strict": true,
+    "rules": [
+      {
+        "pattern": "todo/HYP-*.md",
+        "min_count": 0,
+        "schema": "schemas/hypothesis.schema.yaml"
+      },
+      {
+        "pattern": "done/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "findings/BUG-*/report.yaml",
+        "schema": "schemas/bug-report.schema.yaml",
+        "min_count": 0
+      },
+      {
+        "pattern": "leads/LEAD-*.md",
+        "min_count": 0,
+        "schema": "schemas/lead.schema.yaml"
+      },
+      {
+        "pattern": "knowledge/wiki/**/*.md",
+        "min_count": 0
+      }
+    ]
+  },
+  "poc-verify": {
+    "strict": false,
+    "rules": [
+      {
+        "pattern": "todo/POC-*.md",
+        "min_count": 0,
+        "schema": "schemas/poc.schema.yaml"
+      },
+      {
+        "pattern": "done/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "findings/BUG-*/report.yaml",
+        "schema": "schemas/bug-report.schema.yaml",
+        "min_count": 0
+      },
+      {
+        "pattern": "findings/BUG-*/poc/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/build/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "leads/LEAD-*.md",
+        "schema": "schemas/lead.schema.yaml",
+        "min_count": 0
+      }
+    ]
+  },
+  "report": {
+    "strict": true,
+    "rules": [
+      {
+        "pattern": "report/completion.yaml",
+        "schema": "schemas/audit-completion.schema.yaml"
+      },
+      {
+        "pattern": "report/audit-report.yaml",
+        "schema": "schemas/audit-report.schema.yaml"
+      },
+      {
+        "pattern": "report/summary.md"
+      }
+    ]
+  },
+  "exp-build": {
+    "strict": false,
+    "rules": [
+      {
+        "pattern": "todo/CHAIN-*.md",
+        "min_count": 0,
+        "schema": "schemas/chain-task.schema.yaml"
+      },
+      {
+        "pattern": "done/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "exploits/EXP-*/report.yaml",
+        "schema": "schemas/chain-report.schema.yaml",
+        "min_count": 0
+      },
+      {
+        "pattern": "exploits/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/exploits/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/build/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "leads/LEAD-*.md",
+        "schema": "schemas/lead.schema.yaml",
+        "min_count": 0
+      }
+    ]
+  },
+  "ev-assess": {
+    "strict": false,
+    "rules": [
+      {
+        "pattern": "todo/EXP-*.md",
+        "min_count": 0,
+        "schema": "schemas/exp.schema.yaml"
+      },
+      {
+        "pattern": "done/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "findings/BUG-*/report.yaml",
+        "schema": "schemas/bug-report.schema.yaml",
+        "min_count": 0
+      },
+      {
+        "pattern": "findings/BUG-*/exp/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/build/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "leads/LEAD-*.md",
+        "schema": "schemas/lead.schema.yaml",
+        "min_count": 0
+      }
+    ]
+  },
+  "research": {
+    "strict": true,
+    "rules": [
+      {
+        "pattern": "todo/RES-*.md",
+        "min_count": 0
+      },
+      {
+        "pattern": "done/**",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/research/index.md",
+        "min_count": 0
+      },
+      {
+        "pattern": "knowledge/research/**/*.md",
+        "min_count": 0
+      },
+      {
+        "pattern": "leads/ADV-*.md",
+        "min_count": 0,
+        "schema": "schemas/advice.schema.yaml"
+      },
+      {
+        "pattern": "leads/LEAD-*.md",
+        "min_count": 0,
+        "schema": "schemas/lead.schema.yaml"
+      }
+    ]
+  }
+}

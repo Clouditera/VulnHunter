@@ -1,0 +1,8 @@
+{
+  "name": "output-contract",
+  "private": true,
+  "dependencies": {
+    "yaml": "^2.7.0",
+    "ajv": "^8.17.0"
+  }
+}

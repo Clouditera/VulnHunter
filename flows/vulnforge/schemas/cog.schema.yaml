@@ -1,0 +1,22 @@
+# Cognition Task Frontmatter Contract — VulnForge
+# Strict validation applies to frontmatter only (routing fields).
+# Body structure (认知切面 / 认知重点 / 锚点 …) is taught by cog.template.md.
+$schema: http://json-schema.org/draft-07/schema#
+$id: cog.schema.yaml
+title: Cognition Task Frontmatter
+type: object
+required:
+  - round
+  - id
+  - status
+properties:
+  round:
+    type: integer
+    minimum: 0
+  id:
+    type: string
+    pattern: "^COG-R\\d+-C\\d+$"
+  status:
+    type: string
+    enum: [pending, done, closed]
+additionalProperties: false

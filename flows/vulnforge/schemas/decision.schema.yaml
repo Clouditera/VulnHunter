@@ -1,0 +1,21 @@
+# Decision Schema — VulnForge decide node
+# decision.yaml 是路由信号源，next 驱动 YoungFlow 路由到执行节点；exit 表示直接结束。
+$schema: http://json-schema.org/draft-07/schema#
+$id: decision.schema.yaml
+title: Decide Routing Decision
+type: object
+required:
+  - next
+  - round
+properties:
+  next:
+    type: string
+    enum: [onboard, cognize, hunt, verify, poc-verify, ev-assess, exp-build, report, exit]
+    description: 本轮 decide 选择的推进或退出策略。
+  reason:
+    type: string
+    description: 选择该策略的简短理由。
+  round:
+    type: integer
+    minimum: 0
+additionalProperties: true

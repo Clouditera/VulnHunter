@@ -55,8 +55,8 @@ POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:16-alpine}"
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 YOUNGFLOW_VERSION="${YOUNGFLOW_VERSION:-0.3.8}"
-VULNFORGE_VERSION="${VULNFORGE_VERSION:-2.0-13-geea046e}"
-VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-eea046e7ef7840d272c4d04dc5944ae33ec7d8da}"
+VULNFORGE_VERSION="${VULNFORGE_VERSION:-$(cat flows/vulnforge/FLOW_VERSION)}"
+VULNFORGE_COMMIT="${VULNFORGE_COMMIT:-$(git rev-parse HEAD)}"
 PI_VERSION="${PI_VERSION:-$(sed -n 's/.*PI_VERSION = "\([^"]*\)".*/\1/p' packages/shared/src/pi.version.ts | head -1)}"
 
 release_require_cmd docker

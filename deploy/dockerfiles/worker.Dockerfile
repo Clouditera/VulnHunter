@@ -35,10 +35,10 @@ COPY submodules/youngflow/release/youngflow-linux-x64 /usr/local/bin/youngflow
 RUN chmod +x /usr/local/bin/youngflow \
     && youngflow --version
 
-# VulnForge 2.0 scan flow assets (separate from youngflow submodule).
-# Keep these values in the image so support/QA can prove the exact flow baseline.
-ARG VULNFORGE_VERSION=2.0-12-g72c4998
-ARG VULNFORGE_COMMIT=72c499876116496710dacc7b20563c6caf628d59
+# VulnForge scan flow assets (vendored in-repo since 2.1-inrepo; only
+# extensions/pi-web-access remains a submodule). Image labels prove the baseline.
+ARG VULNFORGE_VERSION=2.1-inrepo
+ARG VULNFORGE_COMMIT=0000000000000000000000000000000000000000
 LABEL org.opencontainers.image.vulnforge.version=$VULNFORGE_VERSION \
       org.opencontainers.image.vulnforge.revision=$VULNFORGE_COMMIT
 COPY flows/vulnforge /opt/vulnhunter/flows/vulnforge
@@ -59,7 +59,7 @@ RUN cd /opt/vulnhunter/flows/vulnforge/extensions/workspace-diff \
     && npm install --omit=dev --no-audit --no-fund \
       @earendil-works/pi-coding-agent@$PI_VERSION \
       @earendil-works/pi-ai@$PI_VERSION
-# pi-web-access (nested submodule, pinned a1135b8 in VulnForge-Flow): web
+# pi-web-access (OSS submodule pinned a1135b8): web
 # search/extract for research+hunt stages. 7 runtime deps + pi peerDeps
 # (mirrors output-contract/code-coverage-viewer install shape).
 RUN cd /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access \

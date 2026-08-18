@@ -1,0 +1,27 @@
+# CHAIN Task Frontmatter Contract — VulnForge
+# decide 为 exp-build 创建的组合 EXP 任务项：正文给出组合方向与信号；members 可选，由 exp-build 自主探索。
+$schema: http://json-schema.org/draft-07/schema#
+$id: chain-task.schema.yaml
+title: CHAIN Task Frontmatter
+type: object
+required:
+  - round
+  - id
+  - status
+properties:
+  round:
+    type: integer
+    minimum: 0
+  id:
+    type: string
+    pattern: "^CHAIN-R\\d+-X\\d+$"
+  status:
+    type: string
+    enum: [pending, done, closed]
+  members:
+    type: array
+    items:
+      type: string
+      pattern: "^findings/BUG-.+/report\\.yaml$"
+    description: 可选，建议参与组合的 finding report.yaml 路径；省略时由 exp-build 依据任务正文自主选择。
+additionalProperties: false

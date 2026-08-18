@@ -1,0 +1,105 @@
+# Audit Report Schema — VulnForge
+$schema: http://json-schema.org/draft-07/schema#
+$id: audit-report.schema.yaml
+title: Audit Report
+type: object
+required:
+  - report_version
+  - target
+  - summary
+  - findings
+properties:
+  report_version:
+    type: string
+  target:
+    type: object
+    required: [project_name, project_root]
+    properties:
+      project_name:
+        type: string
+      project_root:
+        type: string
+      language:
+        type: string
+      framework:
+        type: string
+    additionalProperties: false
+  summary:
+    type: object
+    required: [total_hypotheses, done_hypotheses, pending_hypotheses, confirmed_findings, refuted_hypotheses]
+    properties:
+      total_hypotheses:
+        type: integer
+        minimum: 0
+      done_hypotheses:
+        type: integer
+        minimum: 0
+      pending_hypotheses:
+        type: integer
+        minimum: 0
+      confirmed_findings:
+        type: integer
+        minimum: 0
+      risk_findings:
+        type: integer
+        minimum: 0
+      refuted_hypotheses:
+        type: integer
+        minimum: 0
+      overall_risk:
+        type: string
+        enum: [critical, high, medium, low, info]
+    additionalProperties: false
+  knowledge_summary:
+    type: string
+  findings:
+    type: array
+    items:
+      type: object
+      required: [id, title, severity, vulnerability_type, location]
+      properties:
+        id:
+          type: string
+          pattern: "^BUG-R\\d+(-[A-Z]\\d+)+-H\\d+$"
+        hypothesis_id:
+          type: string
+          pattern: "^HYP-R\\d+(-[A-Z]\\d+)+-H\\d+$"
+        title:
+          type: string
+        severity:
+          type: string
+          enum: [critical, high, medium, low, info]
+        vulnerability_type:
+          type: string
+        location:
+          type: string
+        remediation:
+          type: string
+      additionalProperties: false
+  risks:
+    type: array
+    items:
+      type: object
+      required: [id, title, location]
+      properties:
+        id:
+          type: string
+          pattern: "^BUG-R\\d+(-[A-Z]\\d+)+-H\\d+$"
+        hypothesis_id:
+          type: string
+          pattern: "^HYP-R\\d+(-[A-Z]\\d+)+-H\\d+$"
+        title:
+          type: string
+        location:
+          type: string
+        note:
+          type: string
+      additionalProperties: false
+  limitations:
+    type: array
+    items:
+      type: string
+    default: []
+  notes:
+    type: string
+additionalProperties: false

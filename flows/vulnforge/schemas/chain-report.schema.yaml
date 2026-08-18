@@ -1,0 +1,76 @@
+# Chain Report Contract — VulnForge
+# exp-build 组合 EXP 的产物报告：exploits/EXP-<id>/report.yaml。
+# 不设 chain_status：组合探索的成功与失败结论写入 knowledge/exploits/，报告本身记录组合内容与证据。
+$schema: http://json-schema.org/draft-07/schema#
+$id: chain-report.schema.yaml
+title: Chain Report
+type: object
+required:
+  - metadata
+  - description
+  - chain
+properties:
+  metadata:
+    type: object
+    required:
+      - title
+      - members
+    properties:
+      title:
+        type: string
+        description: 组合链标题——参与组件 + 组合后达到的最大影响。
+      members:
+        type: array
+        minItems: 2
+        items:
+          type: string
+          pattern: "^BUG-.+$"
+        description: 参与组合的 finding id 列表。
+      cwe:
+        type: string
+      cvss_vector:
+        type: string
+      cvss_score:
+        type: number
+      ev_vector:
+        type: string
+      ev_score:
+        type: number
+      ev_priority:
+        type: string
+        enum: [P1, P2, P3]
+    additionalProperties: true
+  description:
+    type: object
+    required:
+      - combined_impact
+    properties:
+      background:
+        type: string
+        description: 组合动机与各成员在链中的角色概述。
+      combined_impact:
+        type: string
+        description: 组合后达到的最大影响，以及与单成员影响的对比。
+    additionalProperties: true
+  chain:
+    type: array
+    minItems: 2
+    items:
+      type: object
+      required:
+        - step
+        - finding
+        - role
+      properties:
+        step:
+          type: integer
+        finding:
+          type: string
+          description: 该环节使用的 finding id。
+        role:
+          type: string
+          description: 该成员在链中承担的角色（如破 ASLR、越界写、权限提升）。
+        evidence:
+          type: string
+          description: 该环节的动态验证证据摘要。
+additionalProperties: true
