@@ -135,7 +135,10 @@ decompile_tree() { # src_root(classfile dir layout) dest_label
 }
 
 # Caller-side wrapper: runs decompile_tree, parses the pair, bumps counters,
-# and exports `last_moved`/`last_classes` for the inventory entry.
+# and exports `last_moved`/`last_classes`/`last_status` for the inventory
+# entry. last_status ∈ decompiled | skipped-budget | failed — the per-entry
+# disposition MUST reflect reality (a tree never decompiled is never recorded
+# as decompiled; architect rev3 audit-evidence integrity).
 run_decompile() { # src_root label
   local out
   out="$(decompile_tree "$1" "$2")"
@@ -143,11 +146,14 @@ run_decompile() { # src_root label
   last_classes="${out##* }"
   if [ "$last_moved" = "-1" ]; then
     bump_skipped 1
+    last_status="skipped-budget"
     last_moved=0
   elif [ "$last_moved" = "-2" ]; then
+    last_status="failed"
     last_moved=0
   else
     bump_decompiled "$last_classes"
+    last_status="decompiled"
   fi
 }
 
@@ -194,7 +200,7 @@ process_jar() { # jarfile
   # spring-boot fat jar
   if [ -d "$staging/BOOT-INF/classes" ]; then
     run_decompile "$staging/BOOT-INF/classes" "$stem"
-    entry "$jar" "decompiled" "" "$size" "$last_moved"
+    entry "$jar" "$last_status" "" "$size" "$last_moved"
     for lib in "$staging"/BOOT-INF/lib/*.jar; do
       [ -f "$lib" ] || continue
       local gav=""
@@ -211,7 +217,7 @@ process_jar() { # jarfile
   # tomcat war
   if [ -d "$staging/WEB-INF/classes" ]; then
     run_decompile "$staging/WEB-INF/classes" "$stem"
-    entry "$jar" "decompiled" "" "$size" "$last_moved"
+    entry "$jar" "$last_status" "" "$size" "$last_moved"
     for lib in "$staging"/WEB-INF/lib/*.jar; do
       [ -f "$lib" ] || continue
       local gav="" pp
@@ -236,7 +242,7 @@ process_jar() { # jarfile
     fi
   fi
   run_decompile "$staging" "$stem"
-  entry "$jar" "decompiled" "" "$size" "$last_moved"
+  entry "$jar" "$last_status" "" "$size" "$last_moved"
   rm -rf "$staging"
 }
 
@@ -252,7 +258,7 @@ for d in "${CLASS_DIRS[@]:-}"; do
   case "$d" in "$OUT_ROOT"*) continue ;; esac
   local_label="bare-$(echo "$d" | sed 's#^'"$WORK_DIR"'/##; s#/#_#g' | head -c 60)"
   run_decompile "$d" "$local_label"
-  entry "$d" "decompiled" "" "$(du -sb "$d" 2>/dev/null | cut -f1)" "$last_moved"
+  entry "$d" "$last_status" "" "$(du -sb "$d" 2>/dev/null | cut -f1)" "$last_moved"
 done
 
 # ── inventory + summary ─────────────────────────────────────────────────
@@ -272,6 +278,8 @@ json.dump({
 }, open(inv_path, "w"), indent=1, ensure_ascii=False)
 dec = sum(1 for e in entries if e["disposition"] == "decompiled")
 dep = sum(1 for e in entries if e["disposition"] == "dependency-only")
+skipped_entry = sum(1 for e in entries if e["disposition"] in ("skipped-budget", "failed"))
+skipped = max(skipped, skipped_entry)
 lines = [
   "# jar-unpack 摘要", "",
   f"- 反编译目标: {dec}（业务码）",
