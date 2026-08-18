@@ -147,7 +147,15 @@ stages:
     extensions:
       - output-contract
       - sandbox-plane
+    # youngflow semantics: stage tools REPLACE defaults entirely — the base
+    # read/bash/write/edit must be listed alongside the gate tools (P0 QA
+    # 7322dcde: gate-only tools left the onboard session unable to read the
+    # project, run jar-unpack/submit scripts, or write any artifact).
     tools:
+      - read
+      - bash
+      - write
+      - edit
       - list_sandbox_types
       - get_sandbox_type
     task: onboard.md

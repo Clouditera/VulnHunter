@@ -34,9 +34,13 @@ describe("VulnForge 2.0 runtime flow compatibility", () => {
       "read", "bash", "write", "edit", "coverage", "workspace_diff", "workspace_snapshot",
     ]);
     expect(byId.get("report")?.tools).toEqual(["read", "bash", "write", "edit", "coverage"]);
-    // onboard owns the gate tools (v2 prepare internalization) — everything
+    // onboard owns the gate tools (v2 prepare internalization) AND the base
+    // tools — youngflow REPLACES defaults with stage tools, so a stage-level
+    // list must carry read/bash/write/edit too (P0 QA 7322dcde). Everything
     // else inherits defaults only.
-    expect(byId.get("onboard")?.tools).toEqual(["list_sandbox_types", "get_sandbox_type"]);
+    expect(byId.get("onboard")?.tools).toEqual([
+      "read", "bash", "write", "edit", "list_sandbox_types", "get_sandbox_type",
+    ]);
     for (const id of ["cognize", "hunt", "verify", "poc-verify", "ev-assess", "exp-build", "cycle_join", "complete", "exit"]) {
       expect(byId.get(id)?.tools, `${id} must inherit only defaults`).toBeUndefined();
     }
