@@ -10,13 +10,15 @@ export interface SourceArchivePolicy {
   gateway_max_mb?: number;
   effective_max_mb?: number;
   source_archive_upload_ceiling_mb: number;
-  formats: Array<"zip" | "tar" | "tar.gz">;
+  formats: Array<"zip" | "tar" | "tar.gz" | "jar" | "war">;
   extensions: string[];
   accept: string;
 }
 
 export const SOURCE_ARCHIVE_ACCEPT = [
   ".zip",
+  ".jar",
+  ".war",
   ".tar",
   // macOS file pickers match the final suffix of compound extensions, so .gz
   // is needed to make .tar.gz selectable. Application validation still uses
@@ -27,6 +29,7 @@ export const SOURCE_ARCHIVE_ACCEPT = [
   "application/x-tar",
   "application/gzip",
   "application/x-gzip",
+  "application/java-archive",
 ].join(",");
 
 export function normalizeUploadMaxMb(config: Record<string, unknown>): number {
@@ -46,7 +49,7 @@ export function buildSourceArchivePolicy(config: Record<string, unknown>): Sourc
     gateway_max_mb: gatewayMaxMb,
     effective_max_mb: maxMb,
     source_archive_upload_ceiling_mb: gatewayMaxMb,
-    formats: ["zip", "tar", "tar.gz"],
+    formats: ["zip", "jar", "war", "tar", "tar.gz"],
     extensions: [...SUPPORTED_SOURCE_ARCHIVE_EXTENSIONS],
     accept: SOURCE_ARCHIVE_ACCEPT,
   };

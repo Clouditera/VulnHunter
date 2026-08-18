@@ -4,11 +4,13 @@ export type SourceArchiveFormat = "zip" | "tar" | "tar.gz";
 
 export interface DetectedSourceArchive {
   format: SourceArchiveFormat;
-  extension: ".zip" | ".tar" | ".tar.gz" | ".tgz";
+  extension: ".zip" | ".tar" | ".tar.gz" | ".tgz" | ".jar" | ".war";
   storageExtension: ".zip" | ".tar" | ".tar.gz";
 }
 
-export const SUPPORTED_SOURCE_ARCHIVE_EXTENSIONS = [".zip", ".tar", ".tar.gz", ".tgz"] as const;
+// .jar/.war are ZIP containers (batch 3): allowed so java targets upload
+// directly; extraction + listing reuse the zip path unchanged.
+export const SUPPORTED_SOURCE_ARCHIVE_EXTENSIONS = [".zip", ".tar", ".tar.gz", ".tgz", ".jar", ".war"] as const;
 
 export function detectSourceArchive(filename: string): DetectedSourceArchive | null {
   const lower = basename(filename).toLowerCase();
@@ -16,12 +18,13 @@ export function detectSourceArchive(filename: string): DetectedSourceArchive | n
   if (lower.endsWith(".tgz")) return { format: "tar.gz", extension: ".tgz", storageExtension: ".tar.gz" };
   if (lower.endsWith(".tar")) return { format: "tar", extension: ".tar", storageExtension: ".tar" };
   if (lower.endsWith(".zip")) return { format: "zip", extension: ".zip", storageExtension: ".zip" };
+  if (lower.endsWith(".jar") || lower.endsWith(".war")) return { format: "zip", extension: lower.endsWith(".jar") ? ".jar" : ".war", storageExtension: ".zip" };
   return null;
 }
 
 export function stripSourceArchiveExtension(filename: string): string {
   const base = basename(filename).trim();
-  return base.replace(/\.(tar\.gz|tgz|tar|zip)$/i, "") || base || "source";
+  return base.replace(/\.(tar\.gz|tgz|tar|zip|jar|war)$/i, "") || base || "source";
 }
 
 export function contentTypeForSourceArchive(filename: string): string {

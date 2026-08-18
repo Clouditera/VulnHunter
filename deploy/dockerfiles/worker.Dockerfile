@@ -17,6 +17,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && command -v pandoc >/dev/null \
     && python3 -c "import openpyxl"
 
+# JRE + vineflower (batch 3, jar decompile at onboard step 2): default-jre-headless
+# on bookworm = openjdk-17. vineflower pinned 1.11.1, sha256-verified at build.
+RUN apt-get update && apt-get install -y --no-install-recommends default-jre-headless \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /opt/vulnhunter/bin \
+    && curl -fsSL "https://repo1.maven.org/maven2/org/vineflower/vineflower/1.11.1/vineflower-1.11.1.jar" -o /opt/vulnhunter/bin/vineflower.jar \
+    && echo "a615d07ddbbcd489369674f40e42df639c32be95410890b38f173d5c1e2ea39c  /opt/vulnhunter/bin/vineflower.jar" | sha256sum -c - \
+    && java -version \
+    && java -jar /opt/vulnhunter/bin/vineflower.jar --help >/dev/null
+
 # pi CLI (youngflow spawns it for each stage). Pin the fork validated by VulnForge.
 # The mcp adapter is installed with build-time HOME=/root, then RELOCATED to a
 # neutral world-readable path: de-identified workers get HOME=/workspace/.home
@@ -129,8 +139,12 @@ COPY worker-assets/report-mode.sh /opt/report-mode.sh
 COPY worker-assets/run-with-deadline.py /opt/run-with-deadline.py
 COPY worker-assets/timeout-finalize-artifacts.py /opt/timeout-finalize-artifacts.py
 COPY worker-assets/submit-prepare-result.sh /opt/vulnhunter/bin/submit-prepare-result.sh
+COPY worker-assets/jar-unpack.sh /opt/vulnhunter/bin/jar-unpack.sh
 RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh /opt/report-mode.sh \
-    /opt/run-with-deadline.py /opt/timeout-finalize-artifacts.py /opt/vulnhunter/bin/submit-prepare-result.sh
+    /opt/run-with-deadline.py /opt/timeout-finalize-artifacts.py /opt/vulnhunter/bin/submit-prepare-result.sh \
+    /opt/vulnhunter/bin/jar-unpack.sh \
+    && bash -n /opt/vulnhunter/bin/jar-unpack.sh \
+    && test -x /opt/vulnhunter/bin/jar-unpack.sh
 
 WORKDIR /workspace
 ENTRYPOINT ["/opt/entrypoint.sh"]

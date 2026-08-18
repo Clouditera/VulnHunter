@@ -23,7 +23,7 @@ describe("source archive policy", () => {
       gateway_max_mb: 4096,
       effective_max_mb: 4096,
       source_archive_upload_ceiling_mb: 4096,
-      accept: ".zip,.tar,.gz,.tgz,application/zip,application/x-tar,application/gzip,application/x-gzip",
+      accept: ".zip,.jar,.war,.tar,.gz,.tgz,application/zip,application/x-tar,application/gzip,application/x-gzip,application/java-archive",
     });
     expect(buildSourceArchivePolicy({ source_archive_upload_max_mb: 5000 })).toMatchObject({
       max_mb: 4096,
