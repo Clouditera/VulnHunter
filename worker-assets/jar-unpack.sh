@@ -77,8 +77,15 @@ fi
 
 START_TS=$(date +%s)
 declare -a INVENTORY_ENTRIES=()
-decompiled_total=0
-skipped_budget=0
+# Counters live in FILES, not variables: decompile_tree is invoked via command
+# substitution (subshell), so any variable increments inside it are lost
+# (architect rev2 — the 20000-class budget silently never decremented).
+# Caller-side accumulators read/write these files only.
+COUNTER_DIR="$(mktemp -d)"
+COUNT_DECOMPILED="$COUNTER_DIR/decompiled"
+COUNT_SKIPPED="$COUNTER_DIR/skipped"
+echo 0 > "$COUNT_DECOMPILED"
+echo 0 > "$COUNT_SKIPPED"
 
 entry() { # path disposition gav size bytes_out
   INVENTORY_ENTRIES+=("$(python3 -c '
@@ -93,17 +100,22 @@ print(json.dumps({
 }
 
 budget_left() { echo $(( START_TS + BUDGET_SECONDS - $(date +%s) )); }
-classes_left() { echo $(( BUDGET_CLASSES - decompiled_total )); }
+classes_left() { echo $(( BUDGET_CLASSES - $(cat "$COUNT_DECOMPILED") )); }
+bump_decompiled() { echo $(( $(cat "$COUNT_DECOMPILED") + $1 )) > "$COUNT_DECOMPILED"; }
+bump_skipped() { echo $(( $(cat "$COUNT_SKIPPED") + $1 )) > "$COUNT_SKIPPED"; }
 
 # ── decompile helper ────────────────────────────────────────────────────
+# Emits "<moved> <classes>" (two ints) on success, "-1 <classes>" when the
+# class budget was exhausted, "-2 <classes>" on decompiler failure. Runs in a
+# subshell via $(...) — MUST NOT touch counter variables; the caller bumps
+# the counter files.
 decompile_tree() { # src_root(classfile dir layout) dest_label
   local src_root="$1" label="$2" n
   local dest="$OUT_ROOT/$label"
   n=$(find "$src_root" -type f -name '*.class' 2>/dev/null | wc -l)
-  [ "$n" -eq 0 ] && { echo 0; return; }
+  [ "$n" -eq 0 ] && { echo "0 0"; return; }
   if [ "$(classes_left)" -lt "$n" ] || [ "$(budget_left)" -le 0 ]; then
-    skipped_budget=$((skipped_budget + 1))
-    echo -1
+    echo "-1 $n"
     return
   fi
   mkdir -p "$dest"
@@ -115,11 +127,27 @@ decompile_tree() { # src_root(classfile dir layout) dest_label
     moved=$(find "$tmp" -type f -name '*.java' 2>/dev/null | wc -l)
     [ "$moved" -gt 0 ] && cp -r "$tmp"/. "$dest"/
     rm -rf "$tmp"
-    decompiled_total=$((decompiled_total + n))
-    echo "$moved"
+    echo "$moved $n"
   else
     rm -rf "$tmp" "$dest"
-    echo -2
+    echo "-2 $n"
+  fi
+}
+
+# Caller-side wrapper: runs decompile_tree, parses the pair, bumps counters,
+# and exports `last_moved`/`last_classes` for the inventory entry.
+run_decompile() { # src_root label
+  local out
+  out="$(decompile_tree "$1" "$2")"
+  last_moved="${out%% *}"
+  last_classes="${out##* }"
+  if [ "$last_moved" = "-1" ]; then
+    bump_skipped 1
+    last_moved=0
+  elif [ "$last_moved" = "-2" ]; then
+    last_moved=0
+  else
+    bump_decompiled "$last_classes"
   fi
 }
 
@@ -156,7 +184,7 @@ process_jar() { # jarfile
 
   if [ "$size" -gt "$BUDGET_JAR_BYTES" ]; then
     entry "$jar" "skipped-budget" "" "$size" 0
-    skipped_budget=$((skipped_budget + 1))
+    bump_skipped 1
     log "skip (size>200MB): $jar"
     rm -rf "$staging"; return
   fi
@@ -165,8 +193,8 @@ process_jar() { # jarfile
 
   # spring-boot fat jar
   if [ -d "$staging/BOOT-INF/classes" ]; then
-    local n; n="$(decompile_tree "$staging/BOOT-INF/classes" "$stem")"
-    entry "$jar" "decompiled" "" "$size" "$n"
+    run_decompile "$staging/BOOT-INF/classes" "$stem"
+    entry "$jar" "decompiled" "" "$size" "$last_moved"
     for lib in "$staging"/BOOT-INF/lib/*.jar; do
       [ -f "$lib" ] || continue
       local gav=""
@@ -182,8 +210,8 @@ process_jar() { # jarfile
 
   # tomcat war
   if [ -d "$staging/WEB-INF/classes" ]; then
-    local n; n="$(decompile_tree "$staging/WEB-INF/classes" "$stem")"
-    entry "$jar" "decompiled" "" "$size" "$n"
+    run_decompile "$staging/WEB-INF/classes" "$stem"
+    entry "$jar" "decompiled" "" "$size" "$last_moved"
     for lib in "$staging"/WEB-INF/lib/*.jar; do
       [ -f "$lib" ] || continue
       local gav="" pp
@@ -207,14 +235,14 @@ process_jar() { # jarfile
       rm -rf "$staging"; return
     fi
   fi
-  local n; n="$(decompile_tree "$staging" "$stem")"
-  entry "$jar" "decompiled" "" "$size" "$n"
+  run_decompile "$staging" "$stem"
+  entry "$jar" "decompiled" "" "$size" "$last_moved"
   rm -rf "$staging"
 }
 
 for j in "${JARS[@]:-}"; do
   [ -n "$j" ] || continue
-  [ "$(budget_left)" -le 0 ] && { entry "$j" "skipped-budget" "" "$(stat -c '%s' "$j")" 0; skipped_budget=$((skipped_budget+1)); continue; }
+  [ "$(budget_left)" -le 0 ] && { entry "$j" "skipped-budget" "" "$(stat -c '%s' "$j")" 0; bump_skipped 1; continue; }
   process_jar "$j"
 done
 
@@ -223,17 +251,18 @@ for d in "${CLASS_DIRS[@]:-}"; do
   [ -n "$d" ] || continue
   case "$d" in "$OUT_ROOT"*) continue ;; esac
   local_label="bare-$(echo "$d" | sed 's#^'"$WORK_DIR"'/##; s#/#_#g' | head -c 60)"
-  n="$(decompile_tree "$d" "$local_label")"
-  entry "$d" "decompiled" "" "$(du -sb "$d" 2>/dev/null | cut -f1)" "$n"
+  run_decompile "$d" "$local_label"
+  entry "$d" "decompiled" "" "$(du -sb "$d" 2>/dev/null | cut -f1)" "$last_moved"
 done
 
 # ── inventory + summary ─────────────────────────────────────────────────
 TMP_ENTRIES="$OUT_ROOT/.entries.jsonl"
 : > "$TMP_ENTRIES"
 for e in "${INVENTORY_ENTRIES[@]:-}"; do [ -n "$e" ] && printf '%s\n' "$e" >> "$TMP_ENTRIES"; done
-python3 - "$TMP_ENTRIES" "$INVENTORY" "$SUMMARY" "$FP" "$skipped_budget" <<'PY'
+python3 - "$TMP_ENTRIES" "$INVENTORY" "$SUMMARY" "$FP" "$COUNT_SKIPPED" <<'PY'
 import json, sys, datetime
-entries_path, inv_path, summary_path, fp, skipped = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5])
+entries_path, inv_path, summary_path, fp, skipped_path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+skipped = int(open(skipped_path).read().strip())
 entries = [json.loads(l) for l in open(entries_path) if l.strip()]
 json.dump({
   "fingerprint": fp,
@@ -259,5 +288,6 @@ open(summary_path, "w").write("\n".join(lines))
 PY
 rm -f "$TMP_ENTRIES"
 
-log "done: entries=${#INVENTORY_ENTRIES[@]} decompiled_classes=$decompiled_total skipped_budget=$skipped_budget"
+log "done: entries=${#INVENTORY_ENTRIES[@]} decompiled_classes=$(cat "$COUNT_DECOMPILED") skipped_budget=$(cat "$COUNT_SKIPPED")"
+rm -rf "$COUNTER_DIR"
 exit 0
