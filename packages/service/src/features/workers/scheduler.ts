@@ -34,7 +34,7 @@ import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir, hasRunningScanWorkerByClaim, stopScanWorker, stopScanWorkerByClaim } from "./scan-worker.js";
 import { cleanupSchedulerWorkspace, getSchedulerPrepareDir, publishSchedulerWorkspace } from "./scheduler-workspace.js";
 import { isDynamicEnabled, persistedPrepareResult, parseGateYaml, GATE_REASONS, type GateYaml, type PrepareResult } from "../prepare/contract.js";
-import { setEngineEventHandler } from "../events/event-tail.js";
+import { armGateRouteHandler } from "./gate-perception.js";
 import {
   ensureSandboxForTask,
   stopSandboxForTask,
@@ -702,14 +702,15 @@ export class TaskScheduler {
    * detaches itself on the first terminal action.
    */
   private registerGateRouteHandler(taskId: string, token: string, hostWorkDir: string): void {
-    setEngineEventHandler(taskId, (raw) => {
-      if (raw.event !== "route" || raw.stage !== "onboard") return;
-      const target = raw.target;
-      if (target !== "cycle_join" && target !== "exit") return;
-      setEngineEventHandler(taskId, null); // one-shot: first terminal route wins
-      this.handleGateRoute(taskId, token, hostWorkDir, target).catch((err) =>
-        logger.error({ err, taskId, token, target }, "Gate route handling failed"),
-      );
+    armGateRouteHandler({
+      taskId,
+      token,
+      hostWorkDir,
+      onRoute: (target) => {
+        this.handleGateRoute(taskId, token, hostWorkDir, target).catch((err) =>
+          logger.error({ err, taskId, token, target }, "Gate route handling failed"),
+        );
+      },
     });
   }
 

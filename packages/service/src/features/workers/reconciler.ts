@@ -12,10 +12,12 @@ import {
   LABEL_SCHEDULER_CLAIM,
 } from "./docker-client.js";
 import {
+  failSchedulerClaim,
   getSchedulerClaim,
   getTaskById,
   listPreparingSchedulerClaims,
   markSchedulerClaimRunning,
+  mergeTaskMetadata,
   releaseExpiredSchedulerClaim,
   updateTaskState,
 } from "../tasks/storage.js";
@@ -25,13 +27,91 @@ import { loadConfig } from "../../infra/config.js";
 import { getHostWorkDir, stopScanWorkerByClaim } from "./scan-worker.js";
 import { cleanupSchedulerWorkspace } from "./scheduler-workspace.js";
 import { load as yamlLoad } from "js-yaml";
-import { isDynamicEnabled } from "../prepare/contract.js";
+import { isDynamicEnabled, parseGateYaml, type GateYaml } from "../prepare/contract.js";
 import { startTailing } from "../events/event-tail.js";
 import { reconcileSandboxes } from "../sandboxes/lifecycle.js";
 import { join } from "node:path";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { failSchedulerClaim, mergeTaskMetadata } from "../tasks/storage.js";
 import { notify } from "../notifications/index.js";
+import { appendAndBroadcastCompletionEvent } from "./scheduler-events.js";
+import { armGateRouteHandler } from "./gate-perception.js";
+
+/** Read + validate gate.yaml from the workspace (same parser as the live path). */
+function readGateYamlFile(hostWorkDir: string): GateYaml | null {
+  try {
+    return parseGateYaml(readFileSync(join(hostWorkDir, "out", "gate.yaml"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Restart-path gate route handler: the checkpoint said the gate had NOT yet
+ * routed; when the (re-armed) EventTail delivers the route event, run the
+ * same terminal semantics as the scheduler's live handleGateRoute. Kept
+ * local to avoid a scheduler import cycle; the logic mirrors it 1:1.
+ */
+async function restartGateRoute(taskId: string, token: string, hostWorkDir: string, target: string, config: import("../../infra/config.js").ServiceConfig): Promise<void> {
+  const current = await getTaskById(taskId).catch(() => null);
+  if (!current || current.state !== "preparing") return;
+  const claim = getSchedulerClaim(current);
+  if (!claim || claim.token !== token) return;
+  const gate = readGateYamlFile(hostWorkDir);
+
+  if (target === "exit") {
+    const reason = gate?.reason ?? "partial_source";
+    const incomplete = reason === "partial_source" || reason === "fragment_collection";
+    if (incomplete) await mergeTaskMetadata(taskId, { source_incomplete: true }).catch(() => undefined);
+    await mergeTaskMetadata(taskId, {
+      prepare: { project_complete: false, sandbox_type: gate?.sandbox_type ?? null, reason, at: new Date().toISOString() },
+    }).catch(() => undefined);
+    appendAndBroadcastCompletionEvent(taskId, {
+      type: "prepare_failed", source: "scan", seq: 0, ts: new Date().toISOString(),
+      reason: incomplete ? "source_incomplete" : reason,
+      remediation: incomplete ? "请补充完整项目源码后重新创建任务" : "请重试或联系管理员",
+      ...(gate?.detail ? { detail: gate.detail } : {}),
+    } as never);
+    if (await failSchedulerClaim(taskId, token, JSON.stringify({
+      code: "ERR_PREPARE_FAILED",
+      message: gate?.detail ?? `Onboard gate END (reason=${reason})`,
+      details: { phase: "prepare", reason },
+    }))) {
+      await stopScanWorkerByClaim(taskId, token);
+      notify({ type: "task_state", taskId, state: "failed" });
+    }
+    return;
+  }
+
+  // target === cycle_join: evidence gate, then CAS (same as live path).
+  const missing = checkGateEvidenceFiles(current, hostWorkDir);
+  if (missing.length > 0) {
+    if (await failSchedulerClaim(taskId, token, JSON.stringify({
+      code: "ERR_PREPARE_FAILED",
+      message: `门禁证据缺失：${missing.join("、")}`,
+      details: { phase: "prepare", reason: "gate_evidence_missing", source: "restart_route" },
+    }))) {
+      await stopScanWorkerByClaim(taskId, token);
+      notify({ type: "task_state", taskId, state: "failed" });
+    }
+    return;
+  }
+  await mergeTaskMetadata(taskId, {
+    prepare: {
+      project_complete: true,
+      sandbox_type: gate?.sandbox_type ?? null,
+      reason: "complete",
+      at: new Date().toISOString(),
+    },
+  }).catch(() => undefined);
+  appendAndBroadcastCompletionEvent(taskId, {
+    type: "prepare_completed", source: "scan", seq: 0, ts: new Date().toISOString(),
+    project_complete: true, sandbox_type: gate?.sandbox_type ?? null, reason: "complete",
+  });
+  if (await markSchedulerClaimRunning(taskId, token, new Date())) {
+    notify({ type: "task_state", taskId, state: "running" });
+  }
+  void config;
+}
 
 /** Read extracted.onboard.next from the engine's persisted checkpoint. */
 function readCheckpointGateNext(checkpointPath: string): "continue" | "end" | null {
@@ -86,11 +166,37 @@ export async function reconcileSchedulerClaims(config = loadConfig()): Promise<v
         //            scheduler-side handler is re-registered on next claim.
         const hostWorkDir = getHostWorkDir(config.dataDir, task.id);
         const gateNext = readCheckpointGateNext(join(hostWorkDir, "out", ".youngflow", "checkpoints", "flow_state.yaml"));
+        const gate = readGateYamlFile(hostWorkDir);
         if (gateNext === "end") {
+          // Gate verdict END: same terminal semantics as the live path —
+          // persist metadata.prepare, emit prepare_failed with the mapped
+          // user-facing reason + gate detail, source_incomplete flag, fail
+          // claim, stop worker (review r1 nit: timeline parity).
+          const incomplete = gate?.reason === "partial_source" || gate?.reason === "fragment_collection";
+          if (incomplete) {
+            await mergeTaskMetadata(task.id, { source_incomplete: true }).catch(() => undefined);
+          }
+          await mergeTaskMetadata(task.id, {
+            prepare: {
+              project_complete: false,
+              sandbox_type: gate?.sandbox_type ?? null,
+              reason: gate?.reason ?? "partial_source",
+              at: new Date().toISOString(),
+            },
+          }).catch(() => undefined);
+          appendAndBroadcastCompletionEvent(task.id, {
+            type: "prepare_failed",
+            source: "scan",
+            seq: 0,
+            ts: new Date().toISOString(),
+            reason: incomplete ? "source_incomplete" : (gate?.reason ?? "partial_source"),
+            remediation: incomplete ? "请补充完整项目源码后重新创建任务" : "请重试或联系管理员",
+            ...(gate?.detail ? { detail: gate.detail } : {}),
+          } as never);
           if (await failSchedulerClaim(task.id, claim.token, JSON.stringify({
             code: "ERR_PREPARE_FAILED",
-            message: "Onboard gate END (restart reconcile)",
-            details: { phase: "prepare", source: "checkpoint" },
+            message: gate?.detail ?? `Onboard gate END (reason=${gate?.reason ?? "unknown"})`,
+            details: { phase: "prepare", reason: gate?.reason ?? "partial_source", source: "restart" },
           }))) {
             await stopScanWorkerByClaim(task.id, claim.token);
             notify({ type: "task_state", taskId: task.id, state: "failed" });
@@ -98,12 +204,32 @@ export async function reconcileSchedulerClaims(config = loadConfig()): Promise<v
           continue;
         }
         if (gateNext !== "continue") {
-          // Gate not yet routed (or checkpoint unreadable): keep preparing —
-          // the re-armed EventTail handler + max_loops/deadline bounds own it.
-          logger.info({ taskId: task.id, token: claim.token, gateNext }, "Fresh claim worker in gate phase (checkpoint); leaving for route perception");
+          // Gate not yet routed (or checkpoint unreadable): the restart wiped
+          // the in-memory route handler — re-arm perception HERE or the task
+          // wedges until the stuck-deadline fallback (review r1 hole 1).
+          // max_loops/deadline bounds still apply if the flow never routes.
+          logger.info({ taskId: task.id, token: claim.token, gateNext }, "Fresh claim worker in gate phase (checkpoint); re-arming route perception");
+          try {
+            startTailing(task.id, [], [
+              { path: join(hostWorkDir, "out", ".youngflow", "logs"), source: "scan" },
+              { path: join(hostWorkDir, ".service-logs"), source: "scan" },
+            ]);
+          } catch (err) {
+            logger.warn({ err, taskId: task.id }, "Reconciler re-arm tailing failed");
+          }
+          armGateRouteHandler({
+            taskId: task.id,
+            token: claim.token,
+            hostWorkDir,
+            onRoute: (target) => {
+              restartGateRoute(task.id, claim.token, hostWorkDir, target, config).catch((err) =>
+                logger.error({ err, taskId: task.id, target }, "Reconciler gate route handling failed"),
+              );
+            },
+          });
           continue;
         }
-        // gateNext === continue": adopt only with evidence (same gate as the
+        // gateNext === continue: adopt only with evidence (same gate as the
         // live path — decide cannot self-authorize across restarts either).
         const missing = checkGateEvidenceFiles(task, hostWorkDir);
         if (missing.length > 0) {
@@ -120,7 +246,10 @@ export async function reconcileSchedulerClaims(config = loadConfig()): Promise<v
         await mergeTaskMetadata(task.id, {
           prepare: {
             project_complete: true,
-            sandbox_type: null,
+            // Dynamic adopt: the allocation basis must survive for a later
+            // continue — read it from gate.yaml, same source as the live
+            // path (review r1 hole 2: hardcoded null broke continue).
+            sandbox_type: gate?.sandbox_type ?? null,
             reason: "complete",
             at: new Date().toISOString(),
           },
