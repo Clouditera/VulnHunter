@@ -16,6 +16,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "2.3.10",
+    releasedAt: "2026-08",
+    title: "VulnHunter v2.3.10 更新",
+    markdown: `
+### 🚀 扫描引擎
+- **初始化门禁原生化**：上传即进扫描，完整性判定（完整/半源码/片段集）在初始化内完成，不合格以人话提示终止；引擎超时改为干净终态
+- **Java 目标支持**：可直接上传 jar/war 审计，初始化阶段自动反编译业务代码
+- **失败原因清洗**：引擎报错去除乱码，界面结构化展示
+
+### 🔧 其它调整
+- 凭证新增「输出上限（maxTokens）」配置（默认 128k），上下文窗口默认提升至 200k
+- 沙箱申请失败返回具体原因（配额/容量/服务不可用）
+- 修复任务时间线开头事件重复投送
+`,
+  },
+  {
     version: "2.3.0",
     releasedAt: "2026-07",
     title: "VulnHunter v2.3.0 更新",
