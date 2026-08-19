@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sanitizeErrorText } from "@vulnhunter/shared";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * HALL-4: engine-reported failure reasons may embed Docker stdcopy frame
@@ -32,7 +32,7 @@ const DIRTY_REASON = JSON.stringify({
   details: { engineError: "exit code 4" },
 });
 
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: asserting control chars are gone requires matching them
 const CONTROL_CHAR_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uFEFF\u200B-\u200D]/;
 
 beforeEach(() => {
@@ -44,10 +44,10 @@ describe("failure_reason sanitizing (HALL-4)", () => {
     await failSchedulerClaim("task-1", "token-1", DIRTY_REASON);
     const q = captured.find((c) => c.sql.includes("failure_reason"));
     expect(q).toBeDefined();
-    const stored = q!.values.find((v) => typeof v === "string" && v.includes("ERR_PREPARE_FAILED"));
+    const stored = q?.values.find((v) => typeof v === "string" && v.includes("ERR_PREPARE_FAILED"));
     expect(typeof stored).toBe("string");
     expect(stored as string).not.toMatch(CONTROL_CHAR_RE);
-    "Prepare 失败 (退出码 4): \u0002\u0000\u0000\u0000\u0000\u0000\u0000002:57:41 [youngflow.runner] ERROR [prepare] ✕ API error (1): 403: " +
+    expect(stored as string).toContain("Prepare 失败 (退出码 4)");
     expect(stored as string).toContain("no default group available for this model");
     // Storage contract unchanged: still the JSON string, just clean.
     expect(stored).toBe(sanitizeErrorText(DIRTY_REASON));
@@ -60,7 +60,7 @@ describe("failure_reason sanitizing (HALL-4)", () => {
     });
     const q = captured.find((c) => c.sql.includes("failure_reason"));
     expect(q).toBeDefined();
-    const stored = q!.values.find((v) => typeof v === "string" && v.includes("ERR_PREPARE_FAILED"));
+    const stored = q?.values.find((v) => typeof v === "string" && v.includes("ERR_PREPARE_FAILED"));
     expect(typeof stored).toBe("string");
     expect(stored as string).not.toMatch(CONTROL_CHAR_RE);
     expect(stored).toBe(sanitizeErrorText(DIRTY_REASON));
@@ -70,6 +70,6 @@ describe("failure_reason sanitizing (HALL-4)", () => {
     await updateTaskState("task-3", "completed", { completedAt: new Date() });
     const q = captured.find((c) => c.sql.includes("failure_reason"));
     expect(q).toBeDefined();
-    expect(q!.values).toContain(null);
+    expect(q?.values).toContain(null);
   });
 });
