@@ -23,7 +23,7 @@ import { queryContextFromUser } from "../../infra/query-context.js";
 import * as reportStorage from "../reports/storage.js";
 import { uploadFile, getMinio } from "../../infra/minio/client.js";
 
-const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
+const DEFAULT_CONTEXT_WINDOW_TOKENS = 200000;
 const VALID_PROTO_TYPES = new Set(["openai-completions", "openai-responses", "anthropic", "openai"]);
 function parseContextWindowTokens(value: unknown): number {
   if (value == null) return DEFAULT_CONTEXT_WINDOW_TOKENS;

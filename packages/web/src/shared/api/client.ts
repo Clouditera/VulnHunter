@@ -917,6 +917,8 @@ export interface LlmCredential {
   key_fingerprint?: string | null;
   current_key_fingerprint?: string;
   context_window_tokens: number;
+  /** Output limit (maxTokens). Null = builder fallback chain (fish 2026-08-19). */
+  max_output_tokens?: number | null;
   /**
    * Vendor-adaptation config (fish 2026-08-08, design §3.1a): sparse object
    * holding only non-default compat/thinkingLevelMap/input/cost values;
@@ -940,6 +942,7 @@ export interface SaveCredentialPayload {
   api_key: string;
   is_default?: boolean;
   context_window_tokens?: number;
+  max_output_tokens?: number | null;
   /** Sparse vendor-adaptation config; null clears to defaults. */
   advanced_config?: Record<string, unknown> | null;
   owner_id?: string | null;

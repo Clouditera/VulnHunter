@@ -21,6 +21,8 @@
 - **三要素**（仅真实用途项目）：① 可识别的入口/路由（URL 路径、CLI 命令、main()、消息处理器等派发结构）；② 业务逻辑（源码或编译产物：JSP/.class/.pyc/二进制）；③ 配置/依赖（web.xml、package.json、requirements.txt、pom.xml、Dockerfile 等）。三者齐备且构成连贯整体 → 完整（无 README/无构建系统/无 .java 源码亦可，如 Tomcat webapps 目录）。只有测试/文档/补丁/生成片段/缺基础应用的 overlay → 判 `partial_source`。
 - **靶场豁免**：用途明确是漏洞演示靶场且本身是完整可运行应用 → 完整。
 
+**落盘优先**：判定结论一形成，**立即先写 gate.yaml** 再做任何收尾与记录——gate.yaml 的落盘优先于本阶段的其它一切输出。
+
 **不合格处理**：代码不完整（`partial_source`）或纯 demo/代码片段类（`fragment_collection`）时，写失败门禁并退出审计：
 
 ```yaml

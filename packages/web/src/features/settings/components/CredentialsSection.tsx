@@ -79,7 +79,10 @@ function normalizeProtoType(raw: string): string {
   return "openai-completions";
 }
 
-const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
+// fish 2026-08-19 (maxTokens 不缺省化): context default 200k, output limit
+// default 128k as a first-class sibling field.
+const DEFAULT_CONTEXT_WINDOW_TOKENS = 200000;
+const DEFAULT_MAX_OUTPUT_TOKENS = 128000;
 function parseContextWindowInput(text: string): number | null {
   const raw = text.trim().toLowerCase();
   if (!raw) return null;
@@ -128,7 +131,8 @@ export function CredentialsSection() {
   const [baseUrl, setBaseUrl] = useState<string>("");
   const [modelId, setModelId] = useState<string>("");
   const [thinking, setThinking] = useState<ThinkingValue>("medium");
-  const [contextWindow, setContextWindow] = useState<string>("128k");
+  const [contextWindow, setContextWindow] = useState<string>("200k");
+  const [maxOutputTokensText, setMaxOutputTokensText] = useState<string>("128k");
   const [apiKey, setApiKey] = useState<string>("");
   const [showKey, setShowKey] = useState(false);
 
@@ -166,7 +170,7 @@ export function CredentialsSection() {
    *  2026-08-04: 改核心字段必须先通过测试再保存，不许点了才报错). */
   const [editCoreSnap, setEditCoreSnap] = useState<{
     proto: string; baseUrl: string; modelId: string;
-    label: string; thinking: string; contextWindow: string;
+    label: string; thinking: string; contextWindow: string; maxOutputTokens: string;
     /** Vendor send-value override for the chosen level (发送值, fish 2026-08-09). */
     thinkingOverride: string;
     /** Serialized advanced_config at load time (sparse JSON string). */
@@ -227,6 +231,7 @@ export function CredentialsSection() {
     setModelId(c.model_id);
     setThinking((c.thinking_effort as ThinkingValue) ?? "medium");
     setContextWindow(formatContextWindow(c.context_window_tokens));
+    setMaxOutputTokensText(formatContextWindow(c.max_output_tokens ?? DEFAULT_MAX_OUTPUT_TOKENS));
     setLabel(c.label ?? "");
     setAdvConfig(parseAdvancedConfig(c.advanced_config));
     setThinkingOverride(loadThinkingOverride(c));
@@ -242,6 +247,7 @@ export function CredentialsSection() {
       label: c.label ?? "",
       thinking: (c.thinking_effort as ThinkingValue) ?? "medium",
       contextWindow: formatContextWindow(c.context_window_tokens),
+      maxOutputTokens: formatContextWindow(c.max_output_tokens ?? DEFAULT_MAX_OUTPUT_TOKENS),
       thinkingOverride: loadThinkingOverride(c),
       adv: JSON.stringify(serializeAdvancedConfig(parseAdvancedConfig(c.advanced_config))),
     });
@@ -283,7 +289,8 @@ export function CredentialsSection() {
     setBaseUrl("");
     setModelId("");
     setThinking("medium");
-    setContextWindow("128k");
+    setContextWindow("200k");
+    setMaxOutputTokensText("128k");
     setLabel("");
     setAdvConfig(defaultAdvancedConfig());
     setThinkingOverride("");
@@ -405,6 +412,7 @@ export function CredentialsSection() {
           thinking_effort: thinking,
           label: label || undefined,
           context_window_tokens: contextWindowTokens,
+          max_output_tokens: parseContextWindowInput(maxOutputTokensText) ?? DEFAULT_MAX_OUTPUT_TOKENS,
           advanced_config: formAdvancedConfig(),
           api_key: apiKey,
         }),
@@ -562,7 +570,8 @@ export function CredentialsSection() {
     editCoreSnap == null ||
     coreChanged ||
     label.trim() !== editCoreSnap.label ||
-    contextWindow.trim() !== editCoreSnap.contextWindow;
+    contextWindow.trim() !== editCoreSnap.contextWindow ||
+    maxOutputTokensText.trim() !== editCoreSnap.maxOutputTokens;
 
   /** Fetch-models button needs URL + a usable key (typed, or the stored one
    *  when editing) — fish: 模型列表依赖 key/url，排在其后且未填禁用. */
@@ -614,6 +623,7 @@ export function CredentialsSection() {
       api_key: apiKey || undefined,
       thinking_effort: thinking,
       context_window_tokens: contextWindowTokens,
+      max_output_tokens: parseContextWindowInput(maxOutputTokensText) ?? DEFAULT_MAX_OUTPUT_TOKENS,
       // fish 2026-08-09 所见即所得 (task-ee5d8912): the test runs against the
       // FORM's advanced config (incl. 发送值 thinkingLevelValue), not the stored
       // one — form-priority; omitted when fully default → backend falls back
@@ -1025,6 +1035,20 @@ export function CredentialsSection() {
                 type="text"
                 value={contextWindow}
                 onChange={(e) => setContextWindow(e.target.value)}
+                placeholder="200k"
+                style={FIELD_INPUT}
+              />
+            </Field>
+
+            <Field
+              label={i18n.t("settings.model.maxOutputTokens")}
+              hint={i18n.t("settings.model.maxOutputTokens.hint")}
+            >
+              <input
+                data-testid="settings-max-output-tokens-input"
+                type="text"
+                value={maxOutputTokensText}
+                onChange={(e) => setMaxOutputTokensText(e.target.value)}
                 placeholder="128k"
                 style={FIELD_INPUT}
               />

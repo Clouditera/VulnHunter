@@ -661,6 +661,8 @@ export const EN: Record<string, string> = {
   "settings.model.thinking.hint": "Controls the depth of model reasoning.",
   "settings.model.contextWindow": "CONTEXT SIZE",
   "settings.model.contextWindow.hint": "Example: 128k. Used for model context capacity.",
+  "settings.model.maxOutputTokens": "OUTPUT LIMIT",
+  "settings.model.maxOutputTokens.hint": "Max tokens per model reply (maxTokens). E.g. 128k; reasoning models should stay ≥128k.",
   "settings.model.contextWindow.invalid": "Invalid context size. Use 128k or 128000.",
   "settings.model.contextWindow.short": "Context {value}",
   "settings.model.fetch": "Fetch list",

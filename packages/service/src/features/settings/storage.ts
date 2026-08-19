@@ -7,10 +7,18 @@ import { deploymentUploadCeilingMb, normalizeSourceArchiveUploadMaxMb } from "..
 
 let _vault: MasterKeyVault | null = null;
 
-const DEFAULT_CONTEXT_WINDOW_TOKENS = 128000;
+// fish 2026-08-19 (maxTokens 不缺省化): context-window default 200k, new
+// first-class max_output_tokens (nullable — the models.json builder carries
+// the fallback chain; empty DB value must NOT collapse to 128k at read time).
+const DEFAULT_CONTEXT_WINDOW_TOKENS = 200000;
 function normalizeContextWindowTokens(value?: number | null): number {
   if (!Number.isFinite(value ?? NaN)) return DEFAULT_CONTEXT_WINDOW_TOKENS;
   return Math.trunc(value!);
+}
+function normalizeMaxOutputTokens(value?: number | null): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null;
+  const n = Math.trunc(value);
+  return n > 0 ? n : null;
 }
 let _vaultUnavailableReason: string | null = null;
 
@@ -63,6 +71,8 @@ export interface DbLlmCredential {
   is_default: boolean;
   key_fingerprint: string | null;
   context_window_tokens: number;
+  /** Output limit (maxTokens). NULL = buildModelsJson fallback chain. */
+  max_output_tokens: number | null;
   owner_id: string | null;
   deep_verified_status: string | null;
   deep_verified_at: Date | null;
@@ -85,7 +95,7 @@ export async function getDefaultCredential(ctx?: QueryContext): Promise<Decrypte
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
+             key_fingerprint, context_window_tokens, max_output_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
       FROM llm_credentials
       WHERE is_default = true AND (owner_id = ${ctx.userId} OR owner_id IS NULL)
       ORDER BY owner_id NULLS LAST, created_at DESC
@@ -97,7 +107,7 @@ export async function getDefaultCredential(ctx?: QueryContext): Promise<Decrypte
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
+             key_fingerprint, context_window_tokens, max_output_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
       FROM llm_credentials
       WHERE is_default = true
       ORDER BY created_at DESC
@@ -121,7 +131,7 @@ export async function getCredentialById(ctxOrId: QueryContext | string, maybeId?
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
+             key_fingerprint, context_window_tokens, max_output_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
       FROM llm_credentials
       WHERE id = ${id} AND (owner_id = ${ctx.userId} OR owner_id IS NULL)
       LIMIT 1
@@ -132,7 +142,7 @@ export async function getCredentialById(ctxOrId: QueryContext | string, maybeId?
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
+             key_fingerprint, context_window_tokens, max_output_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
       FROM llm_credentials
       WHERE id = ${id}
       LIMIT 1
@@ -154,7 +164,7 @@ export async function getDefaultOrFirstAvailableCredential(ctx?: QueryContext): 
     api_key_tag: Buffer | null;
   })[]>`
     SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-           key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
+           key_fingerprint, context_window_tokens, max_output_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, advanced_config
     FROM llm_credentials
     ORDER BY is_default DESC, created_at DESC
   `;
@@ -191,7 +201,7 @@ export async function listCredentials(ctx?: QueryContext): Promise<ListedLlmCred
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, deep_verified_status, deep_verified_at, advanced_config
+             key_fingerprint, context_window_tokens, max_output_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, deep_verified_status, deep_verified_at, advanced_config
       FROM llm_credentials
       WHERE owner_id IS NULL OR owner_id = ${ctx.userId}
       ORDER BY is_default DESC, owner_id NULLS FIRST, created_at DESC
@@ -202,7 +212,7 @@ export async function listCredentials(ctx?: QueryContext): Promise<ListedLlmCred
       api_key_tag: Buffer | null;
     })[]>`
       SELECT id, provider, proto_type, base_url, model_id, thinking_effort, label, is_default,
-             key_fingerprint, context_window_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, deep_verified_status, deep_verified_at, advanced_config
+             key_fingerprint, context_window_tokens, max_output_tokens, owner_id, api_key_ciphertext, api_key_iv, api_key_tag, deep_verified_status, deep_verified_at, advanced_config
       FROM llm_credentials
       ORDER BY is_default DESC, owner_id NULLS FIRST, created_at DESC
     `;
@@ -222,7 +232,8 @@ export async function listCredentials(ctx?: QueryContext): Promise<ListedLlmCred
         label: row.label,
         is_default: row.is_default,
         key_fingerprint: row.key_fingerprint,
-        context_window_tokens: row.context_window_tokens ?? 128000,
+        context_window_tokens: row.context_window_tokens ?? 200000,
+        max_output_tokens: row.max_output_tokens ?? null,
         masked_key: "key 未配置",
         credential_health: "key_unavailable",
         current_key_fingerprint: currentKeyFingerprint,
@@ -269,7 +280,8 @@ export async function listCredentials(ctx?: QueryContext): Promise<ListedLlmCred
       label: row.label,
       is_default: row.is_default,
       key_fingerprint: row.key_fingerprint,
-      context_window_tokens: row.context_window_tokens ?? 128000,
+      context_window_tokens: row.context_window_tokens ?? 200000,
+      max_output_tokens: row.max_output_tokens ?? null,
       masked_key: masked,
       credential_health: health,
       current_key_fingerprint: currentKeyFingerprint,
@@ -336,6 +348,7 @@ export async function updateCredentialMeta(params: {
   thinkingEffort?: string;
   label?: string;
   contextWindowTokens?: number;
+  maxOutputTokens?: number | null;
   ownerId?: string | null;
   ctx?: QueryContext;
 }): Promise<boolean> {
@@ -348,7 +361,8 @@ export async function updateCredentialMeta(params: {
         model_id = COALESCE(${params.modelId ?? null}, model_id),
         thinking_effort = COALESCE(${params.thinkingEffort ?? null}, thinking_effort),
         label = COALESCE(${params.label ?? null}, label),
-        context_window_tokens = COALESCE(${params.contextWindowTokens ?? null}, context_window_tokens)
+        context_window_tokens = COALESCE(${params.contextWindowTokens ?? null}, context_window_tokens),
+        max_output_tokens = COALESCE(${params.maxOutputTokens ?? null}, max_output_tokens)
     WHERE id = ${params.id}
       AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
     RETURNING id
@@ -367,6 +381,7 @@ export async function upsertCredential(params: {
   apiKey: string;
   isDefault?: boolean;
   contextWindowTokens?: number;
+  maxOutputTokens?: number | null;
   ownerId?: string | null;
   advancedConfig?: unknown;
   ctx?: QueryContext;
@@ -375,6 +390,7 @@ export async function upsertCredential(params: {
   const vault = params.apiKey ? getVault() : null;
   const encrypted = params.apiKey && vault ? vault.encrypt(params.apiKey) : null;
   const contextWindowTokens = normalizeContextWindowTokens(params.contextWindowTokens);
+  const maxOutputTokens = normalizeMaxOutputTokens(params.maxOutputTokens);
   const ownerId = params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : (params.ownerId ?? null);
 
   if (params.id) {
@@ -406,6 +422,7 @@ export async function upsertCredential(params: {
             api_key_tag = ${encrypted.tag},
             key_fingerprint = ${vault!.fingerprint()},
             context_window_tokens = ${contextWindowTokens},
+            max_output_tokens = ${maxOutputTokens},
             owner_id = ${ownerId},
             advanced_config = ${advancedPayload}
         WHERE id = ${params.id}
@@ -424,6 +441,7 @@ export async function upsertCredential(params: {
             api_key_tag = ${encrypted.tag},
             key_fingerprint = ${vault!.fingerprint()},
             context_window_tokens = ${contextWindowTokens},
+            max_output_tokens = ${maxOutputTokens},
             owner_id = ${ownerId}
         WHERE id = ${params.id}
           AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
@@ -437,6 +455,7 @@ export async function upsertCredential(params: {
             thinking_effort = ${params.thinkingEffort ?? "off"},
             label = ${params.label ?? ""},
             context_window_tokens = ${contextWindowTokens},
+            max_output_tokens = ${maxOutputTokens},
             owner_id = ${ownerId},
             advanced_config = ${advancedPayload}
         WHERE id = ${params.id}
@@ -451,6 +470,7 @@ export async function upsertCredential(params: {
             thinking_effort = ${params.thinkingEffort ?? "off"},
             label = ${params.label ?? ""},
             context_window_tokens = ${contextWindowTokens},
+            max_output_tokens = ${maxOutputTokens},
             owner_id = ${ownerId}
         WHERE id = ${params.id}
           AND (${params.ctx && shouldFilterByUser(params.ctx) ? params.ctx.userId : null}::uuid IS NULL OR owner_id = ${params.ctx?.userId ?? null})
@@ -482,12 +502,12 @@ export async function upsertCredential(params: {
   const rows = await db<{ id: string }[]>`
     INSERT INTO llm_credentials (
       provider, proto_type, base_url, model_id, thinking_effort, label, is_default, owner_id,
-      api_key_ciphertext, api_key_iv, api_key_tag, key_fingerprint, context_window_tokens, advanced_config
+      api_key_ciphertext, api_key_iv, api_key_tag, key_fingerprint, context_window_tokens, max_output_tokens, advanced_config
     ) VALUES (
       ${params.provider}, ${params.protoType}, ${params.baseUrl ?? null},
       ${params.modelId}, ${params.thinkingEffort ?? "off"}, ${params.label ?? ""},
       ${makeDefault || isFirst}, ${ownerId},
-      ${encrypted?.ciphertext ?? null}, ${encrypted?.iv ?? null}, ${encrypted?.tag ?? null}, ${vault?.fingerprint() ?? null}, ${contextWindowTokens},
+      ${encrypted?.ciphertext ?? null}, ${encrypted?.iv ?? null}, ${encrypted?.tag ?? null}, ${vault?.fingerprint() ?? null}, ${contextWindowTokens}, ${maxOutputTokens},
       ${params.advancedConfig !== undefined ? db.json(params.advancedConfig as Record<string, string | number | boolean | null>) : null}
     )
     RETURNING id

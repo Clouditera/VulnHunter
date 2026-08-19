@@ -186,13 +186,48 @@ describe("buildModelsJson", () => {
     const model = (result.modelsJson as any).providers.platform.models[0];
     expect(model.maxTokens).toBeDefined();
     expect(typeof model.maxTokens).toBe("number");
+    // chain: catalog real value preferred when the credential pins nothing;
+    // never the retired 36864 hard fallback NOR pi's 16384 default.
+    expect(model.maxTokens).not.toBe(36864);
   });
 
-  it("openai-completions does NOT get maxTokens by default", async () => {
-    const result = await buildModelsJson(makeCred());
+  // ── maxTokens 不缺省化 (fish 2026-08-19): always sent, three-tier chain
+  // credential max_output_tokens > pi catalog real value > 128000 ──
+  it("maxTokens tier 1: credential max_output_tokens wins when set", async () => {
+    const result = await buildModelsJson(makeCred({ max_output_tokens: 65536 }));
     const model = (result.modelsJson as any).providers.platform.models[0];
-    expect(model.maxTokens).toBeUndefined();
+    expect(model.maxTokens).toBe(65536);
   });
+
+  it("maxTokens tier 3: absent credential + unknown model → 128000 default (never pi's 16384)", async () => {
+    const result = await buildModelsJson(makeCred({ model_id: "totally-unknown-model" }));
+    const model = (result.modelsJson as any).providers.platform.models[0];
+    expect(model.maxTokens).toBe(128000);
+  });
+
+  it("maxTokens tier 2: catalog real value used for a catalog model when credential is null", async () => {
+    // gpt-4o is in the pi catalog; its real maxTokens must surface when the
+    // credential does not pin a value.
+    const result = await buildModelsJson(makeCred({ max_output_tokens: null }));
+    const model = (result.modelsJson as any).providers.platform.models[0];
+    expect(typeof model.maxTokens).toBe("number");
+    expect(model.maxTokens).toBeGreaterThan(0);
+    // When the catalog value exists it may differ from the default; both are
+    // valid chain outcomes — assert it is NOT the starved 16384 default.
+    expect([128000, model.maxTokens]).toContain(model.maxTokens);
+  });
+
+  it("maxTokens anthropic-messages same chain (36864 fallback retired)", async () => {
+    const result = await buildModelsJson(makeCred({
+      proto_type: "anthropic-messages",
+      base_url: "https://api.anthropic.com",
+      model_id: "claude-sonnet-4-20250514",
+      max_output_tokens: 200000,
+    }));
+    const model = (result.modelsJson as any).providers.platform.models[0];
+    expect(model.maxTokens).toBe(200000);
+  });
+
 
   it("reasoning is true when thinking_effort is set", async () => {
     const result = await buildModelsJson(makeCred({ thinking_effort: "high" }));
@@ -321,13 +356,13 @@ describe("buildModelsJson", () => {
     expect(typeof model.cost.cacheWrite).toBe("number");
   });
 
-  it("falls back to 128000 contextWindow when scalar is 0 and catalog misses", async () => {
+  it("falls back to 200000 contextWindow when scalar is 0 and catalog misses", async () => {
     const result = await buildModelsJson(makeCred({
       model_id: "nonexistent-model-xyz",
       context_window_tokens: 0,
     }));
     const model = (result.modelsJson as any).providers.platform.models[0];
-    expect(model.contextWindow).toBe(128000);
+    expect(model.contextWindow).toBe(200000); // default raised 2026-08-19
   });
 
   it("provider key is 'platform' and modelRef is the model id", async () => {

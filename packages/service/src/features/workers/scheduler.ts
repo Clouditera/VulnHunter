@@ -223,29 +223,7 @@ export class TaskScheduler {
         // Check current DB state — if already cancelled/paused, don't overwrite
         const currentTask = await getTaskById(taskId);
         if (currentTask?.state === "preparing") {
-          const claim = getSchedulerClaim(currentTask);
-          if (claim && claimToken === claim.token) {
-            // Gate terminal collection (spec §6): if the flow died around the
-            // gate (max_loops exhausted → clean flow end, crash mid-gate),
-            // gate.yaml carries the authoritative verdict when present.
-            const gate = this.readGateYaml(getHostWorkDir(this.config.dataDir, taskId));
-            if (gate?.next === "end") {
-              this.finalizeGateEnd(taskId, claim.token, gate.reason, gate.detail, gate).catch((err) =>
-                logger.error({ err, taskId }, "Gate END finalization on die failed"),
-              );
-              await cleanupSchedulerWorkspace(getHostWorkDir(this.config.dataDir, taskId), claim.token).catch(() => undefined);
-              return;
-            }
-            const failed = await failSchedulerClaim(taskId, claim.token, `Worker exited during preparation with code ${exitCode}`);
-            if (failed) {
-              await stopScanWorkerByClaim(taskId, claim.token);
-              await stopSandboxForTask(taskId, "preparing_failed").catch(() => undefined);
-              await cleanupSchedulerWorkspace(getHostWorkDir(this.config.dataDir, taskId), claim.token).catch(() => undefined);
-              notify({ type: "task_state", taskId, state: "failed" });
-            }
-          } else {
-            logger.warn({ taskId, claimToken, currentToken: claim?.token }, "Ignoring stale-token scan die event during preparation");
-          }
+          await this.handleDieDuringPreparing(taskId, claimToken ?? "", exitCode ?? -1, getHostWorkDir(this.config.dataDir, taskId));
           return;
         }
         if (currentTask && ["cancelled", "paused"].includes(currentTask.state)) {
@@ -712,6 +690,50 @@ export class TaskScheduler {
         );
       },
     });
+  }
+
+  /**
+   * die-during-preparing (engine-native gate): if gate.yaml carries an END
+   * verdict, finalize through it; otherwise the flow died before producing
+   * ANY verdict (reasoning model burned its output budget mid-thinking, QA
+   * 6766220b) — fail with a human message + init_aborted event, exit code
+   * kept in the text for triage (fish 2026-08-19 task ③).
+   */
+  async handleDieDuringPreparing(taskId: string, claimToken: string, exitCode: number, hostWorkDir: string): Promise<void> {
+    const currentTask = await getTaskById(taskId).catch(() => null);
+    if (!currentTask || currentTask.state !== "preparing") return;
+    const claim = getSchedulerClaim(currentTask);
+    if (!claim || claimToken !== claim.token) {
+      logger.warn({ taskId, claimToken, currentToken: claim?.token }, "Ignoring stale-token scan die event during preparation");
+      return;
+    }
+    // Gate terminal collection (spec §6): if the flow died around the
+    // gate (max_loops exhausted → clean flow end, crash mid-gate),
+    // gate.yaml carries the authoritative verdict when present.
+    const gate = this.readGateYaml(hostWorkDir);
+    if (gate?.next === "end") {
+      this.finalizeGateEnd(taskId, claim.token, gate.reason, gate.detail, gate).catch((err) =>
+        logger.error({ err, taskId }, "Gate END finalization on die failed"),
+      );
+      await cleanupSchedulerWorkspace(hostWorkDir, claim.token).catch(() => undefined);
+      return;
+    }
+    const initAbortedMessage = `初始化未完成：引擎在准备阶段异常结束（退出码 ${exitCode}），未产出完整性判定结果。请重试；若反复出现请联系管理员。`;
+    appendAndBroadcastCompletionEvent(taskId, {
+      type: "prepare_failed",
+      source: "scan",
+      seq: 0,
+      ts: new Date().toISOString(),
+      reason: "init_aborted",
+      remediation: initAbortedMessage,
+    } as never);
+    const failed = await failSchedulerClaim(taskId, claim.token, initAbortedMessage).catch(() => false);
+    if (failed) {
+      await stopScanWorkerByClaim(taskId, claim.token);
+      await stopSandboxForTask(taskId, "preparing_failed").catch(() => undefined);
+      await cleanupSchedulerWorkspace(hostWorkDir, claim.token).catch(() => undefined);
+      notify({ type: "task_state", taskId, state: "failed" });
+    }
   }
 
   private async handleGateRoute(taskId: string, token: string, hostWorkDir: string, target: string): Promise<void> {

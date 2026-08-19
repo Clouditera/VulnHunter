@@ -119,7 +119,7 @@
       },
       {
         "pattern": "gate.yaml",
-        "min_count": 0
+        "min_count": 1
       },
       {
         "pattern": ".sandbox_config",

@@ -122,7 +122,7 @@ vi.mock("../../src/features/workers/scan-worker.js", () => ({
   stopScanWorkerByClaim: vi.fn(),
 }));
 vi.mock("../../src/features/workers/scheduler-workspace.js", () => ({
-  cleanupSchedulerWorkspace: vi.fn(),
+  cleanupSchedulerWorkspace: vi.fn(async () => undefined),
   getSchedulerPrepareDir: vi.fn(),
   publishSchedulerWorkspace: vi.fn(async () => true),
 }));
@@ -337,5 +337,30 @@ describe("gate route perception (EventTail engine events → scheduler)", () => 
     m.claim = null;
     await fireRoute("cycle_join");
     expect(m.markedRunningCalls).toBe(0);
+  });
+
+  it("die during preparing without gate.yaml: human failReason + init_aborted event", async () => {
+    // QA 6766220b: reasoning model burned its output budget mid-thinking,
+    // flow died with no gate.yaml — user must see human language, not a
+    // bare exit code (fish 2026-08-19, task ③).
+    m.taskById = preparingTask({
+      metadata: { _scan_scheduler_claim: { token, mode: "fresh" } },
+    });
+    const { TaskScheduler: TS } = await import("../../src/features/workers/scheduler.js");
+    const sched = new TS({ dataDir: "/tmp/gate-test", minio: { bucket: "b" } } as any);
+    // No gate.yaml in hostWorkDir (fixture never wrote one) → falls to the
+    // init-aborted branch.
+    await (sched as any).handleDieDuringPreparing("task-gate-1", token, 1, hostWorkDir);
+    expect(m.failClaimCalls).toBe(1);
+    const failArg = (globalThis as any).__lastFailReason ?? "";
+    void failArg;
+    // grab fail reason from the mocked storage call
+    const storage = await import("../../src/features/tasks/storage.js");
+    const failCall = (storage.failSchedulerClaim as any).mock.calls.at(-1);
+    expect(failCall?.[2]).toContain("初始化未完成");
+    expect(failCall?.[2]).toContain("退出码 1");
+    const failed = m.events.find((e) => e.type === "prepare_failed");
+    expect(failed).toMatchObject({ reason: "init_aborted" });
+    expect(failed.remediation).toContain("初始化未完成");
   });
 });

@@ -260,6 +260,7 @@ export class ChatSession {
         id: c.id, proto_type: c.proto_type, base_url: c.base_url,
         model_id: c.model_id, thinking_effort: c.thinking_effort,
         context_window_tokens: c.context_window_tokens, api_key: c.api_key,
+        max_output_tokens: (c as any).max_output_tokens ?? null,
         advanced_config: (c as any).advanced_config ?? null,
       });
       const multiResult = await buildModelsJsonMulti(toItem(cred), additionalCreds.map(toItem));
@@ -270,7 +271,7 @@ export class ChatSession {
         validCreds.map(c => ({
           id: c.id, label: c.label, proto_type: c.proto_type,
           base_url: c.base_url, api_key: c.api_key, model_id: c.model_id,
-          context_window_tokens: c.context_window_tokens ?? 128000,
+          context_window_tokens: c.context_window_tokens ?? 200000,
         })),
       );
 

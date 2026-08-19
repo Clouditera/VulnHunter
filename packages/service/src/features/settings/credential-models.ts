@@ -26,6 +26,8 @@ export interface DecryptedCredentialLike {
   readonly model_id: string;
   readonly thinking_effort: string;
   readonly context_window_tokens: number;
+  /** Output limit. Null/absent → catalog real value → 128000 (fish 2026-08-19). */
+  readonly max_output_tokens?: number | null;
   readonly api_key: string;
   readonly advanced_config?: AdvancedConfig | null;
 }
@@ -335,11 +337,12 @@ export async function buildModelsJson(
     id: cred.model_id,
   };
 
-  // contextWindow: scalar credential > catalog > 128000 fallback
+  // contextWindow: scalar credential > catalog > 200000 fallback (default
+  // raised from 128000, fish 2026-08-19)
   const contextWindow =
     cred.context_window_tokens ||
     catalogModel?.contextWindow ||
-    128_000;
+    200_000;
   modelEntry.contextWindow = contextWindow;
 
   // input: advanced_config > catalog > ["text"]
@@ -356,15 +359,19 @@ export async function buildModelsJson(
     cred.thinking_effort !== "none";
   modelEntry.reasoning = hasThinking;
 
-  // maxTokens: catalog real value; anthropic requires it (API contract)
-  // fish 2026-08-06: OpenAI-compatible APIs do NOT carry maxTokens (kimi
-  // thinking-budget 400 case). Only set from catalog or advanced_config.
-  // Anthropic-messages always needs it: catalog value or 36864 fallback.
-  if (api === "anthropic-messages") {
-    modelEntry.maxTokens = catalogModel?.maxTokens ?? 36_864;
-  }
-  // For OpenAI-compatible: do NOT set maxTokens unless advanced_config explicitly provides one
-  // (via the thinkingLevelMap/compat path, not directly — maxTokens is a model-level field)
+  // maxTokens 不缺省化 (fish 2026-08-19): ALWAYS send, both OpenAI-compatible
+  // and Anthropic — three-tier fallback chain, mirroring contextWindow:
+  //   credential max_output_tokens > pi catalog real value > 128000.
+  // Replaces the retired policies: "OpenAI-compatible sends nothing"
+  // (kimi 2026-08-06 — real cause was a too-small hardcoded value, not the
+  // field itself; 128000 > thinking budgets) and the anthropic 36864
+  // fallback. Reasoning models (glm-5.3 etc.) burn output budget on thinking
+  // chains — pi's silent 16384 default starved them (QA 6766220b).
+  const maxTokens =
+    (cred.max_output_tokens && cred.max_output_tokens > 0 ? cred.max_output_tokens : undefined) ??
+    catalogModel?.maxTokens ??
+    128_000;
+  modelEntry.maxTokens = maxTokens;
 
   // ── compat ──
   const compat: Record<string, unknown> = {};
@@ -454,6 +461,7 @@ export interface MultiCredentialItem {
   model_id: string;
   thinking_effort: string;
   context_window_tokens: number;
+  max_output_tokens?: number | null;
   api_key: string;
   advanced_config?: AdvancedConfig | null;
 }

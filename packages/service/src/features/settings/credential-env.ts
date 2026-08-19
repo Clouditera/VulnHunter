@@ -77,6 +77,7 @@ export async function writeWorkerModelsJson(
     model_id: cred.model_id,
     thinking_effort: cred.thinking_effort,
     context_window_tokens: cred.context_window_tokens,
+    max_output_tokens: (cred as any).max_output_tokens ?? null,
     api_key: cred.api_key,
     advanced_config: (cred as any).advanced_config ?? null,
   };
