@@ -24,10 +24,42 @@ import { getDb } from "../../infra/db/client.js";
 import { loadConfig } from "../../infra/config.js";
 import { getHostWorkDir, stopScanWorkerByClaim } from "./scan-worker.js";
 import { cleanupSchedulerWorkspace } from "./scheduler-workspace.js";
-import { persistedPrepareResult } from "../prepare/contract.js";
+import { load as yamlLoad } from "js-yaml";
+import { isDynamicEnabled } from "../prepare/contract.js";
 import { startTailing } from "../events/event-tail.js";
 import { reconcileSandboxes } from "../sandboxes/lifecycle.js";
 import { join } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { failSchedulerClaim, mergeTaskMetadata } from "../tasks/storage.js";
+import { notify } from "../notifications/index.js";
+
+/** Read extracted.onboard.next from the engine's persisted checkpoint. */
+function readCheckpointGateNext(checkpointPath: string): "continue" | "end" | null {
+  try {
+    const data = yamlLoad(readFileSync(checkpointPath, "utf8")) as Record<string, unknown> | null;
+    const extracted = (data?.extracted ?? null) as Record<string, unknown> | null;
+    const onboard = (extracted?.onboard ?? null) as Record<string, unknown> | null;
+    const next = onboard?.next;
+    return next === "continue" || next === "end" ? next : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Gate evidence file check (mirrors the scheduler's checkGateEvidence). */
+function checkGateEvidenceFiles(task: { source_meta?: Record<string, unknown> | null; metadata?: unknown }, hostWorkDir: string): string[] {
+  const missing: string[] = [];
+  const outDir = join(hostWorkDir, "out");
+  for (const rel of ["knowledge/profiler.yaml", "knowledge/wiki/index.md", "knowledge/wiki/overview.md", "knowledge/wiki/threat-model.md"]) {
+    const p = join(outDir, ...rel.split("/"));
+    if (!(existsSync(p) && statSync(p).size > 0)) missing.push(rel);
+  }
+  if (isDynamicEnabled(task as never)) {
+    const alloc = (((task.metadata as Record<string, unknown> | undefined)?.sandbox_alloc ?? null) as { sandbox_id?: string } | null);
+    if (!alloc?.sandbox_id) missing.push("sandbox_alloc");
+  }
+  return missing;
+}
 
 export async function reconcileSchedulerClaims(config = loadConfig()): Promise<void> {
   const containers = await listManagedContainers();
@@ -41,20 +73,59 @@ export async function reconcileSchedulerClaims(config = loadConfig()): Promise<v
     const running = matching.find((c) => c.State === "running" || c.State === "paused");
     if (running) {
       if (claim.mode === "fresh") {
-        // v2 onboard gate: a fresh claim's worker runs the gate INSIDE the
-        // container. A running container under preparing+fresh is exactly
-        // the expected gate phase — adopting it as running here would skip
-        // the gate CAS (the callback owns preparing→running). Only a
-        // completed gate (metadata.prepare persisted by the callback before
-        // the CAS) may be adopted: that means the callback finished its
-        // work and died between persist and CAS — extremely narrow, adopt.
-        const gateDone = persistedPrepareResult(
-          ((task.metadata as Record<string, unknown> | undefined)?.prepare),
-        )?.project_complete === true;
-        if (!gateDone) {
-          logger.info({ taskId: task.id, token: claim.token }, "Fresh claim worker running in gate phase; leaving for callback");
+        // Engine-native gate: a fresh claim's worker runs the gate IN the
+        // container; the route-event handler (EventTail) owns the
+        // preparing→running transition. After a service restart the handler
+        // is gone, so perception falls to the engine's own persisted
+        // checkpoint (out/.youngflow/checkpoints/flow_state.yaml,
+        // extracted.onboard.next — the same data the engine saves when
+        // routing):
+        //   continue + evidence present → adopt (CAS running)
+        //   end → finalize dead via gate.yaml
+        //   absent → re-arm: adopt path below re-attaches tailing and the
+        //            scheduler-side handler is re-registered on next claim.
+        const hostWorkDir = getHostWorkDir(config.dataDir, task.id);
+        const gateNext = readCheckpointGateNext(join(hostWorkDir, "out", ".youngflow", "checkpoints", "flow_state.yaml"));
+        if (gateNext === "end") {
+          if (await failSchedulerClaim(task.id, claim.token, JSON.stringify({
+            code: "ERR_PREPARE_FAILED",
+            message: "Onboard gate END (restart reconcile)",
+            details: { phase: "prepare", source: "checkpoint" },
+          }))) {
+            await stopScanWorkerByClaim(task.id, claim.token);
+            notify({ type: "task_state", taskId: task.id, state: "failed" });
+          }
           continue;
         }
+        if (gateNext !== "continue") {
+          // Gate not yet routed (or checkpoint unreadable): keep preparing —
+          // the re-armed EventTail handler + max_loops/deadline bounds own it.
+          logger.info({ taskId: task.id, token: claim.token, gateNext }, "Fresh claim worker in gate phase (checkpoint); leaving for route perception");
+          continue;
+        }
+        // gateNext === continue": adopt only with evidence (same gate as the
+        // live path — decide cannot self-authorize across restarts either).
+        const missing = checkGateEvidenceFiles(task, hostWorkDir);
+        if (missing.length > 0) {
+          if (await failSchedulerClaim(task.id, claim.token, JSON.stringify({
+            code: "ERR_PREPARE_FAILED",
+            message: `门禁证据缺失：${missing.join("、")}`,
+            details: { phase: "prepare", reason: "gate_evidence_missing", source: "restart" },
+          }))) {
+            await stopScanWorkerByClaim(task.id, claim.token);
+            notify({ type: "task_state", taskId: task.id, state: "failed" });
+          }
+          continue;
+        }
+        await mergeTaskMetadata(task.id, {
+          prepare: {
+            project_complete: true,
+            sandbox_type: null,
+            reason: "complete",
+            at: new Date().toISOString(),
+          },
+        }).catch(() => undefined);
+        // fall through to adopt (markSchedulerClaimRunning + tailing)
       }
       if (await markSchedulerClaimRunning(task.id, claim.token, new Date())) {
         const hostWorkDir = getHostWorkDir(config.dataDir, task.id);

@@ -5,7 +5,7 @@
 
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { load as yamlLoad } from "js-yaml";
 
@@ -33,8 +33,8 @@ import { SCAN_FALLBACK_MARGIN_S } from "../tasks/scan-duration.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir, hasRunningScanWorkerByClaim, stopScanWorker, stopScanWorkerByClaim } from "./scan-worker.js";
 import { cleanupSchedulerWorkspace, getSchedulerPrepareDir, publishSchedulerWorkspace } from "./scheduler-workspace.js";
-import { GATE_WATCHDOG_MS } from "../internal/prepare-result-route.js";
-import { isDynamicEnabled, persistedPrepareResult, type PrepareResult } from "../prepare/contract.js";
+import { isDynamicEnabled, persistedPrepareResult, parseGateYaml, GATE_REASONS, type GateYaml, type PrepareResult } from "../prepare/contract.js";
+import { setEngineEventHandler } from "../events/event-tail.js";
 import {
   ensureSandboxForTask,
   stopSandboxForTask,
@@ -182,8 +182,6 @@ export class TaskScheduler {
   /** Last incremental sync+index time per running task (ms). */
   private lastIncrementalAt = new Map<string, number>();
   private lastSandboxReconcileAt = 0;
-  /** Fresh-gate watchdog timers per task (cleared on stop). */
-  private readonly gateWatchdogs = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(config: ServiceConfig) {
     this.config = config;
@@ -227,6 +225,17 @@ export class TaskScheduler {
         if (currentTask?.state === "preparing") {
           const claim = getSchedulerClaim(currentTask);
           if (claim && claimToken === claim.token) {
+            // Gate terminal collection (spec §6): if the flow died around the
+            // gate (max_loops exhausted → clean flow end, crash mid-gate),
+            // gate.yaml carries the authoritative verdict when present.
+            const gate = this.readGateYaml(getHostWorkDir(this.config.dataDir, taskId));
+            if (gate?.next === "end") {
+              this.finalizeGateEnd(taskId, claim.token, gate.reason, gate.detail, gate).catch((err) =>
+                logger.error({ err, taskId }, "Gate END finalization on die failed"),
+              );
+              await cleanupSchedulerWorkspace(getHostWorkDir(this.config.dataDir, taskId), claim.token).catch(() => undefined);
+              return;
+            }
             const failed = await failSchedulerClaim(taskId, claim.token, `Worker exited during preparation with code ${exitCode}`);
             if (failed) {
               await stopScanWorkerByClaim(taskId, claim.token);
@@ -334,8 +343,6 @@ export class TaskScheduler {
     if (this.timer) clearInterval(this.timer);
     for (const heartbeat of this.claimHeartbeats) clearInterval(heartbeat);
     this.claimHeartbeats.clear();
-    for (const t of this.gateWatchdogs.values()) clearTimeout(t);
-    this.gateWatchdogs.clear();
     if (this.unsubscribeEvents) this.unsubscribeEvents();
     logger.info("TaskScheduler stopped");
   }
@@ -511,11 +518,16 @@ export class TaskScheduler {
           ts: new Date().toISOString(),
           dynamic_enabled: isDynamicEnabled(task),
         });
-        this.registerGateWatchdog(task.id, token);
-        // Fresh claims do NOT markSchedulerClaimRunning here — the gate
-        // callback (or watchdog) completes preparing→running/failed. The
-        // reconciler adopts the running worker under the same token.
-        logger.info({ taskId: task.id, token }, "Fresh scan worker started; onboard gate armed");
+        // Engine-native gate: the onboard stage routes natively via gate.yaml
+        // (onboard.next==continue→cycle_join / ==end→exit). Perception rides
+        // the existing EventTail engine-log pipeline (route events); this
+        // scheduler registers the per-task handler. NO platform watchdog —
+        // idle loops are capped in-engine by decide→onboard max_loops:5 and
+        // hangs by the existing stuck-deadline fallback (fish 2026-08-19).
+        this.registerGateRouteHandler(task.id, token, hostWorkDir);
+        // Fresh claims do NOT markSchedulerClaimRunning here — the gate route
+        // handler (or reconciler) completes preparing→running/failed.
+        logger.info({ taskId: task.id, token }, "Fresh scan worker started; onboard gate routed in-engine");
         this.startFreshTailing(task.id, hostWorkDir);
         return;
       }
@@ -575,11 +587,10 @@ export class TaskScheduler {
     } finally {
       clearInterval(heartbeat);
       this.claimHeartbeats.delete(heartbeat);
-      // The fresh gate watchdog timer intentionally survives this method's
-      // return (the callback route owns preparing→running; fireGateWatchdog
-      // no-ops on any other state/token) — so the map entry must survive too,
-      // otherwise stop() can never clear the still-pending timer. The timer
-      // removes its own map entry when it fires.
+      // NOTE: the fresh gate route handler intentionally survives this
+      // method's return — the engine route event (or the reconciler's
+      // checkpoint path) completes preparing→running/failed; the handler is
+      // one-shot and detaches on its first terminal action.
       await cleanupSchedulerWorkspace(hostWorkDir, token).catch((err) =>
         logger.warn({ err, taskId: task.id, token }, "Failed to clean token-private scheduler workspace"),
       );
@@ -681,42 +692,161 @@ export class TaskScheduler {
   }
 
   /**
-   * Gate watchdog (plan §4.1): a fresh task whose worker never submitted a
-   * prepare-result within GATE_WATCHDOG_MS fails exactly like the retired
-   * prepare hard cap. The claim deadline is 15min but the heartbeat keeps
-   * renewing the lease, so this timer is the real cap for the gate phase.
-   * Fires only when the task is still preparing under OUR token (lost
-   * claims are the reconciler's business).
+   * Engine-native gate perception (spec §6): the onboard stage routes
+   * natively via gate.yaml; youngflow emits `{category:"stage",
+   * event:"route", stage:"onboard", target}` on the engine log, which the
+   * EventTail pipeline delivers to this handler.
+   *   target= cycle_join → gate passed → evidence gate → CAS running
+   *   target= exit      → gate verdict END → read gate.yaml → fail claim
+   * Bad/malformed events are tolerated (handler stays armed); the handler
+   * detaches itself on the first terminal action.
    */
-  private registerGateWatchdog(taskId: string, token: string): void {
-    const timer = setTimeout(() => {
-      this.fireGateWatchdog(taskId, token).catch((err) =>
-        logger.error({ err, taskId, token }, "Gate watchdog fire failed"),
+  private registerGateRouteHandler(taskId: string, token: string, hostWorkDir: string): void {
+    setEngineEventHandler(taskId, (raw) => {
+      if (raw.event !== "route" || raw.stage !== "onboard") return;
+      const target = raw.target;
+      if (target !== "cycle_join" && target !== "exit") return;
+      setEngineEventHandler(taskId, null); // one-shot: first terminal route wins
+      this.handleGateRoute(taskId, token, hostWorkDir, target).catch((err) =>
+        logger.error({ err, taskId, token, target }, "Gate route handling failed"),
       );
-    }, GATE_WATCHDOG_MS);
-    timer.unref?.();
-    this.gateWatchdogs.set(taskId, timer);
+    });
   }
 
-  private async fireGateWatchdog(taskId: string, token: string): Promise<void> {
-    this.gateWatchdogs.delete(taskId); // self-remove: the timer is spent either way
+  private async handleGateRoute(taskId: string, token: string, hostWorkDir: string, target: string): Promise<void> {
     const current = await getTaskById(taskId).catch(() => null);
-    if (!current || current.state !== "preparing") return;
+    if (!current || current.state !== "preparing") return; // raced/repeat — idempotent
     const claim = getSchedulerClaim(current);
-    if (!claim || claim.token !== token) return;
-    logger.warn({ taskId, token }, "Onboard gate timed out (30min); failing task");
+    if (!claim || claim.token !== token) return; // reconciler owns lost claims
+
+    const gate = this.readGateYaml(hostWorkDir);
+
+    if (target === "exit") {
+      const reason = gate?.reason ?? "partial_source";
+      const detail = gate?.detail;
+      await this.finalizeGateEnd(taskId, token, reason, detail, gate);
+      return;
+    }
+
+    // target === cycle_join": evidence gate (decide cannot self-authorize).
+    const missing = this.checkGateEvidence(current, hostWorkDir);
+    if (missing.length > 0) {
+      logger.warn({ taskId, token, missing }, "Gate evidence missing; failing task");
+      await this.finalizeGateEnd(taskId, token, "gate_evidence_missing" as never, `门禁证据缺失：${missing.join("、")}`, gate);
+      return;
+    }
+
+    // Persist metadata.prepare (three-field contract kept for the timeline,
+    // continue/resume reuse, and sandbox selection provenance).
+    await mergeTaskMetadata(taskId, {
+      prepare: {
+        project_complete: true,
+        sandbox_type: gate?.sandbox_type ?? null,
+        reason: "complete",
+        dynamic_enabled: isDynamicEnabled(current),
+        at: new Date().toISOString(),
+      },
+    }).catch((err) => logger.warn({ err, taskId }, "Failed to persist prepare metadata at gate"));
+    appendAndBroadcastCompletionEvent(taskId, {
+      type: "prepare_completed",
+      source: "scan",
+      seq: 0,
+      ts: new Date().toISOString(),
+      project_complete: true,
+      sandbox_type: gate?.sandbox_type ?? null,
+      reason: "complete",
+    });
+    const marked = await markSchedulerClaimRunning(taskId, token, new Date());
+    if (!marked) {
+      logger.warn({ taskId, token }, "Gate CAS lost the claim (reconciler handles)");
+      return;
+    }
+    notify({ type: "task_state", taskId, state: "running" });
+    logger.info({ taskId, token }, "Onboard gate passed (engine route + evidence); task running");
+  }
+
+  /**
+   * Evidence gate (spec §0/§6, subsumes task-d9c73b59): continue requires
+   * profiler.yaml + the three wiki files in out/knowledge/, non-empty;
+   * dynamic tasks additionally require a recorded sandbox allocation
+   * (metadata.sandbox_alloc — apply_sandbox succeeded).
+   */
+  private checkGateEvidence(task: DbTask, hostWorkDir: string): string[] {
+    const missing: string[] = [];
+    const outDir = join(hostWorkDir, "out");
+    const required = [
+      "knowledge/profiler.yaml",
+      "knowledge/wiki/index.md",
+      "knowledge/wiki/overview.md",
+      "knowledge/wiki/threat-model.md",
+    ];
+    for (const rel of required) {
+      const p = join(outDir, ...rel.split("/"));
+      const ok = existsSync(p) && statSync(p).size > 0;
+      if (!ok) missing.push(rel);
+    }
+    if (isDynamicEnabled(task)) {
+      const alloc = ((task.metadata as Record<string, unknown> | undefined)?.sandbox_alloc ?? null) as { sandbox_id?: string } | null;
+      if (!alloc?.sandbox_id) missing.push("sandbox_alloc（动态任务未申请沙箱）");
+    }
+    return missing;
+  }
+
+  /** Read + validate gate.yaml from the workspace; null on any miss. */
+  private readGateYaml(hostWorkDir: string): GateYaml | null {
+    try {
+      return parseGateYaml(readFileSync(join(hostWorkDir, "out", "gate.yaml"), "utf8"));
+    } catch {
+      return null;
+    }
+  }
+
+  /** Terminal END path: persist prepare, emit prepare_failed, fail claim, stop worker. */
+  private async finalizeGateEnd(
+    taskId: string,
+    token: string,
+    reason: string,
+    detail: string | undefined,
+    gate: GateYaml | null,
+  ): Promise<void> {
+    const incomplete = reason === "partial_source" || reason === "fragment_collection";
+    if (incomplete) {
+      await mergeTaskMetadata(taskId, { source_incomplete: true }).catch(() => undefined);
+    }
+    await mergeTaskMetadata(taskId, {
+      prepare: {
+        project_complete: false,
+        sandbox_type: gate?.sandbox_type ?? null,
+        reason: (GATE_REASONS as readonly string[]).includes(reason) ? reason : "partial_source",
+        at: new Date().toISOString(),
+      },
+    }).catch((err) => logger.warn({ err, taskId }, "Failed to persist prepare metadata at gate end"));
+
+    const userReason =
+      reason === "gate_evidence_missing" ? "gate_evidence_missing"
+      : reason === "sandbox_unavailable" ? "sandbox_unavailable"
+      : reason === "no_compatible_sandbox" ? "no_compatible_sandbox"
+      : "source_incomplete";
+    const remediationMap: Record<string, string> = {
+      source_incomplete: "请补充完整项目源码后重新创建任务",
+      no_compatible_sandbox: "关闭动态验证后重试，或联系管理员启用对应的沙箱类型",
+      sandbox_unavailable: "稍后重试，或联系管理员检查沙箱服务容量/配额",
+      gate_evidence_missing: "初始化产物校验未通过，请重试；若持续出现请联系管理员",
+    };
+    const remediation = remediationMap[userReason] ?? "请重试或联系管理员";
     appendAndBroadcastCompletionEvent(taskId, {
       type: "prepare_failed",
       source: "scan",
       seq: 0,
       ts: new Date().toISOString(),
-      reason: "gate_timeout",
-      remediation: "初始化超时（超过 30 分钟上限）。请重试或联系管理员。",
-    });
+      reason: userReason,
+      remediation,
+      ...(detail ? { detail } : {}),
+    } as never);
     const failure = JSON.stringify({
       code: "ERR_PREPARE_FAILED",
-      message: "Prepare 超时（onboard 门禁超过 30 分钟上限）",
-      details: { phase: "prepare", reason: "gate_timeout" },
+      message: detail ?? `Onboard gate END（reason=${reason}）`,
+      details: { phase: "prepare", reason, detail },
     });
     const failed = await failSchedulerClaim(taskId, token, failure).catch(() => false);
     if (failed) {
@@ -726,14 +856,35 @@ export class TaskScheduler {
     }
   }
 
-  /** Event tailing for a fresh task in the gate phase (preparing state). */
+  /** Event tailing for a fresh task in the gate phase (preparing state).
+   * Tail failure is now a hard failure: the engine-log pipe is the ONLY
+   * running gate-perception channel (spec §6) — a silent tail loss would
+   * wedge the task until the stuck-deadline fallback. */
   private startFreshTailing(taskId: string, hostWorkDir: string): void {
     const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
     const serviceLogsDir = join(hostWorkDir, ".service-logs");
     try {
       startTailing(taskId, [], [{ path: eventsDir, source: "scan" }, { path: serviceLogsDir, source: "scan" }]);
     } catch (err) {
-      logger.warn({ err, taskId }, "Fresh worker tailing could not start");
+      logger.error({ err, taskId }, "Fresh worker tailing failed to start — failing task (gate perception channel)");
+      this.failFreshTailLoss(taskId).catch((e2) => logger.error({ err: e2, taskId }, "Tail-loss failure handling errored"));
+    }
+  }
+
+  private async failFreshTailLoss(taskId: string): Promise<void> {
+    const current = await getTaskById(taskId).catch(() => null);
+    if (!current || current.state !== "preparing") return;
+    const claim = getSchedulerClaim(current);
+    if (!claim) return;
+    const failure = JSON.stringify({
+      code: "ERR_PREPARE_FAILED",
+      message: "引擎事件管道启动失败，无法感知门禁状态",
+      details: { phase: "prepare", reason: "event_tail_unavailable" },
+    });
+    const failed = await failSchedulerClaim(taskId, claim.token, failure).catch(() => false);
+    if (failed) {
+      await stopScanWorkerByClaim(taskId, claim.token);
+      notify({ type: "task_state", taskId, state: "failed" });
     }
   }
 

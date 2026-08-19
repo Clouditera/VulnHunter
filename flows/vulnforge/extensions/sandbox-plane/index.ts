@@ -24,6 +24,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 interface ProjectedSandboxType {
   profile_id: string;
@@ -91,6 +92,17 @@ export default function (pi: ExtensionAPI) {
     },
   }));
 
+  async function proxyPost(path: string, body: unknown): Promise<{ status: number; json: any }> {
+    const res = await fetch(`${base}${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${taskId}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    let json: any = null;
+    try { json = await res.json(); } catch { /* non-JSON error body */ }
+    return { status: res.status, json };
+  }
+
   pi.registerTool(defineTool({
     name: "get_sandbox_type",
     label: "Get Sandbox Type",
@@ -116,6 +128,57 @@ export default function (pi: ExtensionAPI) {
       return {
         content: [{ type: "text" as const, text: JSON.stringify(type) }],
         details: { found: type !== null },
+      };
+    },
+  }));
+
+  pi.registerTool(defineTool({
+    name: "apply_sandbox",
+    label: "Apply Sandbox",
+    description:
+      "申请分配一个指定类型的沙箱（onboard 第 5 步动态任务专用）。成功时沙箱配置写入工作区且沙箱即刻可用；失败时返回具体原因（quota=配额不足 / capacity=服务容量不足 / plane_unavailable=服务不可用 / type_unavailable=类型不存在或不可用）。失败不重试：把返回的 message 原样写进 gate.yaml 的 detail 并将 next 置为 end。",
+    promptSnippet:
+      "apply_sandbox(profile_id) — 动态任务在第 5 步选定沙箱类型后申请分配；仅调用一次，失败即写 gate.yaml{next:end}。",
+    parameters: Type.Object({
+      profile_id: Type.String({ description: "要申请的沙箱类型 profile_id（必须先经 list/get 确认可用）。" }),
+    }),
+
+    async execute(_id, params, _signal, _onUpdate, _ctx) {
+      let result: { status: number; json: any };
+      try {
+        result = await proxyPost("/internal/sandbox-plane/apply", { profile_id: params.profile_id });
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ ok: false, reason: "plane_unavailable", message: `沙箱服务不可用（${String(err)}）` }) }],
+          details: { ok: false },
+        };
+      }
+      if (result.status === 200 && result.json?.ok) {
+        // Persist the alias-only sandbox config into the workspace root; the
+        // engine passes its path to dynamic stages via sandbox_cfg.
+        const outDir = process.env.YOUNGFLOW_OUTPUT_DIR;
+        if (outDir && typeof result.json.sandbox_config === "string") {
+          try {
+            writeFileSync(join(outDir, ".sandbox_config"), result.json.sandbox_config, { mode: 0o644 });
+          } catch {
+            // write failure must not lose the ok signal; the platform
+            // continue/resume path re-renders the file from the mapping.
+          }
+        }
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ ok: true, profile_id: params.profile_id }) }],
+          details: { ok: true },
+        };
+      }
+      const payload = result.json ?? {};
+      const body = {
+        ok: false,
+        reason: typeof payload.reason === "string" ? payload.reason : `http_${result.status}`,
+        message: typeof payload.message === "string" ? payload.message : `沙箱申请失败（HTTP ${result.status}）`,
+      };
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(body) }],
+        details: { ok: false },
       };
     },
   }));

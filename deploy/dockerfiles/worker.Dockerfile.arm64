@@ -76,8 +76,9 @@ RUN cd /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access \
     && npm install --omit=dev --no-audit --no-fund \
       @earendil-works/pi-coding-agent@$PI_VERSION \
       @earendil-works/pi-ai@$PI_VERSION
-# sandbox-plane extension (onboard gate): read-only sandbox-type tools for
-# the five-step onboard. pi peer deps only (no runtime deps).
+# sandbox-plane extension (onboard gate): sandbox-type list/get tools plus
+# apply_sandbox (allocation POST) for the five-step onboard. pi peer deps
+# only (no runtime deps).
 RUN cd /opt/vulnhunter/flows/vulnforge/extensions/sandbox-plane \
     && npm install --omit=dev --no-audit --no-fund \
     && npm install --omit=dev --no-audit --no-fund \
@@ -129,13 +130,8 @@ COPY worker-assets/scan-mode.sh /opt/scan-mode.sh
 COPY worker-assets/chat-mode.sh /opt/chat-mode.sh
 COPY worker-assets/report-mode.sh /opt/report-mode.sh
 COPY worker-assets/run-with-deadline.py /opt/run-with-deadline.py
-COPY worker-assets/submit-prepare-result.sh /opt/vulnhunter/bin/submit-prepare-result.sh
-COPY worker-assets/jar-unpack.sh /opt/vulnhunter/bin/jar-unpack.sh
 RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh /opt/report-mode.sh \
-    /opt/run-with-deadline.py /opt/vulnhunter/bin/submit-prepare-result.sh \
-    /opt/vulnhunter/bin/jar-unpack.sh \
-    && bash -n /opt/vulnhunter/bin/jar-unpack.sh \
-    && test -x /opt/vulnhunter/bin/jar-unpack.sh
+    /opt/run-with-deadline.py
 
 WORKDIR /workspace
 ENTRYPOINT ["/opt/entrypoint.sh"]

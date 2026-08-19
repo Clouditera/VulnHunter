@@ -173,14 +173,14 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
       VULNFORGE_ENABLE_POC: "true",
       VULNFORGE_ENABLE_EXP: "true",
       VULNFORGE_ENABLE_CHAIN: "true",
-      VULNFORGE_SANDBOX_CFG: "/run/vulnhunter/sandbox.md",
+      VULNFORGE_SANDBOX_CFG: "/workspace/out/.sandbox_config",
     });
     expect(argv).not.toContain(STATIC_ONLY_SCHED_INSTR);
     expect(argv).not.toContain("--sched-instr");
     expect(valueAfter(argv, "--enable-poc")).toBe("true");
     expect(valueAfter(argv, "--enable-exp")).toBe("true");
     expect(valueAfter(argv, "--enable-chain")).toBe("true");
-    expect(valueAfter(argv, "--sandbox-cfg")).toBe("/run/vulnhunter/sandbox.md");
+    expect(valueAfter(argv, "--sandbox-cfg")).toBe("/workspace/out/.sandbox_config");
   });
 
   it("H1 dynamic argv: task sched_instr passes through; chain defaults off; missing sandbox_cfg omitted", () => {
@@ -189,7 +189,7 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
       VULNFORGE_ENABLE_POC: "true",
       VULNFORGE_ENABLE_EXP: "true",
       VULNFORGE_SCHED_INSTR: "prioritize poc-verify",
-      VULNFORGE_SANDBOX_CFG: "/run/vulnhunter/sandbox.md",
+      VULNFORGE_SANDBOX_CFG: "/workspace/out/.sandbox_config",
     });
     expect(valueAfter(withInstr.argv, "--sched-instr")).toBe("prioritize poc-verify");
     expect(valueAfter(withInstr.argv, "--enable-chain")).toBe("false");

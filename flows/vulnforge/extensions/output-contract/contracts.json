@@ -118,7 +118,11 @@
         "min_count": 0
       },
       {
-        "pattern": ".vulnhunter-gate.json",
+        "pattern": "gate.yaml",
+        "min_count": 0
+      },
+      {
+        "pattern": ".sandbox_config",
         "min_count": 0
       }
     ]

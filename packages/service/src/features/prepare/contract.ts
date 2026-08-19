@@ -1,14 +1,13 @@
 /**
- * Prepare result contract (v2 — prepare internalized into the onboard gate).
- *
- * Historical home was features/workers/prepare-worker.ts (one-shot container
- * MODE=prepare). The prepare infrastructure is retired (plan §4.4): the
- * completeness/sandbox-selection decision now runs inside the scan worker's
- * onboard stage and is submitted back to the service via
- * POST /internal/prepare-result. This module is the single source of truth
- * for the three-field contract shared by the flow prompt, the submit script,
- * and the callback endpoint.
+ * Gate contracts (v3 — engine-native gate, spec
+ * onboard-gate-engine-native-v1.0). The three-field prepare contract survives
+ * as metadata.prepare; the runtime gate is now gate.yaml written by the
+ * onboard stage and routed natively by youngflow (the /internal/prepare-result
+ * callback endpoint and submit-prepare-result.sh are retired). This module is
+ * the single source of truth for both shapes.
  */
+
+import { load as parseYaml } from "js-yaml";
 
 /** The three-field Prepare result contract (P1/P2 frozen). */
 export interface PrepareResult {
@@ -23,6 +22,47 @@ export const PREPARE_RESULT_REASONS = [
   "fragment_collection",
   "no_compatible_sandbox",
 ] as const;
+
+/**
+ * gate.yaml reason enum (engine-native gate, v1.0 spec §1): the prepare
+ * contract reasons + sandbox_unavailable (apply_sandbox failed — the agent
+ * could not obtain a sandbox for a dynamic task).
+ */
+export const GATE_REASONS = [...PREPARE_RESULT_REASONS, "sandbox_unavailable"] as const;
+export type GateReason = (typeof GATE_REASONS)[number];
+
+/** Parsed gate.yaml (workspace root = out/). */
+export interface GateYaml {
+  next: "continue" | "end";
+  reason: GateReason;
+  detail?: string;
+  sandbox_type?: string | null;
+}
+
+/**
+ * Parse + validate gate.yaml content from an untrusted YAML string. Returns
+ * null on any shape violation — callers fail closed.
+ */
+export function parseGateYaml(text: string): GateYaml | null {
+  let value: unknown;
+  try {
+    value = parseYaml(text);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  if (v.next !== "continue" && v.next !== "end") return null;
+  if (!GATE_REASONS.includes(v.reason as GateReason)) return null;
+  if (v.sandbox_type !== undefined && v.sandbox_type !== null && typeof v.sandbox_type !== "string") return null;
+  if (v.detail !== undefined && typeof v.detail !== "string") return null;
+  return {
+    next: v.next,
+    reason: v.reason as GateReason,
+    detail: typeof v.detail === "string" ? v.detail : undefined,
+    sandbox_type: (v.sandbox_type as string | null | undefined) ?? null,
+  };
+}
 
 function booleanMeta(meta: Record<string, unknown> | null | undefined, key: string): boolean {
   const v = meta?.[key];

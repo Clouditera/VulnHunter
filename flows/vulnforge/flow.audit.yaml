@@ -113,6 +113,11 @@ stages:
     routes:
       - to: onboard
         when: decide.next == onboard
+        # Gate idle-loop cap (fish 2026-08-19): 5 onboard rounds max; when
+        # exhausted and no other route matches, the flow ends cleanly and the
+        # die-during-preparing path finalizes the task. Replaces the retired
+        # platform gate watchdog.
+        max_loops: 5
       - to: cognize
         when: decide.next == cognize
       - to: research
@@ -144,6 +149,7 @@ stages:
       - project-profiler
       - threat-modeling
       - wiki-maintainer
+      - preprocessing
     extensions:
       - output-contract
       - sandbox-plane
@@ -158,6 +164,7 @@ stages:
       - edit
       - list_sandbox_types
       - get_sandbox_type
+      - apply_sandbox
     task: onboard.md
     prompt: |
       - 目标项目: ${work_dir}
@@ -167,15 +174,25 @@ stages:
       - 是否启用 EXP: ${flow_inputs.enable_exp}
       - 是否启用组合链: ${flow_inputs.enable_chain}
       - 沙箱配置: ${flow_inputs.sandbox_cfg}
-      - 平台门禁提交脚本: /opt/vulnhunter/bin/submit-prepare-result.sh（第 3 步不合格与第 5 步末成功时各提交一次；脚本幂等，$OUTPUT_DIR/.vulnhunter-gate.json 已存在则跳过）
-      - jar 反编译脚本: /opt/vulnhunter/bin/jar-unpack.sh "$YOUNGFLOW_WORK_DIR"（第 2 步；含 jar/war/裸 class 时运行）
+      - 门禁结果写入 $OUTPUT_DIR/gate.yaml（next: continue|end + reason + detail + sandbox_type；已存在则跳过门禁步骤）
       - templates: ${templates}/build.template.md
       - schema: ${schemas}/profiler.schema.yaml
       - 输出语言: ${flow_inputs.output_language}
     timeout: 1800
     error_strategy: continue
+    # Engine-native gate (spec §1/§2): the onboard stage writes gate.yaml at
+    # the workspace root; the engine routes on it — END → exit (task dead),
+    # CONTINUE → cycle_join (audit proceeds). Map multi-round re-entries skip
+    # the gate steps (gate.yaml already present, onboard.md idempotence).
+    state:
+      next:
+        file: gate.yaml
+        field: next
     routes:
+      - to: exit
+        when: onboard.next == end
       - to: cycle_join
+        when: onboard.next == continue
 
   - id: cognize
     name: 认知深化

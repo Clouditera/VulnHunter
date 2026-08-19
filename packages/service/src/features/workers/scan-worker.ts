@@ -13,6 +13,9 @@ import {
   LABEL_TASK_TYPE,
   LABEL_SCHEDULER_CLAIM,
 } from "./docker-client.js";
+import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { renderSandboxMd } from "./sandbox-inject.js";
 
 import type { DbTask } from "../tasks/storage.js";
 import { createAuditCompletionEngineRun, fingerprintAuditCompletion } from "./audit-completion.js";
@@ -20,7 +23,6 @@ import { getTaskSandbox, peekTaskSshPrivateKey, type TaskSandbox } from "../sand
 import {
   injectSandboxFiles,
   renderInjectionFiles,
-  SANDBOX_CFG_CONTAINER_PATH,
   SANDBOX_RUNTIME_DIR,
 } from "./sandbox-inject.js";
 
@@ -126,10 +128,24 @@ export async function spawnScanWorker(
       throw new Error(`Dynamic task ${task.id} requires a ready sandbox + in-memory ssh key before worker start (mapping=${mapping?.state ?? "none"}, key=${privateKey ? "present" : "missing"})`);
     }
     // Fresh dynamic tasks spawn WITHOUT a sandbox: the onboard gate runs
-    // inside this worker, POSTs /internal/prepare-result, and the callback
-    // allocates + injects the SSH files into the RUNNING container. The
-    // tmpfs is mounted up-front (files arrive later; ssh tolerates the
-    // absent config include until then — verified behavior).
+    // inside this worker; its apply_sandbox tool POSTs
+    // /internal/sandbox-plane/apply, which allocates + injects the SSH files
+    // into the RUNNING container. The tmpfs is mounted up-front (files arrive
+    // later; ssh tolerates the absent config include until then).
+  }
+  if (sandbox && (resume || continueMode)) {
+    // Continue/resume pre-write the workspace sandbox description for legacy
+    // tasks whose out/.sandbox_config is missing (engine-native gate: fresh
+    // runs get it from apply_sandbox). Alias-only content, no coordinates.
+    const cfgPath = join(hostWorkDir, "out", ".sandbox_config");
+    if (!existsSync(cfgPath)) {
+      const capabilities = ((task.metadata as Record<string, unknown> | undefined)?.prepare as
+        | { sandbox_capabilities?: string[] }
+        | undefined)?.sandbox_capabilities ?? [];
+      await mkdir(join(hostWorkDir, "out"), { recursive: true });
+      await writeFile(cfgPath, renderSandboxMd(capabilities), { mode: 0o644 });
+      logger.info({ taskId: task.id }, "Pre-wrote out/.sandbox_config for continue/resume");
+    }
   }
 
   const container = await createWorkerContainer({
@@ -152,7 +168,10 @@ export async function spawnScanWorker(
       RESUME: resume ? "1" : "0",
       CONTINUE: continueMode ? "1" : "0",
       ...scanInputEnvFromMeta(task.source_meta, { dynamicEnabled }),
-      ...(dynamicEnabled ? { VULNFORGE_SANDBOX_CFG: SANDBOX_CFG_CONTAINER_PATH } : {}),
+      // engine-native gate: the sandbox description is a workspace file
+      // (written by apply_sandbox during onboard, or pre-rendered on
+      // continue/resume) — path fixed, key unchanged.
+      ...(dynamicEnabled ? { VULNFORGE_SANDBOX_CFG: "/workspace/out/.sandbox_config" } : {}),
       SCAN_TIMEOUT: stringMeta(task.source_meta, "scan_timeout"),
       TIMEOUT_MODE: stringMeta(task.source_meta, "timeout_mode"),
       MAX_ITEMS_PER_RECON: stringMeta(task.source_meta, "max_items_per_recon"),
@@ -171,7 +190,7 @@ export async function spawnScanWorker(
     // start lands in the image layer and gets mounted over). The agent only
     // touches these files when it begins dynamic work, long after the
     // ms-scale injection.
-    const files = renderInjectionFiles(task, sandbox.mapping, sandbox.privateKey, {
+    const files = renderInjectionFiles(sandbox.mapping, sandbox.privateKey, {
       sshHostOverride: config.sandboxSshHostOverride ?? null,
       bastionSpec: config.sandboxSshBastion ?? null,
       bastionHostKey: config.sandboxSshBastionHostKey ?? null,

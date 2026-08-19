@@ -139,6 +139,11 @@ export class FileTail {
       try {
         const raw = JSON.parse(line) as Record<string, unknown>;
 
+        // Engine-native gate perception: raw youngflow events (route and any
+        // other stage-internal signal) reach registered handlers BEFORE
+        // translation filtering — the live log stays unchanged.
+        if (raw.event) dispatchEngineEvent(this.taskId, raw);
+
         // Detect format: canonical (has 'type') vs youngflow (has 'event')
         let event: LiveLogEvent | null;
         if (raw.type) {
@@ -213,6 +218,30 @@ export class DirectoryTail {
       }
     } catch {
       // Directory may not exist yet
+    }
+  }
+}
+
+// Internal engine-event handlers per task (engine-native gate, spec §6):
+// route events are dropped from the live log by translateYoungflowEvent but
+// must reach the scheduler's gate perception. Keyed by taskId; a handler is
+// called with the RAW youngflow event object (category/event/stage/target).
+type EngineEventHandler = (raw: Record<string, unknown>) => void;
+const engineEventHandlers = new Map<string, EngineEventHandler>();
+
+/** Register a per-task engine-event handler (null removes it). */
+export function setEngineEventHandler(taskId: string, handler: EngineEventHandler | null): void {
+  if (handler === null) engineEventHandlers.delete(taskId);
+  else engineEventHandlers.set(taskId, handler);
+}
+
+function dispatchEngineEvent(taskId: string, raw: Record<string, unknown>): void {
+  const handler = engineEventHandlers.get(taskId);
+  if (handler) {
+    try {
+      handler(raw);
+    } catch (err) {
+      logger.warn({ err, taskId, event: raw.event }, "Engine-event handler failed");
     }
   }
 }

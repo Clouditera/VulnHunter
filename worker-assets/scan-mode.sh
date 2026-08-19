@@ -228,20 +228,6 @@ if [ "$EXIT" -eq 124 ]; then
   EXIT=0
 fi
 
-# Onboard gate exit codes (submit-prepare-result.sh): 42 = gate rejected
-# (task already failed by the platform), 43 = gate submit hard error. NOTE:
-# a stage-internal bash exit does NOT become the youngflow process exit code
-# in general — this branch only catches the case where youngflow itself
-# propagates the gate script's code. The authoritative collection for gate
-# failure is the platform stopping the container (SIGTERM→143) after the
-# callback failed the claim; this passthrough is belt-and-braces.
-if [ "$EXIT" -eq 42 ] || [ "$EXIT" -eq 43 ]; then
-  echo "[scan] Onboard gate ended the run (exit=$EXIT)" >&2
-  finish_log
-  trap - EXIT TERM INT HUP
-  return "$EXIT"
-fi
-
 finish_log
 trap - EXIT TERM INT HUP
 

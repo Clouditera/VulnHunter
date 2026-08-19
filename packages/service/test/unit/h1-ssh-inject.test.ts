@@ -147,12 +147,13 @@ describe("renderInjectionFiles + buildInjectionTar", () => {
   };
   const task: any = { id: "t1", metadata: { prepare: { sandbox_capabilities: ["docker"] } } };
   it("renders injection files with exact paths and modes; pins known_hosts when key present", () => {
-    const files = renderInjectionFiles(task, mapping, "PRIVATE", null);
+    // sandbox.md retired from the tmpfs (engine-native gate): the agent-facing
+    // description lives in out/.sandbox_config instead.
+    const files = renderInjectionFiles(mapping, "PRIVATE", null);
     expect(files.map((f) => [f.containerPath, f.mode])).toEqual([
       ["/run/vulnhunter/ssh/id_ed25519", 0o400],
       ["/run/vulnhunter/ssh/known_hosts", 0o444],
       ["/run/vulnhunter/ssh/config", 0o444],
-      ["/run/vulnhunter/sandbox.md", 0o444],
     ]);
     // The /etc drop-in is baked into the worker image at build time (static
     // one-liner) — runtime injection must never touch /etc (de-identified
@@ -165,7 +166,7 @@ describe("renderInjectionFiles + buildInjectionTar", () => {
     expect(files[2]!.content).toContain("StrictHostKeyChecking yes");
   });
   it("bastion mode uses internal host + ProxyJump and injects bastion identity", () => {
-    const files = renderInjectionFiles(task, mapping, "PRIVATE", {
+    const files = renderInjectionFiles(mapping, "PRIVATE", {
       bastionSpec: "jump@10.0.0.5:22",
       bastionHostKey: "ssh-ed25519 AAAABAST",
       bastionIdentityOpenSsh: "BASTION_PRIVATE",
@@ -180,12 +181,12 @@ describe("renderInjectionFiles + buildInjectionTar", () => {
   });
   it("TOFU when host public key is null", () => {
     const bare = { ...mapping, ssh_host_public_key: null };
-    const files = renderInjectionFiles(task, bare, "PRIVATE", null);
+    const files = renderInjectionFiles(bare, "PRIVATE", null);
     expect(files.find((f) => f.containerPath.endsWith("known_hosts"))!.content).toBe("");
     expect(files.find((f) => f.containerPath.endsWith("/config"))!.content).toContain("accept-new");
   });
   it("builds a tar that system tar lists with correct modes", () => {
-    const files = renderInjectionFiles(task, mapping, "PRIVATE", null);
+    const files = renderInjectionFiles(mapping, "PRIVATE", null);
     const tar = buildInjectionTar(files);
     const dir = mkdtempSync(join(tmpdir(), "h1-tar-"));
     try {
@@ -195,7 +196,7 @@ describe("renderInjectionFiles + buildInjectionTar", () => {
       expect(listing).toContain("run/vulnhunter/ssh/id_ed25519");
       expect(listing).not.toContain("etc/ssh");
       expect(listing).toMatch(/-r--------.*id_ed25519/);
-      expect(listing).toMatch(/-r--r--r--.*sandbox\.md/);
+      expect(listing).not.toContain("sandbox.md");
       // tar extracts cleanly
       execFileSync("tar", ["-xf", tarPath, "-C", dir]);
     } finally {

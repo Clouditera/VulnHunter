@@ -8,7 +8,6 @@ import { logger } from "../../infra/logger.js";
 import type Dockerode from "dockerode";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
-import type { DbTask } from "../tasks/storage.js";
 import type { TaskSandbox } from "../sandboxes/storage.js";
 
 export const SANDBOX_RUNTIME_DIR = "/run/vulnhunter";
@@ -187,7 +186,6 @@ export interface RenderInjectionOptions {
 }
 
 export function renderInjectionFiles(
-  task: DbTask,
   mapping: TaskSandbox,
   privateKeyOpenSsh: string,
   sshHostOverrideOrOpts?: string | null | RenderInjectionOptions,
@@ -227,7 +225,6 @@ export function renderInjectionFiles(
     knownEntries.push({ host: targetHost, port: targetPort, publicKey: hostPublicKey });
   }
 
-  const capabilities = ((task.metadata as Record<string, unknown> | undefined)?.prepare as { sandbox_capabilities?: string[] } | undefined)?.sandbox_capabilities ?? [];
   const files: InjectionFile[] = [
     { containerPath: `${SSH_DIR}/id_ed25519`, content: privateKeyOpenSsh, mode: 0o400 },
     { containerPath: `${SSH_DIR}/known_hosts`, content: renderKnownHosts(knownEntries), mode: 0o444 },
@@ -242,7 +239,10 @@ export function renderInjectionFiles(
       }),
       mode: 0o444,
     },
-    { containerPath: SANDBOX_CFG_CONTAINER_PATH, content: renderSandboxMd(capabilities), mode: 0o444 },
+    // sandbox.md retired from the tmpfs injection (engine-native gate,
+    // 2026-08-19): the agent-facing sandbox description now lives in the
+    // workspace file out/.sandbox_config (written by apply_sandbox /
+    // re-rendered on continue-resume), never in /run/vulnhunter.
   ];
   if (opts.bastionIdentityOpenSsh?.trim()) {
     files.splice(1, 0, {

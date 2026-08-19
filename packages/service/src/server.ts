@@ -18,7 +18,6 @@ import { reportsRouter } from "./features/reports/routes.js";
 import { wikiRouter } from "./features/wiki/routes.js";
 import { notificationRouter } from "./features/notifications/index.js";
 import { sandboxPlaneInternalRouter } from "./features/sandbox-plane/routes.js";
-import { prepareResultRouter } from "./features/internal/prepare-result-route.js";
 import { mountAdminRoutes } from "./features/admin/index.js";
 import { adminSetupRouter } from "./features/admin/setup-routes.js";
 import { setupWsRouter } from "./ws-router.js";
@@ -103,7 +102,6 @@ export function createApp(role: ServiceRole = "business"): Hono {
   // POC settings routes removed (dead config offline; live fields → env)
 
   app.route("/internal/sandbox-plane", sandboxPlaneInternalRouter);
-  app.route("/internal/prepare-result", prepareResultRouter);
   app.route("/mcp", mcpRouter);
 
   app.onError(errorHandler);

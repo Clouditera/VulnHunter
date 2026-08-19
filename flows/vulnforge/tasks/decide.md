@@ -28,7 +28,7 @@
 
 综合项目认知、覆盖率、任务池、上轮结果和用户指令选择本轮唯一方向，写入 `decision.yaml` 并准备任务文件；`completion reason` 中超出 `sched_instr` 的缺口留待后续运行。同一方向可派发多个任务，frontmatter 统一为 `round` / `id` / `status: pending`。
 
-- **onboard**：项目画像/初始化产物缺失，或 `$OUTPUT_DIR/.vulnhunter-gate.json` 门禁完成标记缺席（gate 未完成时唯一合法 next=onboard，不得派发其它方向）；启用 POC/EXP 且缺少动态环境记录。创建 `todo/onboard-*.md`。
+- **onboard**：项目画像/初始化产物缺失，或 `$OUTPUT_DIR/gate.yaml` 缺席或其 `next` ≠ continue（gate 未通过时唯一合法 next=onboard，不得派发其它方向）；启用 POC/EXP 且缺少动态环境记录。创建 `todo/onboard-*.md`。
 - **cognize**：有代码区域尚未被覆盖到时，可以创建一个或多个 `todo/COG-*.md`，由 `cognize` 阅读代码产出审计链路 `ADV`。
 - **research**：检索公开信息发现审计面。审计早期（onboard 完成后、覆盖率低时）优先派发；存在情报类回流线索时也可派发。创建 `todo/RES-*.md`，正文指定检索方向（项目、版本、关注面）。research 与 cognize 产出的 `ADV` 统一由 hunt 消费。
 - **hunt**：存在待执行 ADV。把本轮选中的一个或多个 ADV 从 `leads/` 移入 `todo/`，frontmatter 无需额外处理。
@@ -63,3 +63,4 @@
 - 全部产出写入完成后，调用 `workspace_snapshot()` 固化新基线，使下一轮 `workspace_diff()` 只看到执行环节增量。
 - 任务文件的正文内容简洁明了即可，如“对 src/service/upload.js 模块建立日志”“对 BUG-xxx.md 进行 exp 构建”。另外，用户指令中与任务目标相关的部分，也需要通过任务文件正文来传递。
 - 对于不符合审计目标等用户关注方向的 `leads/` 产物，可以根据实际情况置为 `closed` 并标注原因，然后移入 `done/`。
+- `gate.yaml` 是 onboard 阶段的门禁产物，非 onboard 阶段一律禁止读写；decide 不得代替 onboard 判定门禁。

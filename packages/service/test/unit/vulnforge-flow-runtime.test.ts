@@ -39,7 +39,7 @@ describe("VulnForge 2.0 runtime flow compatibility", () => {
     // list must carry read/bash/write/edit too (P0 QA 7322dcde). Everything
     // else inherits defaults only.
     expect(byId.get("onboard")?.tools).toEqual([
-      "read", "bash", "write", "edit", "list_sandbox_types", "get_sandbox_type",
+      "read", "bash", "write", "edit", "list_sandbox_types", "get_sandbox_type", "apply_sandbox",
     ]);
     for (const id of ["cognize", "hunt", "verify", "poc-verify", "ev-assess", "exp-build", "cycle_join", "complete", "exit"]) {
       expect(byId.get(id)?.tools, `${id} must inherit only defaults`).toBeUndefined();
@@ -66,4 +66,22 @@ describe("VulnForge 2.0 runtime flow compatibility", () => {
   // The timeout finalizer flow (flows/vulnforge-timeout) was retired
   // 2026-08-18 (fish): scan-mode writes the platform marker directly on 124;
   // its runtime tests moved to timeout-finalization.test.ts.
+
+  it("engine-native gate: onboard binds gate.yaml state with end/continue routes, decide caps onboard loops", () => {
+    const spec = parseFlow(flowPath);
+    const byId = new Map(spec.stages.map((stage) => [stage.id, stage]));
+    const onboard = byId.get("onboard");
+    expect(onboard?.stateExtract).toMatchObject({ rules: { next: { file: "gate.yaml", field: "next" } } });
+    const routes = onboard?.routes ?? [];
+    expect(routes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ to: "exit", when: "onboard.next == end" }),
+      expect.objectContaining({ to: "cycle_join", when: "onboard.next == continue" }),
+    ]));
+    // decide→onboard idle-loop cap (replaces the retired platform watchdog)
+    const decide = byId.get("decide");
+    const onboardEdge = (decide?.routes ?? []).find((r) => r.to === "onboard");
+    expect(onboardEdge?.maxLoops).toBe(5);
+    // preprocessing skill mounted on onboard
+    expect(onboard?.skills).toContain("preprocessing");
+  });
 });
