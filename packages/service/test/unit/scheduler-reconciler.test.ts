@@ -73,6 +73,10 @@ describe("scheduler claim reconciler", () => {
     await reconcileSchedulerClaims({ dataDir: "/data" } as any);
     expect(m.mark).toHaveBeenCalledWith("task-1", token, expect.any(Date));
     expect(m.tail).toHaveBeenCalledTimes(1);
+    // Tail ONLY the live .service-logs copy — the out/.youngflow/logs copy is
+    // finalize-time only; tailing both replays every event (QA fbc08f1b).
+    const paths = m.tail.mock.calls[0][2].map((r: { path: string }) => r.path);
+    expect(paths).toEqual(["/data/workspaces/task-1/.service-logs"]);
     expect(m.stop).not.toHaveBeenCalled();
   });
 

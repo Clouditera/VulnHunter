@@ -225,6 +225,15 @@ export class TaskScheduler {
           await this.handleDieDuringPreparing(taskId, claimToken ?? "", exitCode ?? -1, getHostWorkDir(this.config.dataDir, taskId));
           return;
         }
+        // 终态守卫：gate END 等路径已完成判死/判终，die 不得覆盖终态（2.3.10 P0）。
+        // Race: route handler fails the task (failed+completed_at), then the
+        // container exits 0 (engine exit stage finishes before our stop);
+        // without this guard exit-0 maps to completed and updateTaskState
+        // (no WHERE-state predicate) overwrites failed.
+        if (currentTask && (currentTask.state === "failed" || currentTask.state === "completed")) {
+          logger.info({ taskId, dbState: currentTask.state, exitCode }, "Container died after terminal state; skipping overwrite");
+          return;
+        }
         if (currentTask && ["cancelled", "paused"].includes(currentTask.state)) {
           logger.info({ taskId, dbState: currentTask.state, exitCode }, "Container died but task already cancelled/paused, skipping state update");
           // Still sync outputs for cancelled tasks (may have partial results)
@@ -517,10 +526,12 @@ export class TaskScheduler {
         notify({ type: "task_state", taskId: task.id, state: "running" });
       }
 
-      const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
+      // Tail ONLY the live stderr copy (.service-logs). The service.jsonl under
+      // out/.youngflow/logs is a finalize-time COPY of the same stream — tailing
+      // both replays the whole JSONL at copy time (every event twice, QA fbc08f1b).
       const serviceLogsDir = join(hostWorkDir, ".service-logs");
       try {
-        startTailing(task.id, [], [{ path: eventsDir, source: "scan" }, { path: serviceLogsDir, source: "scan" }]);
+        startTailing(task.id, [], [{ path: serviceLogsDir, source: "scan" }]);
       } catch (err) {
         logger.warn({ err, taskId: task.id, token }, "Worker is running but event tailing could not start");
       }
@@ -879,10 +890,11 @@ export class TaskScheduler {
    * running gate-perception channel (spec §6) — a silent tail loss would
    * wedge the task until the stuck-deadline fallback. */
   private startFreshTailing(taskId: string, hostWorkDir: string): void {
-    const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
+    // Tail ONLY the live stderr copy (.service-logs) — the out/.youngflow/logs
+    // copy is finalize-time only; tailing it replays every event (QA fbc08f1b).
     const serviceLogsDir = join(hostWorkDir, ".service-logs");
     try {
-      startTailing(taskId, [], [{ path: eventsDir, source: "scan" }, { path: serviceLogsDir, source: "scan" }]);
+      startTailing(taskId, [], [{ path: serviceLogsDir, source: "scan" }]);
     } catch (err) {
       logger.error({ err, taskId }, "Fresh worker tailing failed to start — failing task (gate perception channel)");
       this.failFreshTailLoss(taskId).catch((e2) => logger.error({ err: e2, taskId }, "Tail-loss failure handling errored"));

@@ -219,8 +219,9 @@ export async function reconcileSchedulerClaims(config = loadConfig()): Promise<v
           }
           logger.info({ taskId: task.id, token: claim.token, gateNext }, "Fresh claim worker in gate phase (checkpoint); re-arming route perception");
           try {
+            // Tail ONLY the live stderr copy — the out/.youngflow/logs copy is
+            // finalize-time only; tailing it replays every event (QA fbc08f1b).
             startTailing(task.id, [], [
-              { path: join(hostWorkDir, "out", ".youngflow", "logs"), source: "scan" },
               { path: join(hostWorkDir, ".service-logs"), source: "scan" },
             ]);
           } catch (err) {
@@ -268,8 +269,9 @@ export async function reconcileSchedulerClaims(config = loadConfig()): Promise<v
       if (await markSchedulerClaimRunning(task.id, claim.token, new Date())) {
         const hostWorkDir = getHostWorkDir(config.dataDir, task.id);
         try {
+          // Tail ONLY the live stderr copy — the out/.youngflow/logs copy is
+          // finalize-time only; tailing it replays every event (QA fbc08f1b).
           startTailing(task.id, [], [
-            { path: join(hostWorkDir, "out", ".youngflow", "logs"), source: "scan" },
             { path: join(hostWorkDir, ".service-logs"), source: "scan" },
           ]);
         } catch (err) {
@@ -372,10 +374,11 @@ export async function reconcileWorkers(): Promise<void> {
       // Good: DB says running, container is running → re-attach event tailing
       const config = loadConfig();
       if (taskType === "scan") {
+        // Tail ONLY the live stderr copy — the out/.youngflow/logs copy is
+        // finalize-time only; tailing it replays every event (QA fbc08f1b).
         const hostWorkDir = getHostWorkDir(config.dataDir, taskId);
-        const eventsDir = join(hostWorkDir, "out", ".youngflow", "logs");
         const serviceLogsDir = join(hostWorkDir, ".service-logs");
-        startTailing(taskId, [], [{ path: eventsDir, source: "scan" }, { path: serviceLogsDir, source: "scan" }]);
+        startTailing(taskId, [], [{ path: serviceLogsDir, source: "scan" }]);
       }
       logger.info({ taskId, taskType }, "Re-attached to running worker (event tailing started)");
     } else if (dbRunning && !containerRunning) {

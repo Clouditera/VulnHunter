@@ -92,7 +92,7 @@ vi.mock("../../src/features/workers/docker-client.js", () => ({
   LABEL_TASK_ID: "vulnhunter.task_id",
   LABEL_TASK_TYPE: "vulnhunter.task_type",
   LABEL_SCHEDULER_CLAIM: "vulnhunter.scheduler_claim",
-  subscribeToDockerEvents: vi.fn(),
+  subscribeToDockerEvents: vi.fn((_onEvent: unknown) => () => undefined),
   ensureWorkDir: vi.fn(),
   listManagedContainers: vi.fn(async () => []),
 }));
@@ -362,5 +362,34 @@ describe("gate route perception (EventTail engine events → scheduler)", () => 
     const failed = m.events.find((e) => e.type === "prepare_failed");
     expect(failed).toMatchObject({ reason: "init_aborted" });
     expect(failed.remediation).toContain("初始化未完成");
+  });
+
+  it("die after terminal state (failed): exit 0 must NOT overwrite failed with completed (2.3.10 P0)", async () => {
+    // QA fbc08f1b: gate END failed the task, then the container exited 0
+    // (engine exit stage finished before our stop). The die handler mapped
+    // exit 0 → completed and updateTaskState (no WHERE-state predicate)
+    // flipped failed → completed — user saw 扫描完成/未发现漏洞.
+    const storage = await import("../../src/features/tasks/storage.js");
+    const { getTaskById, updateTaskState } = storage as any;
+    const events = await import("../../src/features/events/event-store.js");
+    const { appendEvent } = events as any;
+    const dockerEvents = await import("../../src/features/workers/docker-client.js");
+    const { subscribeToDockerEvents } = dockerEvents as any;
+
+    m.taskById = preparingTask({ state: "failed", completed_at: new Date().toISOString() });
+    getTaskById.mockImplementation(async () => m.taskById);
+    appendEvent.mockReset();
+    updateTaskState.mockReset();
+
+    const sched2 = new TaskScheduler({ dataDir: "/tmp/gate-test", minio: { bucket: "b" } } as any);
+    await (sched2 as any).start(); // subscribes the docker-event handler
+    const handler = subscribeToDockerEvents.mock.calls.at(-1)?.[0];
+    expect(handler).toBeTruthy();
+    await handler({ taskType: "scan", action: "die", taskId: "task-gate-1", claimToken: token, exitCode: 0 });
+
+    // Guard fires BEFORE any terminal overwrite: no updateTaskState, no
+    // completion event, state stays failed.
+    expect(updateTaskState).not.toHaveBeenCalled();
+    expect(appendEvent).not.toHaveBeenCalled();
   });
 });
