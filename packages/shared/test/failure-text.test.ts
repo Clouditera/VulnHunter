@@ -10,7 +10,7 @@ const SCREENSHOT_PAYLOAD = JSON.stringify({
   message: `Prepare 失败 (退出码 4): ${DOCKER_FRAME_PREFIX}02:57:41 [youngflow.runner] ERROR [prepare] ✕ API error (1): 403: {"code":"no_default_group","message":"no default group available for this model"}`,
   details: { engineError: "exit code 4" },
 });
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: asserting control chars are gone requires matching them
 const CONTROL_CHAR_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uFEFF\u200B-\u200D]/;
 
 describe("sanitizeErrorText", () => {

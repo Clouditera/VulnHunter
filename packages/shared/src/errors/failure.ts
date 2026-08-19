@@ -19,9 +19,9 @@ export function sanitizeErrorText(raw: string, maxLen = 4000): string {
   const cleaned = raw
     // ANSI CSI / single-char escape sequences first, so their printable
     // remainder ("[31m") does not survive the control-char pass.
-    // eslint-disable-next-line no-control-regex
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: matching ANSI escapes requires control chars
     .replace(/\u001B(?:[@-_][0-?]*[ -/]*[@-~]|\[[0-?]*[ -/]*[@-~])/g, "")
-    // eslint-disable-next-line no-control-regex
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control chars is the point of this util
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uFEFF\u200B-\u200D]/g, "");
   if (cleaned.length <= maxLen) return cleaned;
   return `${cleaned.slice(0, maxLen)}…（已截断）`;
