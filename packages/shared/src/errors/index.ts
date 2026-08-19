@@ -2,6 +2,8 @@
 // Spec: architecture/unified-error-handling-module-v1.0.md
 
 export { ERROR_REGISTRY, getErrorEntry, errorHttpStatus } from "./registry.js";
+export { sanitizeErrorText, parseStructuredFailure } from "./failure.js";
+export type { StructuredFailure } from "./failure.js";
 export type {
   ErrorAction,
   ErrorRegistryEntry,

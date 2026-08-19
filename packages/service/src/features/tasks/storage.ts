@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "../../infra/db/client.js";
+import { sanitizeErrorText } from "@vulnhunter/shared";
 import type { TaskMetadata, TaskState } from "@vulnhunter/shared";
 import type { QueryContext } from "../../infra/query-context.js";
 import { shouldFilterByUser } from "../../infra/query-context.js";
@@ -275,6 +276,8 @@ export async function updateTaskState(
   },
 ): Promise<void> {
   const db = getDb();
+  // HALL-4: 与 failSchedulerClaim 同为 failure_reason 写入收口，统一清洗。
+  const failureReason = extra?.failureReason != null ? sanitizeErrorText(extra.failureReason) : null;
 
   if (state === "running" && extra?.startedAt) {
     await db`
@@ -289,7 +292,7 @@ export async function updateTaskState(
           duration_ms = ${extra.durationMs ?? null},
           total_duration_ms = COALESCE(total_duration_ms, 0) + COALESCE(${extra.durationMs ?? 0}, 0),
           run_count = COALESCE(run_count, 0) + 1,
-          failure_reason = ${extra.failureReason ?? null},
+          failure_reason = ${failureReason},
           completion_reason = ${extra.completionReason ?? "natural"}
       WHERE id = ${id}
     `;
@@ -637,8 +640,11 @@ export async function markSchedulerClaimRunning(taskId: string, token: string, s
   return rows.length === 1;
 }
 
-export async function failSchedulerClaim(taskId: string, token: string, reason: string): Promise<boolean> {
+export async function failSchedulerClaim(taskId: string, token: string, rawReason: string): Promise<boolean> {
   const db = getDb();
+  // HALL-4: failure_reason 是引擎→平台的契约边界，落库前统一清洗
+  // （剥离 Docker stdcopy 帧头等控制字符），保持 string 契约不变。
+  const reason = sanitizeErrorText(rawReason);
   const rows = await db<{ id: string }[]>`
     UPDATE tasks
     SET state = 'failed', completed_at = now(), failure_reason = ${reason},

@@ -76,6 +76,9 @@ function hasUnsafeYamlSyntax(raw: string): boolean {
   return /(^|[\s[{,])(?:![^\s]+|[&*][A-Za-z0-9_-]+)/m.test(raw);
 }
 
+// TODO(HALL-4): converge on shared sanitizeErrorText (@vulnhunter/shared) —
+// same control-char policy; kept local for now to avoid changing the
+// sensitive-content filter order in this PR.
 function sanitizeReason(raw: string): string {
   return raw
     .replace(/\x1B(?:[@-_][0-?]*[ -/]*[@-~]|\[[0-?]*[ -/]*[@-~])/g, "")
