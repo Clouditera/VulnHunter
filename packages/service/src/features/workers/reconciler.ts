@@ -35,6 +35,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { notify } from "../notifications/index.js";
 import { appendAndBroadcastCompletionEvent } from "./scheduler-events.js";
 import { armGateRouteHandler } from "./gate-perception.js";
+import { hasEngineEventHandler } from "../events/event-tail.js";
 
 /** Read + validate gate.yaml from the workspace (same parser as the live path). */
 function readGateYamlFile(hostWorkDir: string): GateYaml | null {
@@ -204,10 +205,18 @@ export async function reconcileSchedulerClaims(config = loadConfig()): Promise<v
           continue;
         }
         if (gateNext !== "continue") {
-          // Gate not yet routed (or checkpoint unreadable): the restart wiped
-          // the in-memory route handler — re-arm perception HERE or the task
-          // wedges until the stuck-deadline fallback (review r1 hole 1).
-          // max_loops/deadline bounds still apply if the flow never routes.
+          // Gate not yet routed (or checkpoint unreadable). Re-arm ONLY when
+          // unarmed: the live spawn path arms perception in-process, and
+          // re-arming an armed task restarts tailing from offset 0 —
+          // replaying the whole engine log into the timeline every tick
+          // (QA f14c6582 regression, fixed 2026-08-19). After a real restart
+          // (handler gone) the first reconcile re-arms once; subsequent
+          // ticks skip via this same check. max_loops/deadline bounds still
+          // apply if the flow never routes.
+          if (hasEngineEventHandler(task.id)) {
+            logger.debug({ taskId: task.id, token: claim.token }, "Fresh claim gate perception already armed; skipping re-arm");
+            continue;
+          }
           logger.info({ taskId: task.id, token: claim.token, gateNext }, "Fresh claim worker in gate phase (checkpoint); re-arming route perception");
           try {
             startTailing(task.id, [], [

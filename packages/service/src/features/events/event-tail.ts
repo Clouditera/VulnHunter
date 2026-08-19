@@ -235,6 +235,16 @@ export function setEngineEventHandler(taskId: string, handler: EngineEventHandle
   else engineEventHandlers.set(taskId, handler);
 }
 
+/**
+ * Whether a gate-perception handler is currently armed for this task.
+ * Re-arm callers (reconciler) MUST check this first: re-arming an already
+ * armed task restarts tailing from offset 0 and replays the whole engine
+ * log into the timeline every tick (QA f14c6582, 2026-08-19).
+ */
+export function hasEngineEventHandler(taskId: string): boolean {
+  return engineEventHandlers.has(taskId);
+}
+
 function dispatchEngineEvent(taskId: string, raw: Record<string, unknown>): void {
   const handler = engineEventHandlers.get(taskId);
   if (handler) {

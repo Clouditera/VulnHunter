@@ -4,6 +4,7 @@ const m = vi.hoisted(() => ({
   containers: [] as any[], preparing: [] as any[], tasks: new Map<string, any>(),
   mark: vi.fn(async () => true), release: vi.fn(async () => true), stop: vi.fn(async () => undefined), cleanup: vi.fn(async () => undefined), tail: vi.fn(), remove: vi.fn(),
   fail: vi.fn(async () => true), merge: vi.fn(async () => undefined), setHandler: vi.fn(),
+  armed: new Set<string>(),
   gateYaml: null as string | null, checkpointYaml: null as string | null, hostWorkDirByTask: new Map<string, string>(),
 }));
 vi.mock("../../src/features/workers/docker-client.js", () => ({
@@ -22,7 +23,11 @@ vi.mock("../../src/features/workers/scan-worker.js", () => ({
   getHostWorkDir: (dataDir: string, taskId: string) => m.hostWorkDirByTask.get(taskId) ?? `${dataDir}/workspaces/${taskId}`, stopScanWorkerByClaim: m.stop,
 }));
 vi.mock("../../src/features/workers/scheduler-workspace.js", () => ({ cleanupSchedulerWorkspace: m.cleanup }));
-vi.mock("../../src/features/events/event-tail.js", () => ({ startTailing: m.tail, setEngineEventHandler: m.setHandler }));
+vi.mock("../../src/features/events/event-tail.js", () => ({
+  startTailing: m.tail,
+  setEngineEventHandler: m.setHandler,
+  hasEngineEventHandler: (taskId: string) => m.armed.has(taskId),
+}));
 vi.mock("../../src/features/events/event-store.js", () => ({ appendEvent: vi.fn((_t: string, e: any) => ({ seq: 1, event: e })) }));
 vi.mock("../../src/features/events/ws-live-log.js", () => ({ broadcastEvent: vi.fn() }));
 vi.mock("../../src/notifications/index.js", () => ({ notify: vi.fn() }));
@@ -54,7 +59,12 @@ const labels = { "vulnhunter.task_id": "task-1", "vulnhunter.task_type": "scan",
 const claim = { token, lease_expires_at: new Date(Date.now() + 90000).toISOString(), deadline_at: new Date(Date.now() + 900000).toISOString() };
 
 describe("scheduler claim reconciler", () => {
-  beforeEach(() => { vi.clearAllMocks(); m.containers = []; m.preparing = []; m.tasks.clear(); m.mark.mockResolvedValue(true); m.release.mockResolvedValue(true); });
+  beforeEach(() => { vi.clearAllMocks(); m.containers = []; m.preparing = []; m.tasks.clear(); m.armed.clear(); m.mark.mockResolvedValue(true); m.release.mockResolvedValue(true); });
+  // Mirror the real handler map semantics: set(null) disarms, set(fn) arms.
+  m.setHandler.mockImplementation((taskId: string, handler: unknown) => {
+    if (handler === null) m.armed.delete(taskId);
+    else m.armed.add(taskId);
+  });
 
   it("adopts a running Worker with the matching preparing claim", async () => {
     m.preparing = [{ id: "task-1", scheduler_claim: claim }];
@@ -110,6 +120,20 @@ describe("scheduler claim reconciler", () => {
       expect(m.tail).toHaveBeenCalled();                    // perception channel re-attached
       expect(m.setHandler).toHaveBeenCalledWith("task-1", expect.any(Function)); // handler re-armed
       expect(m.mark).not.toHaveBeenCalled();               // stays preparing
+    });
+
+    it("re-arm is once-only: consecutive reconciles start tailing exactly once (no log replay)", async () => {
+      m.preparing = [freshTask]; m.containers = runningCtr;
+      m.checkpointYaml = null; // gate not routed → re-arm branch
+      await reconcileSchedulerClaims({ dataDir: "/data" } as any);
+      expect(m.tail).toHaveBeenCalledTimes(1);
+      expect(m.setHandler).toHaveBeenCalledTimes(1);
+      // Second tick (handler armed by the first pass): no re-tail, no re-arm —
+      // otherwise every tick replays the whole engine log into the timeline
+      // (QA f14c6582 regression).
+      await reconcileSchedulerClaims({ dataDir: "/data" } as any);
+      expect(m.tail).toHaveBeenCalledTimes(1);
+      expect(m.setHandler).toHaveBeenCalledTimes(1);
     });
 
     it("checkpoint continue + evidence: adopts and carries gate sandbox_type into metadata.prepare", async () => {
