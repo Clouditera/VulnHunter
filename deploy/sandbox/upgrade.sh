@@ -19,20 +19,29 @@ die() { printf '[sandbox-upgrade] ERROR: %s\n' "$*" >&2; exit 1; }
 command -v docker >/dev/null 2>&1 || die "docker not found"
 [[ -d "$SANDBOX_DIR/images" ]] || die "missing images/"
 
-load_tars() {
-  local dir="$1"
-  [[ -d "$dir" ]] || return 0
-  shopt -s nullglob
-  local f
-  for f in "$dir"/*.tar; do
-    log "docker load < $(basename "$f")"
-    docker load -i "$f" >/dev/null
-  done
-  shopt -u nullglob
-}
-
-log "loading all sandbox images..."
-load_tars "$SANDBOX_DIR/images"
+# Parallel image load (task-55332474) — same helper as sandbox/install.sh.
+if ! command -v parallel_docker_load >/dev/null 2>&1; then
+  # shellcheck disable=SC1091
+  source "$(dirname "$0")/../lib/common.sh" 2>/dev/null || true
+fi
+if command -v parallel_docker_load >/dev/null 2>&1; then
+  log "loading all sandbox images (parallel)..."
+  parallel_docker_load "$SANDBOX_DIR/images" || die "sandbox image load failed"
+else
+  load_tars() {
+    local dir="$1"
+    [[ -d "$dir" ]] || return 0
+    shopt -s nullglob
+    local f
+    for f in "$dir"/*.tar; do
+      log "docker load < $(basename "$f")"
+      docker load -i "$f" >/dev/null
+    done
+    shopt -u nullglob
+  }
+  log "loading all sandbox images..."
+  load_tars "$SANDBOX_DIR/images"
+fi
 load_tars "$SANDBOX_DIR/images-optional"
 
 # secrets must already exist (install created them)
