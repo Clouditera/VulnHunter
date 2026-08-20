@@ -96,4 +96,12 @@ assert_case "engine -ce suffix + compose v-prefixed v2 passes" 0 ""
 mock_docker 24.0.7+dfsg1 2.27.0-desktop.2
 assert_case "engine +dfsg suffix + compose -desktop suffix passes" 0 ""
 
+# Debian/Ubuntu '~' revisions (QA field report 31.102, 2026-08-20: the tilde
+# in the suffix charset previously read as "unrecognized" and blocked install).
+mock_docker 24.0.7 v2.40.3+ds1-0ubuntu1~22.04.1
+assert_case "Ubuntu compose '~' revision passes" 0 ""
+
+mock_docker 24.0.7-0ubuntu2~22.04.4 v2.27.0
+assert_case "Ubuntu docker.io '~' revision passes" 0 ""
+
 exit "$fail"

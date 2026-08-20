@@ -21,7 +21,11 @@ version_ge() {
 # unrecognizable input — an undeterminable version is a rejection, not a pass.
 normalize_version() {
   local raw="$1"
-  [[ "$raw" =~ ^v?([0-9]+(\.[0-9]+){1,2})([-+][0-9A-Za-z.-]+)?$ ]] || return 1
+  # Suffix charset includes '~': Debian/Ubuntu package revisions use it
+  # (compose 2.40.3+ds1-0ubuntu1~22.04.1, docker.io 24.0.7-0ubuntu2~22.04.4).
+  # The suffix is recognized-but-ignored (version_ge compares the numeric
+  # core only) — rejecting it blocked real Ubuntu hosts (31.102, 2026-08-20).
+  [[ "$raw" =~ ^v?([0-9]+(\.[0-9]+){1,2})([-+][0-9A-Za-z.~-]+)?$ ]] || return 1
   printf '%s\n' "${BASH_REMATCH[1]}"
 }
 
