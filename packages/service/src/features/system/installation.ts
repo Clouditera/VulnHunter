@@ -1,18 +1,13 @@
-import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { logger } from "../../infra/logger.js";
+import { resolveMachineIdentity } from "./machine-identity.js";
 
 let installationId = "";
 
 export function initInstallation(dataDir: string): void {
-  const filePath = join(dataDir, ".install_id");
-  if (existsSync(filePath)) {
-    installationId = readFileSync(filePath, "utf-8").trim();
-    return;
-  }
-  mkdirSync(dataDir, { recursive: true });
-  installationId = randomUUID();
-  writeFileSync(filePath, installationId, { mode: 0o644 });
+  const identity = resolveMachineIdentity({ dataDir });
+  installationId = identity.code;
+  // Log only the resolution source — never the DMI UUID or the machine code input.
+  logger.info({ source: identity.source }, "Installation identity resolved");
 }
 
 export function getInstallationId(): string {
