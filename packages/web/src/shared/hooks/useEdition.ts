@@ -13,6 +13,8 @@ export function editionFlags(edition: Edition) {
     isSaas: edition === "saas",
     isEnterpriseOrAbove: edition === "enterprise" || edition === "saas",
     isCommunity: edition === "community",
+    // HALL-6: 企业私有化部署不展示 SaaS 获客营销首页；社区版本期保持现状。
+    hasMarketingHome: edition !== "enterprise",
   } as const;
 }
 

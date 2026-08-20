@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
 import { useSystemStatus } from "../features/auth/hooks/useSystemStatus.js";
+import { editionFlags } from "../shared/hooks/useEdition.js";
 import { ActivatePage } from "../features/auth/pages/ActivatePage.js";
 import { LoginPage } from "../features/auth/pages/LoginPage.js";
 import { HomePage } from "../features/home/pages/HomePage.js";
@@ -19,11 +20,12 @@ import { ChatPage } from "../features/chat/pages/ChatPage.js";
 import { SettingsPage } from "../features/settings/pages/SettingsPage.js";
 import { SessionInvalidPage } from "../features/auth/pages/SessionInvalidPage.js";
 
-function RootGuard() {
+export function RootGuard() {
   const { data: status, isLoading, error } = useSystemStatus();
 
   if (isLoading) return <LoadingScreen />;
 
+  // HALL-6 已知折中：status 失败时无法得知版本，兜底仍渲染营销首页（静态页、无数据依赖）。
   if (error || !status) return <HomePage />;
   // fish 2026-08-07: no-admin wins over license — the setup wizard owns
   // activation, so check has_admin before any license branch.
@@ -36,6 +38,17 @@ function RootGuard() {
     if (status.user?.role === "admin") return <SessionInvalidPage />;
     return <Navigate to="/chat" replace />;
   }
+  // HALL-6: 企业版不展示营销首页，未认证直接进登录页。
+  if (!editionFlags(status.edition).hasMarketingHome) return <Navigate to="/login" replace />;
+  return <HomePage />;
+}
+
+/** HALL-6: /home 直链门控——企业版重定向登录页，其余版本渲染营销首页。 */
+export function HomeGate() {
+  const { data: status, isLoading } = useSystemStatus();
+  if (isLoading) return <LoadingScreen />;
+  if (status && !editionFlags(status.edition).hasMarketingHome)
+    return <Navigate to="/login" replace />;
   return <HomePage />;
 }
 
@@ -151,7 +164,7 @@ export const router: ReturnType<typeof createBrowserRouter> = createBrowserRoute
     children: [{ path: "/change-password", element: <ChangePasswordPage /> }],
   },
   { path: "/login", element: <LoginGuard /> },
-  { path: "/home", element: <HomePage /> },
+  { path: "/home", element: <HomeGate /> },
   {
     element: <AuthGuard />,
     children: [
