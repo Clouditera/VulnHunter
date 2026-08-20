@@ -71,21 +71,33 @@ fi
 [[ -f "$SANDBOX_DIR/profiles.yaml" ]] || die "missing profiles.yaml"
 [[ -d "$SANDBOX_DIR/images" ]] || die "missing images/ — was this release built with SANDBOX_PLANE_REF?"
 
-load_tars() {
-  local dir="$1"
-  [[ -d "$dir" ]] || return 0
-  local f
-  shopt -s nullglob
-  for f in "$dir"/*.tar; do
-    log "docker load < $(basename "$f")"
-    docker load -i "$f" >/dev/null
-  done
-  shopt -u nullglob
-}
-
-log "loading all sandbox images (full pack)..."
-load_tars "$SANDBOX_DIR/images"
-load_tars "$SANDBOX_DIR/images-optional"
+# Parallel image load (task-55332474) — the four sandbox tars have no
+# inter-dependencies. common.sh is sourced by the main installer when this
+# script is invoked from it; standalone use sources it from the pack layout.
+if ! command -v parallel_docker_load >/dev/null 2>&1; then
+  # shellcheck disable=SC1091
+  source "$(dirname "$0")/../lib/common.sh" 2>/dev/null || true
+fi
+if command -v parallel_docker_load >/dev/null 2>&1; then
+  log "loading all sandbox images (parallel, full pack)..."
+  parallel_docker_load "$SANDBOX_DIR/images" || die "sandbox image load failed"
+  parallel_docker_load "$SANDBOX_DIR/images-optional" || die "sandbox optional image load failed"
+else
+  load_tars() {
+    local dir="$1"
+    [[ -d "$dir" ]] || return 0
+    local f
+    shopt -s nullglob
+    for f in "$dir"/*.tar; do
+      log "docker load < $(basename "$f")"
+      docker load -i "$f" >/dev/null
+    done
+    shopt -u nullglob
+  }
+  log "loading all sandbox images (full pack)..."
+  load_tars "$SANDBOX_DIR/images"
+  load_tars "$SANDBOX_DIR/images-optional"
+fi
 
 # Assert every profile image exists (qemu image must be present; runtime needs /dev/kvm for available=true)
 assert_profile_images() {

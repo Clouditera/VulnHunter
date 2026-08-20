@@ -352,20 +352,29 @@ echo "[install] wrote $instance_dir/.version (version=${ver:-unknown})"
 # Seed sandbox version files (optional)
 seed_instance_sandbox "$PKG_ROOT" "$instance_dir"
 
-# Verify release checksums (package-local)
+# Checksums + image load run CONCURRENTLY (task-55332474): hashing 5.3G was a
+# ~26s serial preamble before an ~88s serial load. Semantics: verify-before-
+# START is preserved (we abort before compose up on any mismatch); the old
+# verify-before-LOAD is deliberately relaxed — in a from-scratch install a
+# corrupt image that has been loaded is never run, and a bad tar fails its
+# own 'docker load' anyway.
+checksum_tmp="$(mktemp "${TMPDIR:-/tmp}/install-checksums.XXXXXX")"
+checksum_pid=""
 if [[ -f "$PKG_ROOT/checksums.sha256" ]]; then
-  echo "[install] verifying release files..."
-  (cd "$PKG_ROOT" && sha256sum -c checksums.sha256)
+  echo "[install] verifying release files (background) + loading images in parallel..."
+  (cd "$PKG_ROOT" && sha256sum -c checksums.sha256) >"$checksum_tmp" 2>&1 &
+  checksum_pid=$!
+else
+  echo "[install] loading images (no checksums file in package)..."
 fi
 
-# Load images from package
-if [[ -d "$PKG_ROOT/images" ]]; then
-  for img in "$PKG_ROOT"/images/*.tar; do
-    [[ -f "$img" ]] || continue
-    echo "[install] loading image $img"
-    docker load -i "$img"
-  done
+parallel_docker_load "$PKG_ROOT/images" || die "docker load failed — see output above"
+
+if [[ -n "$checksum_pid" ]]; then
+  wait "$checksum_pid" || { cat "$checksum_tmp" >&2; rm -f "$checksum_tmp"; die "checksum verification failed"; }
+  cat "$checksum_tmp"
 fi
+rm -f "$checksum_tmp"
 validate_local_images
 
 echo "[install] starting VulnHunter (project=$project_name, dir=$instance_dir)..."

@@ -101,3 +101,40 @@ rehome_root_owned_workdirs() {
   done
   echo "[upgrade] workdir ownership: no root-owned files — rehome skipped"
 }
+
+# Parallel docker load (task-55332474): concurrent 'docker load -i' for every
+# *.tar in DIR. Images have no inter-dependencies and the daemon serializes
+# its own writes, so parallel load is safe; on a 5-image pack this cuts the
+# install's biggest serial block (~88s → ~30-40s). Per-tar ok/FAILED lines;
+# failed loads print full output. Returns 1 if any load failed.
+parallel_docker_load() {
+  local dir="$1"
+  [[ -d "$dir" ]] || return 0
+  local -a tars=()
+  local f pids=() fail=0
+  shopt -s nullglob
+  for f in "$dir"/*.tar; do tars+=("$f"); done
+  shopt -u nullglob
+  [[ ${#tars[@]} -gt 0 ]] || return 0
+  local tmpdir
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/docker-load.XXXXXX")"
+  for f in "${tars[@]}"; do
+    local base out
+    base="$(basename "$f")"
+    out="$tmpdir/${base}.log"
+    ( docker load -i "$f" >"$out" 2>&1 ) &
+    pids+=($!)
+  done
+  local i
+  for i in "${!pids[@]}"; do
+    if wait "${pids[$i]}"; then
+      echo "[load] ok: $(basename "${tars[$i]}")"
+    else
+      echo "[load] FAILED: $(basename "${tars[$i]}")" >&2
+      cat "$tmpdir/$(basename "${tars[$i]}").log" >&2
+      fail=1
+    fi
+  done
+  rm -rf "$tmpdir"
+  return $fail
+}

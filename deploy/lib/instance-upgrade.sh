@@ -215,13 +215,12 @@ run_instance_upgrade() {
   seed_instance_sandbox "$pkg_root" "$instance_dir"
   echo "[upgrade] replaced version-owned files (compose/.env.template/.version/sandbox)"
 
-  # Load new images, validate, bring stack up
+  # Load new images (parallel, task-55332474), validate, bring stack up.
+  # Checksums stay as the existing EARLY gate before any instance mutation —
+  # verify-the-package-before-touching-the-instance is untouchable here.
   if [[ -d "$pkg_root/images" ]]; then
-    for img in "$pkg_root"/images/*.tar; do
-      [[ -f "$img" ]] || continue
-      echo "[upgrade] loading image $img"
-      docker load -i "$img"
-    done
+    echo "[upgrade] loading images (parallel)..."
+    parallel_docker_load "$pkg_root/images" || return 1
   fi
   # shellcheck disable=SC1090
   set -a; source "$instance_dir/.env"; set +a
