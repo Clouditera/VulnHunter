@@ -1,3 +1,8 @@
+---
+name: Report Generator
+description: 审计报告生成技能 — 把项目理解、假设、论证和漏洞发现组织成最终安全审计报告。
+---
+
 # report-generator
 
 审计报告生成技能。用于把项目理解、假设、论证和漏洞发现组织成最终安全审计报告。

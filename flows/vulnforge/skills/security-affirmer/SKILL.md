@@ -1,3 +1,8 @@
+---
+name: Security Affirmer
+description: 安全假设证实技能 — 从攻击者视角验证漏洞假设，构建完整利用路径。
+---
+
 # security-affirmer
 
 安全假设证实技能。从攻击者视角验证漏洞假设，构建完整利用路径。

@@ -1,3 +1,8 @@
+---
+name: Wiki Maintainer
+description: 知识库维护技能 — 把审计中确认的项目理解沉淀成 wiki（目标项目的知识库，非过程日志）。
+---
+
 # wiki-maintainer
 
 把审计中确认的项目理解沉淀成 wiki——目标项目的知识库，不是分析过程日志。

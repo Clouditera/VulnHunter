@@ -1,3 +1,8 @@
+---
+name: Preprocessing
+description: 上传物预处理技能 — 按 onboard 第 1 步的识别结果执行预处理（jar/war/裸 class 反编译、嵌套压缩包解压），不做编译与执行。
+---
+
 # Preprocessing
 
 按 onboard 第 1 步识别的项目类型选择对应参考文件执行预处理；目前仅 jar 一类。

@@ -1,3 +1,8 @@
+---
+name: Security Challenger
+description: 安全假设证否技能 — 从防御者视角审查已证实的漏洞假设，质疑其在真实威胁模型下攻击者能否造成实质破坏。
+---
+
 # security-challenger
 
 安全假设证否技能。从防御者视角审查已证实的漏洞假设，尝试推翻它。
