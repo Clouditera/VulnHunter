@@ -2,6 +2,55 @@
 # Shared shell helpers for deploy scripts.
 # shellcheck shell=bash
 
+# ── Docker/Compose version preflight (HALL-8) ──
+# Contract: Docker Engine >= 20.10, Docker Compose v2 plugin. Legacy
+# docker-compose v1 is rejected. Shared by deploy/install.sh and
+# deploy/sandbox/install.sh.
+# NOTE: version_ge relies on GNU coreutils `sort -V`; busybox `sort` does not
+# support -V (target platforms are x86_64/arm64 Linux servers with coreutils).
+version_ge() {
+  [ "$(printf '%s\n' "$1" "$2" | sort -V | head -n1)" = "$2" ]
+}
+
+# Best-effort server version: `docker version --format` first, then docker info.
+docker_server_version() {
+  local v
+  v="$(docker version --format '{{.Server.Version}}' 2>/dev/null)" && [[ -n "$v" ]] && { printf '%s\n' "$v"; return 0; }
+  v="$(docker info 2>/dev/null | sed -n 's/^ *Server Version:[[:space:]]*//p' | head -n1)"
+  [[ -n "$v" ]] && printf '%s\n' "$v"
+}
+
+# Preflight: Docker Engine >= 20.10 AND compose v2 plugin. On failure prints a
+# clear error to stderr and exits 1 (same fail-fast style as require_cmd).
+# An undetectable engine version is treated as a failure: an environment where
+# the version cannot be confirmed almost certainly has a broken daemon too.
+check_docker_requirements() {
+  local engine_ver compose_ver
+  engine_ver="$(docker_server_version || true)"
+  if [[ -z "$engine_ver" ]]; then
+    echo "[install] cannot determine Docker Engine version (daemon unreachable?). Please verify the Docker installation: https://docs.docker.com/engine/install/" >&2
+    exit 1
+  fi
+  if ! version_ge "$engine_ver" "20.10"; then
+    echo "[install] Docker Engine >= 20.10 is required (detected: $engine_ver). Please upgrade Docker: https://docs.docker.com/engine/install/" >&2
+    exit 1
+  fi
+  if docker compose version >/dev/null 2>&1; then
+    compose_ver="$(docker compose version --short 2>/dev/null | sed 's/^v//')"
+    if [[ -n "$compose_ver" ]] && ! version_ge "$compose_ver" "2"; then
+      echo "[install] Docker Compose v2 is required (detected: $compose_ver). Please upgrade the compose plugin: https://docs.docker.com/compose/install/linux/" >&2
+      exit 1
+    fi
+    return 0
+  fi
+  if command -v docker-compose >/dev/null 2>&1; then
+    echo "[install] Docker Compose v2 is required (docker compose plugin). Detected legacy docker-compose v1 — please install the compose plugin: https://docs.docker.com/compose/install/linux/" >&2
+  else
+    echo "[install] Docker Compose v2 is required (docker compose plugin) — not found. Install it: https://docs.docker.com/compose/install/linux/" >&2
+  fi
+  exit 1
+}
+
 compose() {
   if docker compose version >/dev/null 2>&1; then
     docker compose "$@"
