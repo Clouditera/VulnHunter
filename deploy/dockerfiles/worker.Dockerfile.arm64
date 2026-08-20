@@ -45,6 +45,60 @@ COPY submodules/youngflow/release/youngflow-linux-arm64 /usr/local/bin/youngflow
 RUN chmod +x /usr/local/bin/youngflow \
     && youngflow --version
 
+# ── Extension dependency install zone (cache-friendly, fish 2026-08-20) ──
+# Dependency manifests only → install → later the full flow tree is COPYed
+# over them (.dockerignore drops **/node_modules, so the installed trees
+# survive the full COPY). Flow/prompt edits now rebuild only the cheap tail
+# layers instead of re-running five npm installs (87s → seconds hot).
+# output-contract has a lockfile; installs keep `npm install` semantics.
+COPY flows/vulnforge/extensions/output-contract/package.json \
+     flows/vulnforge/extensions/output-contract/package-lock.json \
+     /opt/vulnhunter/flows/vulnforge/extensions/output-contract/
+RUN cd /opt/vulnhunter/flows/vulnforge/extensions/output-contract \
+    && npm install --omit=dev --no-audit --no-fund \
+    && npm install --omit=dev --no-audit --no-fund @earendil-works/pi-coding-agent@$PI_VERSION
+# pi-web-access (OSS submodule pinned a1135b8): web
+# search/extract for research+hunt stages. 7 runtime deps + pi peerDeps
+# (mirrors output-contract/code-coverage-viewer install shape).
+COPY flows/vulnforge/extensions/pi-web-access/package.json \
+     /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access/
+RUN cd /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access \
+    && npm install --omit=dev --no-audit --no-fund \
+    && npm install --omit=dev --no-audit --no-fund \
+      @earendil-works/pi-coding-agent@$PI_VERSION \
+      @earendil-works/pi-ai@$PI_VERSION
+# sandbox-plane extension (onboard gate): sandbox-type list/get tools plus
+# apply_sandbox (allocation POST) for the five-step onboard. pi peer deps
+# only (no runtime deps).
+COPY flows/vulnforge/extensions/sandbox-plane/package.json \
+     /opt/vulnhunter/flows/vulnforge/extensions/sandbox-plane/
+RUN cd /opt/vulnhunter/flows/vulnforge/extensions/sandbox-plane \
+    && npm install --omit=dev --no-audit --no-fund \
+    && npm install --omit=dev --no-audit --no-fund \
+      @earendil-works/pi-coding-agent@$PI_VERSION \
+      @earendil-works/pi-ai@$PI_VERSION
+# code-coverage-viewer: no manifest — mkdir + npm init + pinned installs
+# (moved here verbatim; the dirs don't exist until the later full COPY).
+RUN mkdir -p /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-viewer \
+    && cd /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-viewer \
+    && npm init -y >/dev/null \
+    && npm install --omit=dev --no-audit --no-fund \
+      @mariozechner/pi-coding-agent@npm:@earendil-works/pi-coding-agent@$PI_VERSION \
+      @mariozechner/pi-ai@npm:@earendil-works/pi-ai@$PI_VERSION
+# workspace-diff: same shape as code-coverage-viewer.
+RUN mkdir -p /opt/vulnhunter/flows/vulnforge/extensions/workspace-diff \
+    && cd /opt/vulnhunter/flows/vulnforge/extensions/workspace-diff \
+    && npm init -y >/dev/null \
+    && npm install --omit=dev --no-audit --no-fund \
+      @earendil-works/pi-coding-agent@$PI_VERSION \
+      @earendil-works/pi-ai@$PI_VERSION
+# Bake the ssh drop-in at build time (moved here — static content): runtime
+# injection never touches /etc — de-identified workers (uid != 0) can't write
+# there (QA-caught continue-scan EACCES). ssh silently skips the Include when
+# the tmpfs config is absent (static tasks) — verified: ssh -G exit 0 both ways.
+RUN mkdir -p /etc/ssh/ssh_config.d \
+    && printf 'Include /run/vulnhunter/ssh/config\n' > /etc/ssh/ssh_config.d/99-vulnhunter.conf
+
 # VulnForge scan flow assets (vendored in-repo since 2.1-inrepo; only
 # extensions/pi-web-access remains a submodule). Image labels prove the baseline.
 ARG VULNFORGE_VERSION=2.1-inrepo
@@ -55,35 +109,6 @@ COPY flows/vulnforge /opt/vulnhunter/flows/vulnforge
 RUN printf '{\n  "version": "%s",\n  "commit": "%s"\n}\n' \
       "$VULNFORGE_VERSION" "$VULNFORGE_COMMIT" \
       > /opt/vulnhunter/VULNFORGE_VERSION.json
-RUN cd /opt/vulnhunter/flows/vulnforge/extensions/output-contract \
-    && npm install --omit=dev --no-audit --no-fund \
-    && npm install --omit=dev --no-audit --no-fund @earendil-works/pi-coding-agent@$PI_VERSION
-RUN cd /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-viewer \
-    && npm init -y >/dev/null \
-    && npm install --omit=dev --no-audit --no-fund \
-      @mariozechner/pi-coding-agent@npm:@earendil-works/pi-coding-agent@$PI_VERSION \
-      @mariozechner/pi-ai@npm:@earendil-works/pi-ai@$PI_VERSION
-RUN cd /opt/vulnhunter/flows/vulnforge/extensions/workspace-diff \
-    && npm init -y >/dev/null \
-    && npm install --omit=dev --no-audit --no-fund \
-      @earendil-works/pi-coding-agent@$PI_VERSION \
-      @earendil-works/pi-ai@$PI_VERSION
-# pi-web-access (OSS submodule pinned a1135b8): web
-# search/extract for research+hunt stages. 7 runtime deps + pi peerDeps
-# (mirrors output-contract/code-coverage-viewer install shape).
-RUN cd /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access \
-    && npm install --omit=dev --no-audit --no-fund \
-    && npm install --omit=dev --no-audit --no-fund \
-      @earendil-works/pi-coding-agent@$PI_VERSION \
-      @earendil-works/pi-ai@$PI_VERSION
-# sandbox-plane extension (onboard gate): sandbox-type list/get tools plus
-# apply_sandbox (allocation POST) for the five-step onboard. pi peer deps
-# only (no runtime deps).
-RUN cd /opt/vulnhunter/flows/vulnforge/extensions/sandbox-plane \
-    && npm install --omit=dev --no-audit --no-fund \
-    && npm install --omit=dev --no-audit --no-fund \
-      @earendil-works/pi-coding-agent@$PI_VERSION \
-      @earendil-works/pi-ai@$PI_VERSION
 RUN test -f /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-tracker/index.ts \
     && test -f /opt/vulnhunter/flows/vulnforge/extensions/code-coverage-viewer/index.ts \
     && test -f /opt/vulnhunter/flows/vulnforge/extensions/output-contract/contracts.json \
@@ -110,14 +135,6 @@ COPY flows/vulnhunter-report /opt/vulnhunter/flows/vulnhunter-report
 # secret persists in the image.
 RUN chmod 0777 /opt/vulnhunter/flows/vulnforge \
     /opt/vulnhunter/flows/vulnhunter-report
-
-# Bake the ssh drop-in at build time: it is a static one-liner (Include the
-# tmpfs config), so runtime injection never touches /etc — de-identified
-# workers (uid != 0) can't write there (QA-caught continue-scan EACCES).
-# ssh silently skips the Include when the tmpfs config is absent (static
-# tasks) — verified: ssh -G exit 0 both ways.
-RUN mkdir -p /etc/ssh/ssh_config.d \
-    && printf 'Include /run/vulnhunter/ssh/config\n' > /etc/ssh/ssh_config.d/99-vulnhunter.conf
 
 # Worker bridge (for chat/report modes)
 COPY packages/worker-bridge/dist/bundle.js /opt/bridge/bundle.js

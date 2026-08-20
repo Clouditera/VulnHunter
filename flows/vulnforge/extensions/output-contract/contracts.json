@@ -119,6 +119,7 @@
       },
       {
         "pattern": "gate.yaml",
+        "schema": "schemas/gate.schema.yaml",
         "min_count": 1
       },
       {

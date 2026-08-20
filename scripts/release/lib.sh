@@ -387,9 +387,9 @@ release_write_checksums() {
   ) | while IFS= read -r file; do
     [[ -f "$out/$file" ]] && sha256sum "$out/$file"
   done | sed "s|  $out/|  |" > "$out/checksums.sha256"
-
-  ( cd "$out" && sha256sum -c checksums.sha256 >/dev/null ) \
-    || release_die "release validation failed: checksums.sha256 does not match tree"
+  # No immediate re-verify here: the final pack self-verification
+  # (release_verify_pack) re-extracts and re-checks checksums — this used to
+  # read the whole 5.3G tree twice for nothing (timing 2026-08-20).
 }
 
 release_tar_and_sha() {
@@ -399,8 +399,16 @@ release_tar_and_sha() {
   # Atomic pack: write to a temp name first so a killed/interrupted tar never
   # leaves a complete-looking truncated artifact at the final path.
   rm -f "$tmp"
-  tar -C "$(dirname "$out")" -czf "$tmp" "$(basename "$out")" \
-    || { rm -f "$tmp"; release_die "tar failed for $out"; }
+  # pigz (multi-core gzip) when available — 35% of pack time was single-core
+  # gzip on a 5.3G tree (timing 2026-08-20). Output stays a standard .gz.
+  if command -v pigz >/dev/null 2>&1; then
+    tar -C "$(dirname "$out")" -I pigz -cf "$tmp" "$(basename "$out")" \
+      || { rm -f "$tmp"; release_die "tar failed for $out"; }
+  else
+    echo "warning: pigz not found — falling back to single-core gzip (install pigz for ~5x faster packing)" >&2
+    tar -C "$(dirname "$out")" -czf "$tmp" "$(basename "$out")" \
+      || { rm -f "$tmp"; release_die "tar failed for $out"; }
+  fi
 
   # Self-verification hard gate: a pack that cannot prove itself is a build failure.
   release_verify_pack "$tmp" "$out"
@@ -414,18 +422,24 @@ release_tar_and_sha() {
   echo "release checksum: $out.tar.gz.sha256"
 }
 
-# Verify a built pack: gzip integrity + full re-extract + internal checksums
-# + key file presence. Any failure aborts the release (P0 lesson 2026-08-04:
-# a truncated 2.3.3 pack with missing docker-compose.yml nearly shipped).
+# Verify a built pack: full re-extract (a successful extract is itself the
+# integrity proof — a separate gzip -t pass was pure duplicate IO, removed
+# 2026-08-20) + key file presence + internal checksums. Any failure aborts
+# the release (P0 lesson 2026-08-04: a truncated 2.3.3 pack with missing
+# docker-compose.yml nearly shipped).
 release_verify_pack() {
   local pack="$1" out="${2:-$OUT}"
   echo "release: verifying pack integrity $(basename "$pack")"
-  gzip -t "$pack" || release_die "pack gzip integrity check failed: $pack"
 
   local verify_dir
   verify_dir="$(mktemp -d "${TMPDIR:-/tmp}/release-verify.XXXXXX")"
-  tar -xzf "$pack" -C "$verify_dir" \
-    || { rm -rf "$verify_dir"; release_die "pack re-extract failed: $pack"; }
+  if command -v pigz >/dev/null 2>&1; then
+    tar -I pigz -xf "$pack" -C "$verify_dir" \
+      || { rm -rf "$verify_dir"; release_die "pack re-extract failed: $pack"; }
+  else
+    tar -xzf "$pack" -C "$verify_dir" \
+      || { rm -rf "$verify_dir"; release_die "pack re-extract failed: $pack"; }
+  fi
 
   local extracted="$verify_dir/$(basename "$out")"
   [[ -d "$extracted" ]] \

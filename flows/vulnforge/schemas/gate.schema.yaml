@@ -1,0 +1,26 @@
+# Gate Schema — VulnForge onboard 门禁判定
+# gate.yaml 是门禁路由信号源：next 驱动 YoungFlow 路由（end→exit / continue→cycle_join），
+# 平台 scheduler/reconciler 同读此文件（parseGateYaml fail-closed，契约逐项对齐）。
+$schema: http://json-schema.org/draft-07/schema#
+$id: gate.schema.yaml
+title: Onboard Gate Verdict
+type: object
+required:
+  - next
+  - reason
+properties:
+  next:
+    type: string
+    enum: [continue, end]
+    description: 门禁判定：continue=进入扫描循环；end=直接收口。
+  reason:
+    type: string
+    enum: [complete, partial_source, fragment_collection, no_compatible_sandbox, sandbox_unavailable]
+    description: 判定理由分类（与平台 GATE_REASONS 一致）。
+  detail:
+    type: string
+    description: 判定的人话说明（自由文本，YAML 中须用块标量或引号写法）。
+  sandbox_type:
+    type: [string, "null"]
+    description: 动态任务已分配的沙箱类型；静态任务可省略或为 null。
+additionalProperties: true
