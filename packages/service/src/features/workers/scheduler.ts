@@ -487,7 +487,15 @@ export class TaskScheduler {
       }
 
       await this.assertSchedulerOwnership(task.id, token);
-      await spawnScanWorker(task, this.config, llmEnv, token, claim.mode === "resume", claim.mode === "continue");
+      // --resume retired (fish 2026-08-20): YoungFlow checkpoint replay skips
+      // done stages and replays frozen route decisions — on our cyclic
+      // decide-flow that spins until GRAPH_RECURSION_LIMIT (prod batch, four
+      // tasks). A respawned worker (claim mode "resume": paused task whose
+      // container is gone) now runs --continue: fresh engine state, decide
+      // re-evaluates reality, gate.yaml idempotently skips the gate.
+      // Platform pause/resume semantics unchanged; docker-level unpause of a
+      // still-frozen container never reaches this path.
+      await spawnScanWorker(task, this.config, llmEnv, token, false, claim.mode === "continue" || claim.mode === "resume");
       workerStarted = true;
 
       if (claim.mode === "fresh") {

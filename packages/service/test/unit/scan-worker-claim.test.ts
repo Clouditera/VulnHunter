@@ -58,6 +58,17 @@ describe("claim-owned scan worker", () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
+  it("resume-mode respawn runs --continue: CONTINUE=1 and never sends RESUME (fish 2026-08-20)", async () => {
+    // --resume retired: checkpoint replay spins on cyclic decide-flows
+    // (prod batch, GRAPH_RECURSION_LIMIT). The scheduler passes
+    // continueMode=true for claim mode "resume"; scan-mode.sh no longer
+    // reads RESUME, so the env must not be sent at all.
+    await expect(spawnScanWorker(task, config, {}, token, false, true)).resolves.toBe("container-1");
+    const env = createWorkerContainer.mock.calls[0][0].env;
+    expect(env.CONTINUE).toBe("1");
+    expect(env).not.toHaveProperty("RESUME");
+  });
+
   it("fails closed instead of force-removing a same-name live worker", async () => {
     inspect.mockResolvedValue({ State: { Status: "running" }, Config: { Labels: { "vulnhunter.scheduler_claim": "other" } } });
     await expect(spawnScanWorker(task, config, {}, token)).rejects.toThrow("name conflict");

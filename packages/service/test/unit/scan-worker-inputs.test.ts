@@ -197,14 +197,18 @@ describe("scan-mode VulnForge 2.0 argv contract", () => {
     expect(noCfg.argv).not.toContain("--sandbox-cfg");
   });
 
-  it("A08/A09 preserve continue and resume placement", () => {
+  it("A08/A09 preserve continue placement; --resume is retired", () => {
     const continued = captureArgv({ VULNFORGE_USER_INSTR: "new focus", CONTINUE: "1" }).argv;
     expect(valueAfter(continued, "--user-instr")).toBe("new focus");
     expect(continued.at(-1)).toBe("--continue");
 
-    const resumed = captureArgv({ VULNFORGE_AUDIT_SCOPE: "scope", RESUME: "1" }).argv;
-    expect(valueAfter(resumed, "--audit-scope")).toBe("scope");
-    expect(resumed.at(-1)).toBe("--resume");
+    // --resume retired 2026-08-20 (fish): checkpoint replay spins on cyclic
+    // decide-flows. RESUME env is never sent by the platform, and scan-mode
+    // no longer maps it — a stray RESUME=1 must NOT add --resume, and must
+    // NOT preserve /workspace/out (that was resume-only).
+    const stray = captureArgv({ VULNFORGE_AUDIT_SCOPE: "scope", RESUME: "1" }).argv;
+    expect(valueAfter(stray, "--audit-scope")).toBe("scope");
+    expect(stray).not.toContain("--resume");
   });
 
   it("A10/A12 source and logs contain no legacy flags or input bodies", () => {

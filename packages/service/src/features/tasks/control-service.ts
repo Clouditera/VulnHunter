@@ -125,7 +125,8 @@ export async function resumeTask(taskId: string): Promise<TaskControlResult> {
   // Prefer unpausing the frozen container in place. If it is still present we
   // simply continue execution and go straight back to running. Only when no
   // paused container exists (e.g. service restarted, container gone) do we fall
-  // back to the scheduler-driven respawn (`--resume` checkpoint recovery).
+  // back to the scheduler-driven respawn (`--continue`; --resume retired
+  // 2026-08-20 — checkpoint replay spins on cyclic flows).
   const unpaused = await unpauseScanWorker(task.id).catch((err) => {
     logger.warn({ err, taskId: task.id }, "Failed to unpause worker container");
     return 0;
@@ -135,7 +136,7 @@ export async function resumeTask(taskId: string): Promise<TaskControlResult> {
     notify({ type: "task_state", taskId: task.id, state: "running" });
     return { ok: true, task, state: "queued" };
   }
-  logger.warn({ taskId: task.id }, "No paused container to unpause; falling back to checkpoint resume");
+  logger.warn({ taskId: task.id }, "No paused container to unpause; falling back to --continue");
   await queueTaskForResume(task.id);
   notify({ type: "task_state", taskId: task.id, state: "queued" });
   return { ok: true, task, state: "queued" };

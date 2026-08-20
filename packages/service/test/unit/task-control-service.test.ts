@@ -153,7 +153,7 @@ describe("task control service", () => {
     expect(state.notified[0]).toMatchObject({ type: "task_state", taskId: "task-1", state: "running" });
   });
 
-  it("falls back to checkpoint resume when no paused container exists", async () => {
+  it("falls back to --continue when no paused container exists (resume retired)", async () => {
     state.task = makeTask({ state: "paused" });
     state.unpauseCount = 0;
     const result = await resumeTask("task-1");

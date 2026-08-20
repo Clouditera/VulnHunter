@@ -165,7 +165,9 @@ export async function spawnScanWorker(
       ...llmEnv,
       MODE: "scan",
       TASK_ID: task.id,
-      RESUME: resume ? "1" : "0",
+      // RESUME env removed 2026-08-20: --resume is retired platform-wide
+      // (checkpoint replay spins on cyclic flows). All respawned workers run
+      // --continue; scan-mode.sh no longer reads RESUME.
       CONTINUE: continueMode ? "1" : "0",
       ...scanInputEnvFromMeta(task.source_meta, { dynamicEnabled }),
       // engine-native gate: the sandbox description is a workspace file

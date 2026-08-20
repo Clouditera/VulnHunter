@@ -57,9 +57,9 @@ build_youngflow_args() {
   if [ -n "${RECURSION_LIMIT:-}" ]; then
     YOUNGFLOW_ARGS+=(--recursion-limit "$RECURSION_LIMIT")
   fi
-  if [ "${RESUME:-0}" = "1" ]; then
-    YOUNGFLOW_ARGS+=(--resume)
-  fi
+  # --resume retired 2026-08-20 (fish): YoungFlow checkpoint replay skips done
+  # stages and replays frozen route decisions — spins to GRAPH_RECURSION_LIMIT
+  # on this cyclic decide-flow. All respawns run --continue instead.
   if [ "${CONTINUE:-0}" = "1" ]; then
     YOUNGFLOW_ARGS+=(--continue)
   fi
@@ -188,7 +188,7 @@ echo "[scan] Copied pre-generated models.json + wrote .env (model=$V_DEFAULT_MOD
 mkdir -p "$FLOW_DIR/.pi-agent"
 printf '%s\n' '{"workflow":"none"}' > "$FLOW_DIR/.pi-agent/web-search.json"
 
-if [ "${RESUME:-0}" != "1" ] && [ "${CONTINUE:-0}" != "1" ]; then
+if [ "${CONTINUE:-0}" != "1" ]; then
   rm -rf /workspace/out
 fi
 mkdir -p /workspace/.service-logs
