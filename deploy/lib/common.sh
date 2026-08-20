@@ -8,8 +8,21 @@
 # deploy/sandbox/install.sh.
 # NOTE: version_ge relies on GNU coreutils `sort -V`; busybox `sort` does not
 # support -V (target platforms are x86_64/arm64 Linux servers with coreutils).
+# sort -V must only ever see normalized numeric cores — feed it raw command
+# output and strings like "garbage" can sort >= the floor and slip through.
 version_ge() {
   [ "$(printf '%s\n' "$1" "$2" | sort -V | head -n1)" = "$2" ]
+}
+
+# Validate + normalize a version string before it reaches version_ge (HALL-13).
+# Accepts an optional leading v, a dotted-numeric core X.Y[.Z], and optional
+# -/+ suffixes: 24.0.7, 24.0.7-ce, 24.0.7+dfsg1, v2.27.0, 2.27.0-desktop.2.
+# Prints the numeric core (suffix stripped) on success; returns 1 for empty or
+# unrecognizable input — an undeterminable version is a rejection, not a pass.
+normalize_version() {
+  local raw="$1"
+  [[ "$raw" =~ ^v?([0-9]+(\.[0-9]+){1,2})([-+][0-9A-Za-z.-]+)?$ ]] || return 1
+  printf '%s\n' "${BASH_REMATCH[1]}"
 }
 
 # Best-effort server version: `docker version --format` first, then docker info.
@@ -25,19 +38,29 @@ docker_server_version() {
 # An undetectable engine version is treated as a failure: an environment where
 # the version cannot be confirmed almost certainly has a broken daemon too.
 check_docker_requirements() {
-  local engine_ver compose_ver
-  engine_ver="$(docker_server_version || true)"
-  if [[ -z "$engine_ver" ]]; then
+  local engine_raw engine_ver compose_raw compose_ver
+  engine_raw="$(docker_server_version || true)"
+  if [[ -z "$engine_raw" ]]; then
     echo "[install] cannot determine Docker Engine version (daemon unreachable?). Please verify the Docker installation: https://docs.docker.com/engine/install/" >&2
     exit 1
   fi
+  if ! engine_ver="$(normalize_version "$engine_raw")"; then
+    echo "[install] unrecognized Docker Engine version: '$engine_raw'. Please verify the Docker installation: https://docs.docker.com/engine/install/" >&2
+    exit 1
+  fi
   if ! version_ge "$engine_ver" "20.10"; then
-    echo "[install] Docker Engine >= 20.10 is required (detected: $engine_ver). Please upgrade Docker: https://docs.docker.com/engine/install/" >&2
+    echo "[install] Docker Engine >= 20.10 is required (detected: $engine_raw). Please upgrade Docker: https://docs.docker.com/engine/install/" >&2
     exit 1
   fi
   if docker compose version >/dev/null 2>&1; then
-    compose_ver="$(docker compose version --short 2>/dev/null | sed 's/^v//')"
-    if [[ -n "$compose_ver" ]] && ! version_ge "$compose_ver" "2"; then
+    # The plugin answering does not prove a usable version: --short may be
+    # empty or garbage. That is a hard failure, never a pass-through.
+    compose_raw="$(docker compose version --short 2>/dev/null)"
+    if ! compose_ver="$(normalize_version "$compose_raw")"; then
+      echo "[install] cannot determine Docker Compose version ('docker compose version --short' reported nothing usable). Please reinstall the compose plugin: https://docs.docker.com/compose/install/linux/" >&2
+      exit 1
+    fi
+    if ! version_ge "$compose_ver" "2"; then
       echo "[install] Docker Compose v2 is required (detected: $compose_ver). Please upgrade the compose plugin: https://docs.docker.com/compose/install/linux/" >&2
       exit 1
     fi
