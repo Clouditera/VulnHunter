@@ -33,7 +33,7 @@ import { SCAN_FALLBACK_MARGIN_S } from "../tasks/scan-duration.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir, hasRunningScanWorkerByClaim, stopScanWorker, stopScanWorkerByClaim } from "./scan-worker.js";
 import { cleanupSchedulerWorkspace, getSchedulerPrepareDir, publishSchedulerWorkspace } from "./scheduler-workspace.js";
-import { isDynamicEnabled, persistedPrepareResult, parseGateYaml, GATE_REASONS, type GateYaml, type PrepareResult } from "../prepare/contract.js";
+import { isDynamicEnabled, persistedPrepareResult, parseGateYamlLenient, GATE_REASONS, type GateYaml, type PrepareResult } from "../prepare/contract.js";
 import { armGateRouteHandler } from "./gate-perception.js";
 import {
   ensureSandboxForTask,
@@ -829,10 +829,16 @@ export class TaskScheduler {
     return missing;
   }
 
-  /** Read + validate gate.yaml from the workspace; null on any miss. */
+  /** Read + validate gate.yaml from the workspace; null on any miss.
+   * Lenient (task-c4b8730c): a malformed file (unquoted detail) recovers the
+   * routing verdict via top-line scan instead of reading as "no verdict". */
   private readGateYaml(hostWorkDir: string): GateYaml | null {
     try {
-      return parseGateYaml(readFileSync(join(hostWorkDir, "out", "gate.yaml"), "utf8"));
+      const lenient = parseGateYamlLenient(readFileSync(join(hostWorkDir, "out", "gate.yaml"), "utf8"));
+      if (lenient?.recovered) {
+        logger.warn({ hostWorkDir }, "gate.yaml malformed, recovered next via line scan");
+      }
+      return lenient ? lenient.gate : null;
     } catch {
       return null;
     }

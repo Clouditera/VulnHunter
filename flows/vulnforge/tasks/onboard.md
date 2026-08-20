@@ -8,6 +8,8 @@
 
 **落盘总规则**（全文唯一权威）：失败判定（第 3 步不合格、第 5 步沙箱申请失败或无兼容类型）一形成**立即**写 gate.yaml，优先于本阶段其它一切输出；成功判定在第 5 步末写——第 4 步四件产物已落盘、动态任务已 apply_sandbox 成功之后。
 
+gate.yaml 的 `detail` **必须用块标量**（`detail: >` 换行缩进）**或双引号包裹**——裸写含「冒号+空格」的自由文本是非法 YAML（生产实证：路由解析失败、任务误判初始化未完成），schema 校验会打回，路由也读不了。
+
 # 固定五步
 
 ## 第 1 步 — 识别项目
@@ -33,7 +35,8 @@
 # $OUTPUT_DIR/gate.yaml
 next: end
 reason: partial_source   # 或 fragment_collection
-detail: <一句人话：为什么不完整、缺了什么——平台原样展示给用户>
+detail: >                # 块标量：人话写为什么不合格、缺了什么——平台原样展示给用户
+  一句人话，自由换行，冒号顿号随便用
 sandbox_type: null
 ```
 
@@ -70,6 +73,8 @@ profiler + wiki 三件是成功门禁的硬性证据，缺一不可。
 ```yaml
 next: continue
 reason: complete
+detail: >                # 块标量：一句人话写判定依据与已完成的准备
+  一句人话，自由换行
 sandbox_type: <profile_id>   # 静态任务写 null
 ```
 

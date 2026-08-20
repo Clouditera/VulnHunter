@@ -27,7 +27,7 @@ import { loadConfig } from "../../infra/config.js";
 import { getHostWorkDir, stopScanWorkerByClaim } from "./scan-worker.js";
 import { cleanupSchedulerWorkspace } from "./scheduler-workspace.js";
 import { load as yamlLoad } from "js-yaml";
-import { isDynamicEnabled, parseGateYaml, type GateYaml } from "../prepare/contract.js";
+import { isDynamicEnabled, parseGateYamlLenient, type GateYaml } from "../prepare/contract.js";
 import { startTailing } from "../events/event-tail.js";
 import { reconcileSandboxes } from "../sandboxes/lifecycle.js";
 import { join } from "node:path";
@@ -37,10 +37,16 @@ import { appendAndBroadcastCompletionEvent } from "./scheduler-events.js";
 import { armGateRouteHandler } from "./gate-perception.js";
 import { hasEngineEventHandler } from "../events/event-tail.js";
 
-/** Read + validate gate.yaml from the workspace (same parser as the live path). */
+/** Read + validate gate.yaml from the workspace (same parser as the live path).
+ * Lenient (task-c4b8730c): a malformed file (unquoted detail) recovers the
+ * routing verdict via top-line scan instead of reading as "no verdict". */
 function readGateYamlFile(hostWorkDir: string): GateYaml | null {
   try {
-    return parseGateYaml(readFileSync(join(hostWorkDir, "out", "gate.yaml"), "utf8"));
+    const lenient = parseGateYamlLenient(readFileSync(join(hostWorkDir, "out", "gate.yaml"), "utf8"));
+    if (lenient?.recovered) {
+      logger.warn({ hostWorkDir }, "gate.yaml malformed, recovered next via line scan");
+    }
+    return lenient ? lenient.gate : null;
   } catch {
     return null;
   }

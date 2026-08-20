@@ -64,6 +64,46 @@ export function parseGateYaml(text: string): GateYaml | null {
   };
 }
 
+/**
+ * Lenient gate.yaml parse (task-c4b8730c, prod 55fb9cec): when the strict
+ * parse fails (e.g. an unquoted detail containing "colon+space" makes the
+ * whole document invalid YAML), recover the routing verdict by scanning top
+ * lines for `next:` / `reason:` scalars — those are always simple values.
+ *
+ * Recovery rules:
+ * - `next` must be a literal continue|end, else null (no verdict to recover)
+ * - `reason` recovered only when it matches GATE_REASONS
+ * - next=continue with unrecoverable reason → assume "complete" (the success
+ *   verdict; the evidence gate still applies downstream), sandbox_type null
+ * - next=end with unrecoverable reason → null (a failure verdict's wording
+ *   must not be guessed — fail closed and let the die path speak human)
+ */
+export function parseGateYamlLenient(text: string): { gate: GateYaml; recovered: boolean } | null {
+  const strict = parseGateYaml(text);
+  if (strict) return { gate: strict, recovered: false };
+
+  const nextMatch = text.match(/^next:\s*(continue|end)\s*$/m);
+  if (!nextMatch) return null;
+  const next = nextMatch[1] as "continue" | "end";
+
+  const reasonMatch = text.match(/^reason:\s*([^\s#][^\n]*)$/m);
+  const reasonRaw = reasonMatch ? reasonMatch[1].trim() : "";
+  const reason = (GATE_REASONS as readonly string[]).includes(reasonRaw)
+    ? (reasonRaw as GateReason)
+    : null;
+  if (next === "end" && reason === null) return null;
+
+  return {
+    gate: {
+      next,
+      reason: reason ?? "complete",
+      detail: undefined,
+      sandbox_type: null,
+    },
+    recovered: true,
+  };
+}
+
 function booleanMeta(meta: Record<string, unknown> | null | undefined, key: string): boolean {
   const v = meta?.[key];
   return v === true || v === "true";
