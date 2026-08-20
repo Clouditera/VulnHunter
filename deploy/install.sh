@@ -12,6 +12,11 @@ source "$PKG_ROOT/lib/common.sh"
 
 cd "$PKG_ROOT"
 
+# Fatal-error helper (install.sh historically used inline `echo ...; exit 1`;
+# the parallel-load block introduced `die` calls — define it here so failure
+# branches print a readable message instead of `die: command not found`).
+die() { echo "[install] ERROR: $*" >&2; exit 1; }
+
 INSTANCE_DIR_DEFAULT="/opt/vulnhunter/data"
 WEB_PORT_DEFAULT=23000
 
