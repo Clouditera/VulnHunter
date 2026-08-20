@@ -155,6 +155,20 @@ sync_release_env() {
 
   add_missing_env_from_example
 
+  # HALL-12: backfill the host DMI capture so the new compose bind-mount source
+  # is a real file. Existing .install_id still wins at runtime (no code change).
+  local host_dmi_file
+  host_dmi_file="$(env_value HOST_DMI_PRODUCT_UUID_FILE .env)"
+  host_dmi_file="${host_dmi_file:-./.secrets/host-product-uuid}"
+  if [[ ! -f "$host_dmi_file" ]]; then
+    mkdir -p "$(dirname "$host_dmi_file")"
+    if capture_host_dmi_product_uuid "$host_dmi_file"; then
+      echo "[upgrade] captured host DMI product UUID (machine code unchanged: existing .install_id wins)"
+    else
+      echo "[upgrade] no usable host DMI product UUID — instance keeps the legacy .install_id machine code"
+    fi
+  fi
+
   ensure_system_admin_env
 }
 
@@ -255,6 +269,7 @@ write_install_manifest() {
   "managed_files": [
     { "path": ".env", "kind": "config", "preserve": true, "secret_values": true },
     { "path": ".secrets/license-public.pem", "kind": "license_public_key", "preserve": true, "secret_values": false },
+    { "path": ".secrets/host-product-uuid", "kind": "host_machine_identity", "preserve": true, "secret_values": false },
     { "path": "${DATA_DIR}/.secrets/vulnhunter-master.key", "kind": "master_key", "preserve": true, "secret_values": true },
     { "path": "${DATA_DIR}/.install_id", "kind": "installation_id", "preserve": true, "secret_values": false }
   ],

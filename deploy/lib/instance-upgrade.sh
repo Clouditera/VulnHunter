@@ -209,6 +209,23 @@ run_instance_upgrade() {
   # Replace version-owned files (compose / template / .version / sandbox trio; secrets preserved)
   cp "$pkg_root/docker-compose.yml" "$instance_dir/docker-compose.yml"
   cp "$pkg_root/.env.example" "$instance_dir/.env.template"
+
+  # HALL-12: backfill the host DMI product UUID capture for instances installed
+  # before hardware-bound machine codes existed. Existing .install_id still wins
+  # at runtime (machine code unchanged); the file just makes the new compose
+  # bind-mount a real file and prepares a possible future DMI-first switch.
+  if [[ ! -f "$instance_dir/.secrets/host-product-uuid" ]]; then
+    if capture_host_dmi_product_uuid "$instance_dir/.secrets/host-product-uuid"; then
+      echo "[upgrade] captured host DMI product UUID (machine code unchanged: existing .install_id wins)"
+    else
+      echo "[upgrade] no usable host DMI product UUID — instance keeps the legacy .install_id machine code"
+    fi
+    # Point the merged key at the real absolute path (merge appended the relative default).
+    if grep -qE '^HOST_DMI_PRODUCT_UUID_FILE=\./\.secrets/host-product-uuid$' "$real_env"; then
+      sed -i "s|^HOST_DMI_PRODUCT_UUID_FILE=.*|HOST_DMI_PRODUCT_UUID_FILE=$instance_dir/.secrets/host-product-uuid|" "$real_env"
+      echo "[upgrade] pinned HOST_DMI_PRODUCT_UUID_FILE to $instance_dir/.secrets/host-product-uuid"
+    fi
+  fi
   local installed_at
   installed_at="$(sed -n 's/.*"installed_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$instance_dir/.vulnhunter-install.json" 2>/dev/null | head -n 1 || true)"
   write_version_file "$instance_dir" "$pkg_version" "$git_commit"

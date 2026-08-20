@@ -43,6 +43,9 @@ services:
       WORKER_SERVICE_URL: "${WORKER_SERVICE_URL:-http://service:28080}"
       UPLOAD_GATEWAY_LIMIT_MB: "${UPLOAD_GATEWAY_LIMIT_MB:-2048}"
       DATA_DIR: "${DATA_DIR:-/opt/vulnhunter/data}"
+      # HALL-12: container-side path of the read-only host DMI product UUID file
+      # (empty = disable hardware binding, legacy .install_id behavior).
+      VULNHUNTER_DMI_PRODUCT_UUID_PATH: "${VULNHUNTER_DMI_PRODUCT_UUID_PATH:-/run/vulnhunter/host/product_uuid}"
       VULNHUNTER_MASTER_KEY_FILE: "${VULNHUNTER_MASTER_KEY_FILE:-/run/secrets/vulnhunter-master.key}"
       VULNHUNTER_LICENSE_PUBLIC_KEY_FILE: "${VULNHUNTER_LICENSE_PUBLIC_KEY_FILE:-/run/secrets/license-public.pem}"
       # Singleton system admin (deploy-provisioned). Empty = skip provision.
@@ -66,6 +69,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - "${DATA_DIR:-/opt/vulnhunter/data}:${DATA_DIR:-/opt/vulnhunter/data}"
+      # HALL-12: single-file read-only host DMI product UUID for the hardware-bound
+      # machine code. install.sh captures it into .secrets; a missing source falls
+      # back to an unreadable path and the service uses the legacy .install_id.
+      - "${HOST_DMI_PRODUCT_UUID_FILE:-./.secrets/host-product-uuid}:/run/vulnhunter/host/product_uuid:ro"
       - "${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}:/run/secrets/vulnhunter-master.key:ro"
       - "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}:/run/secrets/license-public.pem:ro"
     networks:
@@ -89,6 +96,7 @@ services:
       PORT: "28080"
       DATABASE_URL: "postgresql://vulnhunter:${DB_PASSWORD:-vulnhunter}@db:5432/vulnhunter"
       DATA_DIR: "${DATA_DIR:-/opt/vulnhunter/data}"
+      VULNHUNTER_DMI_PRODUCT_UUID_PATH: "${VULNHUNTER_DMI_PRODUCT_UUID_PATH:-/run/vulnhunter/host/product_uuid}"
       VULNHUNTER_MASTER_KEY_FILE: "${VULNHUNTER_MASTER_KEY_FILE:-/run/secrets/vulnhunter-master.key}"
       VULNHUNTER_LICENSE_PUBLIC_KEY_FILE: "${VULNHUNTER_LICENSE_PUBLIC_KEY_FILE:-/run/secrets/license-public.pem}"
       VULNHUNTER_ADMIN_EMAIL: "${VULNHUNTER_ADMIN_EMAIL:-}"
@@ -102,6 +110,7 @@ services:
       LOG_LEVEL: "${LOG_LEVEL:-info}"
     volumes:
       - "${DATA_DIR:-/opt/vulnhunter/data}:${DATA_DIR:-/opt/vulnhunter/data}"
+      - "${HOST_DMI_PRODUCT_UUID_FILE:-./.secrets/host-product-uuid}:/run/vulnhunter/host/product_uuid:ro"
       - "${MASTER_KEY_FILE:-./.secrets/vulnhunter-master.key}:/run/secrets/vulnhunter-master.key:ro"
       - "${LICENSE_PUBLIC_KEY_FILE:-./.secrets/license-public.pem}:/run/secrets/license-public.pem:ro"
     networks:
