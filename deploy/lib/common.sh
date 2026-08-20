@@ -61,6 +61,26 @@ discover_admin_email() {
   docker exec "$db_container" psql -U vulnhunter -d vulnhunter -tAc \
     "SELECT email FROM users WHERE role='admin' ORDER BY created_at LIMIT 1" 2>/dev/null | head -n 1 || true
 }
+# ── Host DMI product UUID capture (HALL-12) ──────────────────────────
+# Copy /sys/class/dmi/id/product_uuid into OUT_FILE (normalized lowercase,
+# validated); write an empty file when unavailable/unreadable/invalid so the
+# compose bind-mount source always exists and the service falls back to the
+# legacy .install_id behavior. Usage: capture_host_dmi_product_uuid <out_file>
+capture_host_dmi_product_uuid() {
+  local out_file="$1" raw norm
+  raw="$(cat /sys/class/dmi/id/product_uuid 2>/dev/null || true)"
+  norm="$(printf '%s' "$raw" | tr 'A-F' 'a-f' | tr -d '[:space:]')"
+  if [[ "$norm" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+    && [[ "$norm" != "00000000-0000-0000-0000-000000000000" ]]; then
+    printf '%s\n' "$norm" > "$out_file"
+    chmod 0444 "$out_file" 2>/dev/null || true
+    return 0
+  fi
+  : > "$out_file"
+  chmod 0444 "$out_file" 2>/dev/null || true
+  return 1
+}
+
 ensure_system_admin_env() {
   local env_file="${1:-.env}"
   [[ -f "$env_file" ]] || return 0

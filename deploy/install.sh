@@ -254,6 +254,17 @@ else
   echo "[install] note: no license-public.pem in package (community) — placeholder at $license_key_file" >&2
 fi
 
+# Host hardware identity (HALL-12): capture the DMI product UUID into the
+# instance so the containers derive a reinstall-stable machine code without
+# bind-mounting /sys (which would break container startup on DMI-less hosts).
+# Unreadable/missing/invalid → empty file → legacy .install_id fallback.
+host_dmi_file="$instance_dir/.secrets/host-product-uuid"
+if capture_host_dmi_product_uuid "$host_dmi_file"; then
+  echo "[install] captured host DMI product UUID for hardware-bound machine code"
+else
+  echo "[install] no usable host DMI product UUID — machine code will use the legacy .install_id fallback"
+fi
+
 # Patch instance .env
 set_env_key() {
   local file="$1" key="$2" val="$3"
@@ -275,6 +286,7 @@ set_env_key "$instance_dir/.env" EDITION "${EDITION:-${default_edition:-communit
 set_env_key "$instance_dir/.env" MASTER_KEY_FILE "$master_key_file"
 set_env_key "$instance_dir/.env" VULNHUNTER_MASTER_KEY_FILE "$master_key_file"
 set_env_key "$instance_dir/.env" LICENSE_PUBLIC_KEY_FILE "$license_key_file"
+set_env_key "$instance_dir/.env" HOST_DMI_PRODUCT_UUID_FILE "$host_dmi_file"
 set_env_key "$instance_dir/.env" PROJECT_NAME "$project_name"
 set_env_key "$instance_dir/.env" COMPOSE_PROJECT_NAME "$project_name"
 
@@ -446,6 +458,7 @@ cat >"${manifest}.tmp" <<JSON
     { "path": "docker-compose.yml", "kind": "compose", "preserve": false, "secret_values": false },
     { "path": ".version", "kind": "version", "preserve": false, "secret_values": false },
     { "path": ".secrets/license-public.pem", "kind": "license_public_key", "preserve": true, "secret_values": false },
+    { "path": ".secrets/host-product-uuid", "kind": "host_machine_identity", "preserve": true, "secret_values": false },
     { "path": ".secrets/vulnhunter-master.key", "kind": "master_key", "preserve": true, "secret_values": true },
     { "path": ".install_id", "kind": "installation_id", "preserve": true, "secret_values": false }
   ],
