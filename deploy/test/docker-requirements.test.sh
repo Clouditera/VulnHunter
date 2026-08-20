@@ -16,9 +16,10 @@ for t in bash env sort head sed; do
   ln -s "$(command -v "$t")" "$BASE_BIN/$t"
 done
 
-# mock_docker <engine-version|FAIL> <compose-version|none>
+# mock_docker <engine-version|FAIL> <compose-version|none|EMPTY>
 # engine FAIL: `docker version`/`docker info` yield no server version.
 # compose none: `docker compose version` exits 1 (plugin absent).
+# compose EMPTY: `docker compose version` succeeds but `--short` prints nothing.
 mock_docker() {
   local engine="$1" compose="$2"
   cat >"$MOCK_BIN/docker" <<EOF
@@ -32,7 +33,11 @@ case "\$*" in
     printf 'Server Version: %s\n' "$engine" ;;
   "compose version"|"compose version --short")
     [[ "$compose" == none ]] && exit 1
-    [[ "\$*" == *--short* ]] && echo "$compose" || echo "Docker Compose version $compose" ;;
+    if [[ "\$*" == *--short* ]]; then
+      [[ "$compose" == EMPTY ]] || echo "$compose"
+    else
+      echo "Docker Compose version $compose"
+    fi ;;
   *) exit 1 ;;
 esac
 EOF
@@ -73,5 +78,22 @@ assert_case "no compose at all rejected" 1 "not found"
 
 mock_docker FAIL 2.27.0
 assert_case "undetectable engine version rejected" 1 "cannot determine Docker Engine version"
+
+# HALL-13 regression: unparseable versions must be rejected, never passed to sort -V.
+
+mock_docker 24.0.7 EMPTY
+assert_case "compose plugin ok but --short empty rejected" 1 "cannot determine Docker Compose version"
+
+mock_docker 24.0.7 garbage-not-a-version
+assert_case "compose --short garbage rejected" 1 "cannot determine Docker Compose version"
+
+mock_docker garbage-not-a-version 2.27.0
+assert_case "engine garbage version rejected" 1 "unrecognized Docker Engine version"
+
+mock_docker 24.0.7-ce v2.27.0
+assert_case "engine -ce suffix + compose v-prefixed v2 passes" 0 ""
+
+mock_docker 24.0.7+dfsg1 2.27.0-desktop.2
+assert_case "engine +dfsg suffix + compose -desktop suffix passes" 0 ""
 
 exit "$fail"
