@@ -16,9 +16,9 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    version: "2.3.17",
+    version: "2.3.11",
     releasedAt: "2026-08",
-    title: "VulnHunter v2.3.17 更新",
+    title: "VulnHunter v2.3.11 更新",
     markdown: `
 ### 🚀 稳定性
 - **暂停/续跑根治**：任务暂停后继续不再触发引擎检查点回放死循环，容器不在时统一走全新续跑（继续扫描），可正常收尾出报告
