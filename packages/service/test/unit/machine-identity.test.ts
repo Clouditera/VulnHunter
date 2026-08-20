@@ -1,6 +1,10 @@
+import { execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
+import ts from "typescript";
 import { afterEach, describe, expect, it } from "vitest";
 import { getInstallationId, initInstallation } from "../../src/features/system/installation.js";
 import {
@@ -145,7 +149,7 @@ describe("resolveMachineIdentity — generated fallback", () => {
     expect(readFileSync(join(dir, ".install_id"), "utf-8")).toBe(first.code);
   });
 
-  it("replaces a stale empty .install_id instead of crashing", () => {
+  it("replaces a stale empty .install_id instead of crashing, keeping the corrupt file aside", () => {
     const dir = makeDir();
     writeFileSync(join(dir, ".install_id"), "");
 
@@ -157,6 +161,10 @@ describe("resolveMachineIdentity — generated fallback", () => {
     expect(identity.source).toBe("generated_install_id");
     expect(identity.code).toMatch(UUID_PATTERN);
     expect(readFileSync(join(dir, ".install_id"), "utf-8")).toBe(identity.code);
+    // The corrupt file is renamed aside (never unlinked); no lock/tmp residue.
+    const entries = readdirSync(dir);
+    expect(entries.filter((e) => e.startsWith(".install_id.corrupt."))).toHaveLength(1);
+    expect(entries.filter((e) => e.endsWith(".lock") || e.includes(".tmp"))).toEqual([]);
   });
 
   it("leaves no temp files behind", () => {
@@ -167,6 +175,79 @@ describe("resolveMachineIdentity — generated fallback", () => {
     });
     expect(readdirSync(dir)).toEqual([".install_id"]);
   });
+});
+
+/**
+ * Multi-process determinism/stress check (HALL-12 review blocker 1):
+ * pre-plant a corrupt `.install_id`, then run N concurrent OS processes
+ * against the same dataDir. The lock-owned repair must never delete a valid
+ * winner, so every process must converge on the same id.
+ *
+ * Children are plain `node` processes, so the TS module is transpiled to a
+ * temp .mjs via the TypeScript devDependency (hermetic, no build step).
+ */
+describe("resolveMachineIdentity — multi-process race with corrupt .install_id", () => {
+  const execFileAsync = promisify(execFile);
+
+  function writeRunner(dir: string): string {
+    const src = readFileSync(
+      resolve(__dirname, "../../src/features/system/machine-identity.ts"),
+      "utf-8",
+    );
+    const js = ts.transpileModule(src, {
+      compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const modPath = join(dir, "machine-identity.mjs");
+    writeFileSync(modPath, js);
+    const runner = join(dir, "runner.mjs");
+    const runnerSource = [
+      `import { resolveMachineIdentity } from ${JSON.stringify(pathToFileURL(modPath).href)};`,
+      "const r = resolveMachineIdentity({ dataDir: process.argv[2], dmiProductUuidPath: process.argv[3] });",
+      "process.stdout.write(r.code);",
+      "",
+    ].join("\n");
+    writeFileSync(runner, runnerSource);
+    return runner;
+  }
+
+  it("8 concurrent processes converge on one repaired id and never lose a winner", async () => {
+    const dir = makeDir();
+    writeFileSync(join(dir, ".install_id"), ""); // corrupt: empty
+    const runner = writeRunner(dir);
+    const noDmi = join(dir, "no-dmi");
+
+    const outcomes = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        execFileAsync(process.execPath, [runner, dir, noDmi]).then((r) => r.stdout.trim()),
+      ),
+    );
+
+    expect(new Set(outcomes).size).toBe(1);
+    expect(outcomes[0]).toMatch(UUID_PATTERN);
+    expect(readFileSync(join(dir, ".install_id"), "utf-8")).toBe(outcomes[0]);
+    // Corrupt file preserved aside; no lock/tmp residue left behind.
+    const entries = readdirSync(dir);
+    expect(entries.filter((e) => e.startsWith(".install_id.corrupt."))).toHaveLength(1);
+    expect(entries.filter((e) => e.endsWith(".lock") || e.includes(".tmp"))).toEqual([]);
+  }, 30_000);
+
+  it("repeated corrupt-plant + concurrent rounds stay convergent (stress)", async () => {
+    for (let round = 0; round < 3; round++) {
+      const dir = makeDir();
+      writeFileSync(join(dir, ".install_id"), "\n\n"); // corrupt: whitespace-only
+      const runner = writeRunner(dir);
+      const noDmi = join(dir, "no-dmi");
+
+      const outcomes = await Promise.all(
+        Array.from({ length: 4 }, () =>
+          execFileAsync(process.execPath, [runner, dir, noDmi]).then((r) => r.stdout.trim()),
+        ),
+      );
+
+      expect(new Set(outcomes).size).toBe(1);
+      expect(readFileSync(join(dir, ".install_id"), "utf-8")).toBe(outcomes[0]);
+    }
+  }, 60_000);
 });
 
 describe("initInstallation / getInstallationId compatibility", () => {
