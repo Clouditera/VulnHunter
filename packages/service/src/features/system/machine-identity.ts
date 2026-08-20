@@ -24,7 +24,18 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  linkSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 export type MachineIdentitySource =
@@ -47,6 +58,12 @@ const MACHINE_CODE_V2_DOMAIN = "vulnhunter/machine-code/v2\n";
 const MACHINE_CODE_V2_PREFIX = "vhmc_v2_";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
+
+// Corrupt-`.install_id` repair locking: the critical section is a single
+// rename, so 30s staleness / 10s wait are generous bounds, not tight timings.
+const LOCK_STALE_MS = 30_000;
+const LOCK_WAIT_BUDGET_MS = 10_000;
+const LOCK_RETRY_DELAY_MS = 25;
 
 /** Trim + lowercase + format/zero check. Returns null for anything unusable. */
 export function normalizeDmiProductUuid(raw: string): string | null {
@@ -88,13 +105,66 @@ function readLegacyInstallId(filePath: string): string | null {
 }
 
 /**
+ * Exclusive lock via O_EXCL create. Only the lock holder may repair a corrupt
+ * `.install_id`, which gives the repair a single owner: the check-then-act gap
+ * between "observe corrupt" and "remove corrupt" is closed inside the critical
+ * section. A stale lock (holder crashed mid-repair) is broken after
+ * LOCK_STALE_MS; the O_EXCL re-create then decides the single new owner.
+ */
+function acquireLock(lockPath: string): void {
+  const deadline = Date.now() + LOCK_WAIT_BUDGET_MS;
+  for (;;) {
+    try {
+      closeSync(openSync(lockPath, "wx", 0o644));
+      return;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+    try {
+      if (Date.now() - statSync(lockPath).mtimeMs > LOCK_STALE_MS) {
+        unlinkSync(lockPath);
+        continue;
+      }
+    } catch {
+      continue; // lock vanished between check and stat — retry acquire
+    }
+    if (Date.now() > deadline) throw new Error(`timed out waiting for install-id lock ${lockPath}`);
+    // Synchronous startup path; Atomics.wait is the portable in-process sleep.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, LOCK_RETRY_DELAY_MS);
+  }
+}
+
+/**
+ * Repair a corrupt `.install_id` under the exclusive lock: re-validate inside
+ * the critical section (a peer may have repaired it while we waited), then
+ * rename the corrupt file aside instead of unlinking it. A file is only ever
+ * removed after being re-confirmed corrupt by the single lock holder, so a
+ * valid winner linked by a racing peer can never be deleted (HALL-12 review).
+ */
+function repairCorruptInstallId(filePath: string): void {
+  const lockPath = `${filePath}.lock`;
+  acquireLock(lockPath);
+  try {
+    if (readLegacyInstallId(filePath)) return; // a peer repaired it while we waited
+    if (!existsSync(filePath)) return; // already moved aside — caller retries the link race
+    renameSync(filePath, `${filePath}.corrupt.${process.pid}.${Date.now()}`);
+  } finally {
+    try {
+      unlinkSync(lockPath);
+    } catch {
+      // best effort — a leftover lock is broken by the staleness check above
+    }
+  }
+}
+
+/**
  * Persist a freshly generated UUID with first-writer-wins semantics:
  * write a unique temp file, then link(2) it into place — atomic, and EEXIST
  * tells the loser to adopt the winner's value. Readers therefore never see a
  * truncated `.install_id`, unlike plain writeFileSync from two processes.
  */
 function persistGeneratedInstallId(filePath: string): string {
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const candidate = randomUUID();
     const tmpPath = `${filePath}.${process.pid}.${attempt}.tmp`;
     writeFileSync(tmpPath, candidate, { mode: 0o644 });
@@ -103,14 +173,6 @@ function persistGeneratedInstallId(filePath: string): string {
       return candidate;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-      const existing = readLegacyInstallId(filePath);
-      if (existing) return existing;
-      // A stale empty/corrupt file blocks the link; remove it and retry once.
-      try {
-        unlinkSync(filePath);
-      } catch {
-        // peer may have replaced it already — the retry re-checks
-      }
     } finally {
       try {
         unlinkSync(tmpPath);
@@ -118,8 +180,15 @@ function persistGeneratedInstallId(filePath: string): string {
         // already linked into place, or never created
       }
     }
+    // Lost the link race: adopt a valid winner; repair a corrupt target under
+    // the lock and loop to retry the link once the path is clear.
+    const existing = readLegacyInstallId(filePath);
+    if (existing) return existing;
+    repairCorruptInstallId(filePath);
+    const repaired = readLegacyInstallId(filePath);
+    if (repaired) return repaired;
   }
-  // Both attempts lost the race — the winner's value must be readable now.
+  // All attempts lost the race — the winner's value must be readable now.
   const existing = readLegacyInstallId(filePath);
   if (existing) return existing;
   throw new Error(`failed to persist generated install id at ${filePath}`);
