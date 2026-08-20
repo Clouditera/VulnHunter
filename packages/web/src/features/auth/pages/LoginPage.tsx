@@ -136,14 +136,15 @@ export function LoginPage() {
       testid="login-page"
       footer={isSaas ? <SupportContactFooterLine /> : null}
     >
-      {panel === "login" && <LoginPanel onGoRegister={() => setPanel("register")} onGoForgot={() => setPanel("forgot")} />}
-      {panel === "register" && <RegisterPanel onBack={() => setPanel("login")} />}
+      {panel === "login" && <LoginPanel canRegister={isSaas} onGoRegister={() => setPanel("register")} onGoForgot={() => setPanel("forgot")} />}
+      {/* HALL-6: 自助注册仅 SaaS 开放；企业/社区版由管理员建号，不渲染注册面板（也不请求协议目录） */}
+      {panel === "register" && isSaas && <RegisterPanel onBack={() => setPanel("login")} />}
       {panel === "forgot" && <ForgotPanel onBack={() => setPanel("login")} />}
     </AuthSplitLayout>
   );
 }
 
-function LoginPanel({ onGoRegister, onGoForgot }: { onGoRegister: () => void; onGoForgot: () => void }) {
+function LoginPanel({ canRegister, onGoRegister, onGoForgot }: { canRegister: boolean; onGoRegister: () => void; onGoForgot: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -191,9 +192,13 @@ function LoginPanel({ onGoRegister, onGoForgot }: { onGoRegister: () => void; on
         <button type="button" data-testid="auth-go-forgot" onClick={onGoForgot} style={LINK}>
           {i18n.t("auth.forgotLink")}
         </button>
-        <button type="button" data-testid="auth-go-register" onClick={onGoRegister} style={{ ...LINK, color: "var(--brand)", fontWeight: 600 }}>
-          {i18n.t("auth.registerLink")}
-        </button>
+        {canRegister ? (
+          <button type="button" data-testid="auth-go-register" onClick={onGoRegister} style={{ ...LINK, color: "var(--brand)", fontWeight: 600 }}>
+            {i18n.t("auth.registerLink")}
+          </button>
+        ) : (
+          <span />
+        )}
       </div>
     </div>
   );

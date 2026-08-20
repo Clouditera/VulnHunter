@@ -10,8 +10,10 @@ import { getHomePublicStats } from "../home/stats.js";
 
 export const systemRouter = new Hono();
 
-// GET /api/system/home-stats  (public marketing aggregates — no PII)
+// GET /api/system/home-stats  (SaaS-only marketing aggregates — no PII)
+// HALL-6: 私有化部署（enterprise/community）不暴露营销统计，纵深防御返回 404。
 systemRouter.get("/home-stats", async (c) => {
+  if (loadConfig().edition !== "saas") return c.json({ error: "not_found" }, 404);
   const stats = await getHomePublicStats();
   return c.json({ stats });
 });
