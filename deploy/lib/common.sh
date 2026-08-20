@@ -66,6 +66,15 @@ discover_admin_email() {
 # validated); write an empty file when unavailable/unreadable/invalid so the
 # compose bind-mount source always exists and the service falls back to the
 # legacy .install_id behavior. Usage: capture_host_dmi_product_uuid <out_file>
+#
+# Semantics: INSTALL-TIME SNAPSHOT, never a silent refresh. Callers invoke
+# this only when OUT_FILE does not exist yet, so an instance restored/cloned
+# to another host keeps the original fingerprint and its machine code (and
+# therefore its license) stays stable. Hardware binding here means "stable
+# across reinstall / data-dir wipe on the SAME host", not anti-clone.
+# Explicit rebind to a new host (operator decision, requires license
+# re-issuance): delete .secrets/host-product-uuid, then rerun the upgrade
+# script to re-capture from the current host.
 capture_host_dmi_product_uuid() {
   local out_file="$1" raw norm
   raw="$(cat /sys/class/dmi/id/product_uuid 2>/dev/null || true)"
