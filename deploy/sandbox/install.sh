@@ -62,6 +62,12 @@ die() { printf '[sandbox-install] ERROR: %s\n' "$*" >&2; exit 1; }
 command -v docker >/dev/null 2>&1 || die "docker not found"
 docker info >/dev/null 2>&1 || die "docker daemon not reachable"
 
+# Version preflight: Docker Engine >= 20.10 and Compose v2 plugin (HALL-8).
+# common.sh lives next to sandbox/ in the release package (lib/common.sh).
+# shellcheck source=../lib/common.sh
+source "$SCRIPT_DIR/../lib/common.sh"
+check_docker_requirements
+
 # /dev/kvm optional: without it qemu profiles stay unavailable (plane reports truthfully)
 if [[ ! -e /dev/kvm ]]; then
   log "note: /dev/kvm not present — qemu profiles will be unavailable"

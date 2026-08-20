@@ -125,14 +125,12 @@ done
 require_cmd docker
 require_cmd openssl
 require_cmd curl
-if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
-  echo "[install] Docker Compose is required" >&2
-  exit 1
-fi
 if ! docker info >/dev/null 2>&1; then
   echo "[install] Docker daemon is not reachable" >&2
   exit 1
 fi
+# Version preflight: Docker Engine >= 20.10 and Compose v2 plugin (HALL-8)
+check_docker_requirements
 
 arch="$(uname -m)"
 if [[ "$arch" != "x86_64" && "$arch" != "amd64" && "$arch" != "aarch64" && "$arch" != "arm64" ]]; then
