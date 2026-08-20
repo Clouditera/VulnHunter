@@ -684,7 +684,6 @@ export const ZH: Record<string, string> = {
   "settings.model.thinking.low": "低",
   "settings.model.thinking.medium": "中",
   "settings.model.thinking.high": "高",
-  "settings.model.thinking.notSupported": "该模型不支持思考，已固定为关闭",
   "settings.model.thinking.xhigh": "极高",
   "settings.model.thinking.max": "最大",
   "settings.model.thinking.overridePlaceholder": "发送值（可选）",

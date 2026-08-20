@@ -41,7 +41,6 @@ vi.mock("../../src/features/settings/storage.js", () => ({
 vi.mock("../../src/features/settings/pi-diagnostics.js", () => ({
   runPiDiagnostics: (...a: unknown[]) => runPiDiagnostics(...a),
 }));
-vi.mock("../../src/features/settings/pi-model-catalog.js", () => ({ lookupModelMeta: vi.fn() }));
 vi.mock("../../src/infra/config.js", () => ({ loadConfig: vi.fn(() => ({ edition: "enterprise" })) }));
 vi.mock("../../src/features/reports/storage.js", () => ({}));
 vi.mock("../../src/infra/minio/client.js", () => ({ uploadFile: vi.fn(), getMinio: vi.fn() }));

@@ -683,7 +683,6 @@ export const EN: Record<string, string> = {
   "settings.model.thinking.low": "low",
   "settings.model.thinking.medium": "medium",
   "settings.model.thinking.high": "high",
-  "settings.model.thinking.notSupported": "This model does not support thinking; pinned to off.",
   "settings.model.thinking.xhigh": "xhigh",
   "settings.model.thinking.max": "max",
   "settings.model.thinking.overridePlaceholder": "Send value (optional)",

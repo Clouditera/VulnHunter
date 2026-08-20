@@ -33,7 +33,6 @@ vi.mock("../../src/features/settings/storage.js", () => ({
   updateCredentialMeta: updateMeta,
 }));
 vi.mock("../../src/features/settings/pi-diagnostics.js", () => ({ runPiDiagnostics: vi.fn() }));
-vi.mock("../../src/features/settings/pi-model-catalog.js", () => ({ lookupModelMeta: vi.fn() }));
 vi.mock("../../src/infra/config.js", () => ({ loadConfig: vi.fn() }));
 vi.mock("../../src/features/reports/storage.js", () => ({}));
 vi.mock("../../src/infra/minio/client.js", () => ({ uploadFile: vi.fn(), getMinio: vi.fn() }));

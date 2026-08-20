@@ -5,10 +5,6 @@ import { Icon } from "../../../shared/components/Icon.js";
 import { api, type LlmCredential } from "../../../shared/api/client.js";
 import { CloudRouterPromo, CredentialsEmptyNotice } from "./CloudRouterPromo.js";
 import {
-  resolveModelCapabilities,
-  type ModelCapabilities,
-} from "./model-capabilities.js";
-import {
   CredentialTestProgress,
   streamCredentialTest,
 } from "./CredentialTestProgress.js";
@@ -160,8 +156,6 @@ export function CredentialsSection() {
 
   // Model enhancements
   const [modelOptions, setModelOptions] = useState<string[] | null>(null);
-  /** Raw model items (may carry reasoning/thinking_levels once backend is capability-aware). */
-  const [modelCapsMap, setModelCapsMap] = useState<Record<string, ModelCapabilities>>({});
   /** Which form fetched the suggestion list ("new" draft or credential id).
    *  Render is owner-gated so a list fetched on credential A never bleeds
    *  into credential B's form (task-aaf8ac15, fish screenshot). */
@@ -259,7 +253,6 @@ export function CredentialsSection() {
   /** Reset the model suggestion list (switch of edit target — spec ①). */
   function resetModelList() {
     setModelOptions(null);
-    setModelCapsMap({});
     setModelFetchState({ kind: "idle" });
     setModelListOwner(null);
   }
@@ -501,9 +494,6 @@ export function CredentialsSection() {
           : undefined,
       );
       const ids = (resp.models ?? []).map((m) => m.id);
-      const caps: Record<string, ModelCapabilities> = {};
-      for (const m of resp.models ?? []) caps[m.id] = resolveModelCapabilities(m);
-      setModelCapsMap(caps);
       if (ids.length === 0) {
         setModelOptions([]);
         setModelFetchState({ kind: "error", msg: i18n.t("settings.model.fetchNone") });
@@ -520,8 +510,6 @@ export function CredentialsSection() {
     }
   }
 
-  /** Capabilities of the currently selected model (from last model fetch). */
-  const activeModelCaps: ModelCapabilities | null = modelId ? (modelCapsMap[modelId] ?? null) : null;
   /** Identity of the form currently being edited — suggestions/fetch errors
    *  render only when the list's owner matches (spec ② owner-gate). */
   const currentFormKey = isNewDraft ? "new" : editingCredentialId;
@@ -580,13 +568,6 @@ export function CredentialsSection() {
   /** fish 2026-08-09 简化案: 七档全量, 不再按目录声明的支持集过滤
    *  (厂商特殊档位词走「发送值」覆盖, 不需要预过滤). */
   const thinkingLevelsForUi: string[] = [...THINKING_VALUES];
-
-  /** Non-reasoning models: thinking fixed to off + select disabled. */
-  useEffect(() => {
-    if (!activeModelCaps) return;
-    if (!activeModelCaps.reasoning && thinking !== "off") setThinking("off");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, activeModelCaps?.reasoning]);
 
   /** Test the CURRENT form values against L1-L3 (SSE progressive).
    *  Key fallback: in edit mode with the key left blank, credential_id lets
@@ -977,14 +958,13 @@ export function CredentialsSection() {
                 <Select
                   testid="settings-thinking-select"
                   value={thinking}
-                  disabled={activeModelCaps !== null && !activeModelCaps.reasoning}
                   onChange={(v) => setThinking(v as ThinkingValue)}
                   options={thinkingLevelsForUi.map((v) => ({
                     value: v,
                     label: i18n.t(`settings.model.thinking.${v}`),
                   }))}
                 />
-                {thinking !== "off" && !(activeModelCaps !== null && !activeModelCaps.reasoning) ? (
+                {thinking !== "off" ? (
                   <input
                     data-testid="settings-thinking-override"
                     type="text"
@@ -995,11 +975,7 @@ export function CredentialsSection() {
                   />
                 ) : null}
               </div>
-              {activeModelCaps && !activeModelCaps.reasoning ? (
-                <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--text-secondary)" }}>
-                  {i18n.t("settings.model.thinking.notSupported")}
-                </p>
-              ) : (
+              {
                 /* fish 2026-08-09 (task-edc3682b 终稿): single dynamic hint —
                    「当前使用：<实际值>」= override when filled, else the level
                    word; updates live with either control. */
@@ -1023,7 +999,7 @@ export function CredentialsSection() {
                   </code>
                   {i18n.t("settings.model.thinking.currentUse.end")}
                 </p>
-              )}
+              }
             </Field>
 
             <Field

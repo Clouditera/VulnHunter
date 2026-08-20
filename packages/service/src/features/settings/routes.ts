@@ -17,7 +17,6 @@ import { runPiDiagnostics, type DiagnosticCheck, type DiagnosticEvent } from "./
 import { updateDeepVerifiedStatus } from "./storage.js";
 import { createHash } from "node:crypto";
 import { coreFieldsChanged, effectiveApiKey } from "./credential-core-fields.js";
-import { lookupModelMeta } from "./pi-model-catalog.js";
 import { loadConfig } from "../../infra/config.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import * as reportStorage from "../reports/storage.js";
@@ -590,15 +589,10 @@ settingsRouter.post("/models", async (c) => {
     }
 
     const data = await res.json() as { data?: Array<{ id: string; owned_by?: string }> };
-    const models = (data.data ?? []).map((m) => {
-      const meta = lookupModelMeta(m.id);
-      return {
-        id: m.id,
-        owned_by: m.owned_by,
-        reasoning: meta.reasoning,
-        thinking_levels: meta.thinking_levels,
-      };
-    });
+    // Model thinking-support gating removed (fish 2026-08-20): the frozen
+    // pi static catalog cannot know new models — unknown ≠ unsupported.
+    // The L2 thinking probe in credential testing is the source of truth.
+    const models = (data.data ?? []).map((m) => ({ id: m.id, owned_by: m.owned_by }));
     return c.json({ models });
   } catch (err) {
     logger.warn({ err }, "Failed to list models");
