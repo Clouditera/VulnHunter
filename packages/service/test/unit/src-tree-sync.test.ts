@@ -48,7 +48,7 @@ vi.mock("../../src/infra/logger.js", () => ({
 const { uploadSourceTreeToMinio, scheduleSrcTreeSync, flushSrcTreeSync, sourceFilesPrefix } =
   await import("../../src/features/workers/src-tree-sync.js");
 // scan-worker getHostWorkDir is a pure join — use the real one via the module.
-const { getCodeTree, resolveSourceFilesKey, getCodeFileFromMinioKey } = await import("../../src/features/workspace/code-viewer.js");
+const { getCodeTree, resolveSourceFilesKey, getCodeFileFromMinioKey, resolveLegacyDecompiledKey } = await import("../../src/features/workspace/code-viewer.js");
 const { mkdtempSync, writeFileSync, mkdirSync, rmSync, utimesSync } = await import("node:fs");
 const { tmpdir } = await import("node:os");
 const { join } = await import("node:path");
@@ -169,6 +169,21 @@ describe("src-tree sync (task-c069aab9)", () => {
 
     // miss → null
     expect(await resolveSourceFilesKey("b", TASK, "nope/Nope.java")).toBeNull();
+  });
+
+  it("legacy out/-era decompiled fallback requires the jarName layer (architect review r1)", async () => {
+    // Prod shape (manager-core): scan-outputs/<tid>/.vulnhunter-decompiled/<jarName>/<path>
+    m.objects.set(
+      `scan-outputs/${TASK}/.vulnhunter-decompiled/manager-core.war/com/x/Sys.java`,
+      Buffer.from("class Sys { void cfg() {} }\n"),
+    );
+    const key = await resolveLegacyDecompiledKey("b", TASK, "com/x/Sys.java");
+    expect(key).toBe(`scan-outputs/${TASK}/.vulnhunter-decompiled/manager-core.war/com/x/Sys.java`);
+    const f = key ? await getCodeFileFromMinioKey(TASK, "b", key, "com/x/Sys.java") : null;
+    expect(f?.type).toBe("text");
+    expect(f?.content).toContain("class Sys");
+    // No jarName-less flat copy exists → a direct concat would 404; resolver finds it
+    expect(await resolveLegacyDecompiledKey("b", TASK, "nope/Never.java")).toBeNull();
   });
 
   it("empty source-files prefix → tree falls back to [] (caller uses legacy blob)", async () => {

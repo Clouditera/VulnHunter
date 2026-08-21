@@ -273,24 +273,49 @@ export async function getCodeFileFromMinioKey(
   return result;
 }
 
-/** Top-level dirs under `source-files/<tid>/.vulnhunter-decompiled/`
- * (jarName list for the finding-path fallback). Cached briefly. */
-let decompiledRootsCache: { at: number; roots: string[] } | null = null;
+/** Top-level dirs (jarNames) under a `.vulnhunter-decompiled/` prefix —
+ * the finding-path fallback needs them. Cached briefly per prefix. */
+const decompiledRootsCache = new Map<string, { at: number; roots: string[] }>();
 const DECOMPILED_ROOTS_TTL_MS = 60_000;
 
-export async function listDecompiledRoots(bucket: string, taskId: string): Promise<string[]> {
-  if (decompiledRootsCache && Date.now() - decompiledRootsCache.at < DECOMPILED_ROOTS_TTL_MS) {
-    return decompiledRootsCache.roots;
+async function listTopDirsUnderPrefix(bucket: string, prefix: string): Promise<string[]> {
+  const cached = decompiledRootsCache.get(prefix);
+  if (cached && Date.now() - cached.at < DECOMPILED_ROOTS_TTL_MS) {
+    return cached.roots;
   }
-  const keys = await listMinioPrefix(bucket, `source-files/${taskId}/.vulnhunter-decompiled/`).catch(() => [] as string[]);
+  const keys = await listMinioPrefix(bucket, prefix).catch(() => [] as string[]);
   const roots = [...new Set(
     keys
-      .map((k) => k.slice(`source-files/${taskId}/.vulnhunter-decompiled/`.length))
+      .map((k) => k.slice(prefix.length))
       .map((rel) => rel.split("/")[0])
       .filter(Boolean),
   )];
-  decompiledRootsCache = { at: Date.now(), roots };
+  if (decompiledRootsCache.size > 32) decompiledRootsCache.clear(); // trivial bound
+  decompiledRootsCache.set(prefix, { at: Date.now(), roots });
   return roots;
+}
+
+export async function listDecompiledRoots(bucket: string, taskId: string): Promise<string[]> {
+  return listTopDirsUnderPrefix(bucket, `source-files/${taskId}/.vulnhunter-decompiled/`);
+}
+
+/** Resolve a finding-relative path against a legacy out/-era decompiled
+ * prefix (`scan-outputs/<tid>/.vulnhunter-decompiled/<jarName>/<path>`).
+ * The jarName layer is REQUIRED — jar.md has always demanded a per-jar
+ * subdir (prod manager-core: .vulnhunter-decompiled/manager-core.war/...). */
+export async function resolveLegacyDecompiledKey(
+  bucket: string,
+  taskId: string,
+  filePath: string,
+): Promise<string | null> {
+  const prefix = `scan-outputs/${taskId}/.vulnhunter-decompiled/`;
+  const roots = await listTopDirsUnderPrefix(bucket, prefix);
+  for (const root of roots) {
+    const key = `${prefix}${root}/${filePath.replace(/^\/+/, "")}`;
+    const hit = await readMinioObject(bucket, key).then((b) => b !== null).catch(() => false);
+    if (hit) return key;
+  }
+  return null;
 }
 
 /** Resolve a viewer path against the source-files tree.

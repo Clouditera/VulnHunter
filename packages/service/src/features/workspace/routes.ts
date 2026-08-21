@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
-import { getCodeFile, getCodeTree, getCodeFileFromMinioKey, resolveSourceFilesKey } from "./code-viewer.js";
+import { getCodeFile, getCodeTree, getCodeFileFromMinioKey, resolveSourceFilesKey, resolveLegacyDecompiledKey } from "./code-viewer.js";
 import { loadConfig } from "../../infra/config.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import { getAccessibleTask } from "../tasks/access.js";
@@ -49,14 +49,14 @@ workspaceRouter.get("/:taskId/workspace/file", async (c) => {
       return c.json({ ...sfResult, requested_line: line });
     }
   }
-  const legacyDecompiled = await getCodeFileFromMinioKey(
-    taskId,
-    bucket,
-    `scan-outputs/${taskId}/.vulnhunter-decompiled/${filePath.replace(/^\/+/, "")}`,
-    filePath,
-  );
-  if (legacyDecompiled) {
-    return c.json({ ...legacyDecompiled, requested_line: line });
+  // Legacy out/-era location: jarName layer required (architect review r1 —
+  // direct concat never matched the real key shape).
+  const legacyKey = await resolveLegacyDecompiledKey(bucket, taskId, filePath);
+  if (legacyKey) {
+    const legacyResult = await getCodeFileFromMinioKey(taskId, bucket, legacyKey, filePath);
+    if (legacyResult) {
+      return c.json({ ...legacyResult, requested_line: line });
+    }
   }
   const result = await getCodeFile(taskId, config.minio.bucket, filePath, archive.minioKey, archive.filename);
   if (!result) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
