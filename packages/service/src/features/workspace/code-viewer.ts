@@ -202,12 +202,146 @@ export async function getCodeFile(
   }
 }
 
+/** Read a single object from MinIO into a Buffer (null = missing). */
+async function readMinioObject(bucket: string, key: string): Promise<Buffer | null> {
+  const minio = getMinio();
+  try {
+    const stream = await minio.getObject(bucket, key);
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+      stream.on("end", () => resolve());
+      stream.on("error", reject);
+    });
+    return Buffer.concat(chunks);
+  } catch {
+    return null; // Not Found and every other read error → caller falls through
+  }
+}
+
+/** List all keys under a prefix (recursive). */
+async function listMinioPrefix(bucket: string, prefix: string): Promise<string[]> {
+  const minio = getMinio();
+  return await new Promise<string[]>((resolve, reject) => {
+    const keys: string[] = [];
+    const stream = minio.listObjects(bucket, prefix, true);
+    stream.on("data", (obj) => { if (obj.name) keys.push(obj.name); });
+    stream.on("end", () => resolve(keys));
+    stream.on("error", reject);
+  });
+}
+
+export interface CodeFileOptions {
+  /** MinIO key of a raw file (source-files tree) — bypasses the archive path. */
+  minioKey?: string;
+}
+
+/**
+ * getCodeFileFromMinioKey: read a plain MinIO object through the standard
+ * text pipeline (charset decode / language detect / truncation / binary
+ * classification). Used by the source-files viewer path.
+ */
+export async function getCodeFileFromMinioKey(
+  taskId: string,
+  bucket: string,
+  key: string,
+  filePath: string,
+): Promise<CodeFileResult | null> {
+  const cacheKey = `sf:${taskId}:${filePath}`;
+  const cached = fileCache.get(cacheKey);
+  if (cached) {
+    return {
+      content: cached.content,
+      language: cached.language,
+      total_lines: cached.totalLines,
+      size_bytes: Buffer.byteLength(cached.content),
+      is_truncated: cached.truncated,
+      type: "text",
+    };
+  }
+  const buf = await readMinioObject(bucket, key);
+  if (!buf) return null;
+  const result = await classifyCodeFileBuffer(buf, filePath);
+  if (result.type === "text") {
+    fileCache.set(cacheKey, {
+      content: result.content,
+      language: result.language,
+      totalLines: result.total_lines,
+      truncated: result.is_truncated,
+    });
+  }
+  return result;
+}
+
+/** Top-level dirs under `source-files/<tid>/.vulnhunter-decompiled/`
+ * (jarName list for the finding-path fallback). Cached briefly. */
+let decompiledRootsCache: { at: number; roots: string[] } | null = null;
+const DECOMPILED_ROOTS_TTL_MS = 60_000;
+
+export async function listDecompiledRoots(bucket: string, taskId: string): Promise<string[]> {
+  if (decompiledRootsCache && Date.now() - decompiledRootsCache.at < DECOMPILED_ROOTS_TTL_MS) {
+    return decompiledRootsCache.roots;
+  }
+  const keys = await listMinioPrefix(bucket, `source-files/${taskId}/.vulnhunter-decompiled/`).catch(() => [] as string[]);
+  const roots = [...new Set(
+    keys
+      .map((k) => k.slice(`source-files/${taskId}/.vulnhunter-decompiled/`.length))
+      .map((rel) => rel.split("/")[0])
+      .filter(Boolean),
+  )];
+  decompiledRootsCache = { at: Date.now(), roots };
+  return roots;
+}
+
+/** Resolve a viewer path against the source-files tree.
+ * Returns the exact MinIO key, or null when absent. */
+export async function resolveSourceFilesKey(
+  bucket: string,
+  taskId: string,
+  filePath: string,
+): Promise<string | null> {
+  const base = `source-files/${taskId}/`;
+  // a) direct
+  const direct = base + filePath.replace(/^\/+/, "");
+  const buf = await readMinioObject(bucket, direct).then((b) => b !== null).catch(() => false);
+  if (buf) return direct;
+  // b) finding paths are relative to the decompiled root — try each jarName
+  const roots = await listDecompiledRoots(bucket, taskId);
+  for (const root of roots) {
+    const key = `${base}.vulnhunter-decompiled/${root}/${filePath.replace(/^\/+/, "")}`;
+    const hit = await readMinioObject(bucket, key).then((b) => b !== null).catch(() => false);
+    if (hit) return key;
+  }
+  return null;
+}
+
+/** Tree from the source-files prefix (flat keys → nested tree). Empty array
+ * when the prefix has no objects → caller falls back to the legacy blob. */
+export async function getSourceFilesTree(
+  taskId: string,
+  bucket: string,
+): Promise<{ name: string; type: "file" | "dir"; children?: unknown[] }[]> {
+  const prefix = `source-files/${taskId}/`;
+  const keys = await listMinioPrefix(bucket, prefix).catch(() => [] as string[]);
+  if (keys.length === 0) return [];
+  const entries: ArchiveEntry[] = keys.map((k) => ({
+    path: k.slice(prefix.length),
+    isDir: false,
+  }));
+  return buildTree(entries);
+}
+
 export async function getCodeTree(
   taskId: string,
   bucket: string,
   overrideZipKey?: string,
   archiveFilename = "source.zip",
 ): Promise<{ name: string; type: "file" | "dir"; hasVuln?: boolean; children?: unknown[] }[]> {
+  // source-files first-class tree (task-c069aab9) — the viewer's authority.
+  const tree = await getSourceFilesTree(taskId, bucket);
+  if (tree.length > 0) return tree;
+
+  // Legacy: on-the-fly blob unpack (old tasks without a source-files tree).
   const zipKey = overrideZipKey ?? `code-packages/${taskId}.zip`;
   let tmpPath: string | null = null;
 

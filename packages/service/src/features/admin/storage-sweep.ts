@@ -43,6 +43,7 @@ export function classifyOrphan(prefix: string, key: string, ids: IdSets): "orpha
   switch (prefix) {
     case "code-packages/":
     case "scan-outputs/":
+    case "source-files/":
       return ids.tasks.has(owner) ? null : "orphan";
     case "chat-artifacts/":
     case "chat-sessions/":
@@ -62,6 +63,7 @@ export function classifyOrphan(prefix: string, key: string, ids: IdSets): "orpha
 export const SWEEP_PREFIXES = [
   "code-packages/",
   "scan-outputs/",
+  "source-files/",
   "user-reports/",
   "chat-artifacts/",
   "chat-sessions/",

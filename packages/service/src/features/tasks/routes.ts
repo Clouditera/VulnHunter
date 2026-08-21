@@ -318,7 +318,7 @@ tasksRouter.delete("/:id", async (c) => {
 
   // Cleanup MinIO objects (best-effort)
   try {
-    const prefixes = [`code-packages/${task.id}`, `scan-outputs/${task.id}/`, `user-reports/${task.id}/`];
+    const prefixes = [`code-packages/${task.id}`, `scan-outputs/${task.id}/`, `source-files/${task.id}/`, `user-reports/${task.id}/`];
     for (const prefix of prefixes) {
       const objects = await new Promise<string[]>((resolve, reject) => {
         const keys: string[] = [];

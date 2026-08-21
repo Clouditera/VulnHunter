@@ -32,6 +32,8 @@ import {
 import { SCAN_FALLBACK_MARGIN_S } from "../tasks/scan-duration.js";
 import { subscribeToDockerEvents, ensureWorkDir } from "./docker-client.js";
 import { spawnScanWorker, getHostWorkDir, hasRunningScanWorkerByClaim, stopScanWorker, stopScanWorkerByClaim } from "./scan-worker.js";
+import { uploadSourceTreeToMinio, scheduleSrcTreeSync, flushSrcTreeSync } from "./src-tree-sync.js";
+import { setEngineEventHandler } from "../events/event-tail.js";
 import { cleanupSchedulerWorkspace, getSchedulerPrepareDir, publishSchedulerWorkspace } from "./scheduler-workspace.js";
 import { isDynamicEnabled, persistedPrepareResult, parseGateYamlLenient, GATE_REASONS, type GateYaml, type PrepareResult } from "../prepare/contract.js";
 import { armGateRouteHandler } from "./gate-perception.js";
@@ -218,6 +220,10 @@ export class TaskScheduler {
 
       if (action === "die") {
         stopTailing(taskId);
+        // source-files sync trigger c) task terminal: flush any pending or
+        // in-flight src-tree sync so the final agent state is in MinIO before
+        // the workspace gets cleaned up later (task-c069aab9).
+        await flushSrcTreeSync(taskId).catch(() => undefined);
 
         // Check current DB state — if already cancelled/paused, don't overwrite
         const currentTask = await getTaskById(taskId);
@@ -238,6 +244,7 @@ export class TaskScheduler {
           logger.info({ taskId, dbState: currentTask.state, exitCode }, "Container died but task already cancelled/paused, skipping state update");
           // Still sync outputs for cancelled tasks (may have partial results)
           if (currentTask.state === "cancelled") {
+            await flushSrcTreeSync(taskId).catch(() => undefined);
             try {
               await syncOutputsToMinio(taskId, this.config);
             } catch (err) {
@@ -800,6 +807,17 @@ export class TaskScheduler {
     }
     notify({ type: "task_state", taskId, state: "running" });
     logger.info({ taskId, token }, "Onboard gate passed (engine route + evidence); task running");
+    // source-files sync trigger a) gate passed: the gate handler was one-shot
+    // and has disarmed — the engine-event slot is free. Arm the src-tree sync
+    // watcher for every subsequent stage_done (covers the decompiled tree
+    // written during onboard + all later agent edits under src/), plus one
+    // immediate debounced sync so the tree appears without waiting a stage.
+    setEngineEventHandler(taskId, (raw) => {
+      if (raw.event === "stage_done" || raw.type === "stage_end") {
+        scheduleSrcTreeSync(taskId, this.config);
+      }
+    });
+    scheduleSrcTreeSync(taskId, this.config);
   }
 
   /**
@@ -1034,6 +1052,12 @@ export class TaskScheduler {
     await this.assertSchedulerOwnership(task.id, token);
     await publishSchedulerWorkspace(hostWorkDir, token);
     logger.info({ taskId: task.id, token, minioKey, filename: archive.filename }, "Claim-owned code package published to workspace");
+    // source-files first-class tree (task-c069aab9): upload the extracted
+    // tree once at prepare time — the viewer's authority. Fire-and-forget:
+    // a failure only degrades to the legacy blob viewer, never blocks the task.
+    void uploadSourceTreeToMinio(task.id, stagedSourceDir, this.config).catch((err) =>
+      logger.warn({ err, taskId: task.id }, "source-files prepare upload failed"),
+    );
     return true;
   }
 

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
-import { getCodeFile, getCodeTree } from "./code-viewer.js";
+import { getCodeFile, getCodeTree, getCodeFileFromMinioKey, resolveSourceFilesKey } from "./code-viewer.js";
 import { loadConfig } from "../../infra/config.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import { getAccessibleTask } from "../tasks/access.js";
@@ -37,6 +37,27 @@ workspaceRouter.get("/:taskId/workspace/file", async (c) => {
   }
 
   const archive = resolveArchiveIdentity({ taskId, sourceMeta: task.source_meta });
+  // source-files three-level fallback (task-c069aab9):
+  // a) direct key in the source-files tree
+  // b) decompiled-root relative path (finding primary_file semantics)
+  // c) legacy blob (+ legacy out/ decompiled location for old completed tasks)
+  const bucket = config.minio.bucket;
+  const sourceFilesKey = await resolveSourceFilesKey(bucket, taskId, filePath);
+  if (sourceFilesKey) {
+    const sfResult = await getCodeFileFromMinioKey(taskId, bucket, sourceFilesKey, filePath);
+    if (sfResult) {
+      return c.json({ ...sfResult, requested_line: line });
+    }
+  }
+  const legacyDecompiled = await getCodeFileFromMinioKey(
+    taskId,
+    bucket,
+    `scan-outputs/${taskId}/.vulnhunter-decompiled/${filePath.replace(/^\/+/, "")}`,
+    filePath,
+  );
+  if (legacyDecompiled) {
+    return c.json({ ...legacyDecompiled, requested_line: line });
+  }
   const result = await getCodeFile(taskId, config.minio.bucket, filePath, archive.minioKey, archive.filename);
   if (!result) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
 
