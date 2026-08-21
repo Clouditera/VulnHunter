@@ -16,6 +16,28 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "2.3.11",
+    releasedAt: "2026-08",
+    title: "VulnHunter v2.3.11 更新",
+    markdown: `
+### 🔧 其它调整
+- 修复了一些稳定性问题
+`,
+  },
+  {
+    version: "2.3.10",
+    releasedAt: "2026-08",
+    title: "VulnHunter v2.3.10 更新",
+    markdown: `
+### 🚀 更新内容
+- 支持直接上传 jar、war 包进行安全审计，上传后自动解析业务代码
+- 优化了任务日志的可读性
+
+### 🔧 其它调整
+- 修复了一些稳定性问题
+`,
+  },
+  {
     version: "2.3.0",
     releasedAt: "2026-07",
     title: "VulnHunter v2.3.0 更新",
