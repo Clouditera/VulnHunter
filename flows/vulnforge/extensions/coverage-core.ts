@@ -12,6 +12,17 @@ const CODE_EXTENSIONS = new Set([
   ".zsh", ".fish", ".ps1", ".sql", ".html", ".css", ".scss", ".sass",
   ".vue", ".svelte", ".yaml", ".yml", ".json", ".toml", ".ini", ".cfg",
   ".conf", ".md", ".rst", ".txt", ".xml", ".proto", ".graphql", ".gql",
+  // HALL-14: Lua / Erlang / Elixir families were missing entirely — audits of
+  // such targets previously showed 0 trackable files, silently breaking coverage.
+  ".lua", ".luau", ".erl", ".hrl", ".escript", ".ex", ".exs", ".eex", ".leex",
+  // C/C++/Objective-C extension variants
+  ".cc", ".cxx", ".hh", ".hxx", ".m", ".mm",
+  // other mainstream languages
+  ".pl", ".pm", ".r", ".jl", ".dart", ".groovy", ".gradle", ".clj", ".cljs",
+  ".hs", ".ml", ".mli", ".fs", ".fsi", ".fsx", ".vb", ".asm", ".s", ".sol",
+  ".zig", ".nix", ".ipynb",
+  // script & IaC files that carry reviewable logic
+  ".bat", ".cmd", ".tf", ".tfvars", ".cmake",
 ]);
 
 const EXCLUDED_DIRS = new Set([
