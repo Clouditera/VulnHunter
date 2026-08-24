@@ -4,7 +4,6 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authRouter, adminAuthRouter } from "./features/auth/index.js";
 import { meApiTokensRouter } from "./features/auth/api-token-routes.js";
-import { getDynamicProvider } from "./features/dynamic/provider.js";
 import { systemRouter, adminSystemRouter } from "./features/system/index.js";
 import { tasksRouter } from "./features/tasks/index.js";
 import { filesRouter } from "./features/files/index.js";
@@ -104,11 +103,9 @@ export async function createApp(role: ServiceRole = "business"): Promise<Hono> {
   // POC settings routes removed (dead config offline; live fields → env)
 
   app.route("/mcp", mcpRouter);
-  // Dynamic-verification routes (enterprise/saas only — see note above).
-  if (getDynamicProvider().isConfigured()) {
-    const { mountDynamicRoutes } = await import("./features/dynamic/routes.js");
-    await mountDynamicRoutes(app);
-  }
+  // Dynamic-verification routes (/api/sandbox + /internal/sandbox-plane) are
+  // mounted in main.ts AFTER initEnterprise registers the provider — mounting
+  // here would always see the null default (boot-order bug, review r1).
 
   app.onError(errorHandler);
   return app;
