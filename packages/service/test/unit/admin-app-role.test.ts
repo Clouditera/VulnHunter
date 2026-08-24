@@ -17,7 +17,7 @@ describe("admin console backend wiring", () => {
 
   it("exports createApp(role) with business|admin", () => {
     expect(serverSrc).toMatch(/export type ServiceRole = "business" \| "admin"/);
-    expect(serverSrc).toMatch(/export function createApp\(role: ServiceRole/);
+    expect(serverSrc).toMatch(/export (async )?function createApp\(role: ServiceRole/);
     expect(serverSrc).toMatch(/role === "admin"/);
   });
 

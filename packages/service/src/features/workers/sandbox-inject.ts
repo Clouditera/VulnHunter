@@ -9,7 +9,7 @@
  */
 
 import type Dockerode from "dockerode";
-import type { TaskSandbox } from "../sandboxes/storage.js";
+import type { DynamicSandboxMapping } from "../dynamic/provider.js";
 
 export const SANDBOX_RUNTIME_DIR = "/run/vulnhunter";
 const SSH_DIR = `${SANDBOX_RUNTIME_DIR}/ssh`;
@@ -186,7 +186,7 @@ export interface RenderInjectionOptions {
 }
 
 export function renderInjectionFiles(
-  mapping: TaskSandbox,
+  mapping: DynamicSandboxMapping,
   privateKeyOpenSsh: string,
   sshHostOverrideOrOpts?: string | null | RenderInjectionOptions,
 ): InjectionFile[] {

@@ -34,7 +34,12 @@ vi.mock("../../src/infra/minio/client.js", () => ({
   uploadFile: vi.fn(),
 }));
 vi.mock("../../src/infra/config.js", () => ({
-  loadConfig: vi.fn(() => ({ minio: { bucket: "artifact-store" }, sandboxPlane: { baseUrl: "", token: "", timeoutMs: 5000 } })),
+  loadConfig: vi.fn(() => ({ minio: { bucket: "artifact-store" }, edition: "enterprise", sandboxPlane: { baseUrl: "", token: "", timeoutMs: 5000 } })),
+}));
+// Dynamic provider seam (community removal): the toggle-mapping case runs as
+// enterprise — a real provider must answer isConfigured=true.
+vi.mock("../../src/features/dynamic/provider.js", () => ({
+  getDynamicProvider: () => ({ isConfigured: () => true }),
 }));
 vi.mock("../../src/features/notifications/index.js", () => ({
   notify: vi.fn(),
@@ -206,7 +211,7 @@ describe("createMcpTask context binding", () => {
     // scanMetaFromValues — byte-equivalence is by construction.
     const formMeta = scanMetaFromValues("auth", 600 * 60, undefined, "custom", {
       enableDynamicVerify: true, enableDynamicExploit: true,
-    });
+    }, undefined, "enterprise");
     for (const [k, v] of Object.entries(formMeta)) {
       expect(chatMeta[k]).toEqual(v);
     }

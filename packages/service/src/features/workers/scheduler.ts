@@ -37,13 +37,7 @@ import { setEngineEventHandler } from "../events/event-tail.js";
 import { cleanupSchedulerWorkspace, getSchedulerPrepareDir, publishSchedulerWorkspace } from "./scheduler-workspace.js";
 import { isDynamicEnabled, persistedPrepareResult, parseGateYamlLenient, GATE_REASONS, type GateYaml, type PrepareResult } from "../prepare/contract.js";
 import { armGateRouteHandler } from "./gate-perception.js";
-import {
-  ensureSandboxForTask,
-  stopSandboxForTask,
-  reconcileSandboxes,
-  SandboxQuotaError,
-} from "../sandboxes/lifecycle.js";
-import { SandboxPlaneCapacityError } from "../sandbox-plane/client.js";
+import { getDynamicProvider, DynamicAllocationError } from "../dynamic/provider.js";
 import { reconcileSchedulerClaims } from "./reconciler.js";
 import { downloadObjectWithRetry } from "./minio-download.js";
 import { getDefaultCredential, getCredentialById } from "../settings/storage.js";
@@ -250,7 +244,7 @@ export class TaskScheduler {
             } catch (err) {
               logger.warn({ err, taskId }, "Failed to sync outputs on cancel");
             }
-            await stopSandboxForTask(taskId, "task_cancelled").catch(() => undefined);
+            await getDynamicProvider().stopSandboxForTask(taskId, "task_cancelled").catch(() => undefined);
           }
         } else {
           const workerExitCode = exitCode ?? -1;
@@ -304,7 +298,7 @@ export class TaskScheduler {
             }).catch((err) => logger.error({ err, taskId }, "Failed to update task on die"));
             notify({ type: "task_state", taskId, state: mapped.state });
             // H2 §4: terminal (completed/failed) — stop the sandbox, keep it.
-            await stopSandboxForTask(taskId, `task_${mapped.state}`).catch(() => undefined);
+            await getDynamicProvider().stopSandboxForTask(taskId, `task_${mapped.state}`).catch(() => undefined);
           }
 
           appendAndBroadcastCompletionEvent(taskId, {
@@ -378,7 +372,7 @@ export class TaskScheduler {
     // H2 §5: incremental sandbox reconcile (full pass runs at service boot).
     if (Date.now() - this.lastSandboxReconcileAt >= SANDBOX_RECONCILE_INTERVAL_MS) {
       this.lastSandboxReconcileAt = Date.now();
-      await reconcileSandboxes().catch((err) =>
+      await getDynamicProvider().reconcileSandboxes().catch((err) =>
         logger.error({ err }, "Sandbox reconcile tick error"),
       );
     }
@@ -572,7 +566,7 @@ export class TaskScheduler {
       if (failed) {
         await stopScanWorkerByClaim(task.id, token);
         // H2 §4: a sandbox allocated before the failure must not stay running.
-        await stopSandboxForTask(task.id, "claim_failed").catch(() => undefined);
+        await getDynamicProvider().stopSandboxForTask(task.id, "claim_failed").catch(() => undefined);
         if (published) await rm(join(hostWorkDir, "src"), { recursive: true, force: true }).catch((cleanupErr) =>
           logger.warn({ cleanupErr, taskId: task.id, token }, "Failed to remove owner-published source"),
         );
@@ -751,7 +745,7 @@ export class TaskScheduler {
     const failed = await failSchedulerClaim(taskId, claim.token, initAbortedMessage).catch(() => false);
     if (failed) {
       await stopScanWorkerByClaim(taskId, claim.token);
-      await stopSandboxForTask(taskId, "preparing_failed").catch(() => undefined);
+      await getDynamicProvider().stopSandboxForTask(taskId, "preparing_failed").catch(() => undefined);
       await cleanupSchedulerWorkspace(hostWorkDir, claim.token).catch(() => undefined);
       notify({ type: "task_state", taskId, state: "failed" });
     }
@@ -912,7 +906,7 @@ export class TaskScheduler {
     const failed = await failSchedulerClaim(taskId, token, failure).catch(() => false);
     if (failed) {
       await stopScanWorkerByClaim(taskId, token);
-      await stopSandboxForTask(taskId, "preparing_failed").catch(() => undefined);
+      await getDynamicProvider().stopSandboxForTask(taskId, "preparing_failed").catch(() => undefined);
       notify({ type: "task_state", taskId, state: "failed" });
     }
   }
@@ -961,15 +955,15 @@ export class TaskScheduler {
     const meta = (task.metadata ?? {}) as Record<string, unknown>;
     const alloc = (meta.sandbox_alloc ?? {}) as { attempts?: number; next_attempt_at?: string };
     try {
-      const { mapping, reused } = await ensureSandboxForTask(task, { profileId: sandboxType });
+      const { mapping, reused } = await getDynamicProvider().ensureSandboxForTask(task, { profileId: sandboxType });
       await mergeTaskMetadata(task.id, {
         sandbox_alloc: { attempts: 0, next_attempt_at: null, sandbox_id: mapping.sandbox_id, profile_id: mapping.profile_id },
       }).catch((err) => logger.warn({ err, taskId: task.id }, "Failed to record sandbox_alloc metadata"));
       logger.info({ taskId: task.id, token, sandboxId: mapping.sandbox_id, reused }, "Sandbox ready for dynamic execution");
     } catch (error) {
-      if (error instanceof SandboxQuotaError || error instanceof SandboxPlaneCapacityError) {
+      if (error instanceof DynamicAllocationError && (error.kind === "quota" || error.kind === "capacity")) {
         const attempts = (alloc.attempts ?? 0) + 1;
-        const kind = error instanceof SandboxQuotaError ? "quota" : "capacity";
+        const kind = error.kind;
         // B2: permanent FIFO queue — never terminal-fail on quota/capacity.
         const nextAttemptAt = new Date(Date.now() + SANDBOX_ALLOC_RETRY_MS).toISOString();
         await mergeTaskMetadata(task.id, {

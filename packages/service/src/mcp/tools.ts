@@ -19,6 +19,7 @@ import { scanMetaFromValues } from "../features/files/routes.js";
 import { logger } from "../infra/logger.js";
 import type { McpContext } from "./context.js";
 import type { QueryContext } from "../infra/query-context.js";
+import { getDynamicProvider } from "../features/dynamic/provider.js";
 
 type ToolResult = { content: Array<{ type: "text"; text: string }> };
 
@@ -469,8 +470,9 @@ export async function createMcpTask(args: {
   }
 
   if (args.enable_dynamic_verify || args.enable_dynamic_exploit) {
-    const { isSandboxPlaneConfigured } = await import("../features/sandbox-plane/client.js");
-    if (!isSandboxPlaneConfigured()) {
+    // Dynamic-import free since the community removal: go through the
+    // provider seam (null provider = not configured → same error text).
+    if (!getDynamicProvider().isConfigured()) {
       return {
         content: [{
           type: "text",

@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authRouter, adminAuthRouter } from "./features/auth/index.js";
 import { meApiTokensRouter } from "./features/auth/api-token-routes.js";
-import { sandboxCapacityRouter } from "./features/sandboxes/capacity-routes.js";
+import { getDynamicProvider } from "./features/dynamic/provider.js";
 import { systemRouter, adminSystemRouter } from "./features/system/index.js";
 import { tasksRouter } from "./features/tasks/index.js";
 import { filesRouter } from "./features/files/index.js";
@@ -17,7 +17,7 @@ import { chatRouter } from "./features/chat/index.js";
 import { reportsRouter } from "./features/reports/routes.js";
 import { wikiRouter } from "./features/wiki/routes.js";
 import { notificationRouter } from "./features/notifications/index.js";
-import { sandboxPlaneInternalRouter } from "./features/sandbox-plane/routes.js";
+
 import { mountAdminRoutes } from "./features/admin/index.js";
 import { adminSetupRouter } from "./features/admin/setup-routes.js";
 import { setupWsRouter } from "./ws-router.js";
@@ -50,7 +50,7 @@ function mountForbidAdmin(app: Hono): void {
   }
 }
 
-export function createApp(role: ServiceRole = "business"): Hono {
+export async function createApp(role: ServiceRole = "business"): Promise<Hono> {
   const app = new Hono();
 
   // Global middleware
@@ -82,7 +82,9 @@ export function createApp(role: ServiceRole = "business"): Hono {
   app.route("/api/auth", authRouter);
   app.route("/api/me", meApiTokensRouter);
   // /api/admin/* intentionally NOT mounted on business service (404)
-  app.route("/api/sandbox", sandboxCapacityRouter);
+  // /api/sandbox/* + /internal/sandbox-plane are mounted by the dynamic
+  // provider module when a real provider is registered (enterprise/saas
+  // initEnterprise). Community: no routes mounted (404).
 
   // Protected business routes
   app.route("/api/tasks", tasksRouter);
@@ -101,14 +103,19 @@ export function createApp(role: ServiceRole = "business"): Hono {
   app.route("/api", notificationRouter);
   // POC settings routes removed (dead config offline; live fields → env)
 
-  app.route("/internal/sandbox-plane", sandboxPlaneInternalRouter);
   app.route("/mcp", mcpRouter);
+  // Dynamic-verification routes (enterprise/saas only — see note above).
+  if (getDynamicProvider().isConfigured()) {
+    const { mountDynamicRoutes } = await import("./features/dynamic/routes.js");
+    await mountDynamicRoutes(app);
+  }
 
   app.onError(errorHandler);
   return app;
 }
 
-export function startServer(port: number, app: Hono = createApp()): void {
+export async function startServer(port: number, app?: Hono): Promise<void> {
+  app = app ?? (await createApp());
   const httpServer = serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
     logger.info({ port: info.port }, `VulnHunter Service listening`);
   }) as unknown as Server;

@@ -8,7 +8,7 @@ import { loadTaskEvents } from "../events/event-archive.js";
 import { getEventTotal } from "../events/event-store.js";
 import { listCredentials } from "../settings/storage.js";
 import { cancelTask, continueTask, pauseTask, restartTask, resumeTask, TaskControlError } from "./control-service.js";
-import { releaseSandboxForTask } from "../sandboxes/lifecycle.js";
+import { getDynamicProvider } from "../dynamic/provider.js";
 import { loadConfig } from "../../infra/config.js";
 import { assertValidTaskName } from "./task-name-guard.js";
 import { getMinio } from "../../infra/minio/client.js";
@@ -18,7 +18,31 @@ import { listUsersByIds } from "../auth/storage.js";
 import { attachCreatorSummaries, uniqueCreatorIds } from "../auth/creator-summary.js";
 import { originalArchiveDownloadSpec } from "./original-archive.js";
 import { getSourceArchivePolicy } from "../source-archives/policy.js";
-import { projectSandboxQueue } from "../sandboxes/capacity.js";
+// projectSandboxQueue inlined (community removal, semantics preserved
+// verbatim from features/sandboxes/capacity.ts): pure metadata projection
+// over task metadata.sandbox_alloc — no sandbox-module dependency.
+function projectSandboxQueue(metadata: unknown): {
+  waiting: boolean;
+  reason: "capacity" | "quota" | null;
+  since: string | null;
+  attempts: number;
+} | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const alloc = (metadata as { sandbox_alloc?: Record<string, unknown> }).sandbox_alloc;
+  if (!alloc || typeof alloc !== "object") return null;
+  const next = typeof alloc.next_attempt_at === "string" ? alloc.next_attempt_at : null;
+  if (!next) return null;
+  const nextMs = Date.parse(next);
+  const attempts = Number(alloc.attempts) || 0;
+  const reason = alloc.last_error === "quota" ? "quota" as const : "capacity" as const;
+  if (!Number.isFinite(nextMs) || nextMs <= Date.now()) {
+    if (attempts > 0 && alloc.last_error) {
+      return { waiting: true, reason, since: null, attempts };
+    }
+    return null;
+  }
+  return { waiting: true, reason, since: null, attempts };
+}
 
 export const tasksRouter = new Hono();
 
@@ -308,7 +332,7 @@ tasksRouter.delete("/:id", async (c) => {
   // record. A failed release leaves the mapping `releasing`; the reconciler
   // finishes it, so deletion is never blocked by a SandboxPlane outage.
   try {
-    await releaseSandboxForTask(task.id);
+    await getDynamicProvider().releaseSandboxForTask(task.id);
   } catch (err) {
     logger.warn({ err, taskId: task.id }, "Sandbox release failed during delete; reconciler will finish it");
   }

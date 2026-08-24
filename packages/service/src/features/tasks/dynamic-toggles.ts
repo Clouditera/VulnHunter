@@ -27,6 +27,24 @@ export interface DynamicToggleInput {
   enableDynamicExploit?: unknown;
 }
 
+/** Community edition: dynamic verification is enterprise/saas-only. The form
+ * field is accepted but silently ignored (logged) — a hard 400 would break
+ * older clients and the disabled-with-hint UI already communicates the limit
+ * (architect spec task-8a290a7d ①, lhy decision 2026-08-24). */
+export function resolveDynamicTogglesForEdition(
+  input: DynamicToggleInput,
+  edition: "community" | "enterprise" | "saas",
+): DynamicToggleMeta {
+  if (edition === "community") {
+    if (toBool(input.enableDynamicVerify) || toBool(input.enableDynamicExploit)) {
+      // Accepted-but-ignored: field still round-trips, meta stays static-only.
+      return {};
+    }
+    return {};
+  }
+  return resolveDynamicToggles(input);
+}
+
 export interface DynamicToggleMeta {
   enable_poc?: boolean;
   enable_exp?: boolean;

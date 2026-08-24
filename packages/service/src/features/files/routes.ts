@@ -19,7 +19,8 @@ import { inspectSourceArchive } from "../source-archives/extract.js";
 import { SourceArchiveError, sourceArchiveErrorResponse } from "../source-archives/errors.js";
 import { getSourceArchivePolicy } from "../source-archives/policy.js";
 import { resolveScanDuration } from "../tasks/scan-duration.js";
-import { resolveDynamicToggles } from "../tasks/dynamic-toggles.js";
+import { resolveDynamicTogglesForEdition } from "../tasks/dynamic-toggles.js";
+import { getDynamicProvider } from "../dynamic/provider.js";
 
 export const filesRouter = new Hono();
 
@@ -60,6 +61,7 @@ export function scanMetaFromValues(
   timeoutMode?: string | null,
   dynamicSwitches?: { enableDynamicVerify?: unknown; enableDynamicExploit?: unknown },
   engineInputs?: { outputLanguage?: unknown; vulnFocus?: unknown },
+  edition: "community" | "enterprise" | "saas" = loadConfig().edition,
 ): Record<string, string | number | boolean> {
   const meta: Record<string, string | number | boolean> = {};
   const focus = typeof auditFocus === "string" ? auditFocus.trim() : "";
@@ -80,7 +82,8 @@ export function scanMetaFromValues(
   if (items !== undefined) meta.max_items_per_recon = items;
 
   // Dynamic capability switches (B3 single mapping, shared by form + chat).
-  Object.assign(meta, resolveDynamicToggles(dynamicSwitches ?? {}));
+  // Community: silently static-only (edition wrapper logs + ignores).
+  Object.assign(meta, resolveDynamicTogglesForEdition(dynamicSwitches ?? {}, edition));
 
   // Engine inputs (fish 2026-08-09): output_language + vuln_focus.
   // Empty/absent → engine defaults (zh-CN / "关注可造成实际安全影响的漏洞。").
@@ -252,8 +255,7 @@ filesRouter.post("/tasks", async (c) => {
     }
 
     if (scanMeta.dynamic_enabled || scanMeta.enable_poc || scanMeta.enable_exp || scanMeta.enable_chain) {
-      const { isSandboxPlaneConfigured } = await import("../sandbox-plane/client.js");
-      if (!isSandboxPlaneConfigured()) {
+      if (!getDynamicProvider().isConfigured()) {
         return c.json({
           error: {
             code: "ERR_SANDBOX_NOT_CONFIGURED",
@@ -339,8 +341,7 @@ filesRouter.post("/tasks", async (c) => {
   }
 
   if (gitScanMeta.dynamic_enabled || gitScanMeta.enable_poc || gitScanMeta.enable_exp || gitScanMeta.enable_chain) {
-    const { isSandboxPlaneConfigured } = await import("../sandbox-plane/client.js");
-    if (!isSandboxPlaneConfigured()) {
+    if (!getDynamicProvider().isConfigured()) {
       return c.json({
         error: {
           code: "ERR_SANDBOX_NOT_CONFIGURED",

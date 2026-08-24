@@ -45,9 +45,12 @@ vi.mock("../../src/features/workers/scheduler-workspace.js", () => ({
 
 // H2: sandbox lifecycle is a no-op without a mapping; stop/resume calls are
 // recorded separately so existing container assertions stay untouched.
-vi.mock("../../src/features/sandboxes/lifecycle.js", () => ({
-  stopSandboxForTask: vi.fn(async (taskId: string) => state.sandboxStopped.push(taskId)),
-  resumeSandboxForTask: vi.fn(async (taskId: string) => state.sandboxResumed.push(taskId)),
+vi.mock("../../src/features/dynamic/provider.js", () => ({
+  getDynamicProvider: () => ({
+    stopSandboxForTask: async (taskId: string) => { state.sandboxStopped.push(taskId); },
+    resumeSandboxForTask: async (taskId: string) => { state.sandboxResumed.push(taskId); },
+    isConfigured: () => true,
+  }),
 }));
 
 vi.mock("../../src/infra/config.js", () => ({ loadConfig: () => ({ dataDir: "/data" }) }));

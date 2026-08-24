@@ -19,7 +19,7 @@ import { renderSandboxMd } from "./sandbox-inject.js";
 
 import type { DbTask } from "../tasks/storage.js";
 import { createAuditCompletionEngineRun, fingerprintAuditCompletion } from "./audit-completion.js";
-import { getTaskSandbox, peekTaskSshPrivateKey, type TaskSandbox } from "../sandboxes/index.js";
+import { getDynamicProvider, type DynamicSandboxMapping } from "../dynamic/provider.js";
 import {
   injectSandboxFiles,
   renderInjectionFiles,
@@ -116,10 +116,10 @@ export async function spawnScanWorker(
   }
 
   const dynamicEnabled = booleanMeta(task.source_meta, "dynamic_enabled");
-  let sandbox: { mapping: TaskSandbox; privateKey: string } | null = null;
+  let sandbox: { mapping: DynamicSandboxMapping; privateKey: string } | null = null;
   if (dynamicEnabled) {
-    const mapping = await getTaskSandbox(task.id);
-    const privateKey = mapping?.state === "ready" ? await peekTaskSshPrivateKey(task.id) : null;
+    const mapping = await getDynamicProvider().getTaskSandbox(task.id);
+    const privateKey = mapping?.state === "ready" ? await getDynamicProvider().peekTaskSshPrivateKey(task.id) : null;
     if (mapping?.state === "ready" && privateKey) {
       sandbox = { mapping, privateKey };
     } else if (resume || continueMode) {

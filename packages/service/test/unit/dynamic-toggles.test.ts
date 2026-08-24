@@ -31,20 +31,31 @@ describe("resolveDynamicToggles (B3 single mapping)", () => {
 });
 
 describe("scanMetaFromValues dynamic switches", () => {
-  it("writes the toggle meta alongside scan_timeout/timeout_mode", () => {
+  it("writes the toggle meta alongside scan_timeout/timeout_mode (enterprise)", () => {
     const meta = scanMetaFromValues(undefined, undefined, undefined, "auto", {
       enableDynamicVerify: true, enableDynamicExploit: true,
-    });
+    }, undefined, "enterprise");
     expect(meta).toMatchObject({
       enable_poc: true, enable_exp: true, enable_chain: true, dynamic_enabled: true,
       scan_timeout: 72 * 3600, timeout_mode: "auto",
     });
   });
 
-  it("rejects exploit-without-verify", () => {
+  it("rejects exploit-without-verify (enterprise)", () => {
     expect(() => scanMetaFromValues(undefined, undefined, undefined, undefined, {
       enableDynamicVerify: false, enableDynamicExploit: true,
-    })).toThrow();
+    }, undefined, "enterprise")).toThrow();
+  });
+
+  it("community silently ignores dynamic switches (static-only meta)", () => {
+    const meta = scanMetaFromValues(undefined, undefined, undefined, "auto", {
+      enableDynamicVerify: true, enableDynamicExploit: true,
+    }, undefined, "community");
+    expect(meta).not.toHaveProperty("enable_poc");
+    expect(meta).not.toHaveProperty("enable_exp");
+    expect(meta).not.toHaveProperty("enable_chain");
+    expect(meta).not.toHaveProperty("dynamic_enabled");
+    expect(meta.timeout_mode).toBe("auto"); // other fields unaffected
   });
 
   it("static (no switches) writes no enable/dynamic fields", () => {

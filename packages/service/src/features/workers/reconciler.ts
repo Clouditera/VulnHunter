@@ -29,7 +29,7 @@ import { cleanupSchedulerWorkspace } from "./scheduler-workspace.js";
 import { load as yamlLoad } from "js-yaml";
 import { isDynamicEnabled, parseGateYamlLenient, type GateYaml } from "../prepare/contract.js";
 import { startTailing } from "../events/event-tail.js";
-import { reconcileSandboxes } from "../sandboxes/lifecycle.js";
+import { getDynamicProvider } from "../dynamic/provider.js";
 import { join } from "node:path";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { notify } from "../notifications/index.js";
@@ -350,7 +350,7 @@ export async function reconcileWorkers(): Promise<void> {
 
   // H2 §5: full sandbox reconcile at boot (release orphans of deleted tasks,
   // catch-up stop for terminal tasks, adopt/fail instance state drift).
-  await reconcileSandboxes().catch((err) =>
+  await getDynamicProvider().reconcileSandboxes().catch((err) =>
     logger.error({ err }, "Startup sandbox reconcile failed (will retry on tick)"),
   );
 

@@ -66,7 +66,7 @@ async function main(): Promise<void> {
   // Installation identity (both roles)
   initInstallation(config.dataDir);
 
-  const app = createApp(role);
+  const app = await createApp(role);
   let tickEnterpriseLicense: (() => Promise<void>) | null = null;
   // saas is a superset of enterprise (license + multi-user + SaaS ops).
   if (config.edition === "enterprise" || config.edition === "saas") {
@@ -104,7 +104,7 @@ async function main(): Promise<void> {
   if (role === "admin") {
     // admin-api: no docker, no scheduler, no reconciler
     process.on("SIGTERM", () => process.exit(0));
-    startServer(config.port, app);
+    await startServer(config.port, app);
     return;
   }
 
@@ -151,7 +151,7 @@ async function main(): Promise<void> {
     process.exit(0);
   });
 
-  startServer(config.port, app);
+  await startServer(config.port, app);
 }
 
 main().catch((err) => {
