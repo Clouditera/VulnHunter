@@ -52,6 +52,40 @@ function serializeAdminUser(
   };
 }
 
+// POST /api/admin/users — community user creation (option a, split regression).
+// Basic fields only; quota fields (task_limit/sandbox_*) stay in the commercial
+// module's POST. Same validation shape so the admin UI works on both editions.
+adminUsersRouter.post("/", async (c) => {
+  const body = await c.req.json<{
+    email?: string;
+    password?: string;
+    display_name?: string;
+    must_change_password?: boolean;
+  }>();
+  if (!body.email || !body.password || body.password.length < 8) {
+    return c.json({ error: { code: "ERR_VALIDATION", message: "Email and password (min 8 chars) required" } }, 400);
+  }
+  const email = body.email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json({ error: { code: "ERR_VALIDATION", message: "Invalid email" } }, 400);
+  }
+  const existing = await authStorage.findUserByEmail(email);
+  if (existing) {
+    return c.json({ error: { code: "ERR_EMAIL_TAKEN", message: "Email already exists" } }, 409);
+  }
+  const passwordHash = await bcrypt.hash(body.password, BCRYPT_COST);
+  const created = await authStorage.createUser({
+    email,
+    passwordHash,
+    role: "member",
+    displayName: body.display_name?.trim() || email.split("@")[0],
+    mustChangePassword: body.must_change_password ?? false,
+    source: "admin",
+  });
+  logger.info({ actor: c.get("user")?.userId, target: created.id, action: "create_user", edition: "community", ip: clientIp(c) });
+  return c.json({ id: created.id, email: created.email }, 201);
+});
+
 // GET /api/admin/users
 adminUsersRouter.get("/", async (c) => {
   const users = await authStorage.listUsers();
