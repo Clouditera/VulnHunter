@@ -19,19 +19,20 @@ const FEATURES: Card[] = [
   { icon: <Ic path="M9 7V2m6 5V2M7 7h10v4a5 5 0 0 1-10 0zM12 16v6" />, t: "灵活模型接入", d: "支持 OpenAI 兼容 API 与主流大模型（Deepseek/Kimi/GPT/Claude 等），一键切换，也可接入企业自有网关。" },
 ];
 
+/** 外部站点链接（页脚"公司"列），集中维护便于后续更换。 */
+const EXTERNAL_LINKS = {
+  about: "https://www.clouditera.com",
+  sales: "https://www.clouditera.com/aboutUs.html?type=3",
+  feedback: "https://vulnhunter.pro/login",
+} as const;
+
 const CAPS: Card[] = [
-  { icon: <Ic path="M6 3v12m0 0a3 3 0 1 0 3 3M6 15a3 3 0 1 1-3 3m12-9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 0v3a6 6 0 0 1-6 6" size={16} />, t: "Git 仓库接入", d: "GitHub / GitLab / Gitea 私域仓库直连" },
-  { icon: <Ic path="M4 4h16v4H4zM5 8v12h14V8M10 12h4" size={16} />, t: "压缩包上传", d: "支持 ZIP/TAR 直传，2GB 以内秒级解析" },
-  { icon: <Ic path="M7 11V7a5 5 0 0 1 10 0v4M5 11h14v10H5zM12 15v3" size={16} />, t: "认证与权限", d: "检测 Missing Auth / Cookie Security / IDOR" },
-  { icon: <Ic path="M4 17l6-5-6-5m6 10h8" size={16} />, t: "注入类漏洞", d: "SQL / OS Command / LDAP / Template 注入" },
-  { icon: <Ic path="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM2 12h20M12 2c3 3.5 3 16.5 0 20-3-3.5-3-16.5 0-20z" size={16} />, t: "XSS / CSRF", d: "Stored / Reflected / DOM-based XSS 全覆盖" },
-  { icon: <Ic path="M12 16V4m0 0 4 4m-4-4L8 8M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" size={16} />, t: "文件上传", d: "Unrestricted Upload / Path Traversal" },
-  { icon: <Ic path="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" size={16} />, t: "反序列化", d: "Java/PHP/.NET Deserialization RCE 检测" },
-  { icon: <Ic path="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8zm0 0L19 4m-3.5 3.5L18 10" size={16} />, t: "敏感信息", d: "硬编码密钥/Token/凭证泄露扫描" },
-  { icon: <Ic path="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" size={16} />, t: "业务逻辑漏洞", d: "越权/薅羊毛/竞态条件智能识别" },
-  { icon: <Ic path="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" size={16} />, t: "供应链安全", d: "依赖项 CVE 匹配与传染路径分析" },
-  { icon: <Ic path="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" size={16} />, t: "POC/EXP 沙箱", d: "隔离环境验证利用可行性" },
-  { icon: <Ic path="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" size={16} />, t: "合规审计", d: "对齐 OWASP TOP10 / 等保 2.0 / GDPR" },
+  { icon: <Ic path="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" size={16} />, t: "业务逻辑漏洞", d: "水平/垂直越权（IDOR）、条件竞争、业务状态机绕过、优惠券/余额并发滥用、注册/登录逻辑缺陷等" },
+  { icon: <Ic path="M4 17l6-5-6-5m6 10h8" size={16} />, t: "注入类漏洞", d: "代码/命令注入、跨站脚本、服务端攻击、协议/查询注入、数据解析漏洞等" },
+  { icon: <Ic path="M12 16V4m0 0 4 4m-4-4L8 8M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" size={16} />, t: "文件与路径类漏洞", d: "路径遍历、危险文件上传、文件解压漏洞、任意文件读取、临时文件竞态等" },
+  { icon: <Ic path="M7 11V7a5 5 0 0 1 10 0v4M5 11h14v10H5zM12 15v3" size={16} />, t: "认证与访问控制漏洞", d: "认证机制绕过、会话固定/劫持、CSRF缺陷、沙箱逃逸、开放重定向、OAuth/SSO 流程漏洞等" },
+  { icon: <Ic path="M4 4h16v16H4zM9 9h6v6H9zM9 1v3m6-3v3M9 20v3m6-3v3M1 9h3m-3 6h3M20 9h3m-3 6h3" size={16} />, t: "内存安全类漏洞", d: "缓冲区溢出、竞态条件、整数溢出、函数级缺陷、内存泄漏、空指针解引用等" },
+  { icon: <Ic path="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8zm0 0L19 4m-3.5 3.5L18 10" size={16} />, t: "信息泄露与密码学漏洞", d: "敏感信息暴露、密钥/凭据硬编码、弱加密算法、密码明文存储/传输、随机数不安全等" },
 ];
 
 const WHYS: Card[] = [
@@ -137,17 +138,17 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* 12 caps */}
+      {/* 6 大类漏洞能力（HALL-16：12 项功能 → 6 大类漏洞检测类型，3×2 布局） */}
       <section id="caps" style={SECTION}>
         <div style={EYEBROW}>Core Capabilities</div>
-        <h2 style={H2}>12 类漏洞能力 · 覆盖代码安全全生命周期</h2>
+        <h2 style={H2}>6 大类漏洞能力 · 覆盖代码安全全生命周期</h2>
         <p style={LEAD}>从代码接入、漏洞检测、验证复现到合规审计，一个 AI 数字员工在一次对话中完成。</p>
-        <div style={GRID4}>
+        <div style={GRID3}>
           {CAPS.map((c) => (
             <div key={c.t} style={CARD}>
               <div style={{ ...ICON_LIGHT, width: 36, height: 36, marginBottom: 10 }}>{c.icon}</div>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{c.t}</div>
-              <div style={{ color: "#6b7280", fontSize: 12, lineHeight: 1.5 }}>{c.d}</div>
+              <div style={{ color: "#6b7280", fontSize: 12.5, lineHeight: 1.6 }}>{c.d}</div>
             </div>
           ))}
         </div>
@@ -192,7 +193,7 @@ export function HomePage() {
       {/* CTA */}
       <section style={{ ...SECTION, textAlign: "center", paddingTop: 24 }}>
         <h2 style={{ ...H2, marginBottom: 10 }}>准备好雇佣你的 AI 安全数字员工了吗？</h2>
-        <p style={{ ...LEAD, marginBottom: 24 }}>登录 vulnhunter.cn，开启你的第一次 AI 安全审计</p>
+        <p style={{ ...LEAD, marginBottom: 24 }}>登录 www.vulnhunter.pro，开启你的第一次 AI 安全审计</p>
         <Link to="/login" style={{ ...BTN_PRIMARY, height: 44, padding: "0 24px", fontSize: 15, gap: 6 }}>
           立即免费试用
           <Ic path="M5 12h14m-6-6 6 6-6 6" size={14} />
@@ -212,9 +213,9 @@ export function HomePage() {
           </div>
           <div style={{ fontSize: 13, color: "#4b5563" }}>
             <div style={{ fontWeight: 700, color: "#111827", marginBottom: 10 }}>公司</div>
-            <div style={{ padding: "5px 0" }}>关于我们</div>
-            <div style={{ padding: "5px 0" }}>联系销售</div>
-            <div style={{ padding: "5px 0" }}>意见反馈</div>
+            <FooterLink href={EXTERNAL_LINKS.about}>关于我们</FooterLink>
+            <FooterLink href={EXTERNAL_LINKS.sales}>联系销售</FooterLink>
+            <FooterLink href={EXTERNAL_LINKS.feedback}>意见反馈</FooterLink>
           </div>
         </div>
         <div style={{ maxWidth: 1120, margin: "24px auto 0", paddingTop: 20, borderTop: "1px solid #e5e7eb", textAlign: "center", color: "#9ca3af", fontSize: 12.5 }} data-testid="home-footer-icp">
@@ -402,6 +403,29 @@ function Stat({ value, label }: { value: string; label: string }) {
       <div style={{ fontSize: 34, fontWeight: 800, letterSpacing: "-0.02em" }}>{value}</div>
       <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>{label}</div>
     </div>
+  );
+}
+
+/** 页脚外链：保持原 13px/#4b5563 视觉，hover 加深，新标签打开并防 tab-nabbing。 */
+function FooterLink({ href, children }: { href: string; children: ReactNode }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: "block",
+        padding: "5px 0",
+        color: hover ? "#111827" : "#4b5563",
+        textDecoration: "none",
+        transition: "color 0.15s ease",
+      }}
+    >
+      {children}
+    </a>
   );
 }
 function Dot({ c }: { c: string }) {
