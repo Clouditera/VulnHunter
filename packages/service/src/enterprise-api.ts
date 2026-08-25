@@ -26,3 +26,4 @@ export { isDynamicEnabled } from "./features/prepare/contract.js";
 export { taskBearerAuth, getInternalTask } from "./features/internal/task-bearer-auth.js";
 export { scanInputEnvFromMeta } from "./features/workers/scan-worker.js";
 export { setDynamicProvider, type DynamicVerificationProvider, type DynamicSandboxMapping, DynamicAllocationError } from "./features/dynamic/provider.js";
+export { getDocker, LABEL_TASK_ID, LABEL_TASK_TYPE, LABEL_SCHEDULER_CLAIM } from "./features/workers/docker-client.js";
