@@ -47,10 +47,6 @@ vi.mock("../../src/features/notifications/index.js", () => ({
 vi.mock("../../src/infra/logger.js", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock("../../src/features/sandbox-plane/client.js", () => ({
-  isSandboxPlaneConfigured: () => true,
-  SandboxPlaneUnavailableError: class extends Error {},
-}));
 vi.mock("../../src/infra/db/client.js", () => ({
   getDb: vi.fn(() => {
     const db = async (strings: TemplateStringsArray, ..._vals: unknown[]) => {

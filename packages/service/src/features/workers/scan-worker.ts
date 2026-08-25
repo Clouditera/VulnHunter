@@ -15,16 +15,31 @@ import {
 } from "./docker-client.js";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { renderSandboxMd } from "./sandbox-inject.js";
+/** Runtime tmpfs dir (was exported by the retired sandbox-inject module —
+ * community removal ②; the constant + the pure workspace-description
+ * renderer stay core, the SSH injection itself is provider-side). */
+export const SANDBOX_RUNTIME_DIR = "/run/vulnhunter";
+
+/** Pure workspace sandbox description (alias-only, no coordinates) — pre-
+ * written for resume/continue legacy tasks; fresh runs get it from
+ * apply_sandbox during onboard. Body identical to the retired module's. */
+function renderSandboxMd(capabilities: string[]): string {
+  const caps = capabilities.length > 0 ? capabilities.join(", ") : "unknown";
+  return [
+    "# 沙箱使用说明",
+    "",
+    "本任务启用了动态验证。运行期沙箱连接信息由平台在分配时注入（/run/vulnhunter/ssh），",
+    "本文件仅描述能力面，不包含地址或凭据。",
+    "",
+    `- capabilities: ${caps}`,
+    "",
+  ].join("\n");
+}
 
 import type { DbTask } from "../tasks/storage.js";
 import { createAuditCompletionEngineRun, fingerprintAuditCompletion } from "./audit-completion.js";
 import { getDynamicProvider, type DynamicSandboxMapping } from "../dynamic/provider.js";
-import {
-  injectSandboxFiles,
-  renderInjectionFiles,
-  SANDBOX_RUNTIME_DIR,
-} from "./sandbox-inject.js";
+
 
 export const STATIC_ONLY_SCHED_INSTR = "平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；完成静态审计后进入报告阶段。";
 
@@ -191,15 +206,14 @@ export async function spawnScanWorker(
     // tmpfs only exists once the container is running (putArchive before
     // start lands in the image layer and gets mounted over). The agent only
     // touches these files when it begins dynamic work, long after the
-    // ms-scale injection.
-    const files = renderInjectionFiles(sandbox.mapping, sandbox.privateKey, {
+    // ms-scale injection. Injection is provider-side (community removal ②).
+    await container.start();
+    await getDynamicProvider().injectSandboxFiles?.(container, sandbox.mapping, sandbox.privateKey, {
       sshHostOverride: config.sandboxSshHostOverride ?? null,
       bastionSpec: config.sandboxSshBastion ?? null,
       bastionHostKey: config.sandboxSshBastionHostKey ?? null,
       bastionIdentityOpenSsh: config.sandboxSshBastionIdentity ?? null,
     });
-    await container.start();
-    await injectSandboxFiles(container, files);
     logger.info({ taskId: task.id, sandboxId: sandbox.mapping.sandbox_id }, "Sandbox SSH files injected into worker tmpfs");
   } else {
     // Fresh dynamic: the gate callback injects later. Static: nothing to

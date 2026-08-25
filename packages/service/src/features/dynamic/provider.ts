@@ -88,6 +88,22 @@ export interface DynamicVerificationProvider {
 
   /** Whether the sandbox plane is configured (MCP tool descriptions etc.). */
   isConfigured(): boolean;
+
+  /** Optional: push SSH runtime files into a just-started worker container
+   * (resume/continue path — allocation already done). Core calls this after
+   * container.start(); the null provider has nothing to inject. The container
+   * handle type is kept opaque (Dockerode Container) to avoid a core dep. */
+  injectSandboxFiles?(
+    container: unknown,
+    mapping: DynamicSandboxMapping,
+    privateKey: string,
+    opts: {
+      sshHostOverride: string | null;
+      bastionSpec: string | null;
+      bastionHostKey: string | null;
+      bastionIdentityOpenSsh: string | null;
+    },
+  ): Promise<void>;
 }
 
 /** Null provider: community default — nothing configured, everything no-ops. */

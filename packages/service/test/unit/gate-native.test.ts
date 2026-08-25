@@ -52,37 +52,29 @@ vi.mock("../../src/features/events/event-store.js", () => ({
 }));
 vi.mock("../../src/features/events/ws-live-log.js", () => ({ broadcastEvent: vi.fn() }));
 vi.mock("../../src/infra/logger.js", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
+// Dynamic provider seam (community removal): scheduler paths go through the
+// registry — a configured fake covers the continue-with-alloc case.
+vi.mock("../../src/features/dynamic/provider.js", () => {
+  const fake = {
+    name: "test",
+    ensureSandboxForTask: async () => ({ mapping: { sandbox_id: "sb-1", profile_id: "linux-docker" }, reused: false }),
+    stopSandboxForTask: async () => undefined,
+    resumeSandboxForTask: async () => undefined,
+    releaseSandboxForTask: async () => undefined,
+    reconcileSandboxes: async () => undefined,
+    getTaskSandbox: async () => null,
+    peekTaskSshPrivateKey: async () => null,
+    isConfigured: () => true,
+    __settable: true,
+  };
+  return { setDynamicProvider: () => {}, getDynamicProvider: () => fake, DynamicAllocationError: class extends Error { kind = "quota"; } };
+});
 vi.mock("../../src/infra/config.js", () => ({
   loadConfig: () => ({
     dataDir: "/tmp/gate-test",
     sandboxSshHostOverride: null, sandboxSshBastion: null,
     sandboxSshBastionHostKey: null, sandboxSshBastionIdentity: null,
   }),
-}));
-vi.mock("../../src/features/sandboxes/lifecycle.js", () => ({
-  ensureSandboxForTask: vi.fn(async () => {
-    if (m.ensureSandboxError) throw m.ensureSandboxError;
-    return m.ensureSandboxResult;
-  }),
-  stopSandboxForTask: vi.fn(async () => undefined),
-  reconcileSandboxes: vi.fn(async () => undefined),
-  SandboxQuotaError: class extends Error {},
-}));
-vi.mock("../../src/features/sandbox-plane/client.js", () => ({
-  SandboxPlaneCapacityError: class extends Error {},
-  SandboxPlaneUnavailableError: class extends Error {},
-  listSandboxPlaneProfiles: vi.fn(async () => []),
-  getSandboxPlaneProfile: vi.fn(async () => m.profile),
-}));
-vi.mock("../../src/features/sandboxes/index.js", () => ({
-  getTaskSandbox: vi.fn(async () => null),
-  peekTaskSshPrivateKey: vi.fn(async () => m.privateKey),
-}));
-vi.mock("../../src/features/workers/sandbox-inject.js", () => ({
-  injectSandboxFiles: vi.fn(async () => { m.injected++; }),
-  renderInjectionFiles: vi.fn(() => [{ containerPath: "/run/vulnhunter/ssh/config", content: "x", mode: 0o444 }]),
-  renderSandboxMd: vi.fn(() => "# sandbox usage"),
-  scanOutputsForKeyMaterial: vi.fn(async () => []),
 }));
 vi.mock("../../src/features/workers/docker-client.js", () => ({
   getDocker: () => ({
@@ -142,7 +134,6 @@ vi.mock("../../src/features/tasks/scan-duration.js", () => ({
   computeScanDeadlineAt: vi.fn(() => new Date().toISOString()),
 }));
 
-const { sandboxPlaneInternalRouter } = await import("../../src/features/sandbox-plane/routes.js");
 const { TaskScheduler } = await import("../../src/features/workers/scheduler.js");
 const { setEngineEventHandler } = await import("../../src/features/events/event-tail.js");
 const fs = await import("node:fs");
@@ -154,82 +145,6 @@ const token = "11111111-1111-4111-8111-111111111111";
 function preparingTask(overrides: Record<string, unknown> = {}) {
   return { id: "task-gate-1", state: "preparing", source_meta: {}, metadata: {}, ...overrides } as any;
 }
-
-describe("POST /internal/sandbox-plane/apply", () => {
-  beforeEach(() => {
-    m.taskById = preparingTask();
-    m.claim = { token, mode: "fresh" };
-    m.markedRunningCalls = 0;
-    m.ensureSandboxError = null;
-    m.injected = 0;
-    m.containers = [{ Id: "ctr-1", State: "running", Labels: {} }];
-    m.profile = { id: "linux-docker", status: "available" };
-    m.metadataPatches = [];
-  });
-
-  const post = (body: unknown, bearer = "task-gate-1") =>
-    sandboxPlaneInternalRouter.request("/apply", {
-      method: "POST",
-      headers: bearer ? { Authorization: `Bearer ${bearer}` } : {},
-      body: JSON.stringify(body),
-    });
-
-  it("401 when the task is not preparing", async () => {
-    m.taskById = preparingTask({ state: "running" });
-    const res = await post({ profile_id: "linux-docker" });
-    expect(res.status).toBe(401);
-  });
-
-  it("409 when the claim is not fresh", async () => {
-    m.claim = { token, mode: "continue" };
-    const res = await post({ profile_id: "linux-docker" });
-    expect(res.status).toBe(409);
-  });
-
-  it("400 on a malformed body", async () => {
-    const res = await post({ nope: 1 });
-    expect(res.status).toBe(400);
-  });
-
-  it("type_unavailable when the profile is missing or not available", async () => {
-    m.profile = null;
-    const res = await post({ profile_id: "gone" });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toMatchObject({ ok: false, reason: "type_unavailable" });
-  });
-
-  it.each([
-    ["quota", "SandboxQuotaError"],
-    ["capacity", "SandboxPlaneCapacityError"],
-    ["plane_unavailable", "SandboxPlaneUnavailableError"],
-  ])("%s answers ok:false with the mapped reason", async (reason, errName) => {
-    const mod = await import("../../src/features/sandboxes/lifecycle.js").catch(async () => await import("../../src/features/sandbox-plane/client.js"));
-    const Ctor = (errName === "SandboxQuotaError"
-      ? (await import("../../src/features/sandboxes/lifecycle.js")).SandboxQuotaError
-      : errName === "SandboxPlaneCapacityError"
-        ? (await import("../../src/features/sandbox-plane/client.js")).SandboxPlaneCapacityError
-        : (await import("../../src/features/sandbox-plane/client.js")).SandboxPlaneUnavailableError);
-    m.ensureSandboxError = new (Ctor as new (m: string) => Error)("x");
-    const res = await post({ profile_id: "linux-docker" });
-    const body = await res.json();
-    expect(body).toMatchObject({ ok: false, reason });
-    expect(m.injected).toBe(0);
-  });
-
-  it("ok: allocates, injects into the running container, records alloc, no CAS", async () => {
-    const res = await post({ profile_id: "linux-docker" });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.ok).toBe(true);
-    expect(typeof body.sandbox_config).toBe("string");
-    expect(m.injected).toBe(1);
-    expect(m.metadataPatches).toContainEqual(expect.objectContaining({
-      sandbox_alloc: expect.objectContaining({ sandbox_id: "sb-1" }),
-    }));
-    expect(m.markedRunningCalls).toBe(0);
-  });
-});
 
 describe("gate route perception (EventTail engine events → scheduler)", () => {
   let scheduler: InstanceType<typeof TaskScheduler>;

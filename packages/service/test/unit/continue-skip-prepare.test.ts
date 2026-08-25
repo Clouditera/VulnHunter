@@ -65,15 +65,6 @@ vi.mock("../../src/features/workers/scheduler-workspace.js", () => ({
   getSchedulerPrepareDir: vi.fn(),
   publishSchedulerWorkspace: vi.fn(),
 }));
-vi.mock("../../src/features/sandboxes/lifecycle.js", () => ({
-  ensureSandboxForTask: vi.fn(),
-  stopSandboxForTask: vi.fn(),
-  reconcileSandboxes: vi.fn(),
-  SandboxQuotaError: class extends Error {},
-}));
-vi.mock("../../src/features/sandbox-plane/client.js", () => ({
-  SandboxPlaneCapacityError: class extends Error {},
-}));
 vi.mock("../../src/features/workers/reconciler.js", () => ({
   reconcileSchedulerClaims: vi.fn(),
 }));
