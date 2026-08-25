@@ -4,6 +4,7 @@ import { i18n } from "../../../shared/i18n/index.js";
 import { toast } from "../../../shared/toast/toast.js";
 import { useConfirmClose } from "../../../shared/hooks/useConfirmClose.js";
 import { getTaskNameError, normalizeTaskName, TASK_NAME_MAX_LENGTH } from "../task-name.js";
+import { useEdition } from "../../../shared/hooks/useEdition.js";
 
 interface Props {
   onClose: () => void;
@@ -145,14 +146,20 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
   }, [gitUrl, tab]);
 
   const sandboxUnavailable = sandboxCapacity?.configured === false;
+  // Community removal (task-abd37c1f ③): dynamic verification is
+  // enterprise/saas-only. Community keeps the toggle visible but disabled
+  // with an upgrade hint (lhy: 展示但提示仅企业版可用).
+  const { hasDynamicVerification } = useEdition();
+  const dynamicGated = !hasDynamicVerification;
+  const dynamicDisabled = dynamicGated || sandboxUnavailable;
 
-  // Force-disable dynamic toggles when plane is not deployed
+  // Force-disable dynamic toggles when the edition or plane says no
   useEffect(() => {
-    if (sandboxUnavailable) {
+    if (dynamicDisabled) {
       setEnableDynamicVerify(false);
       setEnableDynamicExploit(false);
     }
-  }, [sandboxUnavailable]);
+  }, [dynamicDisabled]);
 
   async function handleCreate() {
     setError("");
@@ -757,7 +764,23 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
               <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.45, marginBottom: "10px" }}>{i18n.t("newTask.dynamicSubtitle")}</div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {sandboxUnavailable ? (
+                {dynamicGated ? (
+                  <div
+                    data-testid="dynamic-enterprise-only-hint"
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--text-secondary)",
+                      background: "var(--bg-page)",
+                      border: "1px dashed var(--border)",
+                      borderRadius: "7px",
+                      padding: "9px 11px",
+                      lineHeight: 1.5,
+                      marginBottom: "4px",
+                    }}
+                  >
+                    {i18n.t("newTask.dynamicEnterpriseOnly")}
+                  </div>
+                ) : sandboxUnavailable ? (
                   <div
                     data-testid="sandbox-not-configured-hint"
                     style={{
@@ -774,8 +797,8 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                     {i18n.t("newTask.sandboxNotConfigured")}
                   </div>
                 ) : null}
-                <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px", border: "1px solid var(--border)", borderRadius: "8px", background: sandboxUnavailable ? "transparent" : "var(--bg-card)", cursor: sandboxUnavailable ? "not-allowed" : "pointer", opacity: sandboxUnavailable ? 0.55 : 1 }}>
-                  <input data-testid="enable-dynamic-verify" type="checkbox" checked={enableDynamicVerify} disabled={sandboxUnavailable} onChange={(e) => { const on = e.target.checked; setEnableDynamicVerify(on); if (!on) setEnableDynamicExploit(false); }} style={{ marginTop: "2px" }} />
+                <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px", border: "1px solid var(--border)", borderRadius: "8px", background: dynamicDisabled ? "transparent" : "var(--bg-card)", cursor: dynamicDisabled ? "not-allowed" : "pointer", opacity: dynamicDisabled ? 0.55 : 1 }}>
+                  <input data-testid="enable-dynamic-verify" type="checkbox" checked={enableDynamicVerify} disabled={dynamicDisabled} onChange={(e) => { const on = e.target.checked; setEnableDynamicVerify(on); if (!on) setEnableDynamicExploit(false); }} style={{ marginTop: "2px" }} />
                   <span>
                     <span style={{ display: "block", fontSize: "13px", fontWeight: 650, color: "var(--text-primary)" }}>{i18n.t("newTask.dynamicVerify")}</span>
                     <span style={{ display: "block", marginTop: "3px", fontSize: "11px", lineHeight: 1.45, color: "var(--text-secondary)" }}>{i18n.t("newTask.dynamicVerifyDesc")}</span>
@@ -783,9 +806,9 @@ export function NewTaskModal({ onClose, onCreated }: Props) {
                 </label>
                 <label
                   title={enableDynamicVerify ? undefined : i18n.t("newTask.dynamicExploitNeedsVerify")}
-                  style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px", border: `1px ${enableDynamicVerify && !sandboxUnavailable ? "solid" : "dashed"} var(--border)`, borderRadius: "8px", background: enableDynamicVerify && !sandboxUnavailable ? "var(--bg-card)" : "transparent", cursor: enableDynamicVerify && !sandboxUnavailable ? "pointer" : "not-allowed", opacity: enableDynamicVerify && !sandboxUnavailable ? 1 : 0.6 }}
+                  style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px", border: `1px ${enableDynamicVerify && !dynamicDisabled ? "solid" : "dashed"} var(--border)`, borderRadius: "8px", background: enableDynamicVerify && !dynamicDisabled ? "var(--bg-card)" : "transparent", cursor: enableDynamicVerify && !dynamicDisabled ? "pointer" : "not-allowed", opacity: enableDynamicVerify && !dynamicDisabled ? 1 : 0.6 }}
                 >
-                  <input data-testid="enable-dynamic-exploit" type="checkbox" checked={enableDynamicExploit} disabled={!enableDynamicVerify || sandboxUnavailable} onChange={(e) => setEnableDynamicExploit(e.target.checked)} style={{ marginTop: "2px" }} />
+                  <input data-testid="enable-dynamic-exploit" type="checkbox" checked={enableDynamicExploit} disabled={!enableDynamicVerify || dynamicDisabled} onChange={(e) => setEnableDynamicExploit(e.target.checked)} style={{ marginTop: "2px" }} />
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", fontWeight: 650, color: enableDynamicVerify ? "var(--text-primary)" : "var(--text-secondary)" }}>
                       {i18n.t("newTask.dynamicExploit")}

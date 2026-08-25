@@ -28,3 +28,20 @@ describe("editionFlags", () => {
     expect(editionFlags("enterprise").hasMarketingHome).toBe(false);
   });
 });
+import { describe, expect, it } from "vitest";
+import { editionFlags } from "../src/shared/hooks/useEdition.js";
+
+/** Community removal (task-abd37c1f ③): dynamic verification is
+ * enterprise/saas-only; community keeps marketing home (unchanged). */
+describe("editionFlags hasDynamicVerification", () => {
+  it("community: no dynamic verification, marketing home stays", () => {
+    const f = editionFlags("community");
+    expect(f.hasDynamicVerification).toBe(false);
+    expect(f.isCommunity).toBe(true);
+    expect(f.hasMarketingHome).toBe(true);
+  });
+  it("enterprise/saas: dynamic verification on", () => {
+    expect(editionFlags("enterprise").hasDynamicVerification).toBe(true);
+    expect(editionFlags("saas").hasDynamicVerification).toBe(true);
+  });
+});

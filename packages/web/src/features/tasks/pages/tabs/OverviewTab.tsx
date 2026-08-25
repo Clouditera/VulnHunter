@@ -6,6 +6,7 @@ import { api, type Task, type FindingMeta, type ProfilerData } from "../../../..
 import { i18n } from "../../../../shared/i18n/index.js";
 import { Icon, type IconName } from "../../../../shared/components/Icon.js";
 import { formatDateTime, formatDurationMinutes } from "../../../../shared/utils/format.js";
+import { useEdition } from "../../../../shared/hooks/useEdition.js";
 
 /**
  * Normalize `task.source_meta` — backend postgres returns it as a JSON
@@ -148,6 +149,8 @@ export function OverviewTab() {
   // POC reproduced count from findings_meta dynamic status — same source as
   // the findings tab (task-1555f4d1: old poc_results job table diverged).
   const reproducedCount = findings.filter((f) => f.poc_status === "reproduced").length;
+  // Community removal (③): the poc stat is dynamic-verification territory.
+  const { hasDynamicVerification } = useEdition();
   const exec = task.metadata?.execution ?? {};
 
   const tokenUsage = getTokenUsage(task);
@@ -328,7 +331,9 @@ export function OverviewTab() {
         >
           <FactStat label={i18n.t("overview.confirmedFindings")} value={confirmedCount} tone="confirmed" />
           <FactStat label={i18n.t("overview.falsePositiveFindings")} value={falsePositiveCount} tone="neutral" />
-          <FactStat label={i18n.t("overview.pocReproduced")} value={reproducedCount} tone="poc" />
+          {hasDynamicVerification ? (
+            <FactStat label={i18n.t("overview.pocReproduced")} value={reproducedCount} tone="poc" />
+          ) : null}
         </div>
 
       </Card>

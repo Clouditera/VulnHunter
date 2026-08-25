@@ -49,7 +49,7 @@ For a server that already has VulnHunter installed in this directory, do not run
 
 ## SandboxPlane（动态验证沙箱）
 
-- **本机模式（默认）**：发布包自带沙箱子栈，`sandbox/install.sh` 一把起，无需任何手工步骤。
+- **本机模式（默认，企业版/SaaS 版）**：发布包自带沙箱子栈，`sandbox/install.sh` 一把起，无需任何手工步骤。社区版包不含沙箱子栈（动态验证为企业版/SaaS 版功能）。
 - **远程模式**（沙箱跑在另一台机器）：5 步里只有第 3 步必须人工（跨机首次信任无法自动建立）：
   1. 沙箱机：解压发布包 → `./sandbox/install.sh` 起沙箱子栈（自动）
   2. 平台机生成部署钥匙：`ssh-keygen -t ed25519 -f $DATA_DIR/.secrets/sandbox-bastion -N ''`（一条命令）

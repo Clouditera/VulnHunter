@@ -558,6 +558,7 @@ export const EN: Record<string, string> = {
   "settings.users.source.registered": "Self-registered",
   "settings.users.source.admin": "Admin-created",
   "newTask.sandboxNotConfigured": "Sandbox service is not deployed. Dynamic verification / exploit are unavailable. Ask an admin to install SandboxPlane.",
+  "newTask.dynamicEnterpriseOnly": "Dynamic verification and sandbox are available in the Enterprise/SaaS editions; the Community edition runs static analysis by default.",
   "newTask.willQueue": "Sandbox capacity is tight. This task will queue and start automatically when capacity frees up.",
   "newTask.queueDepth": "{n} already waiting",
   "tasks.queue.badge": "Queued (sandbox)",

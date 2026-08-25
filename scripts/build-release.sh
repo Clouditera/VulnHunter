@@ -147,6 +147,10 @@ chmod +x "$OUT"/*.sh "$OUT"/lib/*.sh
 release_validate_edition_artifacts "$OUT" "$EDITION"
 release_validate_tree_clean "$OUT"
 
-release_pack_sandbox "$OUT"
+# Community removal (task-abd37c1f ④): dynamic verification/sandbox is
+# enterprise/saas-only — community packs ship WITHOUT the sandbox substack.
+if [[ "$EDITION" != "community" ]]; then
+  release_pack_sandbox "$OUT"
+fi
 release_write_checksums "$OUT" "$EDITION"
 release_tar_and_sha "$OUT"

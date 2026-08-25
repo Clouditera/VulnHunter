@@ -559,6 +559,7 @@ export const ZH: Record<string, string> = {
   "settings.users.source.registered": "自注册",
   "settings.users.source.admin": "管理员创建",
   "newTask.sandboxNotConfigured": "沙箱服务未部署，动态验证 / 漏洞利用不可用。请联系管理员安装 SandboxPlane。",
+  "newTask.dynamicEnterpriseOnly": "动态验证与沙箱仅企业版/SaaS 版可用，社区版默认执行静态审计。",
   "newTask.willQueue": "沙箱资源紧张，任务将进入排队，资源释放后自动开始。",
   "newTask.queueDepth": "当前排队 {n} 个",
   "tasks.queue.badge": "排队中（等待沙箱）",

@@ -14,8 +14,9 @@ import { isTaskTimedOut } from "../../task-timeout.js";
 import { Icon } from "../../../../shared/components/Icon.js";
 import { Splitter, useResizableWidth } from "../../../../shared/components/Splitter.js";
 import { ReviewStatusBadge, ReviewStatusSelect, ReviewHistoryTimeline, ReviewNoteModal, REVIEW_STATUS_META } from "../../components/FindingReviewControls.js";
-import { FindingPocPanel, FindingExpPanel, resolvePocTabPill, resolveExpTabPill } from "../../components/FindingDynamicCards.js";
+import { FindingPocPanel, FindingExpPanel, resolvePocTabPill, resolveExpTabPill, type TabStatusPill } from "../../components/FindingDynamicCards.js";
 import { FindingDetailV3 } from "../../components/FindingDetailV3.js";
+import { useEdition } from "../../../../shared/hooks/useEdition.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Severity helpers                                                          */
@@ -38,6 +39,9 @@ function normalizePath(raw: string): string {
 export function FindingsTab() {
   const { task } = useOutletContext<{ task: Task }>();
   const dynamicEnabled = task.source_meta?.dynamic_enabled === true;
+  // Community removal (③): poc/exp surfaces are enterprise/saas-only — the
+  // tabs (and their badges) don't render at all on community.
+  const { hasDynamicVerification } = useEdition();
   const timedOut = isTaskTimedOut(task);
   const [, forceUpdate] = useState(0);
   useEffect(() => i18n.onChange(() => forceUpdate((n) => n + 1)), []);
@@ -444,16 +448,18 @@ export function FindingsTab() {
           >
             {([
               { id: "detail" as const, label: i18n.t("findings.tab.detail"), pill: null },
-              {
-                id: "poc" as const,
-                label: i18n.t("findings.tab.poc"),
-                pill: selectedFinding ? resolvePocTabPill(selectedFinding, dynamicEnabled) : null,
-              },
-              {
-                id: "exp" as const,
-                label: i18n.t("findings.tab.exp"),
-                pill: selectedFinding ? resolveExpTabPill(selectedFinding, dynamicEnabled) : null,
-              },
+              ...(hasDynamicVerification ? ([
+                {
+                  id: "poc" as const,
+                  label: i18n.t("findings.tab.poc"),
+                  pill: selectedFinding ? resolvePocTabPill(selectedFinding, dynamicEnabled) : null,
+                },
+                {
+                  id: "exp" as const,
+                  label: i18n.t("findings.tab.exp"),
+                  pill: selectedFinding ? resolveExpTabPill(selectedFinding, dynamicEnabled) : null,
+                },
+              ] as { id: "poc" | "exp"; label: string; pill: TabStatusPill | null }[]) : []),
             ]).map((tab) => {
               const active = rightView === tab.id;
               return (

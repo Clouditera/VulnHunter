@@ -15,6 +15,10 @@ export function editionFlags(edition: Edition) {
     isCommunity: edition === "community",
     // HALL-6: 企业私有化部署不展示 SaaS 获客营销首页；社区版本期保持现状。
     hasMarketingHome: edition !== "enterprise",
+    // Community removal (task-abd37c1f ③): dynamic verification (sandbox)
+    // is enterprise/saas-only. Community: creation toggle disabled with a
+    // hint, poc/exp badges hidden entirely.
+    hasDynamicVerification: edition !== "community",
   } as const;
 }
 
