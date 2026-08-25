@@ -51,6 +51,6 @@ export function makeTaskBearerAuth(allowedStates: ReadonlySet<TaskState>) {
 export const taskBearerAuth = makeTaskBearerAuth(new Set<TaskState>(["preparing"]));
 
 /** Retrieve the task resolved by the middleware (undefined if not run). */
-export function getInternalTask(c: Context): DbTask | undefined {
+export function getInternalTask(c: Context<any, any, any>): DbTask | undefined {
   return c.get(TASK_BEARER_KEY) as DbTask | undefined;
 }
