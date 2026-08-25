@@ -13,7 +13,6 @@ import { initVault, checkCredentialHealth } from "./features/settings/index.js";
 import { initDocker, TaskScheduler, reconcileWorkers } from "./features/workers/index.js";
 import { initWorkerInstanceId } from "./features/workers/instance-id.js";
 import { createApp, startServer, type ServiceRole } from "./server.js";
-import { getDynamicProvider } from "./features/dynamic/provider.js";
 import { initInstallation } from "./features/system/index.js";
 import { provisionSystemAdmin } from "./features/auth/system-admin.js";
 
@@ -82,14 +81,10 @@ async function main(): Promise<void> {
       logger.warn({ err }, "Enterprise module not found — running without enterprise features");
     }
   }
-  // Dynamic-verification routes (business role only): mount AFTER
-  // initEnterprise — that is where the real provider gets registered.
-  // Mounting inside createApp raced the registration and enterprise/saas
-  // would never get /api/sandbox (review r1 boot-order bug).
-  if (role === "business" && getDynamicProvider().isConfigured()) {
-    const { mountDynamicRoutes } = await import("./features/dynamic/routes.js");
-    await mountDynamicRoutes(app);
-  }
+  // Dynamic-verification routes: the enterprise package mounts them inside
+  // initEnterprise (it owns the migrated modules) while registering the
+  // provider. Core never mounts sandbox routes itself — community stays 404,
+  // and there is exactly one mount site (no double-mount).
 
   if (config.edition === "saas") {
     try {
