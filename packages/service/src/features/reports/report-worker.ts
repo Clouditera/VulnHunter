@@ -23,11 +23,13 @@ import { getMinio } from "../../infra/minio/client.js";
 import { notify } from "../notifications/index.js";
 import { logger } from "../../infra/logger.js";
 import { getTaskById, type DbTask } from "../tasks/storage.js";
+import { mergeTaskMetadata } from "../tasks/storage.js";
 import { countFindingsBySeverity, countFindingsByItemType } from "../findings/storage.js";
 import { getDb } from "../../infra/db/client.js";
 import type { ServiceConfig } from "../../infra/config.js";
 import { resolveArchiveIdentity } from "../source-archives/detect.js";
 import { extractSourceArchive, prepareSourceArchiveDestination } from "../source-archives/extract.js";
+import type { SourceArchiveWarning } from "../source-archives/errors.js";
 import { buildSourceArchivePolicy, getSourceArchivePolicy, type SourceArchivePolicy } from "../source-archives/policy.js";
 
 interface MaterializedReportContext {
@@ -121,9 +123,9 @@ async function listMinioKeys(bucket: string, prefix: string): Promise<string[]> 
   });
 }
 
-export async function extractArchiveToSource(archivePath: string, filename: string, sourceDir: string, policy: SourceArchivePolicy = buildSourceArchivePolicy({})): Promise<void> {
+export async function extractArchiveToSource(archivePath: string, filename: string, sourceDir: string, policy: SourceArchivePolicy = buildSourceArchivePolicy({})): Promise<{ warnings: SourceArchiveWarning[] }> {
   prepareSourceArchiveDestination(sourceDir);
-  await extractSourceArchive(archivePath, filename, sourceDir, policy);
+  return extractSourceArchive(archivePath, filename, sourceDir, policy);
 }
 async function materializeSourceArchive(params: {
   task: DbTask;
@@ -139,7 +141,14 @@ async function materializeSourceArchive(params: {
 
   try {
     await getMinio().fGetObject(config.minio.bucket, minioKey, archivePath);
-    await extractArchiveToSource(archivePath, filename, sourceDir, await getSourceArchivePolicy());
+    const { warnings } = await extractArchiveToSource(archivePath, filename, sourceDir, await getSourceArchivePolicy());
+    // HALL-19: keep dropped-link warnings visible on the task record + logs.
+    if (warnings.length > 0) {
+      logger.warn({ taskId: task.id, warnings }, "Source archive symlinks dropped during report extraction");
+      await mergeTaskMetadata(task.id, { source_archive_warnings: warnings }).catch((err) =>
+        logger.warn({ err, taskId: task.id }, "Failed to persist source archive warnings"),
+      );
+    }
     return { available: true, filename, minioKey, path: "/workspace/source" };
   } catch (err) {
     logger.warn({ err, taskId: task.id, minioKey }, "Failed to materialize source archive for report context");
