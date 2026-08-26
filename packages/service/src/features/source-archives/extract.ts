@@ -5,15 +5,30 @@ import yauzl from "yauzl";
 import * as tar from "tar";
 import { detectSourceArchive, type SourceArchiveFormat } from "./detect.js";
 import { decodeArchiveBytes, decodeTarEntryPath, decodeZipEntryName } from "./charset.js";
-import { SourceArchiveError } from "./errors.js";
+import { SourceArchiveError, type SourceArchiveWarning, type SourceArchiveWarningReason } from "./errors.js";
 import { SOURCE_ARCHIVE_MAX_FILES, maxExtractedBytes, type SourceArchivePolicy } from "./policy.js";
 
 interface InspectState { entries: number; regularFiles: number; bytes: number }
 type EntryKind = "file" | "directory" | "symlink";
-interface ManifestEntry { path: string; kind: EntryKind; size: number; linkTarget?: string; resolvedTarget?: string }
-interface ArchiveManifest { entries: ManifestEntry[]; byPath: Map<string, ManifestEntry> }
+interface ManifestEntry { path: string; kind: EntryKind; size: number; linkTarget?: string; resolvedTarget?: string; dropped?: boolean }
+interface ArchiveManifest { entries: ManifestEntry[]; byPath: Map<string, ManifestEntry>; warnings: SourceArchiveWarning[] }
 const MAX_LINK_BYTES = 4096;
 const MAX_LINK_DEPTH = 40;
+// Drop reasons are plain strings too — discriminate them from resolved paths
+// by membership, since typeof cannot tell "escapes_root" from a real path.
+const LINK_DROP_REASONS: ReadonlySet<string> = new Set([
+  "absolute_target",
+  "escapes_root",
+  "dangling",
+  "cycle",
+  "too_deep",
+  "target_too_long",
+  "target_not_utf8",
+]);
+
+function isDropReason(value: string | SourceArchiveWarningReason): value is SourceArchiveWarningReason {
+  return LINK_DROP_REASONS.has(value);
+}
 
 function archiveError(code: "ERR_SOURCE_ARCHIVE_UNSAFE_PATH" | "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" | "ERR_SOURCE_ARCHIVE_CORRUPT", message: string): SourceArchiveError {
   return new SourceArchiveError(code, message);
@@ -46,16 +61,27 @@ function bumpState(state: InspectState, bytes: number, regular: boolean, policy:
   if (state.bytes > maxExtractedBytes(policy)) throw new SourceArchiveError("ERR_SOURCE_ARCHIVE_EXTRACTED_TOO_LARGE", "Archive extracted content exceeds the safety limit");
 }
 
-function resolveLinkTarget(path: string, target: string): string {
+function resolveLinkTarget(path: string, target: string): string | SourceArchiveWarningReason {
   if (!target || target.length > MAX_LINK_BYTES || target.includes("\\") || target.includes("\0") || target.startsWith("/") || target.startsWith("//") || /^[A-Za-z]:/.test(target)) {
-    throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", zhUnsafePath(path));
+    if (!target) return "dangling";
+    if (target.length > MAX_LINK_BYTES) return "target_too_long";
+    if (target.includes("\\") || target.includes("\0")) return "escapes_root";
+    return "absolute_target";
   }
   const resolved = posix.normalize(posix.join(posix.dirname(path), target));
-  if (!resolved || resolved === "." || resolved === ".." || resolved.startsWith("../") || resolved.startsWith("/")) throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", zhUnsafePath(path));
+  if (!resolved || resolved === "." || resolved === ".." || resolved.startsWith("../") || resolved.startsWith("/")) return "escapes_root";
   return resolved;
 }
 
-function validateManifest(entries: ManifestEntry[]): ArchiveManifest {
+/** Drop-mode variant: never throws for a bad link — mark dropped + warn (HALL-19). */
+function dropLink(entry: ManifestEntry, reason: SourceArchiveWarningReason, warnings: SourceArchiveWarning[]): void {
+  entry.dropped = true;
+  warnings.push({ code: "WARN_SOURCE_ARCHIVE_SYMLINK_DROPPED", path: entry.path, link_target: entry.linkTarget ?? "", reason });
+}
+
+function validateManifest(entries: ManifestEntry[], policy: SourceArchivePolicy): ArchiveManifest {
+  const warnings: SourceArchiveWarning[] = [];
+  const drop = policy.symlink_policy !== "reject";
   const byPath = new Map<string, ManifestEntry>();
   for (const entry of entries) {
     if (byPath.has(entry.path)) throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive contains a duplicate path: ${entry.path}`);
@@ -70,26 +96,48 @@ function validateManifest(entries: ManifestEntry[]): ArchiveManifest {
     let parent = posix.dirname(entry.path);
     while (parent !== ".") {
       const ancestor = byPath.get(parent);
-      if (ancestor && ancestor.kind !== "directory") throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive entry has a non-directory parent: ${entry.path}`);
+      // Drop mode: a dropped symlink ancestor is treated as absent — files
+      // below it materialize through real (implicit) directories instead.
+      const blocks = ancestor && ancestor.kind !== "directory" && !(ancestor.kind === "symlink" && ancestor.dropped && drop);
+      if (blocks) throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive entry has a non-directory parent: ${entry.path}`);
       parent = posix.dirname(parent);
     }
-    if (entry.kind === "symlink") entry.resolvedTarget = resolveLinkTarget(entry.path, entry.linkTarget ?? "");
+    if (entry.kind === "symlink") {
+      const resolved = resolveLinkTarget(entry.path, entry.linkTarget ?? "");
+      // NOTE: a drop reason is also a plain string, so discriminate by the
+      // known reason set — typeof alone cannot tell reason from path.
+      if (isDropReason(resolved)) {
+        if (drop) dropLink(entry, resolved, warnings);
+        else throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", zhUnsafePath(entry.path));
+      } else entry.resolvedTarget = resolved;
+    }
   }
   for (const entry of entries.filter((item) => item.kind === "symlink")) {
+    if (entry.dropped) continue;
     let target = entry.resolvedTarget!;
     const seen = new Set<string>([entry.path]);
     for (let depth = 0; depth <= MAX_LINK_DEPTH; depth += 1) {
       if (implicitDirs.has(target) && !byPath.has(target)) break;
       const targetEntry = byPath.get(target);
-      if (!targetEntry) throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive contains a dangling symbolic link: ${entry.path}`);
+      if (!targetEntry) {
+        if (drop) { dropLink(entry, "dangling", warnings); break; }
+        throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive contains a dangling symbolic link: ${entry.path}`);
+      }
       if (targetEntry.kind !== "symlink") break;
-      if (seen.has(target)) throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive contains a symbolic link cycle: ${entry.path}`);
+      if (seen.has(target)) {
+        if (drop) { dropLink(entry, "cycle", warnings); break; }
+        throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive contains a symbolic link cycle: ${entry.path}`);
+      }
       seen.add(target);
-      if (depth === MAX_LINK_DEPTH) throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive symbolic link chain is too deep: ${entry.path}`);
+      if (depth === MAX_LINK_DEPTH) {
+        if (drop) { dropLink(entry, "too_deep", warnings); break; }
+        throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive symbolic link chain is too deep: ${entry.path}`);
+      }
+      if (targetEntry.dropped) { if (drop) dropLink(entry, "dangling", warnings); break; }
       target = targetEntry.resolvedTarget!;
     }
   }
-  return { entries, byPath };
+  return { entries, byPath, warnings };
 }
 
 function zipEntryMode(entry: yauzl.Entry): number { return (entry.externalFileAttributes >>> 16) & 0o170000; }
@@ -104,7 +152,7 @@ function readZipEntry(zipfile: yauzl.ZipFile, entry: yauzl.Entry): Promise<Buffe
 }
 
 async function buildZipManifest(archivePath: string, policy: SourceArchivePolicy): Promise<ArchiveManifest> {
-  const state: InspectState = { entries: 0, regularFiles: 0, bytes: 0 }; const entries: ManifestEntry[] = [];
+  const state: InspectState = { entries: 0, regularFiles: 0, bytes: 0 }; const entries: ManifestEntry[] = []; const pendingWarnings: SourceArchiveWarning[] = [];
   await new Promise<void>((resolve, reject) => yauzl.open(archivePath, { lazyEntries: true, decodeStrings: false }, (err, zipfile) => {
     if (err || !zipfile) return reject(archiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Cannot open ZIP archive"));
     let stopped = false; const stop = (error: unknown) => { if (!stopped) { stopped = true; zipfile.close(); reject(error); } };
@@ -125,7 +173,15 @@ async function buildZipManifest(archivePath: string, policy: SourceArchivePolicy
         else if (kind === "file") { bumpState(state, entry.uncompressedSize ?? 0, true, policy); entries.push({ path, kind, size: entry.uncompressedSize ?? 0 }); }
         else {
           bumpState(state, entry.uncompressedSize ?? 0, false, policy); const raw = await readZipEntry(zipfile, entry); let target: string;
-          try { target = decodeArchiveBytes(raw, "symlink target"); } catch { throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive symbolic link target is not UTF-8/GBK: ${nameStr}`); }
+          try { target = decodeArchiveBytes(raw, "symlink target"); } catch {
+            if (policy.symlink_policy !== "reject") {
+              // Non-UTF-8/GBK link target: drop + warn, keep the archive flowing (HALL-19).
+              entries.push({ path, kind, size: raw.length, linkTarget: "", dropped: true });
+              pendingWarnings.push({ code: "WARN_SOURCE_ARCHIVE_SYMLINK_DROPPED", path, link_target: "", reason: "target_not_utf8" });
+            } else throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive symbolic link target is not UTF-8/GBK: ${nameStr}`);
+            if (!stopped) zipfile.readEntry();
+            return;
+          }
           entries.push({ path, kind, size: raw.length, linkTarget: target });
         }
         if (!stopped) zipfile.readEntry();
@@ -136,7 +192,9 @@ async function buildZipManifest(archivePath: string, policy: SourceArchivePolicy
     zipfile.readEntry();
   }));
   if (state.regularFiles === 0) throw archiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Archive contains no regular files");
-  return validateManifest(entries);
+  const manifest = validateManifest(entries, policy);
+  manifest.warnings.unshift(...pendingWarnings);
+  return manifest;
 }
 
 async function buildTarManifest(archivePath: string, policy: SourceArchivePolicy): Promise<ArchiveManifest> {
@@ -160,7 +218,7 @@ async function buildTarManifest(archivePath: string, policy: SourceArchivePolicy
   } catch (error) { if (firstError) throw firstError; throw error instanceof SourceArchiveError ? error : archiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Cannot read TAR archive"); }
   if (firstError) throw firstError;
   if (state.regularFiles === 0) throw archiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Archive contains no regular files");
-  return validateManifest(entries);
+  return validateManifest(entries, policy);
 }
 
 async function buildManifest(archivePath: string, filename: string, policy: SourceArchivePolicy): Promise<{ format: SourceArchiveFormat; manifest: ArchiveManifest }> {
@@ -168,7 +226,10 @@ async function buildManifest(archivePath: string, filename: string, policy: Sour
   return { format: detected.format, manifest: detected.format === "zip" ? await buildZipManifest(archivePath, policy) : await buildTarManifest(archivePath, policy) };
 }
 
-export async function inspectSourceArchive(archivePath: string, filename: string, policy: SourceArchivePolicy): Promise<void> { await buildManifest(archivePath, filename, policy); }
+export async function inspectSourceArchive(archivePath: string, filename: string, policy: SourceArchivePolicy): Promise<{ warnings: SourceArchiveWarning[] }> {
+  const { manifest } = await buildManifest(archivePath, filename, policy);
+  return { warnings: manifest.warnings };
+}
 
 async function extractZip(archivePath: string, destDir: string, manifest: ArchiveManifest): Promise<void> {
   await new Promise<void>((resolve, reject) => yauzl.open(archivePath, { lazyEntries: true, decodeStrings: false }, (err, zipfile) => {
@@ -205,7 +266,8 @@ async function extractTar(archivePath: string, destDir: string, manifest: Archiv
 }
 
 async function createLinks(destDir: string, manifest: ArchiveManifest): Promise<void> {
-  for (const item of manifest.entries.filter((entry) => entry.kind === "symlink")) {
+  // Dropped links (HALL-19 drop mode) are never materialized.
+  for (const item of manifest.entries.filter((entry) => entry.kind === "symlink" && !entry.dropped)) {
     const target = join(destDir, item.path); await mkdir(dirname(target), { recursive: true, mode: 0o755 }); await symlink(item.linkTarget!, target);
   }
 }
@@ -215,7 +277,7 @@ export function prepareSourceArchiveDestination(destDir: string): void {
   rmSync(destDir, { recursive: true, force: true });
 }
 
-export async function extractSourceArchive(archivePath: string, filename: string, destDir: string, policy: SourceArchivePolicy): Promise<void> {
+export async function extractSourceArchive(archivePath: string, filename: string, destDir: string, policy: SourceArchivePolicy): Promise<{ warnings: SourceArchiveWarning[] }> {
   const parent = dirname(destDir); await mkdir(parent, { recursive: true });
   if (existsSync(destDir)) throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", "Extraction destination already exists");
   const tempDir = await mkdtemp(join(parent, ".source-extract-"));
@@ -223,6 +285,7 @@ export async function extractSourceArchive(archivePath: string, filename: string
     const { format, manifest } = await buildManifest(archivePath, filename, policy);
     if (format === "zip") await extractZip(archivePath, tempDir, manifest); else await extractTar(archivePath, tempDir, manifest);
     await rename(tempDir, destDir);
+    return { warnings: manifest.warnings };
   } catch (error) { rmSync(tempDir, { recursive: true, force: true }); throw error; }
 }
 
