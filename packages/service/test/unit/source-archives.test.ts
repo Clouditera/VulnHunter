@@ -10,7 +10,7 @@ import { SourceArchiveError } from "../../src/features/source-archives/errors.js
 import type { SourceArchiveWarning } from "../../src/features/source-archives/errors.js";
 
 const policy = buildSourceArchivePolicy({ source_archive_upload_max_mb: 500 });
-const rejectPolicy = buildSourceArchivePolicy({ source_archive_upload_max_mb: 500, symlink_policy: "reject" });
+const rejectPolicy = buildSourceArchivePolicy({ source_archive_upload_max_mb: 500, source_archive_symlink_policy: "reject" });
 
 function makeArchiveWithLink(root: string, target: string, linkName = "link"): { archive: string; input: string } {
   const input = join(root, "input");
@@ -198,12 +198,12 @@ describe("source archive extraction", () => {
     ["absolute", "/etc/passwd"],
     ["escape", "../../outside"],
     ["dangling", "missing"],
-  ])("rejects %s symlink targets atomically", async (_kind, target) => {
+  ])("rejects %s symlink targets atomically (legacy reject policy)", async (_kind, target) => {
     const root = mkdtempSync(join(tmpdir(), "source-archive-bad-link-"));
     try {
       const input = join(root, "input"); const out = join(root, "out"); mkdirSync(input); writeFileSync(join(input, "file"), "ok"); symlinkSync(target, join(input, "link"));
       const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
-      await expect(extractSourceArchive(archive, "source.tar", out, policy)).rejects.toBeInstanceOf(SourceArchiveError);
+      await expect(extractSourceArchive(archive, "source.tar", out, rejectPolicy)).rejects.toBeInstanceOf(SourceArchiveError);
       expect(existsSync(out)).toBe(false);
       expect(readdirSync(root).filter((name) => name.startsWith(".source-extract-"))).toEqual([]);
     } finally { rmSync(root, { recursive: true, force: true }); }
@@ -213,42 +213,42 @@ describe("source archive extraction", () => {
     ["absolute", "/etc/passwd"],
     ["escape", "../../outside"],
     ["dangling", "missing"],
-  ])("rejects %s ZIP symlink targets", async (_kind, target) => {
+  ])("rejects %s ZIP symlink targets (legacy reject policy)", async (_kind, target) => {
     const root = mkdtempSync(join(tmpdir(), "source-archive-bad-zip-link-"));
     try {
       const input = join(root, "input"); mkdirSync(input); writeFileSync(join(input, "file"), "ok"); symlinkSync(target, join(input, "link"));
       const archive = join(root, "source.zip"); execSync(`zip -qry -y ${JSON.stringify(archive)} .`, { cwd: input });
-      await expect(inspectSourceArchive(archive, "source.zip", policy)).rejects.toBeInstanceOf(SourceArchiveError);
+      await expect(inspectSourceArchive(archive, "source.zip", rejectPolicy)).rejects.toBeInstanceOf(SourceArchiveError);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
-  it("rejects symlink cycles", async () => {
+  it("rejects symlink cycles (legacy reject policy)", async () => {
     const root = mkdtempSync(join(tmpdir(), "source-archive-cycle-"));
     try {
       const input = join(root, "input"); mkdirSync(input); writeFileSync(join(input, "regular"), "ok"); symlinkSync("b", join(input, "a")); symlinkSync("a", join(input, "b"));
       const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
-      await expect(inspectSourceArchive(archive, "source.tar", policy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" });
+      await expect(inspectSourceArchive(archive, "source.tar", rejectPolicy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" });
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
-  it("rejects over-deep symlink chains", async () => {
+  it("rejects over-deep symlink chains (legacy reject policy)", async () => {
     const root = mkdtempSync(join(tmpdir(), "source-archive-deep-links-"));
     try {
       const input = join(root, "input"); mkdirSync(input); writeFileSync(join(input, "target"), "ok");
       for (let index = 0; index < 42; index += 1) symlinkSync(index === 41 ? "target" : `link-${index + 1}`, join(input, `link-${index}`));
       const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
-      await expect(inspectSourceArchive(archive, "source.tar", policy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" });
+      await expect(inspectSourceArchive(archive, "source.tar", rejectPolicy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" });
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
-  it("rejects an entry below a symlink parent without touching outside", async () => {
+  it("rejects an entry below a symlink parent without touching outside (legacy reject policy)", async () => {
     const root = mkdtempSync(join(tmpdir(), "source-archive-parent-link-"));
     try {
       const input = join(root, "input"); const outside = join(root, "outside"); const out = join(root, "out"); mkdirSync(input); mkdirSync(outside);
       mkdirSync(join(input, "target")); writeFileSync(join(input, "target", "base"), "ok"); writeFileSync(join(input, "payload"), "attack"); writeFileSync(join(outside, "sentinel"), "keep"); symlinkSync("target", join(input, "dir"));
       const archive = join(root, "source.tar");
       execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} dir target && tar -rf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} --transform='s#^payload$#dir/pwn#' payload`);
-      await expect(extractSourceArchive(archive, "source.tar", out, policy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" });
+      await expect(extractSourceArchive(archive, "source.tar", out, rejectPolicy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" });
       expect(readFileSync(join(outside, "sentinel"), "utf8")).toBe("keep"); expect(existsSync(join(outside, "pwn"))).toBe(false); expect(existsSync(out)).toBe(false);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
