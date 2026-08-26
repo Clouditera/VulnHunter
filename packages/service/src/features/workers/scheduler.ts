@@ -1042,7 +1042,7 @@ export class TaskScheduler {
     // zero-retry call turned the blip into a permanent task failure.
     await downloadObjectWithRetry(minio, this.config.minio.bucket, minioKey, archivePath);
     await this.assertSchedulerOwnership(task.id, token);
-    const { warnings: sourceArchiveWarnings } = await extractSourceArchive(archivePath, archive.filename, stagedSourceDir, await getSourceArchivePolicy());
+    const { warnings: sourceArchiveWarnings = [] } = (await extractSourceArchive(archivePath, archive.filename, stagedSourceDir, await getSourceArchivePolicy())) ?? {};
     // HALL-19: dropped-symlink warnings surface in task metadata + logs so
     // audits know what the extracted tree is missing.
     if (sourceArchiveWarnings.length > 0) {
