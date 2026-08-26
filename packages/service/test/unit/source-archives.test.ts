@@ -458,10 +458,133 @@ describe("warnings surfacing (HALL-19)", () => {
     expect(routes).toContain("return c.json({ task, warnings: sourceArchiveWarnings }, 201)");
 
     const scheduler = readFileSync(join(process.cwd(), "src/features/workers/scheduler.ts"), "utf8");
-    expect(scheduler).toContain("const { warnings: sourceArchiveWarnings = [] } = (await extractSourceArchive(");
+    expect(scheduler).toContain("const { warnings: sourceArchiveWarnings = [] } = await extractSourceArchive(");
     expect(scheduler).toContain("mergeTaskMetadata(task.id, { source_archive_warnings: sourceArchiveWarnings })");
 
     const reportWorker = readFileSync(join(process.cwd(), "src/features/reports/report-worker.ts"), "utf8");
     expect(reportWorker).toContain("mergeTaskMetadata(task.id, { source_archive_warnings: warnings })");
+  });
+});
+
+describe("review fixes (HALL-19 PR #47 review)", () => {
+  /** Minimal store-only zip builder: raw name/data bytes + external attr (symlink support). */
+  function writeRawZipWithAttr(outPath: string, entries: Array<{ name: string; data: Buffer; externalAttr?: number }>): void {
+    const crcTable = (() => {
+      const table = new Uint32Array(256);
+      for (let n = 0; n < 256; n += 1) {
+        let c = n;
+        for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        table[n] = c >>> 0;
+      }
+      return table;
+    })();
+    const crc32 = (buf: Buffer): number => {
+      let c = 0xffffffff;
+      for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
+      return (c ^ 0xffffffff) >>> 0;
+    };
+    const parts: Buffer[] = [];
+    const central: Buffer[] = [];
+    let offset = 0;
+    for (const { name, data, externalAttr } of entries) {
+      const nameBuf = Buffer.from(name, "utf8");
+      const crc = crc32(data);
+      const local = Buffer.alloc(30);
+      local.writeUInt32LE(0x04034b50, 0);
+      local.writeUInt16LE(20, 4);
+      local.writeUInt16LE(0, 6);
+      local.writeUInt16LE(0, 8); // store
+      local.writeUInt16LE(0, 10);
+      local.writeUInt16LE(0, 12);
+      local.writeUInt32LE(crc, 14);
+      local.writeUInt32LE(data.length, 18);
+      local.writeUInt32LE(data.length, 22);
+      local.writeUInt16LE(nameBuf.length, 26);
+      local.writeUInt16LE(0, 28);
+      parts.push(local, nameBuf, data);
+
+      const cen = Buffer.alloc(46);
+      cen.writeUInt32LE(0x02014b50, 0);
+      cen.writeUInt16LE(20, 4);
+      cen.writeUInt16LE(20, 6);
+      cen.writeUInt16LE(0, 8);
+      cen.writeUInt16LE(0, 10);
+      cen.writeUInt16LE(0, 12);
+      cen.writeUInt16LE(0, 14);
+      cen.writeUInt32LE(crc, 16);
+      cen.writeUInt32LE(data.length, 20);
+      cen.writeUInt32LE(data.length, 24);
+      cen.writeUInt16LE(nameBuf.length, 28);
+      cen.writeUInt16LE(0, 30); // extra len
+      cen.writeUInt16LE(0, 32); // comment len
+      cen.writeUInt16LE(0, 34); // disk number
+      cen.writeUInt16LE(0, 36); // internal attrs
+      cen.writeUInt32LE((externalAttr ?? (0o100644 << 16)) >>> 0, 38); // external attrs (unix mode in high 16)
+      cen.writeUInt32LE(offset, 42);
+      central.push(cen, nameBuf);
+      offset += local.length + nameBuf.length + data.length;
+    }
+    const centralStart = offset;
+    const centralBuf = Buffer.concat(central);
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(0, 4);
+    end.writeUInt16LE(0, 6);
+    end.writeUInt16LE(entries.length, 8);
+    end.writeUInt16LE(entries.length, 10);
+    end.writeUInt32LE(centralBuf.length, 12);
+    end.writeUInt32LE(centralStart, 16);
+    end.writeUInt16LE(0, 20);
+    writeFileSync(outPath, Buffer.concat([...parts, centralBuf, end]));
+  }
+
+  it("drops a too-long zip symlink target with a warning (parity with tar, review #1)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-zip-long-target-"));
+    try {
+      const archive = join(root, "big.zip");
+      writeRawZipWithAttr(archive, [
+        { name: "file", data: Buffer.from("ok") },
+        { name: "biglink", data: Buffer.alloc(5000, 0x78), externalAttr: (0o120000 << 16) | 0o644 },
+      ]);
+      const inspected = await inspectSourceArchive(archive, "big.zip", policy);
+      expect(inspected.warnings).toEqual([
+        expect.objectContaining({ code: "WARN_SOURCE_ARCHIVE_SYMLINK_DROPPED", path: "biglink", reason: "target_too_long" }),
+      ]);
+      const out = join(root, "out");
+      const extracted = await extractSourceArchive(archive, "big.zip", out, policy);
+      expect(extracted.warnings).toHaveLength(1);
+      expect(existsSync(join(out, "file"))).toBe(true);
+      expect(existsSync(join(out, "biglink"))).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("still rejects a too-long zip symlink target under reject policy (review #1 regression guard)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-zip-long-target-reject-"));
+    try {
+      const archive = join(root, "big.zip");
+      writeRawZipWithAttr(archive, [
+        { name: "file", data: Buffer.from("ok") },
+        { name: "biglink", data: Buffer.alloc(5000, 0x78), externalAttr: (0o120000 << 16) | 0o644 },
+      ]);
+      await expect(inspectSourceArchive(archive, "big.zip", rejectPolicy)).rejects.toMatchObject({
+        code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY",
+      });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("emits exactly one warning for an undecodable zip link target (review #2)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-zip-bad-utf8-"));
+    try {
+      const archive = join(root, "bad.zip");
+      writeRawZipWithAttr(archive, [
+        { name: "file", data: Buffer.from("ok") },
+        { name: "badlink", data: Buffer.from([0xff, 0xfe, 0x80]), externalAttr: (0o120000 << 16) | 0o644 },
+      ]);
+      const inspected = await inspectSourceArchive(archive, "bad.zip", policy);
+      // One warning only — the parse loop must not double-drop an already
+      // dropped entry (target_not_utf8 + dangling would be contradictory).
+      expect(inspected.warnings).toHaveLength(1);
+      expect(inspected.warnings[0]).toMatchObject({ code: "WARN_SOURCE_ARCHIVE_SYMLINK_DROPPED" });
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });
