@@ -38,6 +38,15 @@ For a server that already has VulnHunter installed in this directory, do not run
 
 `upgrade.sh` does not contact Docker Hub: it loads `images/*.tar`, checks every image referenced by compose/worker settings exists locally, and starts compose with pull disabled. If any image is missing, it fails before `compose up`.
 
+## nofile ulimits (HALL-18)
+
+Starting with this release, `docker-compose.yml` explicitly declares `ulimits.nofile` (`soft=hard=1048576`) for the four app services (`service`, `admin-api`, `web`, `admin-web`) instead of inheriting docker-daemon defaults (which vary per host; prod evidence: 524288).
+
+- The limit **cannot be changed in place**: it only applies when a container is recreated. The normal upgrade path (`./upgrade.sh`, which runs `docker compose up -d`) is sufficient — a bare `docker compose restart` will NOT apply it.
+- After upgrade, verify inside the container: `docker exec vulnhunter-service sh -c 'grep "open files" /proc/1/limits'` should show `1048576`.
+- Self-managed / production deployment directories that maintain their own compose file (e.g. `vulnhunter-prod-saas-*`) must sync the same `ulimits` block into their compose file.
+- Raising the limit is mitigation only; the fd leak root cause (unbounded incremental re-upload in output sync) is fixed in the service itself. The service also self-monitors fd usage (`FD_USAGE` log lines, warn ≥70% / error ≥85% of the soft limit) for early warning.
+
 ## Defaults
 
 - Web URL: `http://<host>:23000/`

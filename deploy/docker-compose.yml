@@ -1,6 +1,10 @@
 version: "3.9"
 
 services:
+  # HALL-18 B1: nofile ulimits must be explicit — daemon defaults vary per host
+  # (prod: 524288) and were hit by the sync fd leak. Applies to all four app
+  # services (Node service/admin-api + nginx web/admin-web).
+  # NOTE: not hot-reloadable — requires `docker compose up -d` recreation.
   web:
     image: ${WEB_IMAGE:-vulnhunter-web:latest}
     container_name: vulnhunter-web
@@ -14,6 +18,10 @@ services:
     depends_on:
       service:
         condition: service_started
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
 
   service:
     image: ${SERVICE_IMAGE:-vulnhunter-service:latest}
@@ -73,6 +81,10 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
 
   # Admin console API — same image, SERVICE_ROLE=admin; no docker.sock, no public ports
   admin-api:
@@ -111,6 +123,10 @@ services:
         condition: service_healthy
       service:
         condition: service_started
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
 
   # Admin console web — default bind 127.0.0.1:23001 (localhost only)
   admin-web:
@@ -127,6 +143,10 @@ services:
     depends_on:
       admin-api:
         condition: service_started
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
 
   db:
     image: ${POSTGRES_IMAGE:-postgres:16-alpine}
