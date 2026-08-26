@@ -458,7 +458,7 @@ describe("warnings surfacing (HALL-19)", () => {
     expect(routes).toContain("return c.json({ task, warnings: sourceArchiveWarnings }, 201)");
 
     const scheduler = readFileSync(join(process.cwd(), "src/features/workers/scheduler.ts"), "utf8");
-    expect(scheduler).toContain("const { warnings: sourceArchiveWarnings } = await extractSourceArchive(");
+    expect(scheduler).toContain("const { warnings: sourceArchiveWarnings = [] } = (await extractSourceArchive(");
     expect(scheduler).toContain("mergeTaskMetadata(task.id, { source_archive_warnings: sourceArchiveWarnings })");
 
     const reportWorker = readFileSync(join(process.cwd(), "src/features/reports/report-worker.ts"), "utf8");
