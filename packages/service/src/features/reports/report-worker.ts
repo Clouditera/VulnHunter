@@ -141,7 +141,7 @@ async function materializeSourceArchive(params: {
 
   try {
     await getMinio().fGetObject(config.minio.bucket, minioKey, archivePath);
-    const { warnings } = await extractArchiveToSource(archivePath, filename, sourceDir, await getSourceArchivePolicy());
+    const { warnings = [] } = await extractArchiveToSource(archivePath, filename, sourceDir, await getSourceArchivePolicy());
     // HALL-19: keep dropped-link warnings visible on the task record + logs.
     if (warnings.length > 0) {
       logger.warn({ taskId: task.id, warnings }, "Source archive symlinks dropped during report extraction");

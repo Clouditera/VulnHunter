@@ -9,7 +9,7 @@ const m = vi.hoisted(() => {
   return {
     token, task,
     claim: vi.fn(), renew: vi.fn(async () => true), mark: vi.fn(async () => true), fail: vi.fn(async () => false),
-    extract: vi.fn(async () => { await new Promise((r) => setTimeout(r, 80)); }),
+    extract: vi.fn(async () => { await new Promise((r) => setTimeout(r, 80)); return { warnings: [] }; }),
     publish: vi.fn(async () => undefined), spawn: vi.fn(async () => "worker-1"),
     prepare: vi.fn(async () => ({ project_complete: true, sandbox_type: null, reason: "complete" })),
     reconcile: vi.fn(async () => undefined), notify: vi.fn(),

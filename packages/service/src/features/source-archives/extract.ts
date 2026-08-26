@@ -102,15 +102,14 @@ function validateManifest(entries: ManifestEntry[], policy: SourceArchivePolicy)
       if (blocks) throw archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive entry has a non-directory parent: ${entry.path}`);
       parent = posix.dirname(parent);
     }
-    if (entry.kind === "symlink") {
-      const resolved = resolveLinkTarget(entry.path, entry.linkTarget ?? "");
-      // NOTE: a drop reason is also a plain string, so discriminate by the
-      // known reason set — typeof alone cannot tell reason from path.
-      if (isDropReason(resolved)) {
-        if (drop) dropLink(entry, resolved, warnings);
-        else throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", zhUnsafePath(entry.path));
-      } else entry.resolvedTarget = resolved;
-    }
+    if (entry.kind !== "symlink" || entry.dropped) continue;
+    const resolved = resolveLinkTarget(entry.path, entry.linkTarget ?? "");
+    // NOTE: a drop reason is also a plain string, so discriminate by the
+    // known reason set — typeof alone cannot tell reason from path.
+    if (isDropReason(resolved)) {
+      if (drop) dropLink(entry, resolved, warnings);
+      else throw archiveError("ERR_SOURCE_ARCHIVE_UNSAFE_PATH", zhUnsafePath(entry.path));
+    } else entry.resolvedTarget = resolved;
   }
   for (const entry of entries.filter((item) => item.kind === "symlink")) {
     if (entry.dropped) continue;
@@ -141,12 +140,17 @@ function validateManifest(entries: ManifestEntry[], policy: SourceArchivePolicy)
 }
 
 function zipEntryMode(entry: yauzl.Entry): number { return (entry.externalFileAttributes >>> 16) & 0o170000; }
-function readZipEntry(zipfile: yauzl.ZipFile, entry: yauzl.Entry): Promise<Buffer> {
+/**
+ * ZIP entry reader for symlink targets. `maxBytes` rejects oversized targets
+ * (ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY); callers decide whether that error
+ * is fatal (reject policy) or downgraded to a drop + warning (HALL-19).
+ */
+function readZipEntry(zipfile: yauzl.ZipFile, entry: yauzl.Entry, maxBytes = MAX_LINK_BYTES): Promise<Buffer> {
   return new Promise((resolve, reject) => zipfile.openReadStream(entry, (err, stream) => {
     if (err || !stream) return reject(archiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Cannot read ZIP entry"));
     const chunks: Buffer[] = []; let bytes = 0;
-    stream.on("data", (chunk: Buffer) => { bytes += chunk.length; if (bytes <= MAX_LINK_BYTES) chunks.push(chunk); });
-    stream.on("end", () => bytes > MAX_LINK_BYTES ? reject(archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive symbolic link target is too long: ${entry.fileName}`)) : resolve(Buffer.concat(chunks)));
+    stream.on("data", (chunk: Buffer) => { bytes += chunk.length; if (bytes <= maxBytes) chunks.push(chunk); });
+    stream.on("end", () => bytes > maxBytes ? reject(archiveError("ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY", `Archive symbolic link target is too long: ${entry.fileName}`)) : resolve(Buffer.concat(chunks)));
     stream.on("error", () => reject(archiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Cannot read ZIP entry")));
   }));
 }
@@ -172,7 +176,19 @@ async function buildZipManifest(archivePath: string, policy: SourceArchivePolicy
         if (kind === "directory") { bumpState(state, 0, false, policy); entries.push({ path, kind, size: 0 }); }
         else if (kind === "file") { bumpState(state, entry.uncompressedSize ?? 0, true, policy); entries.push({ path, kind, size: entry.uncompressedSize ?? 0 }); }
         else {
-          bumpState(state, entry.uncompressedSize ?? 0, false, policy); const raw = await readZipEntry(zipfile, entry); let target: string;
+          bumpState(state, entry.uncompressedSize ?? 0, false, policy); let raw: Buffer;
+          try { raw = await readZipEntry(zipfile, entry); } catch (error) {
+            // Oversized target: drop + warn in drop mode (tar parity, review #1);
+            // reject policy keeps the legacy fail-fast.
+            if (error instanceof SourceArchiveError && error.code === "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" && policy.symlink_policy !== "reject") {
+              entries.push({ path, kind, size: entry.uncompressedSize ?? 0, linkTarget: "", dropped: true });
+              pendingWarnings.push({ code: "WARN_SOURCE_ARCHIVE_SYMLINK_DROPPED", path, link_target: "", reason: "target_too_long" });
+              if (!stopped) zipfile.readEntry();
+              return;
+            }
+            throw error;
+          }
+          let target: string;
           try { target = decodeArchiveBytes(raw, "symlink target"); } catch {
             if (policy.symlink_policy !== "reject") {
               // Non-UTF-8/GBK link target: drop + warn, keep the archive flowing (HALL-19).
