@@ -233,4 +233,38 @@ describe("syncOutputsToMinio 变更检测（HALL-18 A1/A2）", () => {
     const n = await syncOutputsToMinio(taskId, config, { includeDirs: INCLUDE });
     expect(n).toBe(0);
   });
+
+  it("建议项 4：增量轮重入防护 — 上一轮在途时跳过而非并发双跑", async () => {
+    // 用侵ity 1 慢 put 模拟一轮 MinIO 慢/ pending 大（超过 90s 周期）
+    let releaseSlowPut: (() => void) | null = null;
+    putObject.mockImplementationOnce(
+      (_b: string, _k: string, stream: any) =>
+        new Promise<void>((resolve) => {
+          const chunks: Buffer[] = [];
+          stream.on("data", (c: Buffer) => chunks.push(c));
+          stream.on("end", () => {
+            releaseSlowPut = resolve; // 流读完但 put 挂起，模拟网络慢
+          });
+          stream.on("error", resolve);
+        }),
+    );
+
+    const slow = syncOutputsToMinio(taskId, config, { includeDirs: INCLUDE });
+    await new Promise((r) => setTimeout(r, 10)); // 让慢轮走到挂起点
+    expect(releaseSlowPut).not.toBeNull();
+
+    // 重入的增量轮：应立即返回 0，不并发第二份 walk/put
+    m.putObjectCalls = 0;
+    const skipped = await syncOutputsToMinio(taskId, config, { includeDirs: INCLUDE });
+    expect(skipped).toBe(0);
+    expect(m.putObjectCalls).toBe(0);
+
+    releaseSlowPut!();
+    const n = await slow;
+    expect(n).toBe(1);
+
+    // 上一轮结束后：下一轮正常重入（此时幂等零上传）
+    m.putObjectCalls = 0;
+    expect(await syncOutputsToMinio(taskId, config, { includeDirs: INCLUDE })).toBe(0);
+  });
 });

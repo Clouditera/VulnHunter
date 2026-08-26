@@ -18,7 +18,15 @@
  */
 
 import { join, relative, dirname } from "node:path";
-import { readdirSync, existsSync, readFileSync, writeFileSync, renameSync, createReadStream, statSync } from "node:fs";
+import {
+  readdirSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  createReadStream,
+  statSync,
+} from "node:fs";
 import { lookup as mimeLookup } from "mime-types";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
@@ -31,6 +39,15 @@ const CONCURRENCY = 8;
 
 /** 同步清单文件名（位于 hostWorkDir，服务自有路径，worker 不写这里）。 */
 const MANIFEST_NAME = ".out-sync-manifest.json";
+
+/**
+ * 建议项 4（PR #48 评审）：同任务增量轮重入防护。若某轮 pending 大或
+ * MinIO 慢（超过 90s tick），scheduler 可能并发触发两轮——双倍流并发
+ * + manifest 互覆（最坏多传，无正确性问题）。in-flight 轮直接跳过
+ * （返回 0），90s 后下一 tick 自然补上；终端全量轮不参与防护（die
+ * 事件路径与 tick 不会交叉，且必须完整执行）。
+ */
+const incrementalInFlight = new Set<string>();
 
 interface ManifestEntry {
   size: number;
@@ -112,7 +129,11 @@ function walkDir(dir: string, ctx: WalkCtx): string[] {
 }
 
 /** Map with bounded concurrency over an async worker (fd 峰值受控). */
-async function mapLimited<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+async function mapLimited<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
   let idx = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
     for (;;) {
@@ -164,63 +185,77 @@ export async function syncOutputsToMinio(
   const prefix = `scan-outputs/${taskId}/`;
   const incremental = Boolean(opts?.includeDirs);
 
-  // Incremental syncs (running tasks) pass includeDirs to sync only the
-  // lightweight business artifacts (findings/risks/knowledge), skipping the
-  // potentially GB-scale `.youngflow/sessions/` logs. The terminal sync passes
-  // nothing → full tree.
-  const roots = (opts?.includeDirs && opts.includeDirs.length > 0)
-    ? opts.includeDirs.map((d) => join(outDir, d)).filter((d) => existsSync(d))
-    : [outDir];
-
-  const files = roots.flatMap((root) => walkDir(root, { taskId, baseDir: outDir }));
-
-  // HALL-18 A1: 增量轮做变更检测 —— 只上传 manifest 中新增/变更的文件。
-  // 终端全量轮不做跳过（out/ 终态重传），但重写 manifest 为终态。
-  const prev: Manifest | null = incremental ? (readManifest(hostWorkDir) ?? {}) : {};
-  const next: Manifest = {};
-
-  const pending: string[] = [];
-  for (const filePath of files) {
-    const relPath = relative(outDir, filePath);
-    let st;
-    try {
-      st = statSync(filePath);
-    } catch {
-      continue; // vanished mid-walk
-    }
-    const entry: ManifestEntry = { size: st.size, mtimeMs: st.mtimeMs };
-    const old = prev[relPath];
-    if (!old || old.size !== entry.size || old.mtimeMs !== entry.mtimeMs) {
-      pending.push(filePath);
-    }
-    next[relPath] = entry;
+  // 重入防护：增量轮上一轮在途 → 跳过本轮（避免双并发 + manifest 互覆）。
+  if (incremental && incrementalInFlight.has(taskId)) {
+    logger.debug({ taskId }, "Incremental sync already in flight; skipping this round");
+    return 0;
   }
+  if (incremental) incrementalInFlight.add(taskId);
+  if (incremental) incrementalInFlight.add(taskId);
 
-  let synced = 0;
-  await mapLimited(pending, CONCURRENCY, async (filePath) => {
-    const relPath = relative(outDir, filePath);
-    const objectName = prefix + relPath;
-    try {
-      await putFileControlled(bucket, objectName, filePath);
-      synced++;
-    } catch (err) {
-      // 上传失败 → 从 next 移除，manifest 不记录，下一轮重试。
-      delete next[relPath];
-      logger.warn({ err, filePath, objectName }, "Failed to sync file to MinIO");
+  try {
+    // Incremental syncs (running tasks) pass includeDirs to sync only the
+    // lightweight business artifacts (findings/risks/knowledge), skipping the
+    // potentially GB-scale `.youngflow/sessions/` logs. The terminal sync passes
+    // nothing → full tree.
+    const roots =
+      opts?.includeDirs && opts.includeDirs.length > 0
+        ? opts.includeDirs.map((d) => join(outDir, d)).filter((d) => existsSync(d))
+        : [outDir];
+
+    const files = roots.flatMap((root) => walkDir(root, { taskId, baseDir: outDir }));
+
+    // HALL-18 A1: 增量轮做变更检测 —— 只上传 manifest 中新增/变更的文件。
+    // 终端全量轮不做跳过（out/ 终态重传），但重写 manifest 为终态。
+    const prev: Manifest | null = incremental ? (readManifest(hostWorkDir) ?? {}) : {};
+    const next: Manifest = {};
+
+    const pending: string[] = [];
+    for (const filePath of files) {
+      const relPath = relative(outDir, filePath);
+      let st;
+      try {
+        st = statSync(filePath);
+      } catch {
+        continue; // vanished mid-walk
+      }
+      const entry: ManifestEntry = { size: st.size, mtimeMs: st.mtimeMs };
+      const old = prev[relPath];
+      if (!old || old.size !== entry.size || old.mtimeMs !== entry.mtimeMs) {
+        pending.push(filePath);
+      }
+      next[relPath] = entry;
     }
-  });
 
-  // 全量轮也落 manifest：记录终态基线，后续增量轮判变有起点。注意：
-  // 增量轮重写 manifest 为 includeDirs 子集（非 includeDirs 键如 .youngflow
-  // 会被丢弃）——无功能影响：增量轮只比对 includeDirs 键，终端轮忽略
-  // prev 全量重传。上传失败的键已从 next 移除，下轮会重试。
-  writeManifest(hostWorkDir, next);
+    let synced = 0;
+    await mapLimited(pending, CONCURRENCY, async (filePath) => {
+      const relPath = relative(outDir, filePath);
+      const objectName = prefix + relPath;
+      try {
+        await putFileControlled(bucket, objectName, filePath);
+        synced++;
+      } catch (err) {
+        // 上传失败 → 从 next 移除，manifest 不记录，下一轮重试。
+        delete next[relPath];
+        logger.warn({ err, filePath, objectName }, "Failed to sync file to MinIO");
+      }
+    });
 
-  logger.info(
-    { taskId, synced, total: files.length, pending: pending.length, incremental },
-    "Outputs synced to MinIO",
-  );
-  return synced;
+    // 全量轮也落 manifest：记录终态基线，后续增量轮判变有起点。注意：
+    // 增量轮重写 manifest 为 includeDirs 子集（非 includeDirs 键如 .youngflow
+    // 会被丢弃）——无功能影响：增量轮只比对 includeDirs 键，终端轮忽略
+    // prev 全量重传。上传失败的键已从 next 移除，下轮会重试。
+    writeManifest(hostWorkDir, next);
+
+    logger.info(
+      { taskId, synced, total: files.length, pending: pending.length, incremental },
+      "Outputs synced to MinIO",
+    );
+    return synced;
+  } finally {
+    // 无论成功/异常都释放 in-flight 标记，避免一次抛错永久卡死后续轮。
+    if (incremental) incrementalInFlight.delete(taskId);
+  }
 }
 
 /**
@@ -255,7 +290,10 @@ export async function downloadOutputsFromMinio(
   // The worker (root) owns these files; the service (uid 1000) cannot overwrite
   // them, and the worker --continue can use them directly.
   if (existsSync(outDir) && readdirSync(outDir).length > 0) {
-    logger.info({ taskId }, "Historical outputs already present on disk; skipping MinIO download for continue");
+    logger.info(
+      { taskId },
+      "Historical outputs already present on disk; skipping MinIO download for continue",
+    );
     return 0;
   }
 
@@ -268,7 +306,9 @@ export async function downloadOutputsFromMinio(
   const keys = await new Promise<string[]>((resolve, reject) => {
     const acc: string[] = [];
     const stream = minio.listObjects(bucket, prefix, true);
-    stream.on("data", (obj) => { if (obj.name) acc.push(obj.name); });
+    stream.on("data", (obj) => {
+      if (obj.name) acc.push(obj.name);
+    });
     stream.on("end", () => resolve(acc));
     stream.on("error", reject);
   });
@@ -289,6 +329,9 @@ export async function downloadOutputsFromMinio(
     }
   }
 
-  logger.info({ taskId, downloaded, total: keys.length }, "Historical outputs downloaded for continue");
+  logger.info(
+    { taskId, downloaded, total: keys.length },
+    "Historical outputs downloaded for continue",
+  );
   return downloaded;
 }
