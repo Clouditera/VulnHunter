@@ -7,8 +7,30 @@ import { detectSourceArchive, stripSourceArchiveExtension, SUPPORTED_SOURCE_ARCH
 import { assertSourceArchiveEntryCount, extractSourceArchive, inspectSourceArchive, prepareSourceArchiveDestination } from "../../src/features/source-archives/extract.js";
 import { buildSourceArchivePolicy, SOURCE_ARCHIVE_MAX_FILES } from "../../src/features/source-archives/policy.js";
 import { SourceArchiveError } from "../../src/features/source-archives/errors.js";
+import type { SourceArchiveWarning } from "../../src/features/source-archives/errors.js";
 
 const policy = buildSourceArchivePolicy({ source_archive_upload_max_mb: 500 });
+const rejectPolicy = buildSourceArchivePolicy({ source_archive_upload_max_mb: 500, symlink_policy: "reject" });
+
+function makeArchiveWithLink(root: string, target: string, linkName = "link"): { archive: string; input: string } {
+  const input = join(root, "input");
+  mkdirSync(input);
+  writeFileSync(join(input, "file"), "ok");
+  symlinkSync(target, join(input, linkName));
+  const archive = join(root, "source.tar");
+  execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
+  return { archive, input };
+}
+
+function makeZipArchiveWithLink(root: string, target: string, linkName = "link"): string {
+  const input = join(root, "input");
+  mkdirSync(input);
+  writeFileSync(join(input, "file"), "ok");
+  symlinkSync(target, join(input, linkName));
+  const archive = join(root, "source.zip");
+  execSync(`zip -qry -y ${JSON.stringify(archive)} .`, { cwd: input });
+  return archive;
+}
 
 describe("source archive policy", () => {
   beforeEach(() => {
@@ -255,6 +277,173 @@ describe("source archive extraction", () => {
       const input = join(root, "input"); mkdirSync(input); writeFileSync(join(input, "file"), "ok"); execSync(`ln ${JSON.stringify(join(input, "file"))} ${JSON.stringify(join(input, "hard"))}`); execSync(`mkfifo ${JSON.stringify(join(input, "pipe"))}`);
       const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
       await expect(inspectSourceArchive(archive, "source.tar", policy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSUPPORTED_ENTRY" });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
+describe("symlink policy drop mode (HALL-19)", () => {
+  it("defaults to drop policy and reads the override from config", () => {
+    expect(policy.symlink_policy).toBe("drop");
+    expect(buildSourceArchivePolicy({}).symlink_policy).toBe("drop");
+    expect(buildSourceArchivePolicy({ source_archive_symlink_policy: "reject" }).symlink_policy).toBe("reject");
+    expect(buildSourceArchivePolicy({ source_archive_symlink_policy: "garbage" }).symlink_policy).toBe("drop");
+    expect(rejectPolicy.symlink_policy).toBe("reject");
+  });
+
+  it.each([
+    ["absolute_target", "/etc/passwd"],
+    ["escapes_root", "../../outside"],
+    ["dangling", "missing"],
+  ])("drops %s symlinks with a structured warning (tar)", async (reason, target) => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-drop-"));
+    try {
+      const { archive } = makeArchiveWithLink(root, target);
+      const inspected = await inspectSourceArchive(archive, "source.tar", policy);
+      expect(inspected.warnings).toEqual([
+        expect.objectContaining({ code: "WARN_SOURCE_ARCHIVE_SYMLINK_DROPPED", path: "link", reason }),
+      ]);
+      const out = join(root, "out");
+      const extracted = await extractSourceArchive(archive, "source.tar", out, policy);
+      expect(extracted.warnings).toHaveLength(1);
+      expect(existsSync(join(out, "file"))).toBe(true);
+      expect(existsSync(join(out, "link"))).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it.each([
+    ["absolute_target", "/etc/passwd"],
+    ["escapes_root", "../../outside"],
+    ["dangling", "missing"],
+  ])("drops %s symlinks with a structured warning (zip)", async (reason, target) => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-drop-zip-"));
+    try {
+      const archive = makeZipArchiveWithLink(root, target);
+      const inspected = await inspectSourceArchive(archive, "source.zip", policy);
+      expect(inspected.warnings).toEqual([
+        expect.objectContaining({ code: "WARN_SOURCE_ARCHIVE_SYMLINK_DROPPED", path: "link", reason }),
+      ]);
+      const out = join(root, "out");
+      await extractSourceArchive(archive, "source.zip", out, policy);
+      expect(existsSync(join(out, "file"))).toBe(true);
+      expect(existsSync(join(out, "link"))).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("drops symlink cycles with a warning instead of rejecting", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-drop-cycle-"));
+    try {
+      const input = join(root, "input"); mkdirSync(input); writeFileSync(join(input, "regular"), "ok");
+      symlinkSync("b", join(input, "a")); symlinkSync("a", join(input, "b"));
+      const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
+      const inspected = await inspectSourceArchive(archive, "source.tar", policy);
+      expect(inspected.warnings).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "WARN_SOURCE_ARCHIVE_SYMLINK_DROPPED", reason: "cycle" }),
+      ]));
+      expect(inspected.warnings).toHaveLength(2);
+      const out = join(root, "out");
+      await extractSourceArchive(archive, "source.tar", out, policy);
+      expect(existsSync(join(out, "regular"))).toBe(true);
+      expect(existsSync(join(out, "a"))).toBe(false);
+      expect(existsSync(join(out, "b"))).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("drops over-deep symlink chains with a warning instead of rejecting", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-drop-deep-"));
+    try {
+      const input = join(root, "input"); mkdirSync(input); writeFileSync(join(input, "target"), "ok");
+      for (let index = 0; index < 42; index += 1) symlinkSync(index === 41 ? "target" : `link-${index + 1}`, join(input, `link-${index}`));
+      const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
+      const inspected = await inspectSourceArchive(archive, "source.tar", policy);
+      expect(inspected.warnings.length).toBeGreaterThan(0);
+      expect(inspected.warnings.every((w) => w.code === "WARN_SOURCE_ARCHIVE_SYMLINK_DROPPED")).toBe(true);
+      const out = join(root, "out");
+      await extractSourceArchive(archive, "source.tar", out, policy);
+      expect(existsSync(join(out, "target"))).toBe(true);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("drops a symlink parent and materializes real file entries through its path (HALL-19 bitfinite case)", async () => {
+    // bitfinite-core shape: src/config/config -> ../build/src/config (dangling).
+    // In drop mode the link vanishes; entries under it materialize as real dirs.
+    const root = mkdtempSync(join(tmpdir(), "source-archive-drop-parent-"));
+    try {
+      const input = join(root, "input");
+      mkdirSync(join(input, "src", "config"), { recursive: true });
+      writeFileSync(join(input, "src", "config", "real.txt"), "ok");
+      symlinkSync("../build/src/config", join(input, "src", "config", "config"));
+      const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
+      const inspected = await inspectSourceArchive(archive, "source.tar", policy);
+      expect(inspected.warnings).toEqual([
+        expect.objectContaining({ code: "WARN_SOURCE_ARCHIVE_SYMLINK_DROPPED", path: "src/config/config", reason: "dangling" }),
+      ]);
+      const out = join(root, "out");
+      await extractSourceArchive(archive, "source.tar", out, policy);
+      expect(readFileSync(join(out, "src", "config", "real.txt"), "utf-8")).toBe("ok");
+      expect(existsSync(join(out, "src", "config", "config"))).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("still hard-rejects unsafe entry paths under drop policy (zip-slip surface unchanged)", async () => {
+    // Build tars by hand (the tar CLI refuses ../ or /abs member names):
+    // two safe dir headers + one evil header whose name field is patched and
+    // checksums recomputed — the exact shape a malicious packer would emit.
+    const root = mkdtempSync(join(tmpdir(), "source-archive-drop-unsafe-"));
+    try {
+      const input = join(root, "input"); mkdirSync(join(input, "safe"), { recursive: true }); writeFileSync(join(input, "safe", "file"), "ok");
+      const base = join(root, "base.tar");
+      execSync(`tar -cf ${JSON.stringify(base)} -C ${JSON.stringify(input)} .`);
+      const baseBuf = readFileSync(base);
+      const dirHeaders = baseBuf.subarray(0, 1024); // "./" + "./safe/" headers
+      const fileHeader = baseBuf.subarray(1024, 1024 + 512);
+      const fileData = baseBuf.subarray(1024 + 512, 1024 + 1024);
+      const build = (entryName: string): string => {
+        const header = Buffer.from(fileHeader);
+        header.fill(0, 0, 100); header.write(entryName, 0, 100, "utf8");
+        header.fill(0x20, 148, 156);
+        const checksum = header.reduce((sum, byte) => sum + byte, 0);
+        header.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148, 8, "utf8");
+        const archive = join(root, `${entryName.replace(/[^a-z]/gi, "_")}.tar`);
+        writeFileSync(archive, Buffer.concat([dirHeaders, header, fileData, Buffer.alloc(1024)]));
+        return archive;
+      };
+      for (const entryName of ["../evil", "/abs/evil"]) {
+        await expect(inspectSourceArchive(build(entryName), "source.tar", policy))
+          .rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSAFE_PATH" });
+      }
+      // Backslash in entry path: the zip CLI stores it verbatim — reuse it.
+      const zipRoot = mkdtempSync(join(tmpdir(), "source-archive-drop-unsafe-zip-"));
+      try {
+        const zipInput = join(zipRoot, "input"); mkdirSync(zipInput); writeFileSync(join(zipInput, "a\\b"), "ok");
+        const zipArchive = join(zipRoot, "source.zip");
+        execSync(`zip -qry ${JSON.stringify(zipArchive)} .`, { cwd: zipInput });
+        await expect(inspectSourceArchive(zipArchive, "source.zip", policy)).rejects.toMatchObject({ code: "ERR_SOURCE_ARCHIVE_UNSAFE_PATH" });
+      } finally { rmSync(zipRoot, { recursive: true, force: true }); }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("restores fail-fast behavior under symlink_policy=reject (regression guard)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-reject-mode-"));
+    try {
+      const { archive } = makeArchiveWithLink(root, "/etc/passwd");
+      await expect(inspectSourceArchive(archive, "source.tar", rejectPolicy)).rejects.toBeInstanceOf(SourceArchiveError);
+      const out = join(root, "out");
+      await expect(extractSourceArchive(archive, "source.tar", out, rejectPolicy)).rejects.toBeInstanceOf(SourceArchiveError);
+      expect(existsSync(out)).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("keeps safe relative symlinks warning-free in drop mode", async () => {
+    const root = mkdtempSync(join(tmpdir(), "source-archive-drop-clean-"));
+    try {
+      const input = join(root, "input"); mkdirSync(join(input, "server"), { recursive: true });
+      writeFileSync(join(input, "server", "LICENSE"), "license\n"); symlinkSync("server/LICENSE", join(input, "LICENSE.enterprise"));
+      const archive = join(root, "source.tar"); execSync(`tar -cf ${JSON.stringify(archive)} -C ${JSON.stringify(input)} .`);
+      const inspected = await inspectSourceArchive(archive, "source.tar", policy);
+      expect(inspected.warnings).toEqual([]);
+      const out = join(root, "out");
+      await extractSourceArchive(archive, "source.tar", out, policy);
+      expect(lstatSync(join(out, "LICENSE.enterprise")).isSymbolicLink()).toBe(true);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });
