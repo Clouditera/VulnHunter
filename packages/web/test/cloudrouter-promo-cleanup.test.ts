@@ -14,6 +14,7 @@ describe("CloudRouter promo cleanup (HALL-21)", () => {
   const promoSrc = readWebSource("features/settings/components/CloudRouterPromo.tsx");
   const zhSrc = readWebSource("shared/i18n/zh.ts");
   const enSrc = readWebSource("shared/i18n/en.ts");
+  const adminSrc = readWebSource("shared/i18n/admin.ts");
 
   it("no longer renders the free-credit-code subtitle", () => {
     expect(promoSrc).not.toMatch(/cloudRouter\.sub/);
@@ -72,5 +73,21 @@ describe("CloudRouter promo cleanup (HALL-21)", () => {
     // 仍引导注册 CloudRouter
     expect(zhLine).toContain("CloudRouter");
     expect(enLine).toContain("CloudRouter");
+  });
+
+  it("admin stockOutBody no longer quotes the removed user-side copy", () => {
+    // admin 库存耗尽提示须与用户端现状一致：只隐藏「获取积分码」入口，无提示框；
+    // 不得再引用用户端已删除的「积分码已领完，我们将尽快补充，先到先得」文案。
+    const zhLine = adminSrc.match(/"admin\.credits\.stockOutBody":\s*"([^"]*)"/g)?.join(" ") ?? "";
+    const enLine = zhLine; // 同一文件内中英两条均在 adminSrc 中，下面统一断言
+    const allStockOutBodies = adminSrc.match(/"admin\.credits\.stockOutBody":\s*"[^"]*"/g) ?? [];
+    expect(allStockOutBodies.length).toBe(2); // zh + en 各一条
+    for (const body of allStockOutBodies) {
+      expect(body).not.toContain("积分码已领完");
+      expect(body).not.toContain("先到先得");
+      expect(body).not.toMatch(/out of stock/i);
+      expect(body).not.toMatch(/we'll restock/i);
+    }
+    expect(enLine).toBe(zhLine);
   });
 });
