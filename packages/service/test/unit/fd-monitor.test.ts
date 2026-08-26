@@ -1,4 +1,5 @@
 import { closeSync, mkdirSync, mkdtempSync, openSync, rmSync } from "node:fs";
+import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 /**
@@ -18,7 +19,7 @@ vi.mock("../../src/infra/logger.js", () => ({
   logger: m,
 }));
 
-const { countOpenFds, evaluateFdUsage, startFdMonitor, stopFdMonitor } = await import(
+const { countOpenFds, evaluateFdUsage, readNofileSoftLimit, startFdMonitor, stopFdMonitor } = await import(
   "../../src/infra/fd-monitor.js"
 );
 
@@ -60,6 +61,34 @@ describe("fd monitor (HALL-18 A3)", () => {
     expect(r.level).toBe("info");
     expect(r.fds).toBe(123);
     expect(r.softLimit).toBe(0);
+  });
+
+  // 阻塞项 1（PR #48 评审）：解析必须对真实 /proc/self/limits 行格式生效。
+  // 历史缺陷：trim().split(/\s+/)[1] 取到 "open" → NaN → 永远返回 0 →
+  // 70%/85% 告警阈值静默失效。测试样例对齐真实文件的列对齐空格与行尾单位。
+  describe("readNofileSoftLimit 真实 limits 格式解析", () => {
+    const realLimitsSample = [
+      "Limit                     Soft Limit           Hard Limit           Units  ",
+      "Max cpu time              unlimited            unlimited            seconds",
+      "Max open files            1048576              1048576              files  ",
+      "Max processes             unlimited            unlimited            processes",
+      "", // 与真实文件一致：尾部空行
+    ].join("\n");
+
+    it("真实格式（列对齐空格 + 行尾 files 单位）→ 解析出 soft 值", () => {
+      expect(readNofileSoftLimit(realLimitsSample)).toBe(1048576);
+    });
+
+    it("本机 /proc/self/limits 实测（Linux 环境）→ 正数值", () => {
+      const limit = readNofileSoftLimit(fs.readFileSync("/proc/self/limits", "utf-8"));
+      expect(limit).toBeGreaterThan(0);
+    });
+
+    it("无 Max open files 行 / unlimited / 空内容 → 0（不抛错）", () => {
+      expect(readNofileSoftLimit("Max cpu time              unlimited            unlimited            seconds\n")).toBe(0);
+      expect(readNofileSoftLimit("Max open files            unlimited            unlimited            files  ")).toBe(0);
+      expect(readNofileSoftLimit("")).toBe(0);
+    });
   });
 
   it("startFdMonitor 周期性记录 fd 用量", async () => {

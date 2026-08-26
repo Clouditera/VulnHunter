@@ -34,18 +34,27 @@ export function countOpenFds(): number {
   }
 }
 
-/** 解析 /proc/self/limits 的 "Max open files" soft 值；失败 → 0。 */
-export function readNofileSoftLimit(): number {
+/**
+ * 解析 /proc/self/limits 的 "Max open files" soft 值；失败 → 0。
+ *
+ * 真实行格式（列对齐空格 + 行尾 Units 列，不可用 split 索引取值——
+ * "Max open files" 含空格，trim().split(/\s+/)[1] 取到的是 "open"）：
+ *   Max open files            1048576              1048576              files
+ * 参数 limits 可注入文件内容（测试用）；缺省读 /proc/self/limits。
+ */
+export function readNofileSoftLimit(limits?: string): number {
   try {
-    const limits = readFileSync("/proc/self/limits", "utf-8");
-    for (const line of limits.split("\n")) {
+    const content = limits ?? readFileSync("/proc/self/limits", "utf-8");
+    for (const line of content.split("\n")) {
       if (!line.startsWith("Max open files")) continue;
-      // "Max open files   1048576   1048576   files"
-      const soft = Number(line.trim().split(/\s+/)[1]);
-      return Number.isFinite(soft) ? soft : 0;
+      const m = line.match(/^Max open files\s+(\S+)/);
+      if (!m) continue;
+      // "unlimited" 等非数值 → 保持 0（不分级，仅计数）
+      const soft = Number(m[1]);
+      return Number.isFinite(soft) && soft > 0 ? soft : 0;
     }
   } catch {
-    // fallthrough
+    // fallthrough（非 Linux / /proc 不可读）
   }
   return 0;
 }
