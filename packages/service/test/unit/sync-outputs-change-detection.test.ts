@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -217,5 +218,19 @@ describe("syncOutputsToMinio 变更检测（HALL-18 A1/A2）", () => {
     await syncOutputsToMinio(taskId, config, { includeDirs: INCLUDE });
     const s = m.seenStreams[m.seenStreams.length - 1];
     expect(s.destroyed).toBe(true);
+  });
+
+  it("建议项 3：manifest 原子写入（tmp+rename）— 无 .tmp 残留，内容完整，下轮幂等", async () => {
+    await syncOutputsToMinio(taskId, config, { includeDirs: INCLUDE });
+    const wsDir = join(dataDir, "workspaces", taskId);
+    // 无 tmp 残留
+    expect(readdirSync(wsDir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+    // 内容完整可读（JSON 解析成功且包含已上传键）
+    const manifest = JSON.parse(readFileSync(join(wsDir, ".out-sync-manifest.json"), "utf-8"));
+    expect(manifest["findings/BUG-1.yaml"]).toBeDefined();
+    // 下一轮基于该清单正常幂等（零上传）
+    m.putObjectCalls = 0;
+    const n = await syncOutputsToMinio(taskId, config, { includeDirs: INCLUDE });
+    expect(n).toBe(0);
   });
 });
