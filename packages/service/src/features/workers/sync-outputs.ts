@@ -18,7 +18,7 @@
  */
 
 import { join, relative, dirname } from "node:path";
-import { readdirSync, existsSync, readFileSync, writeFileSync, createReadStream, statSync } from "node:fs";
+import { readdirSync, existsSync, readFileSync, writeFileSync, renameSync, createReadStream, statSync } from "node:fs";
 import { lookup as mimeLookup } from "mime-types";
 import { getMinio } from "../../infra/minio/client.js";
 import { logger } from "../../infra/logger.js";
@@ -53,8 +53,14 @@ function readManifest(hostWorkDir: string): Manifest | null {
 }
 
 function writeManifest(hostWorkDir: string, manifest: Manifest): void {
+  // 原子写（tmp + rename）：进程崩溃/容器重建不会留下半截 JSON。
+  // 即使 rename 前崩溃也只适得多一个 tmp 文件；半截清单会被
+  // readManifest 判损坏 → 全量回退，代价是多传一轮。
+  const target = manifestPath(hostWorkDir);
+  const tmp = `${target}.tmp`;
   try {
-    writeFileSync(manifestPath(hostWorkDir), JSON.stringify(manifest));
+    writeFileSync(tmp, JSON.stringify(manifest));
+    renameSync(tmp, target);
   } catch (err) {
     logger.warn({ err, hostWorkDir }, "out-sync manifest write failed");
   }
@@ -204,9 +210,10 @@ export async function syncOutputsToMinio(
     }
   });
 
-  // 全量轮也落 manifest：记录终态基线 — continue 任务的后续增量轮判变
-  // 需要（增量轮只覆盖 includeDirs 子集，其余键沿用本基线）。上传失败的
-  // 键已从 next 移除，下轮会重试。
+  // 全量轮也落 manifest：记录终态基线，后续增量轮判变有起点。注意：
+  // 增量轮重写 manifest 为 includeDirs 子集（非 includeDirs 键如 .youngflow
+  // 会被丢弃）——无功能影响：增量轮只比对 includeDirs 键，终端轮忽略
+  // prev 全量重传。上传失败的键已从 next 移除，下轮会重试。
   writeManifest(hostWorkDir, next);
 
   logger.info(
