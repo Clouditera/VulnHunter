@@ -49,7 +49,7 @@ const { uploadSourceTreeToMinio, scheduleSrcTreeSync, flushSrcTreeSync, sourceFi
   await import("../../src/features/workers/src-tree-sync.js");
 // scan-worker getHostWorkDir is a pure join — use the real one via the module.
 const { getCodeTree, resolveSourceFilesKey, getCodeFileFromMinioKey, resolveLegacyDecompiledKey } = await import("../../src/features/workspace/code-viewer.js");
-const { mkdtempSync, writeFileSync, mkdirSync, rmSync, utimesSync } = await import("node:fs");
+const { mkdtempSync, writeFileSync, mkdirSync, rmSync, utimesSync, symlinkSync } = await import("node:fs");
 const { tmpdir } = await import("node:os");
 const { join } = await import("node:path");
 
@@ -189,5 +189,37 @@ describe("src-tree sync (task-c069aab9)", () => {
   it("empty source-files prefix → tree falls back to [] (caller uses legacy blob)", async () => {
     const tree = await getCodeTree("99999999-9999-4999-8999-999999999999", "b");
     expect(tree).toEqual([]);
+  });
+});
+
+describe("src-tree sync symlink handling (HALL-20)", () => {
+  beforeEach(() => {
+    m.objects.clear();
+    m.puts.length = 0;
+    m.deletes.length = 0;
+  });
+
+  it("skips symlinks in the src tree instead of uploading their targets", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "src-tree-symlink-"));
+    const ws = join(dataDir, "workspaces", TASK);
+    mkdirSync(join(ws, "src"), { recursive: true });
+    writeFileSync(join(ws, "src", "Real.java"), "class Real {}\n");
+    // symlink inside the tree pointing to a file outside the workspace
+    const secret = join(dataDir, "outside-secret.txt");
+    writeFileSync(secret, "SENSITIVE\n");
+    symlinkSync(secret, join(ws, "src", "leak.java"));
+
+    const cfg = { ...config, dataDir };
+    await uploadSourceTreeToMinio(TASK, join(ws, "src"), cfg);
+    expect(m.puts).toEqual([`source-files/${TASK}/Real.java`]);
+
+    m.puts.length = 0;
+    scheduleSrcTreeSync(TASK, cfg);
+    await flushSrcTreeSync(TASK);
+    expect(m.puts).toEqual([`source-files/${TASK}/Real.java`]); // symlink still skipped
+    const { logger } = await import("../../src/infra/logger.js");
+    expect(vi.mocked(logger.warn).mock.calls.some((c) => JSON.stringify(c[0]).includes("leak.java"))).toBe(true);
+
+    rmSync(dataDir, { recursive: true, force: true });
   });
 });

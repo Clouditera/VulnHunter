@@ -35,9 +35,32 @@ export async function syncOutputsToMinio(
       const full = join(dir, entry.name);
       if (entry.isDirectory()) {
         results.push(...walkDir(full));
-      } else {
-        results.push(full);
+        continue;
       }
+      // Security (HALL-20): never follow symlinks in worker outputs. Dirent
+      // types are lstat-based, so a symlink is seen as itself, not its target.
+      // The worker runs as root and the service as a lower-privileged uid —
+      // following a link in out/ would make the service read (with its own
+      // identity) and upload a file outside the workspace (e.g. .secrets/,
+      // other tasks' workspaces). A symlink is not a legitimate artifact
+      // form: skip it and warn.
+      if (entry.isSymbolicLink()) {
+        logger.warn(
+          { taskId, path: relative(outDir, full) },
+          "skipping symlink in scan outputs (not a legal artifact form)",
+        );
+        continue;
+      }
+      // Other non-regular entries (FIFO, socket, device…) are also skipped:
+      // reading a FIFO would hang the sync, and none are legal artifacts.
+      if (!entry.isFile()) {
+        logger.warn(
+          { taskId, path: relative(outDir, full) },
+          "skipping non-regular file in scan outputs",
+        );
+        continue;
+      }
+      results.push(full);
     }
     return results;
   }

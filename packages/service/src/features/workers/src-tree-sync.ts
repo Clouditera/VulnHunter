@@ -56,6 +56,13 @@ function walkFiles(dir: string, base: string, out: string[] = []): string[] {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) walkFiles(full, base, out);
     else if (entry.isFile()) out.push(full);
+    // Security (HALL-20): symlinks must never be uploaded — fPutObject would
+    // follow the link and read its target with the service identity. Dirent
+    // types are lstat-based, so a symlink lands here, not in isFile().
+    // Also warn-and-skip any other non-regular entry (FIFO/socket/device).
+    else {
+      logger.warn({ path: relative(base, full) }, "skipping non-regular entry in src tree (not uploaded)");
+    }
   }
   return out;
 }

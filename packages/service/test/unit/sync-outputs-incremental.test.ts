@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -72,5 +72,57 @@ describe("syncOutputsToMinio includeDirs (incremental)", () => {
     const n = await syncOutputsToMinio(taskId, config, { includeDirs: ["knowledge"] });
     expect(n).toBe(0);
     expect(fPutObject).not.toHaveBeenCalled();
+  });
+});
+
+describe("syncOutputsToMinio symlink handling (HALL-20)", () => {
+  const secretFile = join(dataDir, "secret-outside-workspace.txt");
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seed();
+    writeFileSync(secretFile, "SENSITIVE: service-identity secret\n");
+  });
+
+  afterAll(() => rmSync(dataDir, { recursive: true, force: true }));
+
+  it("skips symlinks pointing outside the workspace instead of uploading their targets", async () => {
+    // malicious/abnormal worker artifact: symlink in out/findings → file outside the workspace
+    symlinkSync(secretFile, join(outDir, "findings", "leak.yaml"));
+
+    const n = await syncOutputsToMinio(taskId, config);
+
+    // all 6 regular files uploaded, the symlink entry itself skipped
+    expect(n).toBe(6);
+    const keys = fPutObject.mock.calls.map((c) => String(c[1]));
+    expect(keys.some((k) => k.includes("leak.yaml"))).toBe(false);
+  });
+
+  it("skips symlinks even when they point inside the workspace (no legal symlink artifact form)", async () => {
+    // an inside-pointing link is not a defense bypass, but no legal artifact
+    // form uses symlinks either — skip for uniformity, warn for visibility
+    symlinkSync(join(outDir, "findings", "BUG-1.yaml"), join(outDir, "findings", "alias.yaml"));
+
+    const n = await syncOutputsToMinio(taskId, config);
+
+    expect(n).toBe(6);
+    const keys = fPutObject.mock.calls.map((c) => String(c[1]));
+    expect(keys.some((k) => k.includes("alias.yaml"))).toBe(false);
+  });
+
+  it("logs a warning per skipped symlink", async () => {
+    symlinkSync(secretFile, join(outDir, "findings", "leak.yaml"));
+    await syncOutputsToMinio(taskId, config);
+    const { logger } = await import("../../src/infra/logger.js");
+    const warnCalls = vi.mocked(logger.warn).mock.calls.filter((c) => String(c[1]).includes("symlink"));
+    expect(warnCalls.length).toBe(1);
+  });
+
+  it("full terminal sync also skips a symlink placed at the out/ root", async () => {
+    symlinkSync(secretFile, join(outDir, "root-leak.txt"));
+    const n = await syncOutputsToMinio(taskId, config);
+    expect(n).toBe(6);
+    const keys = fPutObject.mock.calls.map((c) => String(c[1]));
+    expect(keys.some((k) => k.includes("root-leak.txt"))).toBe(false);
   });
 });
