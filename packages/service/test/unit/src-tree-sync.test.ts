@@ -10,10 +10,15 @@ const m = vi.hoisted(() => ({
 
 vi.mock("../../src/infra/minio/client.js", () => ({
   getMinio: () => ({
-    fPutObject: vi.fn(async (_b: string, key: string, filePath: string) => {
-      // read the local file content into the fake object store
-      const { readFileSync } = await import("node:fs");
-      m.objects.set(key, readFileSync(filePath));
+    // HALL-18 A2: putObject(stream) 版本 — 消费流并按 key 存内容
+    putObject: vi.fn(async (_b: string, key: string, stream: any) => {
+      const chunks: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        stream.on("data", (c: Buffer) => chunks.push(c));
+        stream.on("end", resolve);
+        stream.on("error", reject);
+      });
+      m.objects.set(key, Buffer.concat(chunks));
       m.puts.push(key);
     }),
     removeObject: vi.fn(async (_b: string, key: string) => {

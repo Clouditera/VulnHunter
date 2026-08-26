@@ -20,7 +20,8 @@
  *   task: 5s trailing merge so a burst of stage_done events costs one walk.
  */
 
-import { readdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync, writeFileSync, createReadStream, statSync } from "node:fs";
+import { lookup as mimeLookup } from "mime-types";
 import { stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { getMinio } from "../../infra/minio/client.js";
@@ -30,6 +31,24 @@ import type { ServiceConfig } from "../../infra/config.js";
 
 const CONCURRENCY = 16;
 const DEBOUNCE_MS = 5_000;
+
+/**
+ * HALL-18 A2: 生命周期受控的单文件上传（与 sync-outputs.ts 同模式）。
+ * fPutObject 的 fs 流依赖 GC finalizer 关闭，fd 压力下不可靠 → 泄漏
+ * pos=0 的 O_RDONLY fd；改为自管理 createReadStream + putObject，
+ * finally 显式 destroy，成功/失败路径都保证 fd 关闭。content-type 推断
+ * 对齐 fPutObject（mime-types lookup，未知扩展 → octet-stream）。
+ */
+async function putFileControlled(bucket: string, objectName: string, filePath: string): Promise<void> {
+  const size = statSync(filePath).size;
+  const contentType = mimeLookup(filePath) || "application/octet-stream";
+  const stream = createReadStream(filePath, { autoClose: false });
+  try {
+    await getMinio().putObject(bucket, objectName, stream, size, { "Content-Type": contentType });
+  } finally {
+    stream.destroy();
+  }
+}
 
 export function sourceFilesPrefix(taskId: string): string {
   return `source-files/${taskId}/`;
@@ -105,7 +124,6 @@ async function mapLimited<T>(items: T[], limit: number, fn: (item: T) => Promise
  * blob path and the task proceeds (degraded visibility, not a failed scan).
  */
 export async function uploadSourceTreeToMinio(taskId: string, stagedSourceDir: string, config: ServiceConfig): Promise<number> {
-  const minio = getMinio();
   const bucket = config.minio.bucket;
   const prefix = sourceFilesPrefix(taskId);
   const files = walkFiles(stagedSourceDir, stagedSourceDir);
@@ -114,7 +132,7 @@ export async function uploadSourceTreeToMinio(taskId: string, stagedSourceDir: s
   await mapLimited(files, CONCURRENCY, async (filePath) => {
     const rel = relative(stagedSourceDir, filePath);
     try {
-      await minio.fPutObject(bucket, prefix + rel, filePath);
+      await putFileControlled(bucket, prefix + rel, filePath);
       ok++;
     } catch (err) {
       logger.warn({ err, taskId, rel }, "source-files prepare upload failed (viewer falls back to blob)");
@@ -175,7 +193,7 @@ async function runSync(taskId: string, config: ServiceConfig): Promise<number> {
   await mapLimited(changed, CONCURRENCY, async (filePath) => {
     const rel = relative(srcDir, filePath);
     try {
-      await minio.fPutObject(bucket, prefix + rel, filePath);
+      await putFileControlled(bucket, prefix + rel, filePath);
       puts++;
     } catch (err) {
       logger.warn({ err, taskId, rel }, "src-tree sync put failed");
