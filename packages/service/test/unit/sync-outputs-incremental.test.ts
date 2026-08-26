@@ -3,10 +3,18 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const fPutObject = vi.fn(async () => undefined);
+// 默认实现：完整消费流（对齐 minio putObject 的真实行为），避免悬挂
+// 的可读流在测试隔离（rmSync seed）后抛未处理 ENOENT。
+const putObject = vi.fn(async (_b: string, _k: string, stream: any) => {
+  await new Promise<void>((resolve, reject) => {
+    stream.on("data", () => {});
+    stream.on("end", resolve);
+    stream.on("error", reject);
+  });
+});
 
 vi.mock("../../src/infra/minio/client.js", () => ({
-  getMinio: () => ({ fPutObject }),
+  getMinio: () => ({ putObject }),
 }));
 vi.mock("../../src/infra/logger.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
@@ -48,7 +56,7 @@ describe("syncOutputsToMinio includeDirs (incremental)", () => {
   it("full terminal sync (no opts) uploads all artifacts including agenda/leads/sink-ledger and session logs", async () => {
     const n = await syncOutputsToMinio(taskId, config);
     expect(n).toBe(6);
-    const keys = fPutObject.mock.calls.map((c) => String(c[1]));
+    const keys = putObject.mock.calls.map((c) => String(c[1]));
     expect(keys.some((k) => k.includes("/agenda/queue.yaml"))).toBe(true);
     expect(keys.some((k) => k.includes("/leads/lead.yaml"))).toBe(true);
     expect(keys.some((k) => k.includes("/knowledge/sink-ledger.md"))).toBe(true);
@@ -58,7 +66,7 @@ describe("syncOutputsToMinio includeDirs (incremental)", () => {
   it("incremental sync (includeDirs) uploads only selected lightweight dirs, skips session logs", async () => {
     const n = await syncOutputsToMinio(taskId, config, { includeDirs: ["findings", "risks", "knowledge"] });
     expect(n).toBe(3);
-    const keys = fPutObject.mock.calls.map((c) => String(c[1]));
+    const keys = putObject.mock.calls.map((c) => String(c[1]));
     expect(keys.some((k) => k.includes("/findings/BUG-1.yaml"))).toBe(true);
     expect(keys.some((k) => k.includes("/risks/RISK-1.yaml"))).toBe(true);
     expect(keys.some((k) => k.includes("/knowledge/sink-ledger.md"))).toBe(true);
@@ -71,7 +79,7 @@ describe("syncOutputsToMinio includeDirs (incremental)", () => {
     rmSync(join(outDir, "knowledge"), { recursive: true, force: true });
     const n = await syncOutputsToMinio(taskId, config, { includeDirs: ["knowledge"] });
     expect(n).toBe(0);
-    expect(fPutObject).not.toHaveBeenCalled();
+    expect(putObject).not.toHaveBeenCalled();
   });
 });
 
@@ -94,7 +102,7 @@ describe("syncOutputsToMinio symlink handling (HALL-20)", () => {
 
     // all 6 regular files uploaded, the symlink entry itself skipped
     expect(n).toBe(6);
-    const keys = fPutObject.mock.calls.map((c) => String(c[1]));
+    const keys = putObject.mock.calls.map((c) => String(c[1]));
     expect(keys.some((k) => k.includes("leak.yaml"))).toBe(false);
   });
 
@@ -106,7 +114,7 @@ describe("syncOutputsToMinio symlink handling (HALL-20)", () => {
     const n = await syncOutputsToMinio(taskId, config);
 
     expect(n).toBe(6);
-    const keys = fPutObject.mock.calls.map((c) => String(c[1]));
+    const keys = putObject.mock.calls.map((c) => String(c[1]));
     expect(keys.some((k) => k.includes("alias.yaml"))).toBe(false);
   });
 
@@ -122,7 +130,7 @@ describe("syncOutputsToMinio symlink handling (HALL-20)", () => {
     symlinkSync(secretFile, join(outDir, "root-leak.txt"));
     const n = await syncOutputsToMinio(taskId, config);
     expect(n).toBe(6);
-    const keys = fPutObject.mock.calls.map((c) => String(c[1]));
+    const keys = putObject.mock.calls.map((c) => String(c[1]));
     expect(keys.some((k) => k.includes("root-leak.txt"))).toBe(false);
   });
 });
