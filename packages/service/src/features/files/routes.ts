@@ -16,7 +16,7 @@ import { assertValidTaskName } from "../tasks/task-name-guard.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import { detectSourceArchive, stripSourceArchiveExtension } from "../source-archives/detect.js";
 import { inspectSourceArchive } from "../source-archives/extract.js";
-import { SourceArchiveError, sourceArchiveErrorResponse } from "../source-archives/errors.js";
+import { SourceArchiveError, sourceArchiveErrorResponse, type SourceArchiveWarning } from "../source-archives/errors.js";
 import { getSourceArchivePolicy } from "../source-archives/policy.js";
 import { resolveScanDuration } from "../tasks/scan-duration.js";
 import { resolveDynamicTogglesForEdition } from "../tasks/dynamic-toggles.js";
@@ -235,9 +235,12 @@ filesRouter.post("/tasks", async (c) => {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const tmpPath = join(tmpdir(), `va-source-archive-${taskId}${detected.storageExtension}`);
+    // HALL-19: symlink_policy=drop filters bad links at the gate; warnings
+    // ride along in the 201 response so the UI can show "ignored N links".
+    let sourceArchiveWarnings: SourceArchiveWarning[] = [];
     try {
       await writeFile(tmpPath, buffer);
-      await inspectSourceArchive(tmpPath, file.name, policy);
+      sourceArchiveWarnings = (await inspectSourceArchive(tmpPath, file.name, policy)).warnings;
     } catch (err) {
       if (err instanceof SourceArchiveError) return c.json(sourceArchiveErrorResponse(err), err.status as 400 | 413);
       return c.json(sourceArchiveErrorResponse(new SourceArchiveError("ERR_SOURCE_ARCHIVE_CORRUPT", "Cannot read source archive")), 400);
@@ -290,7 +293,9 @@ filesRouter.post("/tasks", async (c) => {
       agentMaxParallel,
     });
 
-    return c.json({ task }, 201);
+    // Warnings from the upload gate (dropped symlinks) are pure additions in
+    // the response body — existing clients that ignore them stay unaffected.
+    return c.json({ task, warnings: sourceArchiveWarnings }, 201);
   }
 
   // JSON body — git URL mode

@@ -447,3 +447,21 @@ describe("symlink policy drop mode (HALL-19)", () => {
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });
+
+describe("warnings surfacing (HALL-19)", () => {
+  it("upload gate response carries structured warnings; scheduler/report-worker persist them", async () => {
+    // Contract-level assertions mirroring the existing caller-contract test:
+    // the route must return warnings in the 201 body, and both extraction
+    // call sites must merge warnings into task metadata + log them.
+    const routes = readFileSync(join(process.cwd(), "src/features/files/routes.ts"), "utf8");
+    expect(routes).toContain("sourceArchiveWarnings = (await inspectSourceArchive(tmpPath, file.name, policy)).warnings");
+    expect(routes).toContain("return c.json({ task, warnings: sourceArchiveWarnings }, 201)");
+
+    const scheduler = readFileSync(join(process.cwd(), "src/features/workers/scheduler.ts"), "utf8");
+    expect(scheduler).toContain("const { warnings: sourceArchiveWarnings } = await extractSourceArchive(");
+    expect(scheduler).toContain("mergeTaskMetadata(task.id, { source_archive_warnings: sourceArchiveWarnings })");
+
+    const reportWorker = readFileSync(join(process.cwd(), "src/features/reports/report-worker.ts"), "utf8");
+    expect(reportWorker).toContain("mergeTaskMetadata(task.id, { source_archive_warnings: warnings })");
+  });
+});

@@ -1042,7 +1042,15 @@ export class TaskScheduler {
     // zero-retry call turned the blip into a permanent task failure.
     await downloadObjectWithRetry(minio, this.config.minio.bucket, minioKey, archivePath);
     await this.assertSchedulerOwnership(task.id, token);
-    await extractSourceArchive(archivePath, archive.filename, stagedSourceDir, await getSourceArchivePolicy());
+    const { warnings: sourceArchiveWarnings } = await extractSourceArchive(archivePath, archive.filename, stagedSourceDir, await getSourceArchivePolicy());
+    // HALL-19: dropped-symlink warnings surface in task metadata + logs so
+    // audits know what the extracted tree is missing.
+    if (sourceArchiveWarnings.length > 0) {
+      logger.warn({ taskId: task.id, warnings: sourceArchiveWarnings }, "Source archive symlinks dropped during extraction");
+      await mergeTaskMetadata(task.id, { source_archive_warnings: sourceArchiveWarnings }).catch((err) =>
+        logger.warn({ err, taskId: task.id }, "Failed to persist source archive warnings"),
+      );
+    }
     await this.assertSchedulerOwnership(task.id, token);
     await publishSchedulerWorkspace(hostWorkDir, token);
     logger.info({ taskId: task.id, token, minioKey, filename: archive.filename }, "Claim-owned code package published to workspace");
