@@ -92,7 +92,7 @@ export function CloudRouterPromo() {
   const shell: CSSProperties = {
     display: "flex",
     gap: 16,
-    alignItems: "flex-start",
+    alignItems: "center",
     flexWrap: "wrap",
     padding: "18px 20px",
     borderRadius: 12,
@@ -130,23 +130,23 @@ export function CloudRouterPromo() {
             {i18n.t("settings.creds.cloudRouter.tag")}
           </span>
         </div>
-        <p style={{ margin: "0 0 6px", fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.5 }}>
           {i18n.t("settings.creds.cloudRouter.points")}
-        </p>
-        <p
-          style={{
-            margin: 0,
-            fontSize: 12.5,
-            fontWeight: 500,
-            color: dark ? "var(--partner-accent)" : "var(--brand-active)",
-            lineHeight: 1.5,
-          }}
-        >
-          {i18n.t("settings.creds.cloudRouter.sub")}
         </p>
       </div>
 
-      <div style={{ flexShrink: 0, minWidth: 160, display: "flex", flexDirection: "column", gap: 8, alignItems: "stretch" }}>
+      <div
+        style={{
+          flexShrink: 0,
+          minWidth: 160,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          alignItems: "stretch",
+          justifyContent: "center",
+          textAlign: "center",
+        }}
+      >
         {myCode ? (
           <ClaimedPanel
             code={myCode}
@@ -155,23 +155,7 @@ export function CloudRouterPromo() {
             dark={dark}
           />
         ) : poolEmpty ? (
-          <>
-            <GoButton />
-            <div
-              data-testid="cloudrouter-pool-empty"
-              style={{
-                border: "1px dashed var(--border)",
-                borderRadius: 8,
-                padding: "10px 12px",
-                fontSize: 12,
-                color: "var(--text-secondary)",
-                textAlign: "center",
-                maxWidth: 210,
-              }}
-            >
-              {i18n.t("settings.creds.cloudRouter.exhausted")}
-            </div>
-          </>
+          <GoButton />
         ) : (
           <>
             <GoButton />
