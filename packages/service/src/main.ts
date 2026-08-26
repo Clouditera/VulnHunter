@@ -12,6 +12,7 @@ import { logger } from "./infra/logger.js";
 import { initVault, checkCredentialHealth } from "./features/settings/index.js";
 import { initDocker, TaskScheduler, reconcileWorkers } from "./features/workers/index.js";
 import { initWorkerInstanceId } from "./features/workers/instance-id.js";
+import { startFdMonitor, stopFdMonitor } from "./infra/fd-monitor.js";
 import { createApp, startServer, type ServiceRole } from "./server.js";
 import { initInstallation } from "./features/system/index.js";
 import { provisionSystemAdmin } from "./features/auth/system-admin.js";
@@ -141,6 +142,10 @@ async function main(): Promise<void> {
     logger.warn({ err }, "Reconciler failed — continuing"),
   );
 
+  // HALL-18 A3: fd 自监控（业务角色承担同步/上传吞吐，是 fd 压力面）。
+  // 5 分钟采样 /proc/self/fd，超 nofile soft limit 70%/85% 分级告警日志。
+  startFdMonitor();
+
   const scheduler = new TaskScheduler(config);
   await scheduler.start();
 
@@ -152,6 +157,7 @@ async function main(): Promise<void> {
 
   process.on("SIGTERM", () => {
     scheduler.stop();
+    stopFdMonitor();
     process.exit(0);
   });
 
