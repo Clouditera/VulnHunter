@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const store = vi.hoisted(() => ({
   objects: new Map<string, Buffer>(),
-  task: null as any,
+  task: null as unknown as Record<string, unknown>,
 }));
 
 vi.mock("../../src/infra/minio/client.js", () => ({
@@ -41,12 +41,17 @@ vi.mock("../../src/features/tasks/access.js", () => ({
   getAccessibleTask: async () => store.task,
 }));
 vi.mock("../../src/middleware/auth.js", () => ({
-  requireAuth: async (_c: any, next: any) => { _c.set("user", { userId: "u1", role: "admin" }); await next(); },
+  requireAuth: async (c: { set: (k: string, v: unknown) => void }, next: () => Promise<void>) => {
+    c.set("user", { userId: "u1", role: "admin" });
+    await next();
+  },
 }));
 vi.mock("../../src/middleware/license-guard.js", () => ({
-  licenseGuard: async (_c: any, next: any) => await next(),
+  licenseGuard: async (_c: unknown, next: () => Promise<void>) => await next(),
 }));
-vi.mock("../../src/infra/logger.js", () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock("../../src/infra/logger.js", () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
 
 const { workspaceRouter } = await import("../../src/features/workspace/routes.js");
 
@@ -61,7 +66,10 @@ let CUR = TASK;
 let CUP = P;
 
 function seed(key: string, content: string | Buffer) {
-  store.objects.set(key.replace(P, CUP), typeof content === "string" ? Buffer.from(content) : content);
+  store.objects.set(
+    key.replace(P, CUP),
+    typeof content === "string" ? Buffer.from(content) : content,
+  );
 }
 
 function seedManifest(jars: unknown, version: number | string = 1) {
@@ -75,17 +83,27 @@ beforeEach(() => {
   store.task = { id: CUR, state: "completed", source_meta: {} };
 });
 
-const file = (path: string) => workspaceRouter.request(`/${CUR}/workspace/file?path=${encodeURIComponent(path)}`);
+const file = (path: string) =>
+  workspaceRouter.request(`/${CUR}/workspace/file?path=${encodeURIComponent(path)}`);
 
 describe("GET /:taskId/workspace/file — .class manifest resolution (HALL-25)", () => {
   it("manifest hit: returns .java content + decompiled_from/resolved_path", async () => {
     seedManifest([
-      { name: "app.war", decompiled_root: ".vulnhunter-decompiled/app.war", entries: {
-        "WEB-INF/classes/com/foo/Bar.class": ".vulnhunter-decompiled/app.war/WEB-INF/classes/com/foo/Bar.java",
-        "WEB-INF/classes/com/foo/Bar$Inner.class": ".vulnhunter-decompiled/app.war/WEB-INF/classes/com/foo/Bar.java",
-      } },
+      {
+        name: "app.war",
+        decompiled_root: ".vulnhunter-decompiled/app.war",
+        entries: {
+          "WEB-INF/classes/com/foo/Bar.class":
+            ".vulnhunter-decompiled/app.war/WEB-INF/classes/com/foo/Bar.java",
+          "WEB-INF/classes/com/foo/Bar$Inner.class":
+            ".vulnhunter-decompiled/app.war/WEB-INF/classes/com/foo/Bar.java",
+        },
+      },
     ]);
-    seed(`${P}.vulnhunter-decompiled/app.war/WEB-INF/classes/com/foo/Bar.java`, "class Bar { void x() {} }\n");
+    seed(
+      `${P}.vulnhunter-decompiled/app.war/WEB-INF/classes/com/foo/Bar.java`,
+      "class Bar { void x() {} }\n",
+    );
 
     const res = await file("WEB-INF/classes/com/foo/Bar.class");
     expect(res.status).toBe(200);
@@ -94,15 +112,21 @@ describe("GET /:taskId/workspace/file — .class manifest resolution (HALL-25)",
     expect(body.language).toBe("java");
     expect(body.content).toContain("class Bar");
     expect(body.decompiled_from).toBe("WEB-INF/classes/com/foo/Bar.class");
-    expect(body.resolved_path).toBe(".vulnhunter-decompiled/app.war/WEB-INF/classes/com/foo/Bar.java");
+    expect(body.resolved_path).toBe(
+      ".vulnhunter-decompiled/app.war/WEB-INF/classes/com/foo/Bar.java",
+    );
   });
 
   it("inner class request resolves to the outer .java and reports the .class origin", async () => {
     seedManifest([
-      { name: "app.war", decompiled_root: ".vulnhunter-decompiled/app.war", entries: {
-        "com/foo/Bar.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
-        "com/foo/Bar$Inner.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
-      } },
+      {
+        name: "app.war",
+        decompiled_root: ".vulnhunter-decompiled/app.war",
+        entries: {
+          "com/foo/Bar.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
+          "com/foo/Bar$Inner.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
+        },
+      },
     ]);
     seed(`${P}.vulnhunter-decompiled/app.war/com/foo/Bar.java`, "class Bar { class Inner {} }\n");
 
@@ -116,7 +140,10 @@ describe("GET /:taskId/workspace/file — .class manifest resolution (HALL-25)",
   it("no manifest: .class falls through unchanged — binary view, no new fields", async () => {
     // old task: no manifest, no decompiled tree — the .class sits in the
     // source-files tree as a binary object
-    seed(`${P}WEB-INF/classes/com/foo/Bar.class`, Buffer.from([0xca, 0xfe, 0xba, 0xbe, 0x00, 0x01, 0x00, 0x02]));
+    seed(
+      `${P}WEB-INF/classes/com/foo/Bar.class`,
+      Buffer.from([0xca, 0xfe, 0xba, 0xbe, 0x00, 0x01, 0x00, 0x02]),
+    );
 
     const res = await file("WEB-INF/classes/com/foo/Bar.class");
     expect(res.status).toBe(200);
@@ -139,9 +166,13 @@ describe("GET /:taskId/workspace/file — .class manifest resolution (HALL-25)",
 
   it("manifest present but class not decompiled (dependency): binary view, no new fields", async () => {
     seedManifest([
-      { name: "app.war", decompiled_root: ".vulnhunter-decompiled/app.war", entries: {
-        "com/foo/Bar.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
-      } },
+      {
+        name: "app.war",
+        decompiled_root: ".vulnhunter-decompiled/app.war",
+        entries: {
+          "com/foo/Bar.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
+        },
+      },
     ]);
     seed(`${P}.vulnhunter-decompiled/app.war/com/foo/Bar.java`, "class Bar {}\n");
     // dependency class exists in the tree but was never decompiled

@@ -4,6 +4,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CodeViewer } from "../src/features/tasks/components/CodeViewer.js";
+import type { WorkspaceFile } from "../src/shared/api/client.js";
 
 /**
  * HALL-25 P0 (frontend): when the workspace file response carries
@@ -18,9 +19,16 @@ let root: Root;
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function render(props: Record<string, unknown>) {
+function render(props: { path: string; file: WorkspaceFile }) {
   act(() => {
-    root.render(<CodeViewer path={String(props.path ?? "a.java")} file={props.file as any} loading={false} vulnLines={new Set<number>()} />);
+    root.render(
+      <CodeViewer
+        path={props.path}
+        file={props.file}
+        loading={false}
+        vulnLines={new Set<number>()}
+      />,
+    );
   });
 }
 
@@ -48,11 +56,15 @@ describe("CodeViewer decompiled banner (HALL-25)", () => {
   it("renders the decompiled-origin banner when decompiled_from is present", () => {
     render({
       path: "WEB-INF/classes/com/foo/Bar.class",
-      file: { ...PLAIN_FILE, decompiled_from: "WEB-INF/classes/com/foo/Bar.class", resolved_path: ".vulnhunter-decompiled/app.war/WEB-INF/classes/com/foo/Bar.java" },
+      file: {
+        ...PLAIN_FILE,
+        decompiled_from: "WEB-INF/classes/com/foo/Bar.class",
+        resolved_path: ".vulnhunter-decompiled/app.war/WEB-INF/classes/com/foo/Bar.java",
+      },
     });
     const banner = container.querySelector('[data-testid="workspace-code-decompiled-banner"]');
     expect(banner).not.toBeNull();
-    expect(banner!.textContent).toContain("WEB-INF/classes/com/foo/Bar.class");
+    expect(banner?.textContent ?? "").toContain("WEB-INF/classes/com/foo/Bar.class");
   });
 
   it("no banner without decompiled_from (legacy behavior)", () => {
@@ -63,7 +75,14 @@ describe("CodeViewer decompiled banner (HALL-25)", () => {
   it("banner is absent for binary files even with the field", () => {
     render({
       path: "x/Dep.class",
-      file: { content: "", language: "binary", total_lines: 0, size_bytes: 5, is_truncated: false, type: "binary" as const },
+      file: {
+        content: "",
+        language: "binary",
+        total_lines: 0,
+        size_bytes: 5,
+        is_truncated: false,
+        type: "binary" as const,
+      },
     });
     expect(container.querySelector('[data-testid="workspace-code-decompiled-banner"]')).toBeNull();
   });

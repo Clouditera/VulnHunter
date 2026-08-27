@@ -103,8 +103,16 @@ describe("loadDecompileManifest (defensive parsing — untrusted input)", () => 
       "not-an-object",
       { name: 42, decompiled_root: "x", entries: {} },
       { name: "ok.jar", decompiled_root: 7, entries: {} },
-      { name: "ok2.jar", decompiled_root: ".vulnhunter-decompiled/ok2.jar", entries: { "a/A.class": 99 } },
-      { name: "ok3.jar", decompiled_root: ".vulnhunter-decompiled/ok3.jar", entries: { "a/A.class": "../escape.java" } },
+      {
+        name: "ok2.jar",
+        decompiled_root: ".vulnhunter-decompiled/ok2.jar",
+        entries: { "a/A.class": 99 },
+      },
+      {
+        name: "ok3.jar",
+        decompiled_root: ".vulnhunter-decompiled/ok3.jar",
+        entries: { "a/A.class": "../escape.java" },
+      },
     ]);
     const manifest = await loadDecompileManifest(B, TASK);
     // jar blocks missing required fields dropped; hostile entries dropped per-entry
@@ -117,7 +125,11 @@ describe("loadDecompileManifest (defensive parsing — untrusted input)", () => 
 
   it("caches per task (60s LRU) — repeated loads cost one MinIO read", async () => {
     seedManifest([
-      { name: "a.jar", decompiled_root: ".vulnhunter-decompiled/a.jar", entries: { "a/A.class": ".vulnhunter-decompiled/a.jar/a/A.java" } },
+      {
+        name: "a.jar",
+        decompiled_root: ".vulnhunter-decompiled/a.jar",
+        entries: { "a/A.class": ".vulnhunter-decompiled/a.jar/a/A.java" },
+      },
     ]);
     const first = await loadDecompileManifest(B, TASK);
     m.objects.delete(`${P}.vulnhunter-decompiled/manifest.json`); // vanish underneath
@@ -129,9 +141,14 @@ describe("loadDecompileManifest (defensive parsing — untrusted input)", () => 
 describe("resolveClassToJavaKey (.class request → source-files .java key)", () => {
   it("hits exact entry", async () => {
     seedManifest([
-      { name: "app.war", decompiled_root: ".vulnhunter-decompiled/app.war", entries: {
-        "WEB-INF/classes/com/foo/Bar.class": ".vulnhunter-decompiled/app.war/WEB-INF/classes/com/foo/Bar.java",
-      } },
+      {
+        name: "app.war",
+        decompiled_root: ".vulnhunter-decompiled/app.war",
+        entries: {
+          "WEB-INF/classes/com/foo/Bar.class":
+            ".vulnhunter-decompiled/app.war/WEB-INF/classes/com/foo/Bar.java",
+        },
+      },
     ]);
     const hit = await resolveClassToJavaKey(B, TASK, "WEB-INF/classes/com/foo/Bar.class");
     expect(hit).toEqual({
@@ -145,20 +162,35 @@ describe("resolveClassToJavaKey (.class request → source-files .java key)", ()
     // `manager-core.war/WEB-INF/classes/...` — entries keys are relative
     // to the jar root, so the resolver must also try stripping leading dirs.
     seedManifest([
-      { name: "manager-core.war", decompiled_root: ".vulnhunter-decompiled/manager-core.war", entries: {
-        "WEB-INF/classes/com/foo/Bar.class": ".vulnhunter-decompiled/manager-core.war/WEB-INF/classes/com/foo/Bar.java",
-      } },
+      {
+        name: "manager-core.war",
+        decompiled_root: ".vulnhunter-decompiled/manager-core.war",
+        entries: {
+          "WEB-INF/classes/com/foo/Bar.class":
+            ".vulnhunter-decompiled/manager-core.war/WEB-INF/classes/com/foo/Bar.java",
+        },
+      },
     ]);
-    const hit = await resolveClassToJavaKey(B, TASK, "manager-core.war/WEB-INF/classes/com/foo/Bar.class");
-    expect(hit?.javaKey).toBe(`${P}.vulnhunter-decompiled/manager-core.war/WEB-INF/classes/com/foo/Bar.java`);
+    const hit = await resolveClassToJavaKey(
+      B,
+      TASK,
+      "manager-core.war/WEB-INF/classes/com/foo/Bar.class",
+    );
+    expect(hit?.javaKey).toBe(
+      `${P}.vulnhunter-decompiled/manager-core.war/WEB-INF/classes/com/foo/Bar.java`,
+    );
   });
 
   it("internal class maps to the same outer .java (Bar$Inner.class → Bar.java)", async () => {
     seedManifest([
-      { name: "app.war", decompiled_root: ".vulnhunter-decompiled/app.war", entries: {
-        "com/foo/Bar.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
-        "com/foo/Bar$Inner.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
-      } },
+      {
+        name: "app.war",
+        decompiled_root: ".vulnhunter-decompiled/app.war",
+        entries: {
+          "com/foo/Bar.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
+          "com/foo/Bar$Inner.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
+        },
+      },
     ]);
     const hit = await resolveClassToJavaKey(B, TASK, "com/foo/Bar$Inner.class");
     expect(hit?.javaPath).toBe(".vulnhunter-decompiled/app.war/com/foo/Bar.java");
@@ -166,9 +198,13 @@ describe("resolveClassToJavaKey (.class request → source-files .java key)", ()
 
   it("miss → null (dependency class never decompiled)", async () => {
     seedManifest([
-      { name: "app.war", decompiled_root: ".vulnhunter-decompiled/app.war", entries: {
-        "com/foo/Bar.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
-      } },
+      {
+        name: "app.war",
+        decompiled_root: ".vulnhunter-decompiled/app.war",
+        entries: {
+          "com/foo/Bar.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
+        },
+      },
     ]);
     expect(await resolveClassToJavaKey(B, TASK, "WEB-INF/lib/dep/X.class")).toBeNull();
   });
@@ -179,13 +215,17 @@ describe("resolveClassToJavaKey (.class request → source-files .java key)", ()
 
   it("returns the .java content through the MinIO-key text pipeline", async () => {
     seedManifest([
-      { name: "app.war", decompiled_root: ".vulnhunter-decompiled/app.war", entries: {
-        "com/foo/Bar.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
-      } },
+      {
+        name: "app.war",
+        decompiled_root: ".vulnhunter-decompiled/app.war",
+        entries: {
+          "com/foo/Bar.class": ".vulnhunter-decompiled/app.war/com/foo/Bar.java",
+        },
+      },
     ]);
     seed(`${P}.vulnhunter-decompiled/app.war/com/foo/Bar.java`, "class Bar { void x() {} }\n");
     const hit = await resolveClassToJavaKey(B, TASK, "com/foo/Bar.class");
-    const file = await getCodeFileFromMinioKey(TASK, B, hit!.javaKey, hit!.javaPath);
+    const file = hit ? await getCodeFileFromMinioKey(TASK, B, hit.javaKey, hit.javaPath) : null;
     expect(file?.type).toBe("text");
     expect(file?.language).toBe("java");
     expect(file?.content).toContain("class Bar");
@@ -195,12 +235,20 @@ describe("resolveClassToJavaKey (.class request → source-files .java key)", ()
 describe("resolveSourceFilesKey — manifest-first deterministic hit", () => {
   it("java finding path hits the manifest reverse index before heuristics", async () => {
     seedManifest([
-      { name: "a.war", decompiled_root: ".vulnhunter-decompiled/a.war", entries: {
-        "com/x/A.class": ".vulnhunter-decompiled/a.war/com/x/A.java",
-      } },
-      { name: "b.war", decompiled_root: ".vulnhunter-decompiled/b.war", entries: {
-        "com/x/A.class": ".vulnhunter-decompiled/b.war/com/x/A.java",
-      } },
+      {
+        name: "a.war",
+        decompiled_root: ".vulnhunter-decompiled/a.war",
+        entries: {
+          "com/x/A.class": ".vulnhunter-decompiled/a.war/com/x/A.java",
+        },
+      },
+      {
+        name: "b.war",
+        decompiled_root: ".vulnhunter-decompiled/b.war",
+        entries: {
+          "com/x/A.class": ".vulnhunter-decompiled/b.war/com/x/A.java",
+        },
+      },
     ]);
     seed(`${P}.vulnhunter-decompiled/b.war/com/x/A.java`, "// b's A\n");
     // no a.war tree on MinIO — the manifest knows A.java lives under b.war
