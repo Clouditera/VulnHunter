@@ -39,8 +39,57 @@ export function CodeViewer({
 
   const lines = useMemo(() => (file?.content ?? "").split("\n"), [file]);
 
+  // HALL-25: decompiled-origin banner — the backend resolved a .class
+  // request through the decompile manifest; tell the user what they are
+  // reading and which .class it came from (customer question 2).
+  const decompiledBanner = file?.decompiled_from && file.type === "text"
+    ? i18n.t("workspace.decompiled").replace("{path}", file.decompiled_from)
+    : null;
+  const decompiledFrom = file?.decompiled_from;
+
   return (
     <>
+      {decompiledBanner && decompiledFrom ? (
+        <div
+          data-testid={`${testIdPrefix}-code-decompiled-banner`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "6px 14px",
+            borderBottom: "1px solid var(--border)",
+            background: "rgba(194,120,30,0.12)",
+            color: "var(--text-secondary)",
+            fontSize: "12px",
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              padding: "1px 8px",
+              borderRadius: "3px",
+              background: "rgba(194,120,30,0.2)",
+              color: "var(--brand)",
+              fontSize: "11px",
+              fontWeight: 600,
+              flexShrink: 0,
+            }}
+          >
+            DECOMPILED
+          </span>
+          <span
+            style={{
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={decompiledFrom}
+          >
+            {decompiledBanner}
+          </span>
+        </div>
+      ) : null}
       <div
         data-testid={`${testIdPrefix}-code-header`}
         style={{

@@ -147,6 +147,7 @@ COPY worker-assets/scan-mode.sh /opt/scan-mode.sh
 COPY worker-assets/chat-mode.sh /opt/chat-mode.sh
 COPY worker-assets/report-mode.sh /opt/report-mode.sh
 COPY worker-assets/run-with-deadline.py /opt/run-with-deadline.py
+COPY worker-assets/gen-decompile-manifest.py /opt/vulnhunter/bin/gen-decompile-manifest.py
 RUN chmod +x /opt/entrypoint.sh /opt/scan-mode.sh /opt/chat-mode.sh /opt/report-mode.sh \
     /opt/run-with-deadline.py
 
