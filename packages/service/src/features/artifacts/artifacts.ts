@@ -1,4 +1,11 @@
 import { decodeTextFileContent } from "../source-archives/charset.js";
+import { createWriteStream } from "node:fs";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
+import * as tar from "tar";
 /**
  * H4 dynamic artifact read model: file listing + read-only preview for the
  * Finding three-card UI and the EXP page.
@@ -21,6 +28,8 @@ import {
 import type { DbTask } from "../tasks/storage.js";
 
 export const ARTIFACT_ROOTS = ["findings", "exploits"] as const;
+/** One-shot archive size ceiling: refuse to assemble beyond this (pre-download). */
+export const MAX_ARCHIVE_BYTES = 200 * 1024 * 1024;
 /** v1 is preview-only (fish: no execution, no download) — neutral marker. */
 export const ARTIFACT_TRUNCATED_MARKER = "\n\n[File truncated]";
 
@@ -180,6 +189,61 @@ export async function listArtifactTreeEntries(taskId: string, bucket: string): P
 export async function listArtifactTree(taskId: string, bucket: string): Promise<Set<string>> {
   const entries = await listArtifactTreeEntries(taskId, bucket);
   return new Set(entries.map((entry) => entry.path));
+}
+
+/** Materialize MinIO objects under tmpRoot, keeping their relative structure. */
+async function materializeEntries(taskId: string, entries: ArtifactTreeEntry[], bucket: string, tmpRoot: string): Promise<void> {
+  const minio = getMinio();
+  for (const entry of entries) {
+    const dest = join(tmpRoot, entry.path);
+    await mkdir(dirname(dest), { recursive: true });
+    const objStream = await minio.getObject(bucket, `scan-outputs/${taskId}/${entry.path}`);
+    await pipeline(objStream, createWriteStream(dest));
+  }
+}
+
+/** Stream a gzip tar of tmpRoot off the given entry paths; cleanup on close/error. */
+function packTarGz(tmpRoot: string, entries: ArtifactTreeEntry[], cleanup: () => void): Response {
+  // Empty tree still yields a valid (near-empty) tar.gz — "no artifacts",
+  // never a 404. tar.c rejects an empty path list, so pack the temp root.
+  const paths = entries.length > 0 ? entries.map((entry) => entry.path) : ["."];
+  const archive = tar.c({ gzip: true, cwd: tmpRoot }, paths);
+  archive.on("close", cleanup);
+  archive.on("error", cleanup);
+  return new Response(archive as unknown as ReadableStream, {
+    headers: { "Content-Type": "application/gzip" },
+  });
+}
+
+/**
+ * Shared tar.gz assembly for every artifact-pack endpoint (task archive,
+ * finding archive, exploit archive). Entries come from listArtifactTreeEntries
+ * (optionally filtered by prefix); sizes are budgeted up-front (413 sentinel,
+ * nothing fetched), then objects are materialized under a private temp dir and
+ * streamed out with close/error cleanup covering mid-download disconnects.
+ * Throws on MinIO failure (caller maps to 500).
+ */
+export async function streamArtifactArchive(
+  taskId: string,
+  entries: ArtifactTreeEntry[],
+  bucket: string,
+): Promise<Response | "ERR_ARCHIVE_TOO_LARGE"> {
+  const totalBytes = entries.reduce((sum, entry) => sum + entry.size, 0);
+  if (totalBytes > MAX_ARCHIVE_BYTES) return "ERR_ARCHIVE_TOO_LARGE";
+
+  const tmpRoot = await mkdtemp(join(tmpdir(), `task-artifacts-${taskId}-`));
+  const cleanup = () => {
+    rm(tmpRoot, { recursive: true, force: true }).catch(() => {
+      /* best effort */
+    });
+  };
+  try {
+    await materializeEntries(taskId, entries, bucket, tmpRoot);
+    return packTarGz(tmpRoot, entries, cleanup);
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
 }
 
 /**
@@ -349,4 +413,34 @@ export async function getArtifactFilePreview(taskId: string, relPath: string, tr
     preview.mime = result.mime;
   }
   return preview;
+}
+
+export interface ArtifactFileDownload {
+  /** MinIO object stream — piped through, never buffered whole. */
+  stream: Readable;
+  size: number;
+  /** RFC 5987 encoded basename, safe for Content-Disposition. */
+  filenameStar: string;
+}
+
+/**
+ * HALL-23: single-file raw download. Same validation triple as preview
+ * (normalize → tree membership); on success returns the object stream plus
+ * the listing size and the RFC 5987 encoded basename so callers can set
+ * attachment headers without risking header injection (paths may be non-ASCII,
+ * control chars were already rejected during normalization — basename peels
+ * one more path layer).
+ */
+export async function getArtifactFileDownload(
+  taskId: string,
+  relPath: string,
+  entries: ArtifactTreeEntry[],
+  bucket: string,
+): Promise<ArtifactFileDownload | null> {
+  const entry = entries.find((e) => e.path === relPath);
+  if (!entry) return null;
+  const basename = relPath.split("/").pop() ?? relPath;
+  const minio = getMinio();
+  const stream = await minio.getObject(bucket, `scan-outputs/${taskId}/${relPath}`);
+  return { stream, size: entry.size, filenameStar: encodeURIComponent(basename) };
 }

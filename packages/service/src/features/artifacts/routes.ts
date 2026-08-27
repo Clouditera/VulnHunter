@@ -1,26 +1,24 @@
 /**
- * H4 dynamic artifact read API (read-only). Three endpoints:
+ * H4 dynamic artifact read API (read-only) + HALL-23 download endpoints.
  *   GET /:taskId/findings/:findingId/artifacts  — Finding three-card file lists
  *   GET /:taskId/exploits                       — EXP page data + four-state
  *   GET /:taskId/artifacts/file?path=<rel>      — single-file preview
+ *   GET /:taskId/artifacts/file/download?path=<rel> — single-file raw download (HALL-23)
+ *   GET /:taskId/artifacts/archive              — task-wide tar.gz (PR #70)
+ *   GET /:taskId/findings/:findingId/artifacts/download — finding tar.gz (HALL-23)
+ *   GET /:taskId/exploits/:exploitId/artifacts/download — exploit tar.gz (HALL-23)
  * Guards identical to the findings router (license + auth + task visibility).
  */
 
 import { Hono } from "hono";
-import { createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { pipeline } from "node:stream/promises";
-import * as tar from "tar";
 import { requireAuth } from "../../middleware/auth.js";
 import { licenseGuard } from "../../middleware/license-guard.js";
 import { loadConfig } from "../../infra/config.js";
 import { logger } from "../../infra/logger.js";
-import { getMinio } from "../../infra/minio/client.js";
 import { queryContextFromUser } from "../../infra/query-context.js";
 import { getAccessibleTask } from "../tasks/access.js";
 import {
+  getArtifactFileDownload,
   getArtifactFilePreview,
   getExploitPageData,
   isValidExploitId,
@@ -30,10 +28,8 @@ import {
   listExploitArtifacts,
   listFindingArtifacts,
   normalizeArtifactPath,
+  streamArtifactArchive,
 } from "./artifacts.js";
-
-/** One-shot archive size ceiling: refuse to assemble beyond this (pre-download). */
-const MAX_ARCHIVE_BYTES = 200 * 1024 * 1024;
 
 export const artifactsRouter = new Hono();
 artifactsRouter.use("*", licenseGuard);
@@ -117,10 +113,99 @@ artifactsRouter.get("/:taskId/artifacts/file", async (c) => {
   }
 });
 
+// GET /api/tasks/:taskId/artifacts/file/download?path=<rel> — single-file raw
+// download (HALL-23). Same validation triple as the preview endpoint: any
+// failure is the same 404, so existence never leaks. The MinIO stream is
+// forwarded as-is (never buffered whole) with a basename-only RFC 5987
+// Content-Disposition, so non-ASCII filenames work and header injection is
+// impossible (control chars were already rejected by normalizeArtifactPath).
+artifactsRouter.get("/:taskId/artifacts/file/download", async (c) => {
+  const { taskId } = c.req.param();
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+
+  const relPath = normalizeArtifactPath(c.req.query("path"));
+  if (!relPath) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+
+  const config = loadConfig();
+  try {
+    // Entries (not the path Set) so the listing size can seed Content-Length.
+    const entries = await listArtifactTreeEntries(taskId, config.minio.bucket);
+    const download = await getArtifactFileDownload(taskId, relPath, entries, config.minio.bucket);
+    if (!download) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+    return new Response(download.stream as unknown as ReadableStream, {
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": `attachment; filename*=UTF-8''${download.filenameStar}`,
+        "Content-Length": String(download.size),
+      },
+    });
+  } catch (error) {
+    logger.warn({ code: "WARN_ARTIFACT_DOWNLOAD_FAILED", taskId, error_class: safeErrorClass(error) }, "Artifact download failed");
+    return c.json({ error: { code: "ERR_INTERNAL" } }, 500);
+  }
+});
+
+// GET /api/tasks/:taskId/findings/:findingId/artifacts/download — one-shot
+// tar.gz of a single finding's whitelist subtree (HALL-23). Range = entries
+// under findings/<findingId>/; empty range still yields a valid near-empty
+// tar.gz (same semantics as the task-wide archive), never a 404.
+artifactsRouter.get("/:taskId/findings/:findingId/artifacts/download", async (c) => {
+  const { taskId, findingId } = c.req.param();
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+  if (!isValidFindingId(findingId)) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+
+  const config = loadConfig();
+  const bucket = config.minio.bucket;
+  let entries: Awaited<ReturnType<typeof listArtifactTreeEntries>>;
+  try {
+    const all = await listArtifactTreeEntries(taskId, bucket);
+    entries = all.filter((e) => e.path.startsWith(`findings/${findingId}/`));
+    const archive = await streamArtifactArchive(taskId, entries, bucket);
+    if (archive === "ERR_ARCHIVE_TOO_LARGE") {
+      return c.json({ error: { code: "ERR_ARCHIVE_TOO_LARGE" } }, 413);
+    }
+    archive.headers.set("Content-Disposition", `attachment; filename="finding-${findingId}-artifacts.tar.gz"`);
+    return archive;
+  } catch (error) {
+    logger.warn({ code: "WARN_ARTIFACT_ARCHIVE_FAILED", taskId, findingId, error_class: safeErrorClass(error) }, "Finding artifact archive build failed");
+    return c.json({ error: { code: "ERR_INTERNAL" } }, 500);
+  }
+});
+
+// GET /api/tasks/:taskId/exploits/:exploitId/artifacts/download — one-shot
+// tar.gz of a single exploit chain's whitelist subtree (HALL-23). Same
+// discipline as the finding archive above; range = exploits/<exploitId>/.
+artifactsRouter.get("/:taskId/exploits/:exploitId/artifacts/download", async (c) => {
+  const { taskId, exploitId } = c.req.param();
+  const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
+  if (!task) return c.json({ error: { code: "ERR_TASK_NOT_FOUND" } }, 404);
+  if (!isValidExploitId(exploitId)) return c.json({ error: { code: "ERR_NOT_FOUND" } }, 404);
+
+  const config = loadConfig();
+  const bucket = config.minio.bucket;
+  try {
+    const all = await listArtifactTreeEntries(taskId, bucket);
+    const entries = all.filter((e) => e.path.startsWith(`exploits/${exploitId}/`));
+    const archive = await streamArtifactArchive(taskId, entries, bucket);
+    if (archive === "ERR_ARCHIVE_TOO_LARGE") {
+      return c.json({ error: { code: "ERR_ARCHIVE_TOO_LARGE" } }, 413);
+    }
+    archive.headers.set("Content-Disposition", `attachment; filename="exploit-${exploitId}-artifacts.tar.gz"`);
+    return archive;
+  } catch (error) {
+    logger.warn({ code: "WARN_ARTIFACT_ARCHIVE_FAILED", taskId, exploitId, error_class: safeErrorClass(error) }, "Exploit artifact archive build failed");
+    return c.json({ error: { code: "ERR_INTERNAL" } }, 500);
+  }
+});
+
 // GET /api/tasks/:taskId/artifacts/archive — one-shot bulk collection of the
 // findings/ + exploits/ whitelist trees as a streamed tar.gz. Keys come from
 // the MinIO listing only (no user-controlled path), sharing the same whitelist
-// discipline as the per-file preview endpoint.
+// discipline as the per-file preview endpoint. Tar assembly lives in the
+// shared streamArtifactArchive helper (HALL-23 refactor; external behavior
+// unchanged).
 artifactsRouter.get("/:taskId/artifacts/archive", async (c) => {
   const { taskId } = c.req.param();
   const task = await getAccessibleTask(queryContextFromUser(c.get("user")), taskId);
@@ -132,45 +217,13 @@ artifactsRouter.get("/:taskId/artifacts/archive", async (c) => {
   let entries: Awaited<ReturnType<typeof listArtifactTreeEntries>>;
   try {
     entries = await listArtifactTreeEntries(taskId, bucket);
-  } catch (error) {
-    logger.warn({ code: "WARN_ARTIFACT_ARCHIVE_FAILED", taskId, error_class: safeErrorClass(error) }, "Artifact archive listing failed");
-    return c.json({ error: { code: "ERR_INTERNAL" } }, 500);
-  }
-
-  const totalBytes = entries.reduce((sum, entry) => sum + entry.size, 0);
-  if (totalBytes > MAX_ARCHIVE_BYTES) {
-    return c.json({ error: { code: "ERR_ARCHIVE_TOO_LARGE" } }, 413);
-  }
-
-  // Materialize the tree under a private temp dir (relative structure kept),
-  // then stream a tar.gz off it. Cleanup runs on stream close — covering both
-  // normal completion and a client that disconnects mid-download.
-  const tmpRoot = await mkdtemp(join(tmpdir(), `task-artifacts-${taskId}-`));
-  const cleanup = () => { rm(tmpRoot, { recursive: true, force: true }).catch(() => { /* best effort */ }); };
-  try {
-    const minio = getMinio();
-    for (const entry of entries) {
-      const dest = join(tmpRoot, entry.path);
-      await mkdir(dirname(dest), { recursive: true });
-      const objStream = await minio.getObject(bucket, `scan-outputs/${taskId}/${entry.path}`);
-      await pipeline(objStream, createWriteStream(dest));
+    const archive = await streamArtifactArchive(taskId, entries, bucket);
+    if (archive === "ERR_ARCHIVE_TOO_LARGE") {
+      return c.json({ error: { code: "ERR_ARCHIVE_TOO_LARGE" } }, 413);
     }
-
-    // Empty tree still yields a valid (near-empty) tar.gz — "no artifacts",
-    // never a 404. tar.c rejects an empty path list, so pack the temp root.
-    const paths = entries.length > 0 ? entries.map((entry) => entry.path) : ["."];
-    const archive = tar.c({ gzip: true, cwd: tmpRoot }, paths);
-    archive.on("close", cleanup);
-    archive.on("error", cleanup);
-
-    return new Response(archive as unknown as ReadableStream, {
-      headers: {
-        "Content-Type": "application/gzip",
-        "Content-Disposition": `attachment; filename="task-${taskId}-artifacts.tar.gz"`,
-      },
-    });
+    archive.headers.set("Content-Disposition", `attachment; filename="task-${taskId}-artifacts.tar.gz"`);
+    return archive;
   } catch (error) {
-    cleanup();
     logger.warn({ code: "WARN_ARTIFACT_ARCHIVE_FAILED", taskId, error_class: safeErrorClass(error) }, "Artifact archive build failed");
     return c.json({ error: { code: "ERR_INTERNAL" } }, 500);
   }
