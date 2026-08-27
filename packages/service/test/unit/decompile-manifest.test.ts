@@ -213,6 +213,63 @@ describe("resolveClassToJavaKey (.class request → source-files .java key)", ()
     expect(await resolveClassToJavaKey(B, TASK, "com/foo/Bar.class")).toBeNull();
   });
 
+  it("multi-jar same relative class path: jar-name hint from the request path wins (review r1)", async () => {
+    // jars sorted by name in the manifest (script order): aaa-lib.war first.
+    // The request names manager-core.war in its leading segment — that jar's
+    // java must win even though both jars hold the same relative class path.
+    seedManifest([
+      {
+        name: "aaa-lib.war",
+        decompiled_root: ".vulnhunter-decompiled/aaa-lib.war",
+        entries: {
+          "WEB-INF/classes/com/foo/Bar.class":
+            ".vulnhunter-decompiled/aaa-lib.war/WEB-INF/classes/com/foo/Bar.java",
+        },
+      },
+      {
+        name: "manager-core.war",
+        decompiled_root: ".vulnhunter-decompiled/manager-core.war",
+        entries: {
+          "WEB-INF/classes/com/foo/Bar.class":
+            ".vulnhunter-decompiled/manager-core.war/WEB-INF/classes/com/foo/Bar.java",
+        },
+      },
+    ]);
+    const hit = await resolveClassToJavaKey(
+      B,
+      TASK,
+      "manager-core.war/WEB-INF/classes/com/foo/Bar.class",
+    );
+    expect(hit?.javaPath).toBe(
+      ".vulnhunter-decompiled/manager-core.war/WEB-INF/classes/com/foo/Bar.java",
+    );
+  });
+
+  it("a precise candidate in ANY jar beats a vague candidate in an earlier jar (review r1)", async () => {
+    // jar a.jar (first in manifest) holds only the low-specificity candidate
+    // `com/foo/Bar.class`; jar b.jar holds the precise
+    // `WEB-INF/classes/com/foo/Bar.class` — the precise one must win.
+    seedManifest([
+      {
+        name: "a.jar",
+        decompiled_root: ".vulnhunter-decompiled/a.jar",
+        entries: {
+          "com/foo/Bar.class": ".vulnhunter-decompiled/a.jar/com/foo/Bar.java",
+        },
+      },
+      {
+        name: "b.jar",
+        decompiled_root: ".vulnhunter-decompiled/b.jar",
+        entries: {
+          "WEB-INF/classes/com/foo/Bar.class":
+            ".vulnhunter-decompiled/b.jar/WEB-INF/classes/com/foo/Bar.java",
+        },
+      },
+    ]);
+    const hit = await resolveClassToJavaKey(B, TASK, "WEB-INF/classes/com/foo/Bar.class");
+    expect(hit?.javaPath).toBe(".vulnhunter-decompiled/b.jar/WEB-INF/classes/com/foo/Bar.java");
+  });
+
   it("returns the .java content through the MinIO-key text pipeline", async () => {
     seedManifest([
       {
@@ -260,5 +317,48 @@ describe("resolveSourceFilesKey — manifest-first deterministic hit", () => {
     seed(`${P}.vulnhunter-decompiled/webgoat.war/org/owasp/Lesson.java`, "class Lesson {}\n");
     const key = await resolveSourceFilesKey(B, TASK, "org/owasp/Lesson.java");
     expect(key).toBe(`${P}.vulnhunter-decompiled/webgoat.war/org/owasp/Lesson.java`);
+  });
+
+  it("reverse index: falls through to the next jar's key when the first HEAD misses (review r2)", async () => {
+    // same class path in two jars; only b.war's java exists on MinIO — the
+    // lookup must continue past a.war's dead key (parity with the old scan)
+    seedManifest([
+      {
+        name: "a.war",
+        decompiled_root: ".vulnhunter-decompiled/a.war",
+        entries: {
+          "com/x/A.class": ".vulnhunter-decompiled/a.war/com/x/A.java",
+        },
+      },
+      {
+        name: "b.war",
+        decompiled_root: ".vulnhunter-decompiled/b.war",
+        entries: {
+          "com/x/A.class": ".vulnhunter-decompiled/b.war/com/x/A.java",
+        },
+      },
+    ]);
+    seed(`${P}.vulnhunter-decompiled/b.war/com/x/A.java`, "// b\n");
+    const key = await resolveSourceFilesKey(B, TASK, "com/x/A.java");
+    expect(key).toBe(`${P}.vulnhunter-decompiled/b.war/com/x/A.java`);
+  });
+
+  it("reverse index: only /-boundary suffixes match (review r2)", async () => {
+    seedManifest([
+      {
+        name: "b.war",
+        decompiled_root: ".vulnhunter-decompiled/b.war",
+        entries: {
+          "c/A.class": ".vulnhunter-decompiled/b.war/com/x/A.java",
+        },
+      },
+    ]);
+    seed(`${P}.vulnhunter-decompiled/b.war/com/x/A.java`, "// a\n");
+    // `x/A.java` is a boundary suffix of `.../com/x/A.java` → hit
+    expect(await resolveSourceFilesKey(B, TASK, "x/A.java")).toBe(
+      `${P}.vulnhunter-decompiled/b.war/com/x/A.java`,
+    );
+    // `om/x/A.java` cuts mid-segment → no manifest hit, heuristic misses too
+    expect(await resolveSourceFilesKey(B, TASK, "om/x/A.java")).toBeNull();
   });
 });
