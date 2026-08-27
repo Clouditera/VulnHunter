@@ -1,7 +1,15 @@
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
 /**
@@ -21,7 +29,10 @@ const repoRoot = join(import.meta.dirname, "../../../..");
 const script = join(repoRoot, "worker-assets/gen-decompile-manifest.py");
 const roots: string[] = [];
 
-afterEach(() => { while (roots.length) rmSync(roots.pop()!, { recursive: true, force: true }); });
+afterEach(() => {
+  const pending = roots.splice(0, roots.length);
+  for (const dir of pending) rmSync(dir, { recursive: true, force: true });
+});
 
 function tmpRoot(): string {
   const dir = mkdtempSync(join(tmpdir(), "gen-manifest-"));
@@ -33,7 +44,17 @@ function run(args: string[]) {
   return spawnSync("python3", [script, ...args], { encoding: "utf8" });
 }
 
-function readManifest(path: string): any {
+interface RawManifestJar {
+  name: string;
+  decompiled_root: string;
+  entries: Record<string, string>;
+}
+interface RawManifest {
+  version: number;
+  jars: RawManifestJar[];
+}
+
+function readManifest(path: string): RawManifest {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
@@ -110,7 +131,8 @@ describe("gen-decompile-manifest.py (HALL-25 P0)", () => {
     const jarA = makeExtractedJar(root, ["com/a/A.class"]);
     const jarB = makeExtractedJar(root, ["com/b/B.class"]);
     // the helper hardcodes the jar dir name app.war — rename to make two jars
-    const dirA = join(root, "jars", "a.jar"); mkdirSync(join(root, "jars"), { recursive: true });
+    const dirA = join(root, "jars", "a.jar");
+    mkdirSync(join(root, "jars"), { recursive: true });
     const dirB = join(root, "jars", "b.jar");
     rmSync(jarA, { recursive: true, force: true });
     rmSync(jarB, { recursive: true, force: true });
@@ -131,9 +153,13 @@ describe("gen-decompile-manifest.py (HALL-25 P0)", () => {
     expect(run([dirB, decB, manifestPath]).status).toBe(0);
 
     const jars = readManifest(manifestPath).jars;
-    expect(jars.map((j: any) => j.name).sort()).toEqual(["a.jar", "b.jar"]);
-    expect(jars[0].entries).toEqual({ "com/a/A.class": ".vulnhunter-decompiled/a.jar/com/a/A.java" });
-    expect(jars[1].entries).toEqual({ "com/b/B.class": ".vulnhunter-decompiled/b.jar/com/b/B.java" });
+    expect(jars.map((j) => j.name).sort()).toEqual(["a.jar", "b.jar"]);
+    expect(jars[0].entries).toEqual({
+      "com/a/A.class": ".vulnhunter-decompiled/a.jar/com/a/A.java",
+    });
+    expect(jars[1].entries).toEqual({
+      "com/b/B.class": ".vulnhunter-decompiled/b.jar/com/b/B.java",
+    });
   });
 
   it("is idempotent: re-running the same jar replaces its entries without duplicating", () => {
@@ -154,12 +180,19 @@ describe("gen-decompile-manifest.py (HALL-25 P0)", () => {
     const root = tmpRoot();
     // build a minimal zip with one .class entry using python's zipfile
     const jarPath = join(root, "svc.war");
-    const zres = spawnSync("python3", ["-c", `
+    const zres = spawnSync(
+      "python3",
+      [
+        "-c",
+        `
 import zipfile
 with zipfile.ZipFile(r"${jarPath}", "w") as z:
     z.writestr("WEB-INF/classes/svc/Ping.class", "\\x00\\xca\\xfe\\xba\\xbe")
     z.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\\n")
-`], { encoding: "utf8" });
+`,
+      ],
+      { encoding: "utf8" },
+    );
     expect(zres.status).toBe(0);
 
     const decDir = join(root, "src", ".vulnhunter-decompiled", "svc.war");
@@ -171,7 +204,8 @@ with zipfile.ZipFile(r"${jarPath}", "w") as z:
     const jar = readManifest(manifestPath).jars[0];
     expect(jar.name).toBe("svc.war");
     expect(jar.entries).toEqual({
-      "WEB-INF/classes/svc/Ping.class": ".vulnhunter-decompiled/svc.war/WEB-INF/classes/svc/Ping.java",
+      "WEB-INF/classes/svc/Ping.class":
+        ".vulnhunter-decompiled/svc.war/WEB-INF/classes/svc/Ping.java",
     });
   });
 
@@ -182,14 +216,23 @@ with zipfile.ZipFile(r"${jarPath}", "w") as z:
     const manifestPath = join(root, "manifest.json");
 
     // pre-seed with another jar's entry (as if a previous invocation wrote it)
-    writeFileSync(manifestPath, JSON.stringify({
-      version: 1,
-      jars: [{ name: "other.jar", decompiled_root: ".vulnhunter-decompiled/other.jar", entries: { "o/O.class": ".vulnhunter-decompiled/other.jar/o/O.java" } }],
-    }));
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        version: 1,
+        jars: [
+          {
+            name: "other.jar",
+            decompiled_root: ".vulnhunter-decompiled/other.jar",
+            entries: { "o/O.class": ".vulnhunter-decompiled/other.jar/o/O.java" },
+          },
+        ],
+      }),
+    );
 
     expect(run([jarDir, decDir, manifestPath]).status).toBe(0);
     const jars = readManifest(manifestPath).jars;
-    expect(jars.map((j: any) => j.name).sort()).toEqual(["app.war", "other.jar"]);
+    expect(jars.map((j) => j.name).sort()).toEqual(["app.war", "other.jar"]);
   });
 
   it("overwrites a corrupt existing manifest instead of failing", () => {
@@ -217,7 +260,10 @@ with zipfile.ZipFile(r"${jarPath}", "w") as z:
     expect(run([jarDir, decDir, manifestPath]).status).toBe(0);
     expect(existsSync(manifestPath)).toBe(true);
     // 0644-ish: owner rw, others r — no execute bits
-    const mode = (parseInt(spawnSync("stat", ["-c", "%a", manifestPath], { encoding: "utf8" }).stdout.trim(), 8));
+    const mode = Number.parseInt(
+      spawnSync("stat", ["-c", "%a", manifestPath], { encoding: "utf8" }).stdout.trim(),
+      8,
+    );
     expect(mode & 0o111).toBe(0);
     expect(mode & 0o044).toBe(0o044);
     chmodSync(manifestPath, 0o644); // keep tmp cleanup happy on umask-strict hosts
