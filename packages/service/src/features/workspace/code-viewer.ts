@@ -299,7 +299,17 @@ export interface DecompileManifestJar {
 
 const DECOMPILE_MANIFEST_KEY = (taskId: string) =>
   `source-files/${taskId}/.vulnhunter-decompiled/manifest.json`;
-const manifestCache = new LRUCache<string, DecompileManifest | null>(50, 60_000);
+
+/** Cached manifest payload: the parsed manifest plus the reverse index
+ *  (javaPath boundary-suffix → candidate javaPaths) built once at load —
+ *  finding-path lookups stay O(1) instead of scanning every entry
+ *  (HALL-25 review r2). */
+interface ManifestCacheEntry {
+  manifest: DecompileManifest | null;
+  reverse: Map<string, string[]>;
+}
+
+const manifestCache = new LRUCache<string, ManifestCacheEntry>(50, 60_000);
 
 /** Reject manifest entry values that escape the src/ tree or are malformed. */
 function isSafeManifestPath(p: unknown): p is string {
@@ -336,15 +346,31 @@ function parseDecompileManifest(raw: unknown): DecompileManifest | null {
   return { version: 1, jars };
 }
 
-/** Load the decompile manifest; missing/corrupt/unsupported → null so
- *  callers fall back to the existing heuristic path unchanged. */
-export async function loadDecompileManifest(
-  bucket: string,
-  taskId: string,
-): Promise<DecompileManifest | null> {
+/** Build the reverse index: every /-boundary suffix of every javaPath
+ *  maps to the distinct javaPaths it can resolve to, in deterministic
+ *  manifest order (stable across calls; the first MinIO-existing key wins). */
+function buildReverseIndex(manifest: DecompileManifest | null): Map<string, string[]> {
+  const reverse = new Map<string, string[]>();
+  if (!manifest) return reverse;
+  for (const jar of manifest.jars) {
+    for (const javaPath of new Set(Object.values(jar.entries))) {
+      const parts = javaPath.split("/");
+      for (let i = 0; i < parts.length; i++) {
+        const suffix = parts.slice(i).join("/");
+        const list = reverse.get(suffix);
+        if (!list) reverse.set(suffix, [javaPath]);
+        else if (!list.includes(javaPath)) list.push(javaPath);
+      }
+    }
+  }
+  return reverse;
+}
+
+/** Load (and cache) the manifest payload with its reverse index. */
+async function loadManifestEntry(bucket: string, taskId: string): Promise<ManifestCacheEntry> {
   const cacheKey = `${bucket}:${taskId}`;
   const cached = manifestCache.get(cacheKey);
-  if (cached !== undefined) return cached;
+  if (cached) return cached;
   const buf = await readMinioObject(bucket, DECOMPILE_MANIFEST_KEY(taskId));
   let manifest: DecompileManifest | null = null;
   if (buf) {
@@ -354,8 +380,18 @@ export async function loadDecompileManifest(
       manifest = null;
     }
   }
-  manifestCache.set(cacheKey, manifest);
-  return manifest;
+  const entry: ManifestCacheEntry = { manifest, reverse: buildReverseIndex(manifest) };
+  manifestCache.set(cacheKey, entry);
+  return entry;
+}
+
+/** Load the decompile manifest; missing/corrupt/unsupported → null so
+ *  callers fall back to the existing heuristic path unchanged. */
+export async function loadDecompileManifest(
+  bucket: string,
+  taskId: string,
+): Promise<DecompileManifest | null> {
+  return (await loadManifestEntry(bucket, taskId)).manifest;
 }
 
 /** Candidate manifest keys for a requested .class path: entries keys are
@@ -373,9 +409,27 @@ function manifestClassCandidates(filePath: string): string[] {
   return [...new Set(candidates)];
 }
 
+/** Order jars so the one whose name matches the request's leading segment
+ *  comes first. The file tree nests extracted classes under a dir named
+ *  after the jar (`manager-core.war/WEB-INF/...`), so that segment is the
+ *  strongest signal of which jar the user actually clicked (review r1). */
+function orderJarsByRequestHint(
+  jars: DecompileManifestJar[],
+  filePath: string,
+): DecompileManifestJar[] {
+  const firstSeg = filePath.replace(/^\/+/, "").split("/")[0];
+  if (!firstSeg) return jars;
+  const hinted = jars.filter((j) => j.name === firstSeg);
+  if (hinted.length === 0) return jars;
+  return [...hinted, ...jars.filter((j) => j.name !== firstSeg)];
+}
+
 /** Resolve a .class viewer path to the source-files .java key via the
  *  manifest. Miss (or no manifest) → null; the caller keeps the existing
- *  binary/fallback behavior. */
+ *  binary/fallback behavior.
+ *  Loop order (review r1): candidates OUTER (most specific path first),
+ *  jars INNER (request-hinted jar first) — a vague candidate in an
+ *  alphabetically-earlier jar must never beat a precise one elsewhere. */
 export async function resolveClassToJavaKey(
   bucket: string,
   taskId: string,
@@ -384,8 +438,10 @@ export async function resolveClassToJavaKey(
   const manifest = await loadDecompileManifest(bucket, taskId);
   if (!manifest) return null;
   const candidates = manifestClassCandidates(filePath);
-  for (const jar of manifest.jars) {
-    for (const cls of candidates) {
+  if (candidates.length === 0) return null;
+  const orderedJars = orderJarsByRequestHint(manifest.jars, filePath);
+  for (const cls of candidates) {
+    for (const jar of orderedJars) {
       const javaPath = jar.entries[cls];
       if (!javaPath) continue;
       return {
@@ -452,19 +508,15 @@ export async function resolveSourceFilesKey(
   const direct = base + filePath.replace(/^\/+/, "");
   const buf = await readMinioObject(bucket, direct).then((b) => b !== null).catch(() => false);
   if (buf) return direct;
-  // b) manifest reverse hit — javaPath is src/-relative, key-shaped already
-  const manifest = await loadDecompileManifest(bucket, taskId);
-  if (manifest) {
-    const clean = filePath.replace(/^\/+/, "");
-    for (const jar of manifest.jars) {
-      for (const javaPath of Object.values(jar.entries)) {
-        if (javaPath === clean || javaPath.endsWith(`/${clean}`)) {
-          const key = base + javaPath;
-          const hit = await readMinioObject(bucket, key).then((b) => b !== null).catch(() => false);
-          if (hit) return key;
-        }
-      }
-    }
+  // b) manifest reverse hit (HALL-25, review r2): O(1) suffix lookup in the
+  // index built at load time; each candidate key is HEAD-verified on MinIO
+  // before being trusted (dead keys fall through to the next candidate).
+  const { reverse } = await loadManifestEntry(bucket, taskId);
+  const clean = filePath.replace(/^\/+/, "");
+  for (const javaPath of reverse.get(clean) ?? []) {
+    const key = base + javaPath;
+    const hit = await readMinioObject(bucket, key).then((b) => b !== null).catch(() => false);
+    if (hit) return key;
   }
   // c) finding paths are relative to the decompiled root — try each jarName
   const roots = await listDecompiledRoots(bucket, taskId);
