@@ -410,6 +410,16 @@ export const api = {
     /** H4: single exploit chain's companion artifact file list (exploits/<id>/). */
     exploitArtifacts: (id: string, exploitId: string) =>
       request<{ files: ArtifactFileEntry[] }>(`/api/tasks/${id}/exploits/${encodeURIComponent(exploitId)}/artifacts`),
+    /** HALL-23: pure download URL builders for <a href download> — same
+     *  pattern as reports.downloadUrl. Each points at a streaming endpoint
+     *  guarded by cookie auth; nothing goes through the JSON client. */
+    artifactFileDownloadUrl: (id: string, path: string) =>
+      `/api/tasks/${id}/artifacts/file/download?path=${encodeURIComponent(path)}`,
+    findingArtifactsDownloadUrl: (id: string, findingId: string) =>
+      `/api/tasks/${id}/findings/${encodeURIComponent(findingId)}/artifacts/download`,
+    exploitArtifactsDownloadUrl: (id: string, exploitId: string) =>
+      `/api/tasks/${id}/exploits/${encodeURIComponent(exploitId)}/artifacts/download`,
+    archiveDownloadUrl: (id: string) => `/api/tasks/${id}/artifacts/archive`,
     pause: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/pause`, { method: "POST" }),
     resume: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/resume`, { method: "POST" }),
     restart: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/restart`, { method: "POST" }),
