@@ -34,16 +34,15 @@ describe("CloudRouter promo cleanup (HALL-21)", () => {
     expect(promoSrc).toContain("settings.creds.cloudRouter.claimedGuideBefore");
   });
 
-  it("vertically centers the go button in the right column", () => {
-    // 外层 shell 垂直居中（alignItems center）+ 右侧栏容器列内居中（justifyContent center），
-    // 三态（可领取/池空/已领取）下右侧栏均与左侧文案块垂直居中对齐
+  it("vertically centers the go column via alignSelf, keeping shell top-aligned", () => {
+    // 方案 a（@admin 确认）：shell 恢复 flex-start（logo/标题顶部对齐，已领取态不整体居中浮动），
+    // 仅右侧栏 alignSelf center 实现居中；按评审建议只断言关键属性，不锁定完整样式串
     const shellStyle = promoSrc.match(/const shell: CSSProperties = \{([\s\S]*?)\};/)?.[1];
     expect(shellStyle).toBeDefined();
-    expect(shellStyle).toMatch(/alignItems:\s*"center"/);
-    const rightColumn = promoSrc.match(
-      /flexShrink:\s*0,\s*minWidth:\s*160,[\s\S]*?textAlign:\s*"center",\s*\}\}/,
-    )?.[0];
+    expect(shellStyle).toMatch(/alignItems:\s*"flex-start"/);
+    const rightColumn = promoSrc.match(/minWidth:\s*160,[\s\S]*?\}\}/)?.[0];
     expect(rightColumn).toBeDefined();
+    expect(rightColumn).toMatch(/alignSelf:\s*"center"/);
     expect(rightColumn).toMatch(/justifyContent:\s*"center"/);
     expect(rightColumn).toMatch(/textAlign:\s*"center"/);
   });

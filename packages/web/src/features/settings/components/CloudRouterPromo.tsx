@@ -92,7 +92,7 @@ export function CloudRouterPromo() {
   const shell: CSSProperties = {
     display: "flex",
     gap: 16,
-    alignItems: "center",
+    alignItems: "flex-start",
     flexWrap: "wrap",
     padding: "18px 20px",
     borderRadius: 12,
@@ -143,6 +143,8 @@ export function CloudRouterPromo() {
           flexDirection: "column",
           gap: 8,
           alignItems: "stretch",
+          // 方案 a：shell 保持 flex-start，仅右栏 alignSelf center 居中（已领取态左栏不整体下移）
+          alignSelf: "center",
           justifyContent: "center",
           textAlign: "center",
         }}
