@@ -253,6 +253,29 @@ export function OverviewTab() {
         <CredentialField task={task} />
         <ScanBudgetField task={task} />
         <CumulativeDurationField task={task} />
+        {/* HALL-23: task-wide artifacts (findings/ + exploits/ trees) as a
+            tar.gz. Deliberately distinct from the original source archive
+            download above — that one is the user's uploaded input. */}
+        <div style={{ padding: "9px 0", fontSize: "13px" }}>
+          <a
+            href={api.tasks.archiveDownloadUrl(task.id)}
+            download
+            data-testid="overview-download-all-artifacts"
+            title={i18n.t("overview.downloadAllArtifacts")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              color: "var(--brand)",
+              fontWeight: 600,
+              textDecoration: "none",
+              cursor: "pointer",
+            }}
+          >
+            <Icon name="download" size={13} />
+            {i18n.t("overview.downloadAllArtifacts")}
+          </a>
+        </div>
       </Card>
 
       {/* Vulnerability Overview — factual counts, no risk score */}

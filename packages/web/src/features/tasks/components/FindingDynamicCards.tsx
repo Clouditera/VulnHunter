@@ -64,10 +64,12 @@ function artifactBadge(path: string): string {
 /** Accordion: click file head to expand content inside the same card. Default all collapsed. */
 function AccordionArtifactList({
   taskId,
+  findingId,
   files,
   pathPrefix = "",
 }: {
   taskId: string;
+  findingId: string;
   files: ArtifactFileEntry[];
   pathPrefix?: string;
 }) {
@@ -93,27 +95,51 @@ function AccordionArtifactList({
 
   return (
     <div data-testid="finding-artifact-accordion" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      {/* HALL-23: per-finding pack download — sits above the file rows so the
+          entry is reachable without expanding anything. */}
+      <a
+        href={api.tasks.findingArtifactsDownloadUrl(taskId, findingId)}
+        download
+        data-testid="finding-artifacts-download-btn"
+        title={i18n.t("finding.cards.downloadAll")}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "5px",
+          alignSelf: "flex-start",
+          padding: "4px 10px",
+          border: "1px solid var(--border)",
+          borderRadius: "6px",
+          background: "var(--bg-card)",
+          color: "var(--text-primary)",
+          fontSize: "11px",
+          fontWeight: 600,
+          textDecoration: "none",
+          cursor: "pointer",
+        }}
+      >
+        <Icon name="download" size={12} strokeWidth={2} />
+        {i18n.t("finding.cards.downloadAll")}
+      </a>
       {files.map((f) => {
         const open = openPaths.has(f.path);
+        const basename = f.path.split("/").pop() ?? f.path;
         return (
           <div
             key={f.path}
-            data-testid={`finding-artifact-card-${f.path.split("/").pop()}`}
+            data-testid={`finding-artifact-card-${basename}`}
             data-open={open || undefined}
-            style={{
-              border: `1px solid ${open ? "var(--brand)" : "var(--border)"}`,
-              borderRadius: "8px",
-              background: "var(--bg-card)",
-              overflow: "hidden",
-            }}
+            style={{ border: `1px solid ${open ? "var(--brand)" : "var(--border)"}`, borderRadius: "8px", background: "var(--bg-card)", overflow: "hidden" }}
           >
+            <div style={{ display: "flex", alignItems: "stretch" }}>
             <button
               type="button"
               disabled={!f.previewable}
               aria-expanded={open}
               onClick={() => toggle(f.path, f.previewable)}
               style={{
-                width: "100%",
+                flex: 1,
+                minWidth: 0,
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
@@ -144,7 +170,7 @@ function AccordionArtifactList({
               </span>
               <span style={{ minWidth: 0, flex: 1 }}>
                 <span style={{ display: "block", fontSize: "12px", fontWeight: 600, fontFamily: "ui-monospace, Menlo, monospace", wordBreak: "break-word" }}>
-                  {f.path.split("/").pop()}
+                  {basename}
                 </span>
                 <span style={{ display: "block", fontSize: "10px", color: "var(--text-secondary)", marginTop: "1px" }}>
                   {f.kind} · {formatArtifactSize(f.size)}
@@ -166,6 +192,29 @@ function AccordionArtifactList({
                 </span>
               ) : null}
             </button>
+            {/* HALL-23: single-file download — always offered, including
+                non-previewable binary rows (the core ask of this feature). */}
+            <a
+              href={api.tasks.artifactFileDownloadUrl(taskId, `${pathPrefix}${f.path}`)}
+              download
+              data-testid={`finding-artifact-download-${basename}`}
+              title={i18n.t("finding.cards.downloadFile")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "0 10px",
+                border: "none",
+                borderLeft: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--text-secondary)",
+                textDecoration: "none",
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              <Icon name="download" size={13} strokeWidth={2} />
+            </a>
+            </div>
             {open ? <AccordionBody taskId={taskId} path={`${pathPrefix}${f.path}`} fileName={f.path} /> : null}
           </div>
         );
@@ -391,7 +440,7 @@ export function FindingPocPanel({
           <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{i18n.t("finding.cards.riskNoArtifacts")}</div>
         ) : null
       ) : (
-        <AccordionArtifactList taskId={taskId} files={files} pathPrefix={`findings/${findingId}/`} />
+        <AccordionArtifactList taskId={taskId} findingId={findingId} files={files} pathPrefix={`findings/${findingId}/`} />
       )}
     </div>
   );
@@ -437,7 +486,7 @@ export function FindingExpPanel({
           <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{i18n.t("finding.cards.riskNoArtifacts")}</div>
         ) : null
       ) : (
-        <AccordionArtifactList taskId={taskId} files={files} pathPrefix={`findings/${findingId}/`} />
+        <AccordionArtifactList taskId={taskId} findingId={findingId} files={files} pathPrefix={`findings/${findingId}/`} />
       )}
     </div>
   );
