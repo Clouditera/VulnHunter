@@ -77,8 +77,6 @@ describe("CloudRouter promo cleanup (HALL-21)", () => {
   it("admin stockOutBody no longer quotes the removed user-side copy", () => {
     // admin 库存耗尽提示须与用户端现状一致：只隐藏「获取积分码」入口，无提示框；
     // 不得再引用用户端已删除的「积分码已领完，我们将尽快补充，先到先得」文案。
-    const zhLine = adminSrc.match(/"admin\.credits\.stockOutBody":\s*"([^"]*)"/g)?.join(" ") ?? "";
-    const enLine = zhLine; // 同一文件内中英两条均在 adminSrc 中，下面统一断言
     const allStockOutBodies = adminSrc.match(/"admin\.credits\.stockOutBody":\s*"[^"]*"/g) ?? [];
     expect(allStockOutBodies.length).toBe(2); // zh + en 各一条
     for (const body of allStockOutBodies) {
@@ -87,6 +85,5 @@ describe("CloudRouter promo cleanup (HALL-21)", () => {
       expect(body).not.toMatch(/out of stock/i);
       expect(body).not.toMatch(/we'll restock/i);
     }
-    expect(enLine).toBe(zhLine);
   });
 });
