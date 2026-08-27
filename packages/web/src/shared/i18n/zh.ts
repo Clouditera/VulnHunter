@@ -1151,6 +1151,7 @@ export const ZH: Record<string, string> = {
   "workspace.select": "从左侧选择文件查看代码",
   "workspace.binary": "二进制文件，不适合预览",
   "workspace.truncated": "文件过大，内容已截断",
+  "workspace.decompiled": "此为反编译代码，原始文件为 {path}",
   "workspace.lines": "行",
   "workspace.search": "搜索文件…",
   "workspace.vulnsInFile": "{n} 个漏洞",

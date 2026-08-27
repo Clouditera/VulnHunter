@@ -1150,6 +1150,7 @@ export const EN: Record<string, string> = {
   "workspace.select": "Select a file from the tree to view its source.",
   "workspace.binary": "Binary file — preview is not available.",
   "workspace.truncated": "File is large — content has been truncated.",
+  "workspace.decompiled": "This is decompiled code — original file: {path}",
   "workspace.lines": "lines",
   "workspace.search": "Search files…",
   "workspace.vulnsInFile": "{n} finding(s)",

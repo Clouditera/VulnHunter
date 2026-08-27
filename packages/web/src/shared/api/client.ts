@@ -1132,6 +1132,11 @@ export interface WorkspaceFile {
   data_base64?: string;
   vuln_decorations?: WorkspaceVulnDecoration[];
   requested_line?: number;
+  /** HALL-25: set when the platform resolved a .class request through the
+      decompile manifest — the original .class path the user clicked. */
+  decompiled_from?: string;
+  /** HALL-25: the actual .java path inside the source-files tree. */
+  resolved_path?: string;
 }
 
 /* -------------------------------------------------------------------------- */
