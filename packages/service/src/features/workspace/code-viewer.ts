@@ -278,6 +278,125 @@ export async function getCodeFileFromMinioKey(
 const decompiledRootsCache = new Map<string, { at: number; roots: string[] }>();
 const DECOMPILED_ROOTS_TTL_MS = 60_000;
 
+/* -------------------------------------------------------------------------- */
+/* Decompile manifest (HALL-25 P0)                                             */
+/* -------------------------------------------------------------------------- */
+
+/** Schema v1 contract written by worker-assets/gen-decompile-manifest.py.
+ *  Loaded as untrusted input: every field is validated defensively. */
+export interface DecompileManifest {
+  version: 1;
+  jars: DecompileManifestJar[];
+}
+
+export interface DecompileManifestJar {
+  name: string;
+  /** src/-relative decompiled root, e.g. `.vulnhunter-decompiled/app.war` */
+  decompiled_root: string;
+  /** .class path (relative to the jar/expansion root) → src/-relative .java */
+  entries: Record<string, string>;
+}
+
+const DECOMPILE_MANIFEST_KEY = (taskId: string) =>
+  `source-files/${taskId}/.vulnhunter-decompiled/manifest.json`;
+const manifestCache = new LRUCache<string, DecompileManifest | null>(50, 60_000);
+
+/** Reject manifest entry values that escape the src/ tree or are malformed. */
+function isSafeManifestPath(p: unknown): p is string {
+  return typeof p === "string"
+    && p.length > 0
+    && !p.startsWith("/")
+    && !p.split("/").includes("..")
+    && !p.includes("\\")
+    && !p.includes("\0");
+}
+
+/** Validate an untrusted parsed document into a DecompileManifest, or null. */
+function parseDecompileManifest(raw: unknown): DecompileManifest | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const doc = raw as Record<string, unknown>;
+  if (doc.version !== 1) return null; // unknown version → treat as absent
+  if (!Array.isArray(doc.jars)) return null;
+  const jars: DecompileManifestJar[] = [];
+  for (const j of doc.jars) {
+    if (!j || typeof j !== "object" || Array.isArray(j)) continue;
+    const jar = j as Record<string, unknown>;
+    if (!isSafeManifestPath(jar.decompiled_root)) continue;
+    if (typeof jar.name !== "string" || !jar.name) continue;
+    const entries: Record<string, string> = {};
+    const rawEntries = jar.entries;
+    if (rawEntries && typeof rawEntries === "object" && !Array.isArray(rawEntries)) {
+      for (const [cls, java] of Object.entries(rawEntries as Record<string, unknown>)) {
+        if (!isSafeManifestPath(cls) || !isSafeManifestPath(java)) continue;
+        entries[cls] = java;
+      }
+    }
+    jars.push({ name: jar.name, decompiled_root: jar.decompiled_root, entries });
+  }
+  return { version: 1, jars };
+}
+
+/** Load the decompile manifest; missing/corrupt/unsupported → null so
+ *  callers fall back to the existing heuristic path unchanged. */
+export async function loadDecompileManifest(
+  bucket: string,
+  taskId: string,
+): Promise<DecompileManifest | null> {
+  const cacheKey = `${bucket}:${taskId}`;
+  const cached = manifestCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const buf = await readMinioObject(bucket, DECOMPILE_MANIFEST_KEY(taskId));
+  let manifest: DecompileManifest | null = null;
+  if (buf) {
+    try {
+      manifest = parseDecompileManifest(JSON.parse(buf.toString("utf8")));
+    } catch {
+      manifest = null;
+    }
+  }
+  manifestCache.set(cacheKey, manifest);
+  return manifest;
+}
+
+/** Candidate manifest keys for a requested .class path: entries keys are
+ *  relative to the jar/expansion root, but the file tree may show the class
+ *  under the extracted root (`app.war/WEB-INF/classes/...`), so also try
+ *  stripping leading directories. Most specific first. */
+function manifestClassCandidates(filePath: string): string[] {
+  const clean = filePath.replace(/^\/+/, "");
+  if (!clean) return [];
+  const candidates = [clean];
+  const parts = clean.split("/");
+  for (let i = 1; i < parts.length; i++) {
+    candidates.push(parts.slice(i).join("/"));
+  }
+  return [...new Set(candidates)];
+}
+
+/** Resolve a .class viewer path to the source-files .java key via the
+ *  manifest. Miss (or no manifest) → null; the caller keeps the existing
+ *  binary/fallback behavior. */
+export async function resolveClassToJavaKey(
+  bucket: string,
+  taskId: string,
+  filePath: string,
+): Promise<{ javaKey: string; javaPath: string } | null> {
+  const manifest = await loadDecompileManifest(bucket, taskId);
+  if (!manifest) return null;
+  const candidates = manifestClassCandidates(filePath);
+  for (const jar of manifest.jars) {
+    for (const cls of candidates) {
+      const javaPath = jar.entries[cls];
+      if (!javaPath) continue;
+      return {
+        javaKey: `source-files/${taskId}/${javaPath}`,
+        javaPath,
+      };
+    }
+  }
+  return null;
+}
+
 async function listTopDirsUnderPrefix(bucket: string, prefix: string): Promise<string[]> {
   const cached = decompiledRootsCache.get(prefix);
   if (cached && Date.now() - cached.at < DECOMPILED_ROOTS_TTL_MS) {
@@ -319,7 +438,10 @@ export async function resolveLegacyDecompiledKey(
 }
 
 /** Resolve a viewer path against the source-files tree.
- * Returns the exact MinIO key, or null when absent. */
+ * Returns the exact MinIO key, or null when absent.
+ * Manifest-first (HALL-25): when a decompile manifest exists, a java path
+ * hit in its reverse index (javaPath → key) wins — deterministic over the
+ * jarName heuristic. No manifest / no hit → existing heuristic unchanged. */
 export async function resolveSourceFilesKey(
   bucket: string,
   taskId: string,
@@ -330,7 +452,21 @@ export async function resolveSourceFilesKey(
   const direct = base + filePath.replace(/^\/+/, "");
   const buf = await readMinioObject(bucket, direct).then((b) => b !== null).catch(() => false);
   if (buf) return direct;
-  // b) finding paths are relative to the decompiled root — try each jarName
+  // b) manifest reverse hit — javaPath is src/-relative, key-shaped already
+  const manifest = await loadDecompileManifest(bucket, taskId);
+  if (manifest) {
+    const clean = filePath.replace(/^\/+/, "");
+    for (const jar of manifest.jars) {
+      for (const javaPath of Object.values(jar.entries)) {
+        if (javaPath === clean || javaPath.endsWith(`/${clean}`)) {
+          const key = base + javaPath;
+          const hit = await readMinioObject(bucket, key).then((b) => b !== null).catch(() => false);
+          if (hit) return key;
+        }
+      }
+    }
+  }
+  // c) finding paths are relative to the decompiled root — try each jarName
   const roots = await listDecompiledRoots(bucket, taskId);
   for (const root of roots) {
     const key = `${base}.vulnhunter-decompiled/${root}/${filePath.replace(/^\/+/, "")}`;
