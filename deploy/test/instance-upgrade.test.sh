@@ -109,7 +109,7 @@ sync_edition_like_instance_upgrade() {
 echo "== EDITION preserve (task-09560333) =="
 cat > "$tmp/pkg.env.example" << 'EOF'
 EDITION=enterprise
-SERVICE_IMAGE=vulnhunter-service:2.3.7
+SERVICE_IMAGE=vulnhunter-service:2.3.7-enterprise
 EOF
 
 # Case A: user saas must survive enterprise package upgrade
@@ -167,7 +167,7 @@ assert_eq "upgrade.sh path keeps saas" "$(grep -E '^EDITION=' "$tmp/up.env.resul
 tmp2="$(mktemp -d)"
 mkdir -p "$tmp2/data"
 cat > "$tmp2/data/.env" << 'EOF'
-SERVICE_IMAGE=vulnhunter-service:2.3.7
+SERVICE_IMAGE=vulnhunter-service:2.3.7-enterprise
 EDITION=saas
 EOF
 ln -s "$tmp2/data/.env" "$tmp2/.env"
@@ -184,10 +184,10 @@ ln -s "$tmp2/data/.env" "$tmp2/.env"
       printf '%s=%s\n' "$key" "$value" >> "$env_file"
     fi
   }
-  set_env_key SERVICE_IMAGE vulnhunter-service:2.3.8
+  set_env_key SERVICE_IMAGE vulnhunter-service:2.3.8-enterprise
 )
 assert_true ".env is still a symlink after set_env_key" test -L "$tmp2/.env"
-assert_eq "symlink target updated" "$(grep -E '^SERVICE_IMAGE=' "$tmp2/data/.env" | cut -d= -f2-)" "vulnhunter-service:2.3.8"
+assert_eq "symlink target updated" "$(grep -E '^SERVICE_IMAGE=' "$tmp2/data/.env" | cut -d= -f2-)" "vulnhunter-service:2.3.8-enterprise"
 assert_eq "symlink content not duplicated" "$(wc -l < "$tmp2/data/.env")" "2"
 rm -rf "$tmp2"
 

@@ -51,7 +51,7 @@ input=$(cat <<'EOF'
 # comment stays
 WEB_PORT=23000
 DATA_DIR=/home/clouditera/vulnagent-data
-SERVICE_IMAGE=vulnagent-service:2.3.0
+SERVICE_IMAGE=vulnagent-service:2.3.0-saas
 WEB_IMAGE=vulnagent-web:2.3.0
 WORKER_IMAGE=vulnagent-worker:2.3.0
 EVAL_WORKER_IMAGE=vulnagent-eval-worker:2.3.0
@@ -68,7 +68,7 @@ out="$(printf '%s\n' "$input" | rename_rewrite_env_body)"
 
 assert_eq "comment preserved" "# comment stays" "$(printf '%s\n' "$out" | sed -n '1p')"
 assert_eq "DATA_DIR rewritten" "/home/clouditera/vulnhunter-data" "$(printf '%s\n' "$out" | sed -n 's/^DATA_DIR=//p')"
-assert_eq "SERVICE_IMAGE rewritten" "vulnhunter-service:2.3.0" "$(printf '%s\n' "$out" | sed -n 's/^SERVICE_IMAGE=//p')"
+assert_eq "SERVICE_IMAGE rewritten" "vulnhunter-service:2.3.0-saas" "$(printf '%s\n' "$out" | sed -n 's/^SERVICE_IMAGE=//p')"
 assert_eq "MINIO_BUCKET → artifact-store" "artifact-store" "$(printf '%s\n' "$out" | sed -n 's/^MINIO_BUCKET=//p')"
 assert_eq "DOCKER_NETWORK rewritten" "vulnhunter-internal" "$(printf '%s\n' "$out" | sed -n 's/^DOCKER_NETWORK=//p')"
 assert_eq "VULNAGENT_ key renamed" "/home/clouditera/vulnhunter-data/.secrets/vulnhunter-master.key" \
@@ -131,7 +131,7 @@ pushd "$fx" >/dev/null
 cat > .env <<'E'
 WEB_PORT=23000
 DATA_DIR=/home/clouditera/vulnhunter-data
-SERVICE_IMAGE=vulnhunter-service:2.3.0
+SERVICE_IMAGE=vulnhunter-service:2.3.0-saas
 WEB_IMAGE=vulnhunter-web:2.3.0
 WORKER_IMAGE=vulnhunter-worker:2.3.0
 MINIO_BUCKET=artifact-store
@@ -146,7 +146,7 @@ assert_rc "renamed .env → not old naming" 1 rename_install_has_old_naming
 
 # Old .env keys still present → old naming
 cat > .env <<'E'
-SERVICE_IMAGE=vulnagent-service:2.2.0
+SERVICE_IMAGE=vulnagent-service:2.2.0-saas
 MINIO_BUCKET=vulnagent
 E
 assert_rc "old image+bucket in .env → old naming" 0 rename_install_has_old_naming
@@ -154,14 +154,14 @@ assert_rc "old image+bucket in .env → old naming" 0 rename_install_has_old_nam
 # Package targets new + install already new → migration not needed
 printf 'container_name: vulnhunter-service\n' > docker-compose.yml
 cat > .env <<'E'
-SERVICE_IMAGE=vulnhunter-service:2.3.0
+SERVICE_IMAGE=vulnhunter-service:2.3.0-saas
 MINIO_BUCKET=artifact-store
 E
 assert_rc "second upgrade migration_needed=false" 1 rename_migration_needed
 
 # Package new + install old → migration needed
 cat > .env <<'E'
-SERVICE_IMAGE=vulnagent-service:2.2.0
+SERVICE_IMAGE=vulnagent-service:2.2.0-saas
 MINIO_BUCKET=vulnagent
 VULNAGENT_MASTER_KEY_FILE=/x
 E

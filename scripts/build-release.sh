@@ -29,6 +29,10 @@ if [[ -z "$EDITION" ]]; then
   fi
 fi
 export EDITION
+# task-d159f518: edition-suffixed image tags — community/enterprise/saas
+# bake to different tags so a shared docker daemon can never clobber one
+# edition's image with another's (two real incidents, 2026-08-26/31).
+export IMAGE_TAG="${VERSION}-${EDITION}"
 
 case "$EDITION" in
   community|enterprise|saas) ;;
@@ -113,11 +117,10 @@ docker build -f "$SERVICE_DOCKERFILE" \
   --build-arg VULNHUNTER_BUILD_TIME="$BUILD_TIME" \
   --build-arg VULNHUNTER_GIT_COMMIT="$GIT_COMMIT" \
   --build-arg YOUNGFLOW_VERSION="$YOUNGFLOW_VERSION" \
-  -t "vulnhunter-service:$VERSION" -t vulnhunter-service:latest .
-docker build -f deploy/dockerfiles/web.Dockerfile -t "vulnhunter-web:$VERSION" -t vulnhunter-web:latest .
+  -t "vulnhunter-service:$IMAGE_TAG" .
+docker build -f deploy/dockerfiles/web.Dockerfile -t "vulnhunter-web:$IMAGE_TAG" .
 VULNFORGE_VERSION="$VULNFORGE_VERSION" VULNFORGE_COMMIT="$VULNFORGE_COMMIT" \
-  scripts/build-worker-image.sh "vulnhunter-worker:$VERSION"
-docker tag "vulnhunter-worker:$VERSION" vulnhunter-worker:latest
+  scripts/build-worker-image.sh "vulnhunter-worker:$IMAGE_TAG"
 
 release_validate_worker_image
 docker pull --platform linux/amd64 "$POSTGRES_IMAGE"

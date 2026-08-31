@@ -45,9 +45,9 @@ release_write_version_json() {
   "vulnforgeCommit": "$VULNFORGE_COMMIT",
   "licenseSchema": "v1",
   "images": {
-    "service": "vulnhunter-service:$VERSION",
-    "web": "vulnhunter-web:$VERSION",
-    "worker": "vulnhunter-worker:$VERSION",
+    "service": "vulnhunter-service:$IMAGE_TAG",
+    "web": "vulnhunter-web:$IMAGE_TAG",
+    "worker": "vulnhunter-worker:$IMAGE_TAG",
     "postgres": "$POSTGRES_IMAGE",
     "minio": "$MINIO_IMAGE"
   }
@@ -94,8 +94,8 @@ release_validate_no_runtime_sourcemaps() {
 }
 
 release_validate_service_web_images() {
-  release_validate_no_runtime_sourcemaps "vulnhunter-service:$VERSION" "/app/packages /app/public"
-  release_validate_no_runtime_sourcemaps "vulnhunter-web:$VERSION" "/usr/share/nginx/html"
+  release_validate_no_runtime_sourcemaps "vulnhunter-service:$IMAGE_TAG" "/app/packages /app/public"
+  release_validate_no_runtime_sourcemaps "vulnhunter-web:$IMAGE_TAG" "/usr/share/nginx/html"
 }
 
 # ── Worker image content gates ───────────────────────────────────────
@@ -105,7 +105,7 @@ release_validate_service_web_images() {
 # build-time probes already fail the build; this re-checks the tagged image.
 release_validate_worker_image() {
   # --entrypoint sh bypasses scan-mode.sh ENTRYPOINT (exits 1 without TASK_ID)
-  docker run --rm --entrypoint sh "vulnhunter-worker:$VERSION" -lc '
+  docker run --rm --entrypoint sh "vulnhunter-worker:$IMAGE_TAG" -lc '
     test -f /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access/index.ts \
       || { echo "worker image: pi-web-access/index.ts missing" >&2; exit 1; }
     test -d /opt/vulnhunter/flows/vulnforge/extensions/pi-web-access/node_modules \
@@ -127,8 +127,8 @@ release_docker_save_platform() {
 
   local img
   for img in service web worker; do
-    local src_tag="vulnhunter-${img}:${VERSION}${arch_suffix}"
-    local dst_tag="vulnhunter-${img}:${VERSION}"
+    local src_tag="vulnhunter-${img}:${IMAGE_TAG}${arch_suffix}"
+    local dst_tag="vulnhunter-${img}:${IMAGE_TAG}"
     if [[ "$src_tag" != "$dst_tag" ]]; then
       docker tag "$src_tag" "$dst_tag"
     fi
@@ -167,9 +167,9 @@ release_copy_license_public_key() {
 release_patch_env_example() {
   local env_file="$1"
   local edition="$2"
-  sed -i "s|^SERVICE_IMAGE=.*|SERVICE_IMAGE=vulnhunter-service:$VERSION|" "$env_file"
-  sed -i "s|^WEB_IMAGE=.*|WEB_IMAGE=vulnhunter-web:$VERSION|" "$env_file"
-  sed -i "s|^WORKER_IMAGE=.*|WORKER_IMAGE=vulnhunter-worker:$VERSION|" "$env_file"
+  sed -i "s|^SERVICE_IMAGE=.*|SERVICE_IMAGE=vulnhunter-service:$IMAGE_TAG|" "$env_file"
+  sed -i "s|^WEB_IMAGE=.*|WEB_IMAGE=vulnhunter-web:$IMAGE_TAG|" "$env_file"
+  sed -i "s|^WORKER_IMAGE=.*|WORKER_IMAGE=vulnhunter-worker:$IMAGE_TAG|" "$env_file"
   if grep -q "^EDITION=" "$env_file"; then
     sed -i "s|^EDITION=.*|EDITION=$edition|" "$env_file"
   else
@@ -260,9 +260,9 @@ release_validate_image_arches() {
   local out="${1:-$OUT}"
   local expected_arch="${TARGET_ARCH:-amd64}"
   local images=(
-    "vulnhunter-service:$VERSION"
-    "vulnhunter-web:$VERSION"
-    "vulnhunter-worker:$VERSION"
+    "vulnhunter-service:$IMAGE_TAG"
+    "vulnhunter-web:$IMAGE_TAG"
+    "vulnhunter-worker:$IMAGE_TAG"
     "${POSTGRES_IMAGE:-postgres:16-alpine}"
     "${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}"
   )
