@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { api, type SystemConfig } from "../../../shared/api/client.js";
 import { i18n } from "../../../shared/i18n/index.js";
 import { Icon } from "../../../shared/components/Icon.js";
+import { useEdition } from "../../../shared/hooks/useEdition.js";
 import { AdminPageHeader, adminCardStyle } from "../layout.js";
 
 export function SystemPage() {
@@ -10,6 +11,8 @@ export function SystemPage() {
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [maxParallel, setMaxParallel] = useState<number | "">(3);
   const [uploadMb, setUploadMb] = useState(500);
+  const [idleHours, setIdleHours] = useState<number | "">(168);
+  const { hasDynamicVerification } = useEdition();
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -21,6 +24,7 @@ export function SystemPage() {
         setConfig(r.config);
         setMaxParallel(r.config.max_parallel_scan ?? 3);
         setUploadMb(r.config.source_archive_upload_max_mb ?? r.config.upload_zip_max_mb ?? 500);
+        setIdleHours((r.config as { sandbox_idle_release_hours?: number }).sandbox_idle_release_hours ?? 168);
       })
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)));
   }, []);
@@ -42,6 +46,25 @@ export function SystemPage() {
     }
   }
 
+
+  async function saveIdleHours() {
+    const n = Math.trunc(Number(idleHours));
+    if (!Number.isInteger(n) || n < 1 || n > 720) {
+      setErr(i18n.t("admin.system.idleHoursInvalid"));
+      return;
+    }
+    setSaving(true);
+    setMsg("");
+    setErr("");
+    try {
+      await api.settings.updateSystemConfig({ sandbox_idle_release_hours: n });
+      setMsg(i18n.t("admin.system.idleHoursSaved"));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function saveUpload() {
     setSaving(true);
@@ -129,6 +152,43 @@ export function SystemPage() {
           {i18n.t("admin.system.agentParallelHint")}
         </p>
       </section>
+
+      {hasDynamicVerification ? (
+      <section style={adminCardStyle} data-testid="admin-card-sandbox-ttl">
+        <h3 style={cardTitle}>
+          <Icon name="clock" size={18} style={{ color: "var(--text-secondary)" }} />
+          {i18n.t("admin.system.idleHoursTitle")}
+        </h3>
+        <p style={cardDesc}>{i18n.t("admin.system.idleHoursDesc")}</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <input
+            type="number"
+            data-testid="admin-idle-hours"
+            min={1}
+            max={720}
+            step={1}
+            value={idleHours}
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw === "") {
+                setIdleHours("" as unknown as number);
+                return;
+              }
+              const n = Number(raw);
+              if (Number.isFinite(n)) setIdleHours(Math.trunc(n));
+            }}
+            style={{ width: 100, height: 36, border: "1px solid var(--border)", borderRadius: 6, padding: "0 10px", background: "var(--bg-page)", color: "var(--text-primary)" }}
+          />
+          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{i18n.t("admin.system.idleHoursUnit")}</span>
+          <button type="button" data-testid="admin-save-idle-hours" disabled={saving} onClick={() => void saveIdleHours()} style={btnPrimary}>
+            {i18n.t("admin.system.save")}
+          </button>
+        </div>
+        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>
+          {i18n.t("admin.system.idleHoursHint")}
+        </p>
+      </section>
+      ) : null}
 
       <section style={adminCardStyle} data-testid="admin-card-upload">
         <h3 style={cardTitle}>

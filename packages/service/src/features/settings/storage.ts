@@ -622,6 +622,14 @@ export async function updateSystemConfig(patch: Record<string, unknown>): Promis
   }
   merged.source_archive_upload_max_mb = validateBoundedInt("source_archive_upload_max_mb", merged.source_archive_upload_max_mb, Math.min(500, ceilingMb), 1, ceilingMb);
   merged.upload_zip_max_mb = merged.source_archive_upload_max_mb;
+  // Idle sandbox auto-release TTL, in hours (task-ac572a8e, lhy 2026-08-31).
+  // Default 168 (7 days); bounded 1–720; null/undefined = keep default via the
+  // reader side (enterprise reconcile Rule 4 falls back when the key is
+  // absent). 0/negative is rejected here — "off" is expressed by removing the
+  // key, not storing a falsy value.
+  if ("sandbox_idle_release_hours" in patch && patch.sandbox_idle_release_hours != null) {
+    merged.sandbox_idle_release_hours = validateBoundedInt("sandbox_idle_release_hours", merged.sandbox_idle_release_hours, 168, 1, 720);
+  }
   await db`
     UPDATE system_config SET config = ${db.json(merged as never)}::jsonb, updated_at = now()
     WHERE id = 1

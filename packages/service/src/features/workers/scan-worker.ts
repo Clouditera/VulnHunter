@@ -133,13 +133,27 @@ export async function spawnScanWorker(
   const dynamicEnabled = booleanMeta(task.source_meta, "dynamic_enabled");
   let sandbox: { mapping: DynamicSandboxMapping; privateKey: string } | null = null;
   if (dynamicEnabled) {
-    const mapping = await getDynamicProvider().getTaskSandbox(task.id);
-    const privateKey = mapping?.state === "ready" ? await getDynamicProvider().peekTaskSshPrivateKey(task.id) : null;
+    let mapping = await getDynamicProvider().getTaskSandbox(task.id);
+    let privateKey = mapping?.state === "ready" ? await getDynamicProvider().peekTaskSshPrivateKey(task.id) : null;
+    const sandboxUsable = mapping?.state === "ready" && privateKey != null;
+    if (!sandboxUsable && (resume || continueMode)) {
+      // Idle-release TTL (task-ac572a8e B): a continued/resumed task may find
+      // its sandbox released (state=released/failed, mapping gone) — re-ensure
+      // instead of failing. ensureSandboxForTask is idempotent: ready mappings
+      // pass through untouched. Re-ensure generates a NEW keypair — the
+      // private key must be re-peeked after it, never reused from before.
+      // ensure throws on plane-unavailable → stays fail-loud for resume path.
+      const allocMeta = ((task.metadata as Record<string, unknown> | undefined)?.sandbox_alloc ?? {}) as { profile_id?: string };
+      const { mapping: ensured, reused } = await getDynamicProvider().ensureSandboxForTask(task, { profileId: allocMeta.profile_id });
+      logger.info({ taskId: task.id, sandboxId: ensured.sandbox_id, reused, priorState: mapping?.state ?? "none" }, "Sandbox re-ensured for continue/resume");
+      mapping = ensured;
+      privateKey = ensured.state === "ready" ? await getDynamicProvider().peekTaskSshPrivateKey(task.id) : null;
+    }
     if (mapping?.state === "ready" && privateKey) {
       sandbox = { mapping, privateKey };
     } else if (resume || continueMode) {
       // H2 invariant (resume/continue): allocation ran in a prior lifecycle —
-      // a missing ready sandbox here is a broken pipeline; fail loud.
+      // a missing ready sandbox after re-ensure is a broken pipeline; fail loud.
       throw new Error(`Dynamic task ${task.id} requires a ready sandbox + in-memory ssh key before worker start (mapping=${mapping?.state ?? "none"}, key=${privateKey ? "present" : "missing"})`);
     }
     // Fresh dynamic tasks spawn WITHOUT a sandbox: the onboard gate runs
