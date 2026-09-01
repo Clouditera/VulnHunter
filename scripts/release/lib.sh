@@ -143,8 +143,8 @@ release_docker_save_platform() {
     tar_file="$out/images/vulnhunter-${img}.tar"
     repo_tag=$(tar xf "$tar_file" -O manifest.json 2>/dev/null | python3 -c \
       "import sys,json; d=json.load(sys.stdin); print(d[0]['RepoTags'][0])" 2>/dev/null) || repo_tag="parse_error"
-    if [[ "$repo_tag" != "vulnhunter-${img}:${VERSION}" ]]; then
-      release_die "release validation failed: $tar_file RepoTags=$repo_tag, expected vulnhunter-${img}:${VERSION}"
+    if [[ "$repo_tag" != "vulnhunter-${img}:${IMAGE_TAG}" ]]; then
+      release_die "release validation failed: $tar_file RepoTags=$repo_tag, expected vulnhunter-${img}:${IMAGE_TAG}"
     fi
     echo "  $(basename "$tar_file") RepoTags=$repo_tag ✓"
   done
