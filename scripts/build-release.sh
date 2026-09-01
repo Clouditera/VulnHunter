@@ -29,10 +29,6 @@ if [[ -z "$EDITION" ]]; then
   fi
 fi
 export EDITION
-# task-d159f518: edition-suffixed image tags — community/enterprise/saas
-# bake to different tags so a shared docker daemon can never clobber one
-# edition's image with another's (two real incidents, 2026-08-26/31).
-export IMAGE_TAG="${VERSION}-${EDITION}"
 
 case "$EDITION" in
   community|enterprise|saas) ;;
@@ -48,6 +44,10 @@ if [[ "$EDITION" == "saas" && ! -d "$ROOT/packages/saas" ]]; then
 fi
 
 VERSION="${VERSION:-$(node -p "require('./package.json').version")}"
+# task-d159f518: edition-suffixed image tags — community/enterprise/saas
+# bake to different tags so a shared docker daemon can never clobber one
+# edition's image with another's (two real incidents, 2026-08-26/31).
+export IMAGE_TAG="${VERSION}-${EDITION}"
 if [[ -n "${OUT:-}" ]]; then
   : # caller override
 else
