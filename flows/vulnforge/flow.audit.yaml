@@ -105,7 +105,7 @@ stages:
       - templates: ${templates}/cog.template.md, ${templates}/advice.template.md, ${templates}/hypothesis.template.md, ${templates}/poc.template.md, ${templates}/exp.template.md, ${templates}/chain.template.md, ${templates}/lead.template.md, ${templates}/worklog.template.md
       - schema: ${schemas}/decision.schema.yaml, ${schemas}/todo.schema.yaml, ${schemas}/cog.schema.yaml, ${schemas}/advice.schema.yaml, ${schemas}/hypothesis.schema.yaml, ${schemas}/poc.schema.yaml, ${schemas}/exp.schema.yaml, ${schemas}/chain-task.schema.yaml, ${schemas}/lead.schema.yaml
       - 输出语言: ${flow_inputs.output_language}
-    timeout: 1800
+    timeout: 3600
     state:
       next:
         file: decision.yaml
@@ -178,7 +178,7 @@ stages:
       - templates: ${templates}/build.template.md
       - schema: ${schemas}/profiler.schema.yaml
       - 输出语言: ${flow_inputs.output_language}
-    timeout: 1800
+    timeout: 3600
     error_strategy: continue
     # Engine-native gate (spec §1/§2): the onboard stage writes gate.yaml at
     # the workspace root; the engine routes on it — END → exit (task dead),
@@ -217,7 +217,7 @@ stages:
       - templates: ${templates}/advice.template.md, ${templates}/exp.template.md, ${templates}/lead.template.md
       - schema: ${schemas}/cog.schema.yaml, ${schemas}/advice.schema.yaml, ${schemas}/exp.schema.yaml
       - 输出语言: ${flow_inputs.output_language}
-    timeout: 1800
+    timeout: 3600
     error_strategy: continue
     routes:
       - to: cycle_join
@@ -243,7 +243,7 @@ stages:
       - templates: ${templates}/advice.template.md, ${templates}/lead.template.md
       - schema: ${schemas}/advice.schema.yaml
       - 输出语言: ${flow_inputs.output_language}
-    timeout: 1800
+    timeout: 3600
     error_strategy: continue
     routes:
       - to: cycle_join
@@ -272,7 +272,7 @@ stages:
       - templates: ${templates}/hypothesis.template.md, ${templates}/lead.template.md
       - schema: ${schemas}/hypothesis.schema.yaml, ${schemas}/advice.schema.yaml
       - 输出语言: ${flow_inputs.output_language}
-    timeout: 1800
+    timeout: 3600
     error_strategy: continue
     routes:
       - to: cycle_join
@@ -302,7 +302,7 @@ stages:
       - schema: ${schemas}/hypothesis.schema.yaml, ${schemas}/bug-report.schema.yaml
       - 输出语言: ${flow_inputs.output_language}
       - 论证方式: 静态代码分析，通过阅读源码和检索查找防护机制，不编写或运行测试程序。
-    timeout: 1800
+    timeout: 3600
     error_strategy: continue
     routes:
       - to: cycle_join
@@ -331,7 +331,7 @@ stages:
       - templates: ${templates}/lead.template.md, ${templates}/build.template.md
       - schema: ${schemas}/poc.schema.yaml, ${schemas}/bug-report.schema.yaml
       - 输出语言: ${flow_inputs.output_language}
-    timeout: 3600
+    timeout: 10800
     error_strategy: continue
     routes:
       - to: cycle_join
@@ -360,7 +360,7 @@ stages:
       - templates: ${templates}/build.template.md
       - schema: ${schemas}/bug-report.schema.yaml
       - 输出语言: ${flow_inputs.output_language}
-    timeout: 3600
+    timeout: 10800
     error_strategy: continue
     routes:
       - to: cycle_join
@@ -389,7 +389,7 @@ stages:
       - templates: ${templates}/build.template.md
       - schema: ${schemas}/chain-task.schema.yaml, ${schemas}/chain-report.schema.yaml
       - 输出语言: ${flow_inputs.output_language}
-    timeout: 3600
+    timeout: 10800
     error_strategy: continue
     routes:
       - to: cycle_join
