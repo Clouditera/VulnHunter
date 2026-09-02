@@ -48,6 +48,24 @@ describe("task contracts (HALL-35)", () => {
     expect(ev).not.toMatch(/移动到 `done\/`/);
     expect(ev).toMatch(/poc_status[^\n]*reproduced|reproduced[^\n]*poc_status/);
   });
+
+  it("retries blocked PoCs on later verify rounds (poc_status filter includes blocked)", () => {
+    const poc = read("tasks/poc-verify.md");
+    expect(poc).toMatch(/blocked[^\n]*重试|重试[^\n]*blocked/);
+    const flow = read("docs/flow-design/flow.md");
+    // S3: blocked is NOT terminal — unified with the task contract.
+    expect(flow).not.toMatch(/blocked[^\n]*(视为|终态，不做)/);
+    expect(flow).toMatch(/blocked[^\n]*重试|重试[^\n]*blocked/);
+  });
+
+  it("flow input descriptions no longer claim decide dispatches the dynamic stages (S1)", () => {
+    const flow = read("flow.audit.yaml");
+    // Old decide-dispatch wording must be gone from enable_poc / enable_exp.
+    expect(flow).not.toContain("decide 可为静态确认漏洞派发 poc-verify");
+    expect(flow).not.toContain("decide 可为已 POC 复现的 vulnerability finding 派发 ev-assess");
+    expect(flow).toMatch(/enable_poc:[\s\S]{0,220}dynamic\.yaml/);
+    expect(flow).toMatch(/enable_exp:[\s\S]{0,220}dynamic\.yaml/);
+  });
 });
 
 describe("schema contracts (HALL-35)", () => {
@@ -85,6 +103,21 @@ describe("output-contract extension (HALL-35)", () => {
     const extension = read("extensions/output-contract/index.ts");
     expect(extension).toContain("PROTECTED_PATHS");
     expect(extension).toContain("\"dynamic.yaml\"");
+  });
+});
+
+describe("bug-report skill + template contracts (B2)", () => {
+  it("SKILL.md teaches awaiting-poc at creation and poc-verify advancement", () => {
+    const skill = read("skills/bug-report/SKILL.md");
+    expect(skill).toContain("awaiting-poc");
+    expect(skill).not.toMatch(/pending 或 not-needed 二选一/);
+    expect(skill).toMatch(/awaiting-poc[\s\S]{0,120}poc-verify|poc-verify[\s\S]{0,120}awaiting-poc/);
+  });
+
+  it("template.yaml initializes exp_status to awaiting-poc", () => {
+    const template = read("skills/bug-report/template.yaml");
+    expect(template).toMatch(/exp_status:\s*awaiting-poc/);
+    expect(template).not.toMatch(/pending\|not-needed 二选一/);
   });
 });
 

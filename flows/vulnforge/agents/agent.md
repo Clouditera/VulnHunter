@@ -26,7 +26,7 @@
 
 - 被测目标的构建、运行等一切动态操作只在沙箱内执行；本地仅做静态动作（读代码、写分析文档）。
 - 沙箱工具链不满足时在沙箱内补齐；仍不满足的把 blocked 与原因记入 `knowledge/build/build.md`，不回落本地。
-- 动态操作前先确认沙箱可达（短重试不超过 3 次）；确认不可达时更新 `knowledge/build/build.md` 的 frontmatter，当前任务标记 blocked（reason: sandbox-unreachable）并退出，不再重试。
+- 动态操作前先确认沙箱可达（短重试不超过 3 次）；确认不可达时更新 `knowledge/build/build.md` 的 frontmatter，当前任务标记 blocked（reason: sandbox-unreachable）并退出，本次不再重试（引擎后续 verify 轮次会重新捞起 blocked 的 finding）。
 - `knowledge/build/build.md` 用 frontmatter 记录沙箱状态，是单一记录点：`sandbox: available | unreachable`，`updated: <ISO 时间>`。
 
 # 审计方法

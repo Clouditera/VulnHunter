@@ -142,7 +142,8 @@ describe("VulnForge 2.0 runtime flow compatibility", () => {
       expect(poc?.type).toBe("map");
       expect(poc?.over).toBe("findings/BUG-*/report.yaml");
       expect(poc?.overSource?.kind ?? "glob").toBe("glob");
-      expect(poc?.filter).toMatchObject({ field: "metadata.poc_status", match: "pending" });
+      // S3: blocked PoCs stay retryable — the filter re-picks them each verify round.
+      expect(poc?.filter).toMatchObject({ field: "metadata.poc_status", in: ["pending", "blocked"] });
       expect(poc?.concurrency).toBe(1);
       expect(poc?.errorStrategy).toBe("continue");
       expect(poc?.stateExtract).toMatchObject({

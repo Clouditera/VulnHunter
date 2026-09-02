@@ -2,14 +2,14 @@
 
 动态复现一个静态确认的漏洞 finding。当前任务的 finding 报告路径由提示词给出（`当前 finding 报告`），直接读取该 `findings/BUG-*/report.yaml`，在动态验证环境里复现它。用动态证据检验 finding 的关键声称——跑出异常不等于复现成功，必须确认异常来自 finding 声称的真实入口、真实路径和真实危害。
 
-动态验证链由引擎按 finding 状态调度（只消费 `poc_status: pending` 的 finding），本任务不读取、不创建任何 `todo/` 任务文件。
+动态验证链由引擎按 finding 状态调度（只消费 `poc_status: pending` 或 `poc_status: blocked` 的 finding，blocked 表示上一轮阻塞、本轮重试），本任务不读取、不创建任何 `todo/` 任务文件。
 
 # 入口防御校验
 
 开始前先读 finding 报告并校验，任一不满足时直接结束本轮、不修改任何状态（保持待处理，留给后续轮次重试）：
 
 - `metadata.finding_class` 必须为 `vulnerability`；`risk` 类不做 POC。
-- `metadata.poc_status` 必须为 `pending`；已复现/已失败/已阻塞的 finding 不重复处理。
+- `metadata.poc_status` 必须为 `pending` 或 `blocked`（blocked 为重试入口）；已复现/已失败的 finding 不重复处理。
 
 # 产出
 
@@ -32,4 +32,4 @@ poc 环境关键信息和报告信息按需更新：
 
 - 只对 `finding_class: vulnerability` 的 finding 复现；`risk` 类不做 POC。
 - `exp_status: awaiting-poc` 是 verify 创建 vulnerability finding 时的初始 EXP 状态：PoC 成功后必须推进为 `pending`，失败/阻塞/降级则推进为对应终态——ev-assess 只消费 `exp_status: pending`，不要让它越过 PoC 门禁。
-- 沙箱不可达等阻塞场景按系统提示处理：记录 blocked 原因后退出，不要把 finding 改成不可重试的终态。
+- 沙箱不可达等阻塞场景按系统提示处理：记录 blocked 原因后退出，不要把 finding 改成不可重试的终态；引擎每轮 verify 后会重新捞起 `poc_status: blocked` 的 finding 重试，环境恢复后即可继续。

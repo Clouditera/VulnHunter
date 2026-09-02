@@ -171,9 +171,12 @@ describe("finding map filters (report.yaml is the single state source)", () => {
     );
   });
 
-  it("poc-verify consumes exactly the poc_status=pending findings", () => {
+  it("poc-verify consumes pending and blocked findings (blocked stays retryable, S3)", () => {
     const selected = selectFiles(files, stage("poc-verify").filter ?? undefined, "poc-verify");
-    expect(selected).toEqual([join(workspaceRoot, "findings", "BUG-R1-C1-A1-H1", "report.yaml")]);
+    expect(selected).toEqual([
+      join(workspaceRoot, "findings", "BUG-R1-C1-A1-H1", "report.yaml"),
+      join(workspaceRoot, "findings", "BUG-R1-C1-A1-H4", "report.yaml"),
+    ]);
   });
 
   it("ev-assess consumes exactly the exp_status=pending findings", () => {

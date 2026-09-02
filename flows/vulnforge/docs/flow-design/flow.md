@@ -83,12 +83,12 @@ findings/
 `poc-verify` / `ev-assess` 不由 `decide` 派发，也不使用 `todo/` 任务。`verify` 结束后固定进入引擎动态门禁：
 
 ```text
-verify ──→ poc_gate（读 dynamic.yaml）──开启──→ poc-verify（map：poc_status=pending）
+verify ──→ poc_gate（读 dynamic.yaml）──开启──→ poc-verify（map：poc_status ∈ {pending, blocked}）
                                               └─关闭→ exp_gate ──开启→ ev-assess ──→ 回 decide
 poc-verify collector ──exp 开启──→ ev-assess（map：exp_status=pending）──→ 回 decide
 ```
 
-- `dynamic.yaml` 由平台（`scan-mode.sh`）根据受信环境变量写入输出目录，字段 `dynamic.poc_enabled` / `dynamic.exp_enabled`；静态运行双 false，不启动任何 PoC/EV worker。本地直跑需手动写入。
+- `dynamic.yaml` 由平台（`scan-mode.sh`）根据受信环境变量写入输出目录，字段 `dynamic.poc_enabled` / `dynamic.exp_enabled`；静态运行双 false且写入后回读校验（fail-closed），不启动任何 PoC/EV worker。本地直跑用 `scripts/run-audit.sh`，它根据 `--enable-poc` / `--enable-exp` 生成同一文件。
 - 两个 map 阶段均串行（`concurrency: 1`），直接迭代 `findings/BUG-*/report.yaml`，`report.yaml` 是唯一状态源。
 - worker 入口做防御校验：poc-verify 校验 `finding_class: vulnerability`；ev-assess 校验 `poc_status: reproduced`（兼容历史 `poc_status: pending, exp_status: pending` 数据，不满足时不动状态直接退出）。
 - 未完成项保持待处理状态，在后续 verify 轮次重试（`error_strategy: continue`）。
@@ -219,7 +219,7 @@ hyp_status: pending
   - 已具备必要能力但未复现时，`poc_status` 更新为 `fail-reproduced`、`exp_status` 置为 `not-needed`，记录失败证据。
   - 执行环境或外部条件不足时，`poc_status` / `exp_status` 均更新为 `blocked`，记录缺失条件。
 
-`fail-reproduced` 和 `blocked` 暂时视为动态复现链路的终态，不做额外重试约定。
+`fail-reproduced` 是动态复现链路的终态；`blocked` 不是终态——引擎的 poc-verify filter 会每轮 verify 后重新捞起 `poc_status: blocked` 的 finding 重试（环境或外部条件恢复后即可继续），与任务契约保持一致。
 
 ### 6. 后续：ev-assess 与 exp-build
 
