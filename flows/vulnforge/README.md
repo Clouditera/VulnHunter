@@ -13,9 +13,12 @@ VulnForge Flow 是一个基于 YoungFlow 的 AI 代码安全分析资产包。
 VulnForge 的核心是一个由 `decide` 驱动的循环螺旋。审计任务被拆解成多个边界清晰的环节，由 `decide` 调度推进：每轮 `decide` 查看当前认知、待执行任务和上轮结果，选择本轮最该推进的方向并派发任务；执行阶段结束后回到 `decide`，直到项目认知基本完成、待办清空。
 
 ```text
-decide ──→ onboard / cognize / hunt / verify / poc-verify / ev-assess / exp-build ──→ 回 decide ──→ … ──→ report
-                    └── exit（环境错误时直接退出）
+decide ──→ onboard / cognize / hunt / verify / exp-build ──→ 回 decide ──→ … ──→ report
+             └── exit（环境错误时直接退出）
+verify ──→ 动态门禁（dynamic.yaml）──→ poc-verify ──→ ev-assess ──→ 回 decide
 ```
+
+其中 `poc-verify` / `ev-assess` 不由 `decide` 派发：`verify` 结束后固定进入引擎动态门禁，按 finding 状态自动串行调度，避免模型调度不稳定导致动态验证被跳过。
 
 这是 agent think-act-observe 循环的升维结构：用结构化产物（wiki、ADV、HYP、finding）在 session 间传递知识，解决单一 context window 无法承载复杂项目分析的问题。
 
@@ -25,7 +28,7 @@ decide ──→ onboard / cognize / hunt / verify / poc-verify / ev-assess / ex
 
 ### 静态候选 + 动态复现
 
-静态论证确认的 finding 只是**静态候选**；启用 POC 时，`poc-verify` 真实复现，复现成功的在 finding 目录下产出 `poc/` 复现包；启用 EXP 时，`ev-assess` 评估单漏洞在真实业务/威胁场景下的最大影响，达不到时降级报告；启用组合链时，`exp-build` 进一步探索漏洞组合的破坏力。`findings/` 是漏洞最终出口，组合 EXP 产物写入 `exploits/`。
+静态论证确认的 finding 只是**静态候选**；启用 POC 时，引擎在每轮 `verify` 后自动串行调度 `poc-verify` 真实复现，复现成功的在 finding 目录下产出 `poc/` 复现包；启用 EXP 时，`ev-assess` 评估单漏洞在真实业务/威胁场景下的最大影响，达不到时降级报告；启用组合链时，`exp-build` 进一步探索漏洞组合的破坏力。`findings/` 是漏洞最终出口，组合 EXP 产物写入 `exploits/`。
 
 ### 极简循环，能力外置，知识累积
 
@@ -43,7 +46,7 @@ decide ──→ onboard / cognize / hunt / verify / poc-verify / ev-assess / ex
 | `leads/` | 跨阶段信号。`leads/ADV-*.md`、`leads/HYP-*.md` 是待 `decide` 选择的审计链路和风险假设；`leads/LEAD-*.md` 是其它阶段交回 `decide` 的回流线索。 |
 | `done/` | 已处理完成的任务和线索文件。 |
 
-所有任务和线索文件都是 Markdown 文件，frontmatter 统一为 `round` / `id` / `status`，`status` 取值 `pending` / `done` / `closed`。HYP 文件额外含 `hyp_status`，LEAD 额外含 `type`，POC/EXP 额外含 `target`。具体取值以 `schemas/` 为准。
+所有任务和线索文件都是 Markdown 文件，frontmatter 统一为 `round` / `id` / `status`，`status` 取值 `pending` / `done` / `closed`。HYP 文件额外含 `hyp_status`，LEAD 额外含 `type`。具体取值以 `schemas/` 为准。
 
 `decide` 写 `decision.yaml`（含 `next` 和 `round`）作为路由/退出信号，并把本轮要执行的任务写入 `todo/`；执行节点从 `todo/` 读取任务，完成后把 `status` 更新为 `done` 并移动到 `done/`。
 
@@ -67,15 +70,15 @@ decide ──→ onboard / cognize / hunt / verify / poc-verify / ev-assess / ex
 
 ### verify（双向论证）
 
-对假设（HYP）做完整的双向论证：先从攻击者角度证实可达性，再从防御者角度寻找反证。裁决 `confirmed` → 转化为 finding；`refuted` → 关闭。
+对假设（HYP）做完整的双向论证：先从攻击者角度证实可达性，再从防御者角度寻找反证。裁决 `confirmed` → 转化为 finding；`refuted` → 关闭。漏洞类 finding 创建时 `exp_status` 置为 `awaiting-poc`，PoC 复现成功后才推进为 `pending`。
 
-### poc-verify（动态复现，启用 POC 时）
+### poc-verify（动态复现，启用 POC 时，引擎调度）
 
-对静态确认的漏洞候选动态复现。提供 `sandbox-config` 时在沙箱中执行；未提供时本地执行。复现成功在该 finding 目录下产出 `poc/`，复现失败标 `fail-reproduced`。
+由引擎在每轮 `verify` 后自动调度，串行处理所有 `poc_status: pending` 的 vulnerability finding（不依赖 `todo/` 任务）。提供 `sandbox-config` 时在沙箱中执行；未提供时本地执行。复现成功在该 finding 目录下产出 `poc/` 并把 `exp_status` 推进为 `pending`；复现失败标 `fail-reproduced`。
 
-### ev-assess（单漏洞 EXP 影响评估，启用 EXP 时）
+### ev-assess（单漏洞 EXP 影响评估，启用 EXP 时，引擎调度）
 
-只对 `finding_class: vulnerability` 的 finding 执行：理解相关业务与威胁模型，搭建准业务环境，评估真实场景下的最大影响；声称影响无法达成时降级数据与报告。提供 `sandbox-config` 时在沙箱中执行；未提供时本地执行。
+由引擎在 poc-verify 之后自动调度，串行处理所有 `exp_status: pending` 的 vulnerability finding，入口防御校验 `poc_status: reproduced`（不依赖 `todo/` 任务）：理解相关业务与威胁模型，搭建准业务环境，评估真实场景下的最大影响；声称影响无法达成时降级数据与报告。提供 `sandbox-config` 时在沙箱中执行；未提供时本地执行。
 
 ### exp-build（组合 EXP 构造，启用组合链时）
 
@@ -103,10 +106,11 @@ knowledge/worklog.md              逐轮完成记录
 knowledge/build/                  动态执行环境记录（POC/EXP 按需维护）
 knowledge/coverage/               代码阅读覆盖率（extension 自动维护）
 
-todo/                             待执行任务（onboard / COG / ADV / HYP / POC / EXP）
-leads/                            待处理链路（ADV / HYP）、EXP 候选和回流线索（LEAD）
+todo/                             待执行任务（onboard / COG / ADV / HYP / CHAIN）
+leads/                            待处理链路（ADV / HYP）和回流线索（LEAD）
 done/                             已处理完成的任务和线索
 decision.yaml                     decide 本轮调度方向
+dynamic.yaml                      平台写入的动态门禁配置（引擎读取，非模型产物）
 
 findings/BUG-*/                   漏洞最终出口（静态确认 + 动态复现 + EXP 影响评估）
   ├── report.yaml                 漏洞/风险报告（finding_class / poc_status / exp_status 描述状态）
@@ -161,8 +165,6 @@ VulnForge/
 │   ├── advice.schema.yaml         ADV frontmatter
 │   ├── hypothesis.schema.yaml     HYP frontmatter（含 hyp_status）
 │   ├── lead.schema.yaml           LEAD frontmatter（含 type）
-│   ├── poc.schema.yaml            POC 任务 frontmatter
-│   ├── exp.schema.yaml            EXP 任务 frontmatter
 │   ├── profiler.schema.yaml       项目画像
 │   ├── bug-report.schema.yaml     漏洞报告（含 poc_status / exp_status）
 │   └── audit-report.schema.yaml   最终报告
@@ -178,6 +180,18 @@ VulnForge/
 
 ## 运行方式
 
+引擎动态门禁读取输出目录下的 `dynamic.yaml`（平台由 `worker-assets/scan-mode.sh` 根据受信环境变量生成）。本地直跑 youngflow 时需先手动写入，否则 verify 后的门禁阶段会因缺少该文件而失败：
+
+```bash
+mkdir -p .runs/example
+cat > .runs/example/dynamic.yaml <<'EOF'
+version: 1
+dynamic:
+  poc_enabled: false
+  exp_enabled: false
+EOF
+```
+
 ```bash
 # 纯静态审计
 youngflow flow.audit.yaml \
@@ -189,6 +203,7 @@ youngflow flow.audit.yaml \
   --max-parallel 20
 
 # 启用动态复现；--sandbox-config 文件说明连接方式/工作目录/执行命令；未提供时本地执行
+# （记得同步把 dynamic.yaml 的 poc_enabled 改为 true）
 youngflow flow.audit.yaml \
   --work-dir /path/to/target/project \
   --output-dir .runs/example \

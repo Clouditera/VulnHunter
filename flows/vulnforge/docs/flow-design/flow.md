@@ -39,7 +39,7 @@ status: pending
 
 ### status
 
-`status` 统一表示任务/线索的处理生命周期，适用于 `todo/`、`leads/` 和 `done/` 中的 onboard、COG、ADV、HYP、LEAD、POC、EXP 等文件：
+`status` 统一表示任务/线索的处理生命周期，适用于 `todo/`、`leads/` 和 `done/` 中的 onboard、COG、ADV、HYP、LEAD、CHAIN 等文件：
 
 | 值 | 含义 |
 |---|---|
@@ -74,7 +74,24 @@ findings/
         └── exp.md
 ```
 
-`report.yaml` 用 `finding_class` 区分漏洞与风险，用 `poc_status` / `exp_status` 描述动态复现和 EXP 状态：
+`report.yaml` 用 `finding_class` 区分漏洞与风险，用 `poc_status` / `exp_status` 描述动态复现和 EXP 状态（`exp_status` 含 `awaiting-poc`：漏洞类 finding 创建时的初始状态，PoC 成功后推进为 `pending`）：
+
+---
+
+## 动态验证链（引擎调度）
+
+`poc-verify` / `ev-assess` 不由 `decide` 派发，也不使用 `todo/` 任务。`verify` 结束后固定进入引擎动态门禁：
+
+```text
+verify ──→ poc_gate（读 dynamic.yaml）──开启──→ poc-verify（map：poc_status=pending）
+                                              └─关闭→ exp_gate ──开启→ ev-assess ──→ 回 decide
+poc-verify collector ──exp 开启──→ ev-assess（map：exp_status=pending）──→ 回 decide
+```
+
+- `dynamic.yaml` 由平台（`scan-mode.sh`）根据受信环境变量写入输出目录，字段 `dynamic.poc_enabled` / `dynamic.exp_enabled`；静态运行双 false，不启动任何 PoC/EV worker。本地直跑需手动写入。
+- 两个 map 阶段均串行（`concurrency: 1`），直接迭代 `findings/BUG-*/report.yaml`，`report.yaml` 是唯一状态源。
+- worker 入口做防御校验：poc-verify 校验 `finding_class: vulnerability`；ev-assess 校验 `poc_status: reproduced`（兼容历史 `poc_status: pending, exp_status: pending` 数据，不满足时不动状态直接退出）。
+- 未完成项保持待处理状态，在后续 verify 轮次重试（`error_strategy: continue`）。
 
 ---
 
@@ -189,50 +206,26 @@ hyp_status: pending
 
 完成后将 HYP 文件移动到 `done/`。
 
-### 5. 后续：poc-verify
+### 5. 后续：poc-verify（引擎调度）
 
-启用 POC、动态环境可用且存在 `poc_status: pending` 的 finding 时，`decide` 可派发 `todo/POC-*.md`。提供 `sandbox-config` 时在沙箱执行；未提供时本地执行。
+启用 POC 时，`verify` 结束后由引擎动态门禁自动调度 `poc-verify`：串行迭代所有 `poc_status: pending` 的 vulnerability finding，worker 直接接收 `findings/BUG-*/report.yaml` 路径，不经过 `todo/`。提供 `sandbox-config` 时在沙箱执行；未提供时本地执行。
 
-`POC-*.md` 示例：
-
-```markdown
----
-round: 7
-id: POC-R2-C1-A1-H1
-status: pending
-target: findings/BUG-R2-C1-A1-H1/report.yaml
----
-复现 BUG-R2-C1-A1-H1。
-```
-
-`poc-verify` 处理 `target` 指向的 finding：
+`poc-verify` 处理该 finding，并把 `poc_status` 与 `exp_status` 一起原子推进：
 
 - 复现成功后：
   - 在该 finding 目录下生成 `poc/`。
-  - 将 `report.yaml` 的 `poc_status` 更新为 `reproduced`。
+  - `report.yaml` 的 `poc_status` 更新为 `reproduced`，`exp_status` 从 `awaiting-poc` 推进为 `pending`。
 - 复现失败：
-  - 已具备必要能力但未复现时，将 `report.yaml` 的 `poc_status` 更新为 `fail-reproduced`，记录失败证据。
-  - 执行环境或外部条件不足时，将 `report.yaml` 的 `poc_status` 更新为 `blocked`，记录缺失条件。
+  - 已具备必要能力但未复现时，`poc_status` 更新为 `fail-reproduced`、`exp_status` 置为 `not-needed`，记录失败证据。
+  - 执行环境或外部条件不足时，`poc_status` / `exp_status` 均更新为 `blocked`，记录缺失条件。
 
 `fail-reproduced` 和 `blocked` 暂时视为动态复现链路的终态，不做额外重试约定。
 
 ### 6. 后续：ev-assess 与 exp-build
 
-启用 EXP、动态环境可用且存在待评估 vulnerability finding 时，`decide` 可派发单漏洞 `todo/EXP-*.md` 给 `ev-assess`；启用组合链且出现组合利用信号时，可派发 `todo/CHAIN-*.md` 给 `exp-build`。提供 `sandbox-config` 时在沙箱执行；未提供时本地执行。风险类 finding 不做 POC/EXP。
+启用 EXP 时，`ev-assess` 同样由引擎在 poc-verify 之后自动调度：串行迭代所有 `exp_status: pending` 的 finding，入口校验 `poc_status: reproduced`，不满足时不动状态直接退出（留给 poc-verify）。启用组合链且出现组合利用信号时，`decide` 可派发 `todo/CHAIN-*.md` 给 `exp-build`（exp-build 仍由 decide 派发）。提供 `sandbox-config` 时在沙箱执行；未提供时本地执行。风险类 finding 不做 POC/EXP。
 
-`EXP-*.md` 示例：
-
-```markdown
----
-round: 8
-id: EXP-R8-E1
-status: pending
-target: findings/BUG-R2-C1-A1-H1/report.yaml
----
-评估 BUG-R2-C1-A1-H1 在真实业务/威胁场景下是否成立，必要时构造最小 EXP。
-```
-
-`ev-assess` 处理 `target` 指向的主 finding，必产文件统一写入 `findings/<target-BUG>/exp/`：
+`ev-assess` 处理的 finding，必产文件统一写入 `findings/<BUG-id>/exp/`：
 
 - `business-model.md`：漏洞相关功能的真实业务环境和运行方式。
 - `threat-model.md`：围绕当前 finding 的攻击者、前提、边界和攻击路径。
