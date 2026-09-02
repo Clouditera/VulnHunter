@@ -1,3 +1,4 @@
+import type { ExpStatus, PocStatus } from "@vulnhunter/shared";
 /**
  * Finding three-card state logic — pure mapping per the SSOT
  * (design-spec-finding-three-card-ssot-v1.0.md §2/§3/§4), separated from the
@@ -5,11 +6,16 @@
  * (finding-dynamic.ts) and match the SSOT exactly; `upgraded` does NOT exist.
  */
 import type { IconName } from "../../../shared/components/Icon";
-import type { PocStatus, ExpStatus } from "@vulnhunter/shared";
 
 export type CardIcon = Extract<
   IconName,
-  "check-circle" | "clock" | "alert-circle" | "shield-alert" | "trending-down" | "alert-triangle" | "minus-circle"
+  | "check-circle"
+  | "clock"
+  | "alert-circle"
+  | "shield-alert"
+  | "trending-down"
+  | "alert-triangle"
+  | "minus-circle"
 >;
 
 export interface CardStateDisplay {
@@ -24,22 +30,77 @@ export interface CardStateDisplay {
 /** POC 6-state display map (SSOT §2). */
 export const POC_STATE_DISPLAY: Record<PocStatus, CardStateDisplay> = {
   pending: { labelKey: "pending", color: "var(--sev-medium)", icon: "clock", helperKey: "pending" },
-  reproduced: { labelKey: "reproduced", color: "var(--status-completed)", icon: "check-circle", helperKey: "reproduced" },
-  "fail-reproduced": { labelKey: "failReproduced", color: "var(--sev-high)", icon: "alert-circle", helperKey: "failReproduced" },
-  blocked: { labelKey: "blocked", color: "var(--sev-medium)", icon: "shield-alert", helperKey: "blocked" },
-  "not-needed": { labelKey: "notNeeded", color: "#0891b2", icon: "check-circle", helperKey: "notNeeded" },
+  reproduced: {
+    labelKey: "reproduced",
+    color: "var(--status-completed)",
+    icon: "check-circle",
+    helperKey: "reproduced",
+  },
+  "fail-reproduced": {
+    labelKey: "failReproduced",
+    color: "var(--sev-high)",
+    icon: "alert-circle",
+    helperKey: "failReproduced",
+  },
+  blocked: {
+    labelKey: "blocked",
+    color: "var(--sev-medium)",
+    icon: "shield-alert",
+    helperKey: "blocked",
+  },
+  "not-needed": {
+    labelKey: "notNeeded",
+    color: "#0891b2",
+    icon: "check-circle",
+    helperKey: "notNeeded",
+  },
   unknown: { labelKey: "unknown", color: "#737373", icon: "minus-circle", helperKey: "unknown" },
 };
 
 /** EXP 7-state display map (SSOT §3 + HALL-35 awaiting-poc). No `upgraded` — the engine has none. */
 export const EXP_STATE_DISPLAY: Record<ExpStatus, CardStateDisplay> = {
-  pending: { labelKey: "pendingExp", color: "var(--sev-medium)", icon: "clock", helperKey: "pending" },
-  "awaiting-poc": { labelKey: "awaitingPoc", color: "var(--sev-medium)", icon: "clock", helperKey: "awaitingPoc" },
-  confirmed: { labelKey: "confirmed", color: "var(--danger)", icon: "shield-alert", helperKey: "confirmed" },
-  downgraded: { labelKey: "downgraded", color: "var(--brand)", icon: "trending-down", helperKey: "downgraded" },
-  failed: { labelKey: "failed", color: "var(--sev-high)", icon: "alert-circle", helperKey: "failed" },
-  blocked: { labelKey: "blocked", color: "var(--sev-medium)", icon: "shield-alert", helperKey: "blocked" },
-  "not-needed": { labelKey: "notNeededExp", color: "#0891b2", icon: "check-circle", helperKey: "notNeededExp" },
+  pending: {
+    labelKey: "pendingExp",
+    color: "var(--sev-medium)",
+    icon: "clock",
+    helperKey: "pending",
+  },
+  "awaiting-poc": {
+    labelKey: "awaitingPoc",
+    color: "var(--sev-medium)",
+    icon: "clock",
+    helperKey: "awaitingPoc",
+  },
+  confirmed: {
+    labelKey: "confirmed",
+    color: "var(--danger)",
+    icon: "shield-alert",
+    helperKey: "confirmed",
+  },
+  downgraded: {
+    labelKey: "downgraded",
+    color: "var(--brand)",
+    icon: "trending-down",
+    helperKey: "downgraded",
+  },
+  failed: {
+    labelKey: "failed",
+    color: "var(--sev-high)",
+    icon: "alert-circle",
+    helperKey: "failed",
+  },
+  blocked: {
+    labelKey: "blocked",
+    color: "var(--sev-medium)",
+    icon: "shield-alert",
+    helperKey: "blocked",
+  },
+  "not-needed": {
+    labelKey: "notNeededExp",
+    color: "#0891b2",
+    icon: "check-circle",
+    helperKey: "notNeededExp",
+  },
   unknown: { labelKey: "unknown", color: "#737373", icon: "minus-circle", helperKey: "unknown" },
 };
 
@@ -78,8 +139,10 @@ export function resolveExpCardState(input: {
   expStatus: ExpStatus | null;
   timedOut?: boolean;
 }): { derived: DerivedState; status: ExpStatus; waitingForPoc: boolean } {
-  if (!input.dynamicEnabled) return { derived: "not_enabled", status: "pending", waitingForPoc: false };
-  if (input.envLost) return { derived: "env_lost", status: input.expStatus ?? "unknown", waitingForPoc: false };
+  if (!input.dynamicEnabled)
+    return { derived: "not_enabled", status: "pending", waitingForPoc: false };
+  if (input.envLost)
+    return { derived: "env_lost", status: input.expStatus ?? "unknown", waitingForPoc: false };
   const exp = input.expStatus ?? "unknown";
   const poc = input.pocStatus ?? "unknown";
   // not-needed is a terminal state and is never overridden by the POC wait.
@@ -99,7 +162,10 @@ export function resolveExpCardState(input: {
 }
 
 /** Whether the "漏洞信息尚未完全确定" banner shows on a dynamic card (SSOT §2/§3). */
-export function showIncompleteBanner(dynamicEnabled: boolean, status: PocStatus | ExpStatus): boolean {
+export function showIncompleteBanner(
+  dynamicEnabled: boolean,
+  status: PocStatus | ExpStatus,
+): boolean {
   return dynamicEnabled && status === "pending";
 }
 

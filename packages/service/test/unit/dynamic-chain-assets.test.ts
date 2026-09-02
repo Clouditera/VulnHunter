@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -79,6 +79,12 @@ describe("output-contract extension (HALL-35)", () => {
     expect(contracts).not.toContain("todo/EXP-*.md");
     expect(contracts).not.toContain("poc.schema.yaml");
     expect(contracts).not.toContain("exp.schema.yaml");
+  });
+
+  it("blocks model writes to the platform-written dynamic.yaml in every stage", () => {
+    const extension = read("extensions/output-contract/index.ts");
+    expect(extension).toContain("PROTECTED_PATHS");
+    expect(extension).toContain("\"dynamic.yaml\"");
   });
 });
 

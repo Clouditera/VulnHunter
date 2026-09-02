@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { EXP_STATE_DISPLAY, resolveExpCardState, showIncompleteBanner } from "../src/features/tasks/components/finding-card-state.js";
+import {
+  EXP_STATE_DISPLAY,
+  resolveExpCardState,
+  showIncompleteBanner,
+} from "../src/features/tasks/components/finding-card-state.js";
 
 /**
  * HALL-35: verify writes exp_status=awaiting-poc for new vulnerability
@@ -9,7 +13,16 @@ import { EXP_STATE_DISPLAY, resolveExpCardState, showIncompleteBanner } from "..
  */
 describe("EXP card awaiting-poc state (HALL-35)", () => {
   it("has a display entry for every EXP status including awaiting-poc", () => {
-    for (const status of ["pending", "awaiting-poc", "confirmed", "downgraded", "failed", "blocked", "not-needed", "unknown"] as const) {
+    for (const status of [
+      "pending",
+      "awaiting-poc",
+      "confirmed",
+      "downgraded",
+      "failed",
+      "blocked",
+      "not-needed",
+      "unknown",
+    ] as const) {
       expect(EXP_STATE_DISPLAY[status], `${status} must have a display entry`).toBeDefined();
       expect(EXP_STATE_DISPLAY[status].labelKey).toBeTruthy();
       expect(EXP_STATE_DISPLAY[status].helperKey).toBeTruthy();
@@ -19,19 +32,32 @@ describe("EXP card awaiting-poc state (HALL-35)", () => {
 
   it("resolves awaiting-poc as waiting for PoC while PoC is still pending", () => {
     expect(
-      resolveExpCardState({ dynamicEnabled: true, pocStatus: "pending", expStatus: "awaiting-poc" }),
+      resolveExpCardState({
+        dynamicEnabled: true,
+        pocStatus: "pending",
+        expStatus: "awaiting-poc",
+      }),
     ).toEqual({ derived: null, status: "awaiting-poc", waitingForPoc: true });
   });
 
   it("keeps awaiting-poc visible even when poc_status is reproduced (transitional write)", () => {
     expect(
-      resolveExpCardState({ dynamicEnabled: true, pocStatus: "reproduced", expStatus: "awaiting-poc" }),
+      resolveExpCardState({
+        dynamicEnabled: true,
+        pocStatus: "reproduced",
+        expStatus: "awaiting-poc",
+      }),
     ).toEqual({ derived: null, status: "awaiting-poc", waitingForPoc: false });
   });
 
   it("does not override awaiting-poc with the not-enabled or timed-out derived states in a dynamic run", () => {
     expect(
-      resolveExpCardState({ dynamicEnabled: true, pocStatus: "pending", expStatus: "awaiting-poc", timedOut: true }),
+      resolveExpCardState({
+        dynamicEnabled: true,
+        pocStatus: "pending",
+        expStatus: "awaiting-poc",
+        timedOut: true,
+      }),
     ).toEqual({ derived: null, status: "awaiting-poc", waitingForPoc: true });
   });
 

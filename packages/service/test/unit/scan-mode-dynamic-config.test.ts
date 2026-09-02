@@ -1,8 +1,8 @@
-import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -16,10 +16,14 @@ const script = fileURLToPath(new URL("../../../../worker-assets/scan-mode.sh", i
 
 function writeDynamicConfig(env: Record<string, string>): string {
   const outDir = mkdtempSync(join(tmpdir(), "scan-mode-dynamic-"));
-  const result = spawnSync("bash", ["-c", 'source "$1"; OUT_DIR="$2" write_dynamic_config', "cfg-test", script, outDir], {
-    env: { PATH: process.env.PATH ?? "", ...env },
-    encoding: "utf8",
-  });
+  const result = spawnSync(
+    "bash",
+    ["-c", 'source "$1"; OUT_DIR="$2" write_dynamic_config', "cfg-test", script, outDir],
+    {
+      env: { PATH: process.env.PATH ?? "", ...env },
+      encoding: "utf8",
+    },
+  );
   expect(result.status, result.stderr).toBe(0);
   return readFileSync(join(outDir, "dynamic.yaml"), "utf8");
 }
@@ -57,7 +61,9 @@ describe("scan-mode dynamic.yaml writer (HALL-35)", () => {
         VULNFORGE_ENABLE_EXP: "true",
       }),
     ).toBe("version: 1\ndynamic:\n  poc_enabled: false\n  exp_enabled: false\n");
-    expect(writeDynamicConfig({})).toBe("version: 1\ndynamic:\n  poc_enabled: false\n  exp_enabled: false\n");
+    expect(writeDynamicConfig({})).toBe(
+      "version: 1\ndynamic:\n  poc_enabled: false\n  exp_enabled: false\n",
+    );
   });
 
   it("is wired into main after the output-dir reset (fresh and continue spawns both get it)", () => {
@@ -66,7 +72,10 @@ describe("scan-mode dynamic.yaml writer (HALL-35)", () => {
     // Written after `rm -rf /workspace/out` so a fresh spawn cannot lose it,
     // and re-written on --continue respawns so the trusted env stays current.
     const rmIndex = text.indexOf("rm -rf /workspace/out");
-    const callIndex = text.indexOf("write_dynamic_config", text.indexOf("write_dynamic_config") + 1);
+    const callIndex = text.indexOf(
+      "write_dynamic_config",
+      text.indexOf("write_dynamic_config") + 1,
+    );
     expect(rmIndex).toBeGreaterThan(-1);
     expect(callIndex).toBeGreaterThan(rmIndex);
   });

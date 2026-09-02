@@ -1,12 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseFlow } from "../../../../submodules/youngflow/src/spec.js";
-import { extractState } from "../../../../submodules/youngflow/src/state.js";
-import { evaluateRouteDecision } from "../../../../submodules/youngflow/src/orchestrator.js";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { selectFiles } from "../../../../submodules/youngflow/src/map-filter.js";
+import { evaluateRouteDecision } from "../../../../submodules/youngflow/src/orchestrator.js";
+import { parseFlow } from "../../../../submodules/youngflow/src/spec.js";
 import type { StageSpec } from "../../../../submodules/youngflow/src/spec.js";
+import { extractState } from "../../../../submodules/youngflow/src/state.js";
 
 /**
  * HALL-35 engine-level dynamic gate semantics.
@@ -57,6 +57,12 @@ function writeDynamicConfig(pocEnabled: boolean, expEnabled: boolean): void {
   );
 }
 
+function stage(id: string): StageSpec {
+  const found = byId.get(id);
+  if (!found) throw new Error(`stage ${id} not found in flow.audit.yaml`);
+  return found;
+}
+
 function gateTargets(stage: StageSpec): string[] {
   const rules = stage.stateExtract ? stage.stateExtract.rules : {};
   const extracted = { [stage.id]: extractState(rules, workspaceRoot) };
@@ -67,7 +73,10 @@ let byId: Map<string, StageSpec>;
 
 beforeAll(() => {
   workspaceRoot = mkdtempSync(join(tmpdir(), "vulnforge-dynamic-gate-"));
-  const runtimeFlowDir = join(mkdtempSync(join(tmpdir(), "vulnforge-dynamic-gate-flows-")), "vulnforge");
+  const runtimeFlowDir = join(
+    mkdtempSync(join(tmpdir(), "vulnforge-dynamic-gate-flows-")),
+    "vulnforge",
+  );
   mkdirSync(runtimeFlowDir);
   flowPath = join(runtimeFlowDir, "flow.audit.yaml");
   writeFileSync(flowPath, readFileSync(join(sourceFlowDir, "flow.audit.yaml")));
@@ -83,17 +92,17 @@ afterAll(() => rmSync(workspaceRoot, { recursive: true, force: true }));
 describe("dynamic.yaml gate state extraction", () => {
   it("reads platform-written booleans", () => {
     writeDynamicConfig(true, true);
-    expect(gateTargets(byId.get("poc_gate")!)).toEqual(["poc-verify"]);
-    expect(gateTargets(byId.get("exp_gate")!)).toEqual(["ev-assess"]);
-    expect(gateTargets(byId.get("poc-verify")!)).toEqual(["ev-assess"]);
+    expect(gateTargets(stage("poc_gate"))).toEqual(["poc-verify"]);
+    expect(gateTargets(stage("exp_gate"))).toEqual(["ev-assess"]);
+    expect(gateTargets(stage("poc-verify"))).toEqual(["ev-assess"]);
     writeDynamicConfig(true, false);
-    expect(gateTargets(byId.get("exp_gate")!)).toEqual(["cycle_join"]);
-    expect(gateTargets(byId.get("poc-verify")!)).toEqual(["cycle_join"]);
+    expect(gateTargets(stage("exp_gate"))).toEqual(["cycle_join"]);
+    expect(gateTargets(stage("poc-verify"))).toEqual(["cycle_join"]);
   });
 
   it("fails loud when the platform forgot to write dynamic.yaml", () => {
     rmSync(join(workspaceRoot, "dynamic.yaml"));
-    expect(() => gateTargets(byId.get("poc_gate")!)).toThrow(/dynamic\.yaml/);
+    expect(() => gateTargets(stage("poc_gate"))).toThrow(/dynamic\.yaml/);
     writeDynamicConfig(false, false);
   });
 });
@@ -105,7 +114,7 @@ describe("gate routing matrix (static isolation included)", () => {
     { poc: false, exp: false, expected: ["exp_gate"] },
   ])("poc_gate with dynamic=$poc/$exp routes to $expected", ({ poc, exp, expected }) => {
     writeDynamicConfig(poc, exp);
-    expect(gateTargets(byId.get("poc_gate")!)).toEqual(expected);
+    expect(gateTargets(stage("poc_gate"))).toEqual(expected);
   });
 
   it.each([
@@ -113,7 +122,7 @@ describe("gate routing matrix (static isolation included)", () => {
     { exp: false, expected: ["cycle_join"] },
   ])("exp_gate with exp=$exp routes to $expected", ({ exp, expected }) => {
     writeDynamicConfig(false, exp);
-    expect(gateTargets(byId.get("exp_gate")!)).toEqual(expected);
+    expect(gateTargets(stage("exp_gate"))).toEqual(expected);
   });
 
   it("never starts a dynamic worker while both switches are off, even with pending findings present", () => {
@@ -124,7 +133,7 @@ describe("gate routing matrix (static isolation included)", () => {
     // Walk the deterministic gate chain (no worker stage may appear).
     while (current && current !== "cycle_join") {
       reached.add(current);
-      const targets = gateTargets(byId.get(current)!);
+      const targets = gateTargets(stage(current));
       current = targets[0];
       expect(reached.size).toBeLessThan(5);
     }
@@ -133,14 +142,14 @@ describe("gate routing matrix (static isolation included)", () => {
 
   it("routes poc-verify onward to ev-assess only when exp is enabled", () => {
     writeDynamicConfig(true, true);
-    expect(gateTargets(byId.get("poc-verify")!)).toEqual(["ev-assess"]);
+    expect(gateTargets(stage("poc-verify"))).toEqual(["ev-assess"]);
     writeDynamicConfig(true, false);
-    expect(gateTargets(byId.get("poc-verify")!)).toEqual(["cycle_join"]);
+    expect(gateTargets(stage("poc-verify"))).toEqual(["cycle_join"]);
   });
 
   it("ev-assess always returns to cycle_join", () => {
     writeDynamicConfig(true, true);
-    expect(gateTargets(byId.get("ev-assess")!)).toEqual(["cycle_join"]);
+    expect(gateTargets(stage("ev-assess"))).toEqual(["cycle_join"]);
   });
 });
 
@@ -154,28 +163,38 @@ describe("finding map filters (report.yaml is the single state source)", () => {
     writeFinding("BUG-R1-C1-A1-H3", { poc_status: "fail-reproduced", exp_status: "not-needed" });
     writeFinding("BUG-R1-C1-A1-H4", { poc_status: "blocked", exp_status: "blocked" });
     files = selectFiles(
-      [1, 2, 3, 4].map((n) => join(workspaceRoot, "findings", `BUG-R1-C1-A1-H${n}`, "report.yaml")).sort(),
+      [1, 2, 3, 4]
+        .map((n) => join(workspaceRoot, "findings", `BUG-R1-C1-A1-H${n}`, "report.yaml"))
+        .sort(),
       undefined,
       "fixture",
     );
   });
 
   it("poc-verify consumes exactly the poc_status=pending findings", () => {
-    const selected = selectFiles(files, byId.get("poc-verify")!.filter!, "poc-verify");
+    const selected = selectFiles(files, stage("poc-verify").filter ?? undefined, "poc-verify");
     expect(selected).toEqual([join(workspaceRoot, "findings", "BUG-R1-C1-A1-H1", "report.yaml")]);
   });
 
   it("ev-assess consumes exactly the exp_status=pending findings", () => {
-    const selected = selectFiles(files, byId.get("ev-assess")!.filter!, "ev-assess");
+    const selected = selectFiles(files, stage("ev-assess").filter ?? undefined, "ev-assess");
     expect(selected).toEqual([join(workspaceRoot, "findings", "BUG-R1-C1-A1-H2", "report.yaml")]);
   });
 
   it("keeps legacy exp_status=pending findings visible to ev-assess (worker entry re-checks poc_status)", () => {
     const legacy = writeFinding("BUG-legacy", { poc_status: "pending", exp_status: "pending" });
-    const selected = selectFiles([...files, legacy].sort(), byId.get("ev-assess")!.filter!, "ev-assess");
+    const selected = selectFiles(
+      [...files, legacy].sort(),
+      stage("ev-assess").filter ?? undefined,
+      "ev-assess",
+    );
     expect(selected).toEqual(expect.arrayContaining([legacy]));
     // …but they stay pending for poc-verify too, so PoC still runs first.
-    const pocSelected = selectFiles([...files, legacy].sort(), byId.get("poc-verify")!.filter!, "poc-verify");
+    const pocSelected = selectFiles(
+      [...files, legacy].sort(),
+      stage("poc-verify").filter ?? undefined,
+      "poc-verify",
+    );
     expect(pocSelected).toEqual(expect.arrayContaining([legacy]));
   });
 
@@ -183,7 +202,11 @@ describe("finding map filters (report.yaml is the single state source)", () => {
     const broken = join(workspaceRoot, "findings", "BUG-broken", "report.yaml");
     mkdirSync(join(workspaceRoot, "findings", "BUG-broken"), { recursive: true });
     writeFileSync(broken, "metadata: [unparseable\n");
-    const selected = selectFiles([broken, ...files].sort(), byId.get("poc-verify")!.filter!, "poc-verify");
+    const selected = selectFiles(
+      [broken, ...files].sort(),
+      stage("poc-verify").filter ?? undefined,
+      "poc-verify",
+    );
     expect(selected).not.toContain(broken);
   });
 });

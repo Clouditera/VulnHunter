@@ -1,14 +1,14 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
 import {
   EXP_STATUSES,
   FINDING_CLASSES,
+  type FindingDynamicMeta,
   POC_STATUSES,
   isExpStatus,
   isFindingClass,
   isPocStatus,
-  type FindingDynamicMeta,
 } from "@vulnhunter/shared";
+import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(
   new URL("../../src/infra/db/migrations/026_finding_dynamic_fields.sql", import.meta.url),
@@ -28,11 +28,25 @@ const migration058 = readFileSync(
 describe("Finding dynamic shared contract", () => {
   it("expresses every frozen enum and the unknown sentinel", () => {
     expect(FINDING_CLASSES).toEqual(["vulnerability", "risk", "unknown"]);
-    expect(POC_STATUSES).toEqual(["pending", "reproduced", "fail-reproduced", "blocked", "not-needed", "unknown"]);
+    expect(POC_STATUSES).toEqual([
+      "pending",
+      "reproduced",
+      "fail-reproduced",
+      "blocked",
+      "not-needed",
+      "unknown",
+    ]);
     // HALL-35: awaiting-poc = vulnerability created by verify, PoC not yet run
     // (engine advances it to pending only after a successful reproduction).
     expect(EXP_STATUSES).toEqual([
-      "pending", "awaiting-poc", "confirmed", "downgraded", "failed", "blocked", "not-needed", "unknown",
+      "pending",
+      "awaiting-poc",
+      "confirmed",
+      "downgraded",
+      "failed",
+      "blocked",
+      "not-needed",
+      "unknown",
     ]);
   });
 
@@ -91,7 +105,14 @@ describe("migration 027 contract (poc_status not-needed)", () => {
     expect(migration027).toContain("DROP CONSTRAINT IF EXISTS findings_meta_poc_status_check");
     expect(migration027).toContain("ADD CONSTRAINT findings_meta_poc_status_check");
     expect(migration027).toContain("poc_status IS NULL OR poc_status IN");
-    for (const value of ["'pending'", "'reproduced'", "'fail-reproduced'", "'blocked'", "'not-needed'", "'unknown'"]) {
+    for (const value of [
+      "'pending'",
+      "'reproduced'",
+      "'fail-reproduced'",
+      "'blocked'",
+      "'not-needed'",
+      "'unknown'",
+    ]) {
       expect(migration027).toContain(value);
     }
     // Engine has no `upgraded` value (confirmed with fish); never add it.
@@ -110,7 +131,16 @@ describe("migration 058 contract (exp_status awaiting-poc, HALL-35)", () => {
     expect(migration058).toContain("DROP CONSTRAINT IF EXISTS findings_meta_exp_status_check");
     expect(migration058).toContain("ADD CONSTRAINT findings_meta_exp_status_check");
     expect(migration058).toContain("exp_status IS NULL OR exp_status IN");
-    for (const value of ["'pending'", "'awaiting-poc'", "'confirmed'", "'downgraded'", "'failed'", "'blocked'", "'not-needed'", "'unknown'"]) {
+    for (const value of [
+      "'pending'",
+      "'awaiting-poc'",
+      "'confirmed'",
+      "'downgraded'",
+      "'failed'",
+      "'blocked'",
+      "'not-needed'",
+      "'unknown'",
+    ]) {
       expect(migration058).toContain(value);
     }
   });

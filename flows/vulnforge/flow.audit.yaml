@@ -311,7 +311,7 @@ stages:
     error_strategy: continue
     routes:
       # HALL-35: verify 结束后固定进入引擎动态门禁——即使本轮无新增 finding，
-      # 也会梅起上一轮遗留的 pending finding，交给 poc-verify 重试。
+      # 也会重新捞起上一轮遗留的 pending finding，交给 poc-verify 重试。
       - to: poc_gate
 
   # ── 动态门禁（HALL-35）──────────────────────────────────────
