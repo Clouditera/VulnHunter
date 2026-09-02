@@ -180,21 +180,11 @@ VulnForge/
 
 ## 运行方式
 
-引擎动态门禁读取输出目录下的 `dynamic.yaml`（平台由 `worker-assets/scan-mode.sh` 根据受信环境变量生成）。本地直跑 youngflow 时需先手动写入，否则 verify 后的门禁阶段会因缺少该文件而失败：
-
-```bash
-mkdir -p .runs/example
-cat > .runs/example/dynamic.yaml <<'EOF'
-version: 1
-dynamic:
-  poc_enabled: false
-  exp_enabled: false
-EOF
-```
+引擎动态门禁读取输出目录下的 `dynamic.yaml`（平台由 `worker-assets/scan-mode.sh` 根据受信环境变量生成）。本地直跑请使用 `scripts/run-audit.sh` 包装器：`--enable-poc` / `--enable-exp` 保持为公共输入契约，包装器会在交给 youngflow 前据此生成 `dynamic.yaml`，避免双事实源/遗漏（直接裸调 youngflow 会因缺少该文件在 verify 后的门禁阶段失败）：
 
 ```bash
 # 纯静态审计
-youngflow flow.audit.yaml \
+scripts/run-audit.sh flow.audit.yaml \
   --work-dir /path/to/target/project \
   --output-dir .runs/example \
   --audit-scope "全面审计。" \
@@ -203,8 +193,8 @@ youngflow flow.audit.yaml \
   --max-parallel 20
 
 # 启用动态复现；--sandbox-config 文件说明连接方式/工作目录/执行命令；未提供时本地执行
-# （记得同步把 dynamic.yaml 的 poc_enabled 改为 true）
-youngflow flow.audit.yaml \
+# （包装器自动生成 poc_enabled: true）
+scripts/run-audit.sh flow.audit.yaml \
   --work-dir /path/to/target/project \
   --output-dir .runs/example \
   --enable-poc 1 \
@@ -212,7 +202,7 @@ youngflow flow.audit.yaml \
   --max-parallel 1
 
 # 启用动态复现 + EXP 影响评估
-youngflow flow.audit.yaml \
+scripts/run-audit.sh flow.audit.yaml \
   --work-dir /path/to/target/project \
   --output-dir .runs/example \
   --enable-poc 1 \
@@ -220,7 +210,7 @@ youngflow flow.audit.yaml \
   --max-parallel 1
 
 # 再启用组合 EXP 构造
-youngflow flow.audit.yaml \
+scripts/run-audit.sh flow.audit.yaml \
   --work-dir /path/to/target/project \
   --output-dir .runs/example \
   --enable-poc 1 \
@@ -229,14 +219,14 @@ youngflow flow.audit.yaml \
   --max-parallel 1
 
 # 续跑（保留业务产物，重新 decide）
-youngflow flow.audit.yaml \
+scripts/run-audit.sh flow.audit.yaml \
   --work-dir /path/to/target/project \
   --output-dir .runs/example \
   --continue
 
 # 推进到指定阶段后停（按 stage 数组截断）
-youngflow flow.audit.yaml ... --until cognize
+scripts/run-audit.sh flow.audit.yaml ... --until cognize
 
 # 查看阶段
-youngflow flow.audit.yaml --list-stages
+scripts/run-audit.sh flow.audit.yaml --list-stages
 ```

@@ -59,11 +59,11 @@ inputs:
     type: str
     default: "zh-CN"
   enable_poc:
-    description: "启用动态验证（POC）。非空/true 时 decide 可为静态确认漏洞派发 poc-verify。"
+    description: "启用动态验证（POC）。公共输入契约：入口（scan-mode.sh / scripts/run-audit.sh）根据它生成 dynamic.yaml，引擎门禁 poc_gate 按该文件调度；本输入同时作为各阶段提示词上下文。"
     type: str
     default: "false"
   enable_exp:
-    description: "启用单漏洞 EXP 影响评估（ev-assess）。非空/true 时 decide 可为已 POC 复现的 vulnerability finding 派发 ev-assess。"
+    description: "启用单漏洞 EXP 影响评估（ev-assess）。公共输入契约：入口（scan-mode.sh / scripts/run-audit.sh）根据它生成 dynamic.yaml，引擎门禁 exp_gate 按该文件调度；本输入同时作为各阶段提示词上下文。"
     type: str
     default: "false"
   enable_chain:
@@ -348,7 +348,8 @@ stages:
     over: "findings/BUG-*/report.yaml"
     filter:
       field: metadata.poc_status
-      match: pending
+      # S3: blocked 保持可重试 — 每轮 verify 后重新捞起，环境恢复即可继续。
+      in: [pending, blocked]
     # HALL-35: 串行处理避免多 worker 并发改写同一 finding；单条件 filter
     # 无法同时表达 finding_class 与 poc_status，worker 入口做防御校验。
     concurrency: 1
