@@ -9,8 +9,8 @@ metadata:
   ev_score: 0
   ev_priority: P3
   ev_rationale: ""       # EV 各维度判断依据（逐维度）
-  poc_status: pending    # pending=待复现 | reproduced=已复现 | fail-reproduced=已具备条件但复现失败 | blocked=执行环境或外部条件不足
-  exp_status: pending    # 契约(2026-08-06)：漏洞类必填 pending|not-needed 二选一；风险类必填 not-needed
+  poc_status: pending    # pending=待复现 | reproduced=已复现 | fail-reproduced=已具备条件但复现失败 | blocked=执行环境或外部条件不足（可重试，后续 verify 轮次重新捞起）
+  exp_status: awaiting-poc # 契约(HALL-35)：漏洞类创建时必填 awaiting-poc（PoC 已等价真实影响时写 not-needed，禁止创建时写 pending；由 poc-verify 复现成功后推进为 pending）；风险类必填 not-needed
   affected_versions: "unknown" # 已确认/推断的受影响版本范围；未知时写 unknown
   anchors:
     - file_path: ""
