@@ -16,10 +16,11 @@
  * is on, the platform selects a sandbox for the dynamic pipeline, so the gate's
  * sandbox step must query SandboxPlane.
  *
- * NOTE: the engine does not yet consume enable_poc/enable_exp/enable_chain
- * (scanInputEnvFromMeta / VULNFORGE_SCHED_INSTR is force-static). Flipping the
- * engine's dynamic inputs is the dynamic-closure batch (H5 §5), out of scope
- * here — this module only writes the meta correctly.
+ * NOTE (HALL-35): the engine consumes enable_poc/enable_exp via the platform-
+ * written dynamic.yaml gate config (scan-mode.sh derives it from this meta's
+ * env: VULNFORGE_DYNAMIC_ENABLED / VULNFORGE_ENABLE_POC / VULNFORGE_ENABLE_EXP);
+ * the poc_gate / exp_gate joins route on it, never on model decisions.
+ * enable_chain stays decide-dispatched (exp-build), as designed.
  */
 
 export interface DynamicToggleInput {
