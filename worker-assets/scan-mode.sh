@@ -7,6 +7,28 @@ DEADLINE_RUNNER="/opt/run-with-deadline.py"
 SUPERVISOR_PID=""
 STATIC_ONLY_SCHED_INSTR="平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；完成静态审计后进入报告阶段。"
 
+# HALL-35: engine-read dynamic gate config. flow.audit.yaml 的 poc_gate /
+# exp_gate join 阶段直接路由读取该文件（非模型可修改语义）；静态运行强制
+# 双 false，即使 enable 环境变量泄漏也不会启动任何 PoC/EV worker。
+# OUT_DIR 可覆盖，仅供测试注入；生产路径固定 /workspace/out。
+write_dynamic_config() {
+  local out_dir="${OUT_DIR:-/workspace/out}"
+  local poc_enabled="false"
+  local exp_enabled="false"
+  if [ "${VULNFORGE_DYNAMIC_ENABLED:-false}" = "true" ]; then
+    poc_enabled="${VULNFORGE_ENABLE_POC:-false}"
+    exp_enabled="${VULNFORGE_ENABLE_EXP:-false}"
+  fi
+  mkdir -p "$out_dir"
+  cat > "$out_dir/dynamic.yaml" <<EOF
+version: 1
+dynamic:
+  poc_enabled: ${poc_enabled}
+  exp_enabled: ${exp_enabled}
+EOF
+  echo "[scan] Dynamic gate config: poc_enabled=${poc_enabled} exp_enabled=${exp_enabled} (${out_dir}/dynamic.yaml)" >&2
+}
+
 build_youngflow_args() {
   YOUNGFLOW_ARGS=(
     "$FLOW_FILE"
@@ -193,6 +215,9 @@ if [ "${CONTINUE:-0}" != "1" ]; then
 fi
 mkdir -p /workspace/.service-logs
 rm -f "$SERVICE_LOG"
+# Written after the output-dir reset so fresh spawns keep it, and re-written
+# on --continue respawns so the trusted env stays current (HALL-35).
+write_dynamic_config
 
 YOUNGFLOW_MAX_PARALLEL=${YOUNGFLOW_MAX_PARALLEL:-3}
 build_youngflow_args

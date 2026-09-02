@@ -1,6 +1,9 @@
 # VulnForge — Cognition-Driven Decide-Spiral Flow
 # 组织轴: 认知锚点（wiki + coverage）驱动的 decide 螺旋
 # decide 每轮写 decision.yaml.next 作为路由信号，并维护 todo/leads/done 三池
+# 动态验证链（HALL-35）: verify 后固定进入 poc_gate/exp_gate 引擎门禁，
+# poc-verify / ev-assess 由引擎按 findings 状态串行调度，不依赖 decide 派发；
+# 门禁读取平台写入的 dynamic.yaml（scan-mode.sh 生成，非模型可修改）。
 # 协议说明: flow.md
 
 version: "1.0"
@@ -102,8 +105,8 @@ stages:
       - 漏洞关注要求: ${flow_inputs.vuln_focus}
       - 任务调度要求: ${flow_inputs.sched_instr}
       - 用户补充说明: ${flow_inputs.user_instr}
-      - templates: ${templates}/cog.template.md, ${templates}/advice.template.md, ${templates}/hypothesis.template.md, ${templates}/poc.template.md, ${templates}/exp.template.md, ${templates}/chain.template.md, ${templates}/lead.template.md, ${templates}/worklog.template.md
-      - schema: ${schemas}/decision.schema.yaml, ${schemas}/todo.schema.yaml, ${schemas}/cog.schema.yaml, ${schemas}/advice.schema.yaml, ${schemas}/hypothesis.schema.yaml, ${schemas}/poc.schema.yaml, ${schemas}/exp.schema.yaml, ${schemas}/chain-task.schema.yaml, ${schemas}/lead.schema.yaml
+      - templates: ${templates}/cog.template.md, ${templates}/advice.template.md, ${templates}/hypothesis.template.md, ${templates}/chain.template.md, ${templates}/lead.template.md, ${templates}/worklog.template.md
+      - schema: ${schemas}/decision.schema.yaml, ${schemas}/todo.schema.yaml, ${schemas}/cog.schema.yaml, ${schemas}/advice.schema.yaml, ${schemas}/hypothesis.schema.yaml, ${schemas}/chain-task.schema.yaml, ${schemas}/lead.schema.yaml
       - 输出语言: ${flow_inputs.output_language}
     timeout: 3600
     state:
@@ -126,9 +129,11 @@ stages:
         when: decide.next == hunt
       - to: verify
         when: decide.next == verify
-      - to: poc-verify
+      # HALL-35: poc-verify / ev-assess 旧枚举仅兼容历史工作区——路由到确定性
+      # 门禁，由引擎按 dynamic.yaml 与 finding 状态调度，不再要求 POC/EXP todo。
+      - to: poc_gate
         when: decide.next == poc-verify
-      - to: ev-assess
+      - to: exp_gate
         when: decide.next == ev-assess
       - to: exp-build
         when: decide.next == exp-build
@@ -214,8 +219,8 @@ stages:
       - 当前 COG 任务: ${iterate_file}
       - 审计范围要求: ${flow_inputs.audit_scope}
       - 漏洞关注要求: ${flow_inputs.vuln_focus}
-      - templates: ${templates}/advice.template.md, ${templates}/exp.template.md, ${templates}/lead.template.md
-      - schema: ${schemas}/cog.schema.yaml, ${schemas}/advice.schema.yaml, ${schemas}/exp.schema.yaml
+      - templates: ${templates}/advice.template.md, ${templates}/lead.template.md
+      - schema: ${schemas}/cog.schema.yaml, ${schemas}/advice.schema.yaml
       - 输出语言: ${flow_inputs.output_language}
     timeout: 3600
     error_strategy: continue
@@ -305,17 +310,48 @@ stages:
     timeout: 3600
     error_strategy: continue
     routes:
+      # HALL-35: verify 结束后固定进入引擎动态门禁——即使本轮无新增 finding，
+      # 也会梅起上一轮遗留的 pending finding，交给 poc-verify 重试。
+      - to: poc_gate
+
+  # ── 动态门禁（HALL-35）──────────────────────────────────────
+  # engine-only join：不跑任何模型，读取平台写入的 dynamic.yaml 决定是否
+  # 进入动态链。不要用 gate.yaml.sandbox_type 判断开关——“是否执行”与
+  # “在哪里执行”解耦。静态运行（两开关均 false）不启动任何 PoC/EV worker。
+  - id: poc_gate
+    name: 动态门禁（POC）
+    type: join
+    state:
+      poc_enabled:
+        file: dynamic.yaml
+        field: dynamic.poc_enabled
+    routes:
+      - to: poc-verify
+        when: poc_gate.poc_enabled == true
+      - to: exp_gate
+
+  - id: exp_gate
+    name: 动态门禁（EXP）
+    type: join
+    state:
+      exp_enabled:
+        file: dynamic.yaml
+        field: dynamic.exp_enabled
+    routes:
+      - to: ev-assess
+        when: exp_gate.exp_enabled == true
       - to: cycle_join
 
   - id: poc-verify
     name: 动态复现
     type: map
-    over: "todo/POC-*.md"
+    over: "findings/BUG-*/report.yaml"
     filter:
-      field: status
+      field: metadata.poc_status
       match: pending
-      include_missing: true
-    concurrency: 3
+    # HALL-35: 串行处理避免多 worker 并发改写同一 finding；单条件 filter
+    # 无法同时表达 finding_class 与 poc_status，worker 入口做防御校验。
+    concurrency: 1
     model: ${env.V_STRONG_MODEL}
     skills:
       - bug-report
@@ -325,26 +361,32 @@ stages:
     prompt: |
       - 目标项目: ${work_dir}
       - 输出目录: ${output_dir}
-      - 当前 POC 任务: ${iterate_file}
+      - 当前 finding 报告: ${iterate_file}
       - 漏洞关注要求: ${flow_inputs.vuln_focus}
       - 沙箱配置: ${flow_inputs.sandbox_cfg}
       - templates: ${templates}/lead.template.md, ${templates}/build.template.md
-      - schema: ${schemas}/poc.schema.yaml, ${schemas}/bug-report.schema.yaml
+      - schema: ${schemas}/bug-report.schema.yaml
       - 输出语言: ${flow_inputs.output_language}
     timeout: 10800
     error_strategy: continue
+    state:
+      exp_enabled:
+        file: dynamic.yaml
+        field: dynamic.exp_enabled
     routes:
+      # 前一 map collector 完成后才进入下一节点；exp 关闭时直接回环。
+      - to: ev-assess
+        when: poc-verify.exp_enabled == true
       - to: cycle_join
 
   - id: ev-assess
     name: EXP 影响评估
     type: map
-    over: "todo/EXP-*.md"
+    over: "findings/BUG-*/report.yaml"
     filter:
-      field: status
+      field: metadata.exp_status
       match: pending
-      include_missing: true
-    concurrency: 3
+    concurrency: 1
     model: ${env.V_STRONG_MODEL}
     skills:
       - bug-report
@@ -354,7 +396,7 @@ stages:
     prompt: |
       - 目标项目: ${work_dir}
       - 输出目录: ${output_dir}
-      - 当前 EXP 任务: ${iterate_file}
+      - 当前 finding 报告: ${iterate_file}
       - 漏洞关注要求: ${flow_inputs.vuln_focus}
       - 沙箱配置: ${flow_inputs.sandbox_cfg}
       - templates: ${templates}/build.template.md
