@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,5 +78,62 @@ describe("scan-mode dynamic.yaml writer (HALL-35)", () => {
     );
     expect(rmIndex).toBeGreaterThan(-1);
     expect(callIndex).toBeGreaterThan(rmIndex);
+  });
+
+  // I2 (review): write protection alone is not enough — a static run must
+  // fail loud if dynamic.yaml is not double-false when the engine starts.
+  describe("fail-closed verification (I2)", () => {
+    function verifyDynamicConfig(env: Record<string, string>, yamlContent: string): number | null {
+      const outDir = mkdtempSync(join(tmpdir(), "scan-mode-verify-"));
+      writeFileSync(join(outDir, "dynamic.yaml"), yamlContent);
+      const result = spawnSync(
+        "bash",
+        ["-c", 'source "$1"; OUT_DIR="$2" verify_dynamic_config', "cfg-verify", script, outDir],
+        {
+          env: { PATH: process.env.PATH ?? "", ...env },
+          encoding: "utf8",
+        },
+      );
+      return result.status;
+    }
+
+    it("static run accepts a matching double-false config", () => {
+      expect(
+        verifyDynamicConfig({}, "version: 1\ndynamic:\n  poc_enabled: false\n  exp_enabled: false\n"),
+      ).toBe(0);
+    });
+
+    it("static run fails loud when dynamic.yaml enables anything (tamper/leak)", () => {
+      expect(
+        verifyDynamicConfig({}, "version: 1\ndynamic:\n  poc_enabled: true\n  exp_enabled: false\n"),
+      ).not.toBe(0);
+      expect(
+        verifyDynamicConfig({}, "version: 1\ndynamic:\n  poc_enabled: false\n  exp_enabled: true\n"),
+      ).not.toBe(0);
+      // Tampered into an unexpected shape — also fatal, never silently static.
+      expect(verifyDynamicConfig({}, "not: a-gate-config\n")).not.toBe(0);
+      expect(verifyDynamicConfig({}, "\n")).not.toBe(0);
+    });
+
+    it("dynamic run verifies against the flags it computed", () => {
+      const ok = verifyDynamicConfig(
+        { VULNFORGE_DYNAMIC_ENABLED: "true", VULNFORGE_ENABLE_POC: "true", VULNFORGE_ENABLE_EXP: "false" },
+        "version: 1\ndynamic:\n  poc_enabled: true\n  exp_enabled: false\n",
+      );
+      expect(ok).toBe(0);
+    });
+
+    it("is wired into main right after write_dynamic_config", () => {
+      const text = readFileSync(script, "utf8");
+      const writeCall = text.indexOf(
+        "write_dynamic_config",
+        text.indexOf("write_dynamic_config") + 1,
+      );
+      const verifyCall = text.indexOf(
+        "verify_dynamic_config",
+        text.indexOf("verify_dynamic_config") + 1,
+      );
+      expect(verifyCall).toBeGreaterThan(writeCall);
+    });
   });
 });

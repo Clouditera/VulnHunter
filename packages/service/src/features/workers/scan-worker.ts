@@ -41,7 +41,7 @@ import { createAuditCompletionEngineRun, fingerprintAuditCompletion } from "./au
 import { getDynamicProvider, type DynamicSandboxMapping } from "../dynamic/provider.js";
 
 
-export const STATIC_ONLY_SCHED_INSTR = "平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；完成静态审计后进入报告阶段。";
+export const STATIC_ONLY_SCHED_INSTR = "平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；不得修改 dynamic.yaml 等平台配置文件；完成静态审计后进入报告阶段。";
 
 function optionalTextMeta(meta: DbTask["source_meta"] | null | undefined, key: string): string {
   const value = meta?.[key];

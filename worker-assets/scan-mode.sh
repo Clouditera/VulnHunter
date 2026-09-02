@@ -5,19 +5,26 @@ FLOW_DIR="/opt/vulnhunter/flows/vulnforge"
 FLOW_FILE="$FLOW_DIR/flow.audit.yaml"
 DEADLINE_RUNNER="/opt/run-with-deadline.py"
 SUPERVISOR_PID=""
-STATIC_ONLY_SCHED_INSTR="平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；完成静态审计后进入报告阶段。"
+STATIC_ONLY_SCHED_INSTR="平台策略：本次仅执行静态审计；不得选择 poc-verify 或 exp-build；不得修改 dynamic.yaml 等平台配置文件；完成静态审计后进入报告阶段。"
 
 # HALL-35: engine-read dynamic gate config. flow.audit.yaml 的 poc_gate /
 # exp_gate join 阶段直接路由读取该文件（非模型可修改语义）；静态运行强制
 # 双 false，即使 enable 环境变量泄漏也不会启动任何 PoC/EV worker。
 # OUT_DIR 可覆盖，仅供测试注入；生产路径固定 /workspace/out。
+normalize_flag() {
+  case "${1:-}" in
+    1|t|T|true|TRUE|True|yes|on) echo "true";;
+    *) echo "false";;
+  esac
+}
+
 write_dynamic_config() {
   local out_dir="${OUT_DIR:-/workspace/out}"
   local poc_enabled="false"
   local exp_enabled="false"
   if [ "${VULNFORGE_DYNAMIC_ENABLED:-false}" = "true" ]; then
-    poc_enabled="${VULNFORGE_ENABLE_POC:-false}"
-    exp_enabled="${VULNFORGE_ENABLE_EXP:-false}"
+    poc_enabled="$(normalize_flag "${VULNFORGE_ENABLE_POC:-false}")"
+    exp_enabled="$(normalize_flag "${VULNFORGE_ENABLE_EXP:-false}")"
   fi
   mkdir -p "$out_dir"
   cat > "$out_dir/dynamic.yaml" <<EOF
@@ -27,6 +34,28 @@ dynamic:
   exp_enabled: ${exp_enabled}
 EOF
   echo "[scan] Dynamic gate config: poc_enabled=${poc_enabled} exp_enabled=${exp_enabled} (${out_dir}/dynamic.yaml)" >&2
+}
+
+# Fail-closed gate check: dynamic.yaml must read back exactly as the flags
+# computed above (guards write failures, read-only fs, and pre-run tampering).
+# Exact-content compare — any unexpected shape is fatal, never silently static.
+verify_dynamic_config() {
+  local out_dir="${OUT_DIR:-/workspace/out}"
+  local expected_poc="false"
+  local expected_exp="false"
+  if [ "${VULNFORGE_DYNAMIC_ENABLED:-false}" = "true" ]; then
+    expected_poc="$(normalize_flag "${VULNFORGE_ENABLE_POC:-false}")"
+    expected_exp="$(normalize_flag "${VULNFORGE_ENABLE_EXP:-false}")"
+  fi
+  local expected="version: 1
+dynamic:
+  poc_enabled: ${expected_poc}
+  exp_enabled: ${expected_exp}"
+  if [ ! -f "$out_dir/dynamic.yaml" ] || [ "$(cat "$out_dir/dynamic.yaml" 2>/dev/null)" != "$expected" ]; then
+    echo "[scan] FATAL: dynamic.yaml gate config mismatch (expected poc=${expected_poc} exp=${expected_exp}); aborting to avoid starting the engine with a wrong gate state" >&2
+    exit 1
+  fi
+  echo "[scan] Dynamic gate config verified (poc=${expected_poc} exp=${expected_exp})." >&2
 }
 
 build_youngflow_args() {
@@ -218,6 +247,10 @@ rm -f "$SERVICE_LOG"
 # Written after the output-dir reset so fresh spawns keep it, and re-written
 # on --continue respawns so the trusted env stays current (HALL-35).
 write_dynamic_config
+# I2 (review): fail closed — if the file we just wrote does not read back as
+# the intended gate state (fs anomaly, tampering), abort before the engine
+# starts. Static runs must never proceed with an enabling dynamic.yaml.
+verify_dynamic_config
 
 YOUNGFLOW_MAX_PARALLEL=${YOUNGFLOW_MAX_PARALLEL:-3}
 build_youngflow_args
