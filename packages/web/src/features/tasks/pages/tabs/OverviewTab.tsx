@@ -117,6 +117,71 @@ function KV({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+/** task-285df3a9: read-only "task config" card — creation-time snapshot from
+ * source_meta (+ top-level credential_label). Zero backend changes: the task
+ * detail route already returns both. Missing single fields show "—"; a task
+ * whose source_meta carries none of the config keys (pre-2.3.12 era) shows
+ * the legacy fallback line instead of a half-empty card. */
+function TaskConfigCard({ task }: { task: Task }) {
+  const sm = parseSourceMeta(task.source_meta as unknown as string) ?? {};
+  const hasAny =
+    sm.filename != null ||
+    sm.git_url != null ||
+    sm.enable_poc != null ||
+    sm.enable_exp != null ||
+    sm.enable_chain != null ||
+    sm.audit_focus != null ||
+    sm.scan_timeout != null;
+
+  const sourceValue =
+    sm.git_url != null ? String(sm.git_url)
+    : sm.filename != null ? String(sm.filename)
+    : null;
+
+  const toggle = (v: unknown) =>
+    v === true || v === "true"
+      ? <span style={{ color: "var(--status-completed)", fontWeight: 600 }}>{i18n.t("common.on")}</span>
+      : <span style={{ color: "var(--text-secondary)", fontWeight: 400 }}>{i18n.t("common.off")}</span>;
+
+  const timeoutValue = (() => {
+    const sec = typeof sm.scan_timeout === "number" ? sm.scan_timeout : Number(sm.scan_timeout);
+    if (Number.isFinite(sec) && sec > 0) {
+      const h = Math.round((sec / 3600) * 10) / 10;
+      return `${h} ${i18n.t("overview.configHours")}`;
+    }
+    return i18n.t("overview.configDefaultTimeout");
+  })();
+
+  if (!hasAny) {
+    return (
+      <div data-testid="task-config-card">
+        <Card title={i18n.t("overview.configCardTitle")}>
+          <p style={{ margin: 0, fontSize: 13, color: "var(--text-secondary)" }}>
+            {i18n.t("overview.configLegacy")}
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div data-testid="task-config-card">
+    <Card title={i18n.t("overview.configCardTitle")}>
+      <KV label={i18n.t("overview.configSource")} value={sourceValue} />
+      <KV label={i18n.t("overview.configDynamicVerify")} value={toggle(sm.enable_poc)} />
+      <KV label={i18n.t("overview.configDynamicExploit")} value={toggle(sm.enable_exp)} />
+      <KV label={i18n.t("overview.configDynamicChain")} value={toggle(sm.enable_chain)} />
+      <KV label={i18n.t("overview.configAuditFocus")} value={sm.audit_focus != null ? String(sm.audit_focus) : null} />
+      <KV label={i18n.t("overview.configScanTimeout")} value={timeoutValue} />
+      <KV label={i18n.t("overview.configCredential")} value={task.credential_label ?? null} />
+      <p style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--text-secondary)" }}>
+        {i18n.t("overview.configSnapshotNote")}
+      </p>
+    </Card>
+    </div>
+  );
+}
+
 export function OverviewTab() {
   const { task } = useOutletContext<{ task: Task }>();
   const navigate = useNavigate();
@@ -172,6 +237,9 @@ export function OverviewTab() {
         gap: "20px",
       }}
     >
+      {/* task-285df3a9: creation-time config snapshot (read-only) */}
+      <TaskConfigCard task={task} />
+
       {/* Project Profile */}
       <Card title={i18n.t("overview.projectProfile")}>
         <KV label={i18n.t("overview.project")} value={task.project_name} />
