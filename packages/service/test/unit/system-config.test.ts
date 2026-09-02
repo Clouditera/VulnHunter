@@ -106,33 +106,33 @@ describe("system config validation", () => {
   });
 });
 
-describe("sandbox_idle_release_hours validation (task-ac572a8e C)", () => {
+describe("sandbox_idle_release_minutes validation (task-3b541f52, was hours task-ac572a8e C)", () => {
   beforeEach(() => {
     config = { max_parallel_scan: 3 };
   });
 
   it("accepts in-range integers (1..720) and persists", async () => {
-    await updateSystemConfig({ sandbox_idle_release_hours: 1 });
-    await expect(getSystemConfig()).resolves.toMatchObject({ sandbox_idle_release_hours: 1 });
-    await updateSystemConfig({ sandbox_idle_release_hours: 720 });
-    await expect(getSystemConfig()).resolves.toMatchObject({ sandbox_idle_release_hours: 720 });
+    await updateSystemConfig({ sandbox_idle_release_minutes: 1 });
+    await expect(getSystemConfig()).resolves.toMatchObject({ sandbox_idle_release_minutes: 1 });
+    await updateSystemConfig({ sandbox_idle_release_minutes: 43200 });
+    await expect(getSystemConfig()).resolves.toMatchObject({ sandbox_idle_release_minutes: 43200 });
   });
 
   it("rejects 0 and negatives", async () => {
-    await expect(updateSystemConfig({ sandbox_idle_release_hours: 0 })).rejects.toThrow(/sandbox_idle_release_hours/);
-    await expect(updateSystemConfig({ sandbox_idle_release_hours: -5 })).rejects.toThrow(/sandbox_idle_release_hours/);
+    await expect(updateSystemConfig({ sandbox_idle_release_minutes: 0 })).rejects.toThrow(/sandbox_idle_release_minutes/);
+    await expect(updateSystemConfig({ sandbox_idle_release_minutes: -5 })).rejects.toThrow(/sandbox_idle_release_minutes/);
   });
 
   it("rejects non-integers and out-of-range values", async () => {
-    await expect(updateSystemConfig({ sandbox_idle_release_hours: 1.5 })).rejects.toThrow(/sandbox_idle_release_hours/);
-    await expect(updateSystemConfig({ sandbox_idle_release_hours: 721 })).rejects.toThrow(/sandbox_idle_release_hours/);
+    await expect(updateSystemConfig({ sandbox_idle_release_minutes: 1.5 })).rejects.toThrow(/sandbox_idle_release_minutes/);
+    await expect(updateSystemConfig({ sandbox_idle_release_minutes: 43201 })).rejects.toThrow(/sandbox_idle_release_minutes/);
   });
 
   it("keeps the stored value on unrelated patches; absence stays absent", async () => {
     await updateSystemConfig({ max_parallel_scan: 5 });
-    expect((await getSystemConfig()).sandbox_idle_release_hours).toBeUndefined();
-    await updateSystemConfig({ sandbox_idle_release_hours: 48 });
+    expect((await getSystemConfig()).sandbox_idle_release_minutes).toBeUndefined();
+    await updateSystemConfig({ sandbox_idle_release_minutes: 2880 });
     await updateSystemConfig({ max_parallel_scan: 6 });
-    await expect(getSystemConfig()).resolves.toMatchObject({ sandbox_idle_release_hours: 48, max_parallel_scan: 6 });
+    await expect(getSystemConfig()).resolves.toMatchObject({ sandbox_idle_release_minutes: 2880, max_parallel_scan: 6 });
   });
 });

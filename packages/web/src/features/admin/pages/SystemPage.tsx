@@ -11,7 +11,7 @@ export function SystemPage() {
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [maxParallel, setMaxParallel] = useState<number | "">(3);
   const [uploadMb, setUploadMb] = useState(500);
-  const [idleHours, setIdleHours] = useState<number | "">(168);
+  const [idleMinutes, setIdleMinutes] = useState<number | "">(10080);
   const { hasDynamicVerification } = useEdition();
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -24,7 +24,7 @@ export function SystemPage() {
         setConfig(r.config);
         setMaxParallel(r.config.max_parallel_scan ?? 3);
         setUploadMb(r.config.source_archive_upload_max_mb ?? r.config.upload_zip_max_mb ?? 500);
-        setIdleHours((r.config as { sandbox_idle_release_hours?: number }).sandbox_idle_release_hours ?? 168);
+        setIdleMinutes((r.config as { sandbox_idle_release_minutes?: number }).sandbox_idle_release_minutes ?? 10080);
       })
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)));
   }, []);
@@ -47,18 +47,18 @@ export function SystemPage() {
   }
 
 
-  async function saveIdleHours() {
-    const n = Math.trunc(Number(idleHours));
-    if (!Number.isInteger(n) || n < 1 || n > 720) {
-      setErr(i18n.t("admin.system.idleHoursInvalid"));
+  async function saveIdleMinutes() {
+    const n = Math.trunc(Number(idleMinutes));
+    if (!Number.isInteger(n) || n < 1 || n > 43200) {
+      setErr(i18n.t("admin.system.idleMinutesInvalid"));
       return;
     }
     setSaving(true);
     setMsg("");
     setErr("");
     try {
-      await api.settings.updateSystemConfig({ sandbox_idle_release_hours: n });
-      setMsg(i18n.t("admin.system.idleHoursSaved"));
+      await api.settings.updateSystemConfig({ sandbox_idle_release_minutes: n });
+      setMsg(i18n.t("admin.system.idleMinutesSaved"));
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -157,35 +157,35 @@ export function SystemPage() {
       <section style={adminCardStyle} data-testid="admin-card-sandbox-ttl">
         <h3 style={cardTitle}>
           <Icon name="clock" size={18} style={{ color: "var(--text-secondary)" }} />
-          {i18n.t("admin.system.idleHoursTitle")}
+          {i18n.t("admin.system.idleMinutesTitle")}
         </h3>
-        <p style={cardDesc}>{i18n.t("admin.system.idleHoursDesc")}</p>
+        <p style={cardDesc}>{i18n.t("admin.system.idleMinutesDesc")}</p>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
           <input
             type="number"
-            data-testid="admin-idle-hours"
+            data-testid="admin-idle-minutes"
             min={1}
-            max={720}
+            max={43200}
             step={1}
-            value={idleHours}
+            value={idleMinutes}
             onChange={(e) => {
               const raw = e.target.value;
               if (raw === "") {
-                setIdleHours("" as unknown as number);
+                setIdleMinutes("" as unknown as number);
                 return;
               }
               const n = Number(raw);
-              if (Number.isFinite(n)) setIdleHours(Math.trunc(n));
+              if (Number.isFinite(n)) setIdleMinutes(Math.trunc(n));
             }}
             style={{ width: 100, height: 36, border: "1px solid var(--border)", borderRadius: 6, padding: "0 10px", background: "var(--bg-page)", color: "var(--text-primary)" }}
           />
-          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{i18n.t("admin.system.idleHoursUnit")}</span>
-          <button type="button" data-testid="admin-save-idle-hours" disabled={saving} onClick={() => void saveIdleHours()} style={btnPrimary}>
+          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{i18n.t("admin.system.idleMinutesUnit")}</span>
+          <button type="button" data-testid="admin-save-idle-minutes" disabled={saving} onClick={() => void saveIdleMinutes()} style={btnPrimary}>
             {i18n.t("admin.system.save")}
           </button>
         </div>
         <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>
-          {i18n.t("admin.system.idleHoursHint")}
+          {i18n.t("admin.system.idleMinutesHint")}
         </p>
       </section>
       ) : null}

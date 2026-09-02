@@ -1011,7 +1011,7 @@ export interface SystemConfig {
   chat_memory_gb: number;
   report_cpu_limit: number;
   report_memory_gb: number;
-  sandbox_idle_release_hours?: number;
+  sandbox_idle_release_minutes?: number;
   source_archive_upload_max_mb: number;
   upload_zip_max_mb: number;
   upload_gateway_limit_mb?: number;
