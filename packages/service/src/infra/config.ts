@@ -85,7 +85,10 @@ export function loadConfig(): ServiceConfig {
       // (empty type list) instead of guessing or falling back to any default.
       baseUrl: process.env.SANDBOXPLANE_BASE_URL || null,
       token: process.env.SANDBOXPLANE_TOKEN || null,
-      timeoutMs: Number(optionalEnv("SANDBOXPLANE_TIMEOUT_MS", "5000")),
+      // task-1c5c5bf1: 5s→3s — reconcile passes make one serial call per
+      // mapping; a shorter read cap bounds worst-case occupancy when the
+      // plane is unreachable (prod 09-01 wedge). Writes keep their own tier.
+      timeoutMs: Number(optionalEnv("SANDBOXPLANE_TIMEOUT_MS", "3000")),
       // Resume/release-class writes: plane may take >5s to start containers.
       writeTimeoutMs: Number(optionalEnv("SANDBOXPLANE_WRITE_TIMEOUT_MS", "60000")),
     },
