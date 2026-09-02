@@ -17,6 +17,9 @@ export type PocStatus = (typeof POC_STATUSES)[number];
 
 export const EXP_STATUSES = [
   "pending",
+  // HALL-35: vulnerability finding created by verify, PoC not yet run —
+  // the engine advances it to `pending` only after a successful reproduction.
+  "awaiting-poc",
   "confirmed",
   "downgraded",
   "failed",

@@ -28,16 +28,6 @@
         "schema": "schemas/hypothesis.schema.yaml"
       },
       {
-        "pattern": "todo/POC-*.md",
-        "min_count": 0,
-        "schema": "schemas/poc.schema.yaml"
-      },
-      {
-        "pattern": "todo/EXP-*.md",
-        "min_count": 0,
-        "schema": "schemas/exp.schema.yaml"
-      },
-      {
         "pattern": "todo/onboard-*.md",
         "min_count": 0,
         "schema": "schemas/todo.schema.yaml"
@@ -224,11 +214,6 @@
     "strict": false,
     "rules": [
       {
-        "pattern": "todo/POC-*.md",
-        "min_count": 0,
-        "schema": "schemas/poc.schema.yaml"
-      },
-      {
         "pattern": "done/**",
         "min_count": 0
       },
@@ -307,11 +292,6 @@
   "ev-assess": {
     "strict": false,
     "rules": [
-      {
-        "pattern": "todo/EXP-*.md",
-        "min_count": 0,
-        "schema": "schemas/exp.schema.yaml"
-      },
       {
         "pattern": "done/**",
         "min_count": 0

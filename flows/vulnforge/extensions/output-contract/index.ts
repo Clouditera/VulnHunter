@@ -47,6 +47,11 @@ interface PathCtx {
 // Entry
 // ---------------------------------------------------------------------------
 
+// HALL-35: engine-read runtime config — platform-written (scan-mode.sh),
+// never model-writable. Blocked in every stage, strict or not, so a rogue
+// worker cannot flip the dynamic gates mid-run.
+const PROTECTED_PATHS = new Set(["dynamic.yaml"]);
+
 export default function (pi: ExtensionAPI) {
   const stageId = process.env.YOUNGFLOW_STAGE_ID;
   const outputDir = process.env.YOUNGFLOW_OUTPUT_DIR;
@@ -96,6 +101,14 @@ export default function (pi: ExtensionAPI) {
     if (targetPath.startsWith("@")) targetPath = targetPath.slice(1);
 
     const relPath = toRelative(resolve(process.cwd(), targetPath), ctx);
+
+    if (relPath !== null && PROTECTED_PATHS.has(relPath)) {
+      return {
+        block: true,
+        reason:
+          "[output-contract] Blocked: 'dynamic.yaml' is the engine dynamic gate config (platform-written); it must not be modified.",
+      };
+    }
 
     if (relPath !== null && matchesAnyRule(relPath, contract.rules)) {
       return; // within contract

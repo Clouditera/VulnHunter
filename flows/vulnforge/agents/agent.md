@@ -26,7 +26,7 @@
 
 - 被测目标的构建、运行等一切动态操作只在沙箱内执行；本地仅做静态动作（读代码、写分析文档）。
 - 沙箱工具链不满足时在沙箱内补齐；仍不满足的把 blocked 与原因记入 `knowledge/build/build.md`，不回落本地。
-- 动态操作前先确认沙箱可达（短重试不超过 3 次）；确认不可达时更新 `knowledge/build/build.md` 的 frontmatter，当前任务标记 blocked（reason: sandbox-unreachable）并退出，不再重试。
+- 动态操作前先确认沙箱可达（短重试不超过 3 次）；确认不可达时更新 `knowledge/build/build.md` 的 frontmatter，当前任务标记 blocked（reason: sandbox-unreachable）并退出，本次不再重试（引擎后续 verify 轮次会重新捞起 blocked 的 finding）。
 - `knowledge/build/build.md` 用 frontmatter 记录沙箱状态，是单一记录点：`sandbox: available | unreachable`，`updated: <ISO 时间>`。
 
 # 审计方法
@@ -57,11 +57,11 @@
 | `research` | 检索公开信息，产出情报档案（knowledge/research/）与审计链路（ADV） |
 | `hunt` | 沿一条审计链路精读，产出风险假设（HYP） |
 | `verify` | 对风险假设做双向论证，给出裁决：confirmed → 转化为 finding，refuted → 关闭 |
-| `poc-verify` | 对静态确认的候选做动态复现 |
-| `ev-assess` | 单漏洞：评估真实业务场景和最大影响；达不到时降级报告 |
 | `exp-build` | 组合漏洞：探索并构造破坏力最大的漏洞组合，产物写入 exploits/，经验写入 knowledge/exploits/ |
 | `report` | 汇总认知、发现与结论，退出审计 |
 | `exit` | 环境错误阻断时退出 |
+
+动态复现（poc-verify）与单漏洞 EXP 影响评估（ev-assess）不在 decide 的选择范围内：`verify` 结束后，引擎读取平台写入的 `dynamic.yaml` 门禁，按 finding 的 `poc_status` / `exp_status` 自动串行调度这两个环节（详见工作区目录中的 `dynamic.yaml` 与 `schemas/bug-report.schema.yaml` 的状态契约），decide 无需也不应为其创建任务。
 
 ## 任务与线索流转
 
@@ -105,6 +105,7 @@ HYP 文件额外包含 `hyp_status` 字段，描述风险假设的研判状态�
 - `findings/`：漏洞最终出口。按漏洞创建目录，每个目录下含 `report.yaml`；启用 POC 并复现后另含 `poc/`；启用 EXP 并评估后相关文件统一写入 `exp/`。
 - `exploits/`：组合 EXP 产物。每个组合一个目录 `exploits/EXP-<id>/`，含 `report.yaml`、组合利用脚本与验证日志，以及 `members/` 下成员 finding 结论文档副本。
 - `decision.yaml`：本轮调度方向。
+- `dynamic.yaml`：平台写入的动态门禁配置（`dynamic.poc_enabled` / `dynamic.exp_enabled`），引擎据此决定是否进入动态链；非模型产物，不要读写。
 - `report/`：审计报告。
 
 ## findings 结构

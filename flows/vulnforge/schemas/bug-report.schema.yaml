@@ -77,12 +77,13 @@ properties:
         type: string
         enum:
           - pending
+          - awaiting-poc
           - confirmed
           - downgraded
           - failed
           - blocked
           - not-needed
-        description: EXP/真实影响评估状态。pending=待评估；confirmed=真实业务场景下危害成立；downgraded=PoC 成立但真实影响需降级；failed=真实场景下攻击不成立；blocked=EXP 条件无法模拟；not-needed=PoC 已等价真实影响。**契约（2026-08-06）：漏洞类 finding 创建时必须初始化本字段（pending 或 not-needed 二选一），不得缺省；风险类必须 not-needed。**
+        description: EXP/真实影响评估状态。awaiting-poc=PoC 未执行，verify 创建 vulnerability finding 时的初始状态，PoC 复现成功后由 poc-verify 推进为 pending；pending=待评估；confirmed=真实业务场景下危害成立；downgraded=PoC 成立但真实影响需降级；failed=真实场景下攻击不成立；blocked=EXP 条件无法模拟；not-needed=PoC 已等价真实影响。**契约（HALL-35）：漏洞类 finding 由 verify 创建时 exp_status 置为 awaiting-poc，PoC 成功后原子推进为 pending，失败/阻塞/降级推进为对应终态；风险类必须 not-needed。**
       affected_versions:
         type: string
         description: 已确认或合理推断的受影响版本范围；未知时写 unknown

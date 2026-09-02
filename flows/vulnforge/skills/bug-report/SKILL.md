@@ -37,8 +37,8 @@ description: 漏洞报告撰写技能 — 把已确认的安全问题整理成�
 | cwe | CWE 编号（如 CWE-190，参考 cwe-guide.md 确定） |
 | cvss_vector / cvss_score | CVSS v3.1 向量与分数 |
 | ev_vector / ev_score / ev_priority / ev_rationale | 利用价值向量、分数、优先级、逐维度依据 |
-| poc_status | pending（待复现）/ reproduced（已复现）/ fail-reproduced（已具备条件但复现失败，终态）/ blocked（执行环境或外部条件不足） |
-| exp_status | pending（待评估）/ confirmed（真实场景危害成立）/ downgraded（PoC 成立但真实影响降级）/ failed（真实场景不成立）/ blocked（EXP 条件无法模拟）/ not-needed（PoC 已等价真实影响）。**契约：漏洞类创建时必须初始化（pending 或 not-needed 二选一，不得缺省）；风险类必须 not-needed** |
+| poc_status | pending（待复现）/ reproduced（已复现）/ fail-reproduced（已具备条件但复现失败，终态）/ blocked（执行环境或外部条件不足，可重试：后续 verify 轮次会重新捞起） |
+| exp_status | awaiting-poc（漏洞类创建默认，等待 PoC 复现，由 poc-verify 推进）/ pending（待评估，PoC 复现成功后的评估就绪态；遗留数据兼容）/ confirmed（真实场景危害成立）/ downgraded（PoC 成立但真实影响降级）/ failed（真实场景不成立）/ blocked（EXP 条件无法模拟）/ not-needed（PoC 已等价真实影响）。**契约（HALL-35）：漏洞类创建时必须初始化 awaiting-poc（除非已确认 PoC 等价真实影响，可写 not-needed；禁止创建时写 pending） ；风险类必须 not-needed** |
 | affected_versions | 通过 git 等信息，确定受影响版本范围；未知时写 `unknown` |
 | anchors | 代码位置列表，每项 `{file_path, line, function}` |
 
