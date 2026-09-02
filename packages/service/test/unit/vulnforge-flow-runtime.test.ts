@@ -1,7 +1,7 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseFlow } from "../../../../submodules/youngflow/src/spec.js";
 
 const repoRoot = join(import.meta.dirname, "../../../..");
@@ -31,13 +31,7 @@ describe("VulnForge 2.0 runtime flow compatibility", () => {
 
     expect(spec.defaultTools).toEqual(["read", "bash", "write", "edit"]);
     expect(byId.get("decide")?.tools).toEqual([
-      "read",
-      "bash",
-      "write",
-      "edit",
-      "coverage",
-      "workspace_diff",
-      "workspace_snapshot",
+      "read", "bash", "write", "edit", "coverage", "workspace_diff", "workspace_snapshot",
     ]);
     expect(byId.get("report")?.tools).toEqual(["read", "bash", "write", "edit", "coverage"]);
     // onboard owns the gate tools (v2 prepare internalization) AND the base
@@ -45,25 +39,9 @@ describe("VulnForge 2.0 runtime flow compatibility", () => {
     // list must carry read/bash/write/edit too (P0 QA 7322dcde). Everything
     // else inherits defaults only.
     expect(byId.get("onboard")?.tools).toEqual([
-      "read",
-      "bash",
-      "write",
-      "edit",
-      "list_sandbox_types",
-      "get_sandbox_type",
-      "apply_sandbox",
+      "read", "bash", "write", "edit", "list_sandbox_types", "get_sandbox_type", "apply_sandbox",
     ]);
-    for (const id of [
-      "cognize",
-      "hunt",
-      "verify",
-      "poc-verify",
-      "ev-assess",
-      "exp-build",
-      "cycle_join",
-      "complete",
-      "exit",
-    ]) {
+    for (const id of ["cognize", "hunt", "verify", "poc-verify", "ev-assess", "exp-build", "cycle_join", "complete", "exit"]) {
       expect(byId.get(id)?.tools, `${id} must inherit only defaults`).toBeUndefined();
     }
   });
@@ -93,16 +71,12 @@ describe("VulnForge 2.0 runtime flow compatibility", () => {
     const spec = parseFlow(flowPath);
     const byId = new Map(spec.stages.map((stage) => [stage.id, stage]));
     const onboard = byId.get("onboard");
-    expect(onboard?.stateExtract).toMatchObject({
-      rules: { next: { file: "gate.yaml", field: "next" } },
-    });
+    expect(onboard?.stateExtract).toMatchObject({ rules: { next: { file: "gate.yaml", field: "next" } } });
     const routes = onboard?.routes ?? [];
-    expect(routes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ to: "exit", when: "onboard.next == end" }),
-        expect.objectContaining({ to: "cycle_join", when: "onboard.next == continue" }),
-      ]),
-    );
+    expect(routes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ to: "exit", when: "onboard.next == end" }),
+      expect.objectContaining({ to: "cycle_join", when: "onboard.next == continue" }),
+    ]));
     // decide→onboard idle-loop cap (replaces the retired platform watchdog)
     const decide = byId.get("decide");
     const onboardEdge = (decide?.routes ?? []).find((r) => r.to === "onboard");
@@ -112,7 +86,7 @@ describe("VulnForge 2.0 runtime flow compatibility", () => {
   });
 
   // HALL-35: poc-verify / ev-assess are engine-scheduled off finding state —
-  // decide no longer creates POC-*/EXP-* todos, so weak models cannot skip
+  // decide no longer creates POC/EXP todos, so weak models cannot skip
   // dynamic verification.
   describe("engine-scheduled dynamic verification (HALL-35)", () => {
     let byId: Map<string, ReturnType<typeof parseFlow>["stages"][number]>;
@@ -157,12 +131,10 @@ describe("VulnForge 2.0 runtime flow compatibility", () => {
       expect(decideTargets).not.toContain("ev-assess");
       // exp-build routing must not regress — it stays decide-dispatched.
       expect(decideTargets).toContain("exp-build");
-      expect(decide?.routes ?? []).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ to: "poc_gate", when: "decide.next == poc-verify" }),
-          expect.objectContaining({ to: "exp_gate", when: "decide.next == ev-assess" }),
-        ]),
-      );
+      expect(decide?.routes ?? []).toEqual(expect.arrayContaining([
+        expect.objectContaining({ to: "poc_gate", when: "decide.next == poc-verify" }),
+        expect.objectContaining({ to: "exp_gate", when: "decide.next == ev-assess" }),
+      ]));
     });
 
     it("poc-verify maps pending findings serially with an exp-aware exit route", () => {

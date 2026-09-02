@@ -1,4 +1,8 @@
-export const FINDING_CLASSES = ["vulnerability", "risk", "unknown"] as const;
+export const FINDING_CLASSES = [
+  "vulnerability",
+  "risk",
+  "unknown",
+] as const;
 export type FindingClass = (typeof FINDING_CLASSES)[number];
 
 export const POC_STATUSES = [

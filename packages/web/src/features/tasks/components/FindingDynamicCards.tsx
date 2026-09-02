@@ -1,5 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
-import type { ExpStatus, PocStatus } from "@vulnhunter/shared";
 /**
  * Finding detail stage cards + accordion artifact previews.
  * Spec: implementation-spec-finding-detail-redesign-v1.0.md
@@ -10,25 +8,27 @@ import type { ExpStatus, PocStatus } from "@vulnhunter/shared";
  *   可利用性评估 → FindingExpPanel (EXP card + accordion files)
  */
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
+  api,
+  type FindingMeta,
+  type FindingArtifactGroups,
   type ArtifactFileEntry,
   type ArtifactFilePreview,
-  type FindingArtifactGroups,
-  type FindingMeta,
-  api,
 } from "../../../shared/api/client";
-import { Icon } from "../../../shared/components/Icon";
 import { i18n } from "../../../shared/i18n";
+import { Icon } from "../../../shared/components/Icon";
 import { Markdown } from "../../chat/components/Markdown";
 import {
+  POC_STATE_DISPLAY,
+  EXP_STATE_DISPLAY,
+  resolvePocCardState,
+  resolveExpCardState,
+  showIncompleteBanner,
   type CardIcon,
   type CardStateDisplay,
-  EXP_STATE_DISPLAY,
-  POC_STATE_DISPLAY,
-  resolveExpCardState,
-  resolvePocCardState,
-  showIncompleteBanner,
 } from "./finding-card-state";
+import type { PocStatus, ExpStatus } from "@vulnhunter/shared";
 
 /** Unified status-card chrome (fish: thin border, radius 8, no shadow). */
 export const STAGE_CARD_STYLE: React.CSSProperties = {
@@ -43,16 +43,7 @@ export const STAGE_CARD_STYLE: React.CSSProperties = {
 
 function StateBadge({ color, icon, label }: { color: string; icon: CardIcon; label: string }) {
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "4px",
-        fontSize: "12px",
-        fontWeight: 700,
-        color,
-      }}
-    >
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", fontWeight: 700, color }}>
       <Icon name={icon} size={12} strokeWidth={2.5} />
       {label}
     </span>
@@ -103,10 +94,7 @@ function AccordionArtifactList({
   }
 
   return (
-    <div
-      data-testid="finding-artifact-accordion"
-      style={{ display: "flex", flexDirection: "column", gap: "6px" }}
-    >
+    <div data-testid="finding-artifact-accordion" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
       {/* HALL-23: per-finding pack download — sits above the file rows so the
           entry is reachable without expanding anything. */}
       <a
@@ -141,115 +129,93 @@ function AccordionArtifactList({
             key={f.path}
             data-testid={`finding-artifact-card-${basename}`}
             data-open={open || undefined}
-            style={{
-              border: `1px solid ${open ? "var(--brand)" : "var(--border)"}`,
-              borderRadius: "8px",
-              background: "var(--bg-card)",
-              overflow: "hidden",
-            }}
+            style={{ border: `1px solid ${open ? "var(--brand)" : "var(--border)"}`, borderRadius: "8px", background: "var(--bg-card)", overflow: "hidden" }}
           >
             <div style={{ display: "flex", alignItems: "stretch" }}>
-              <button
-                type="button"
-                disabled={!f.previewable}
-                aria-expanded={open}
-                onClick={() => toggle(f.path, f.previewable)}
+            <button
+              type="button"
+              disabled={!f.previewable}
+              aria-expanded={open}
+              onClick={() => toggle(f.path, f.previewable)}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "9px 11px",
+                border: "none",
+                background: open ? "var(--bg-error)" : "transparent",
+                color: "var(--text-primary)",
+                textAlign: "left",
+                cursor: f.previewable ? "pointer" : "default",
+                opacity: f.previewable ? 1 : 0.55,
+              }}
+            >
+              <span
                 style={{
-                  flex: 1,
-                  minWidth: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "9px 11px",
-                  border: "none",
-                  background: open ? "var(--bg-error)" : "transparent",
-                  color: "var(--text-primary)",
-                  textAlign: "left",
-                  cursor: f.previewable ? "pointer" : "default",
-                  opacity: f.previewable ? 1 : 0.55,
-                }}
-              >
-                <span
-                  style={{
-                    width: "26px",
-                    height: "26px",
-                    borderRadius: "6px",
-                    display: "grid",
-                    placeItems: "center",
-                    background: "var(--bg-page)",
-                    color: "var(--brand)",
-                    fontSize: "9px",
-                    fontWeight: 800,
-                    flexShrink: 0,
-                  }}
-                >
-                  {artifactBadge(f.path)}
-                </span>
-                <span style={{ minWidth: 0, flex: 1 }}>
-                  <span
-                    style={{
-                      display: "block",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      fontFamily: "ui-monospace, Menlo, monospace",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {basename}
-                  </span>
-                  <span
-                    style={{
-                      display: "block",
-                      fontSize: "10px",
-                      color: "var(--text-secondary)",
-                      marginTop: "1px",
-                    }}
-                  >
-                    {f.kind} · {formatArtifactSize(f.size)}
-                  </span>
-                </span>
-                {f.previewable ? (
-                  <span
-                    aria-hidden
-                    style={{
-                      fontSize: "14px",
-                      color: "var(--text-secondary)",
-                      transform: open ? "rotate(90deg)" : "none",
-                      transition: "transform 0.12s",
-                      flexShrink: 0,
-                      lineHeight: 1,
-                    }}
-                  >
-                    ›
-                  </span>
-                ) : null}
-              </button>
-              {/* HALL-23: single-file download — always offered, including
-                non-previewable binary rows (the core ask of this feature). */}
-              <a
-                href={api.tasks.artifactFileDownloadUrl(taskId, `${pathPrefix}${f.path}`)}
-                download
-                data-testid={`finding-artifact-download-${basename}`}
-                title={i18n.t("finding.cards.downloadFile")}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  padding: "0 10px",
-                  border: "none",
-                  borderLeft: "1px solid var(--border)",
-                  background: "transparent",
-                  color: "var(--text-secondary)",
-                  textDecoration: "none",
-                  cursor: "pointer",
+                  width: "26px",
+                  height: "26px",
+                  borderRadius: "6px",
+                  display: "grid",
+                  placeItems: "center",
+                  background: "var(--bg-page)",
+                  color: "var(--brand)",
+                  fontSize: "9px",
+                  fontWeight: 800,
                   flexShrink: 0,
                 }}
               >
-                <Icon name="download" size={13} strokeWidth={2} />
-              </a>
+                {artifactBadge(f.path)}
+              </span>
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <span style={{ display: "block", fontSize: "12px", fontWeight: 600, fontFamily: "ui-monospace, Menlo, monospace", wordBreak: "break-word" }}>
+                  {basename}
+                </span>
+                <span style={{ display: "block", fontSize: "10px", color: "var(--text-secondary)", marginTop: "1px" }}>
+                  {f.kind} · {formatArtifactSize(f.size)}
+                </span>
+              </span>
+              {f.previewable ? (
+                <span
+                  aria-hidden
+                  style={{
+                    fontSize: "14px",
+                    color: "var(--text-secondary)",
+                    transform: open ? "rotate(90deg)" : "none",
+                    transition: "transform 0.12s",
+                    flexShrink: 0,
+                    lineHeight: 1,
+                  }}
+                >
+                  ›
+                </span>
+              ) : null}
+            </button>
+            {/* HALL-23: single-file download — always offered, including
+                non-previewable binary rows (the core ask of this feature). */}
+            <a
+              href={api.tasks.artifactFileDownloadUrl(taskId, `${pathPrefix}${f.path}`)}
+              download
+              data-testid={`finding-artifact-download-${basename}`}
+              title={i18n.t("finding.cards.downloadFile")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "0 10px",
+                border: "none",
+                borderLeft: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--text-secondary)",
+                textDecoration: "none",
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              <Icon name="download" size={13} strokeWidth={2} />
+            </a>
             </div>
-            {open ? (
-              <AccordionBody taskId={taskId} path={`${pathPrefix}${f.path}`} fileName={f.path} />
-            ) : null}
+            {open ? <AccordionBody taskId={taskId} path={`${pathPrefix}${f.path}`} fileName={f.path} /> : null}
           </div>
         );
       })}
@@ -274,11 +240,7 @@ function AccordionArtifactList({
   );
 }
 
-function AccordionBody({
-  taskId,
-  path,
-  fileName,
-}: { taskId: string; path: string; fileName: string }) {
+function AccordionBody({ taskId, path, fileName }: { taskId: string; path: string; fileName: string }) {
   const { data: preview, isLoading } = useQuery<ArtifactFilePreview>({
     queryKey: ["artifact-file", taskId, path],
     queryFn: () => api.tasks.artifactFile(taskId, path),
@@ -295,22 +257,12 @@ function AccordionBody({
       }}
     >
       {isLoading ? (
-        <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-          {i18n.t("expPage.loadingDoc")}
-        </div>
+        <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{i18n.t("expPage.loadingDoc")}</div>
       ) : preview?.kind === "text" && preview.content !== undefined ? (
         fileName.endsWith(".md") ? (
           <Markdown content={preview.content} />
         ) : (
-          <pre
-            style={{
-              margin: 0,
-              fontSize: "12px",
-              fontFamily: "monospace",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-            }}
-          >
+          <pre style={{ margin: 0, fontSize: "12px", fontFamily: "monospace", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
             {preview.content}
           </pre>
         )
@@ -339,22 +291,11 @@ export function StaticStatusCard({ finding }: { finding: FindingMeta }) {
   const isRisk = finding.item_type === "risk" || finding.finding_class === "risk";
   return (
     <div style={STAGE_CARD_STYLE} data-testid="finding-card-static">
-      <div
-        style={{
-          fontSize: "11.5px",
-          fontWeight: 700,
-          marginBottom: "6px",
-          color: "var(--text-primary)",
-        }}
-      >
+      <div style={{ fontSize: "11.5px", fontWeight: 700, marginBottom: "6px", color: "var(--text-primary)" }}>
         {i18n.t("finding.cards.static.title")}
       </div>
       <div style={{ marginBottom: "4px" }}>
-        <StateBadge
-          color="var(--brand)"
-          icon="check-circle"
-          label={i18n.t("finding.cards.static.confirmed")}
-        />
+        <StateBadge color="var(--brand)" icon="check-circle" label={i18n.t("finding.cards.static.confirmed")} />
       </div>
       <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
         {isRisk ? i18n.t("finding.cards.static.helperRisk") : i18n.t("finding.cards.static.helper")}
@@ -389,11 +330,7 @@ function StageStatusCard({
           {i18n.t(`finding.cards.${titleKey}.title`)}
         </div>
         <div style={{ marginBottom: "4px" }}>
-          <StateBadge
-            color="#737373"
-            icon="minus-circle"
-            label={i18n.t(`finding.cards.${titleKey}.riskSkipLabel`)}
-          />
+          <StateBadge color="#737373" icon="minus-circle" label={i18n.t(`finding.cards.${titleKey}.riskSkipLabel`)} />
         </div>
         <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
           {i18n.t(`finding.cards.${titleKey}.riskSkipHelper`)}
@@ -405,10 +342,7 @@ function StageStatusCard({
   const display = displayMap[status];
   return (
     <div
-      style={{
-        ...STAGE_CARD_STYLE,
-        ...(derived === "not_enabled" ? { borderStyle: "dashed" } : {}),
-      }}
+      style={{ ...STAGE_CARD_STYLE, ...(derived === "not_enabled" ? { borderStyle: "dashed" } : {}) }}
       data-testid={testid}
     >
       <div style={{ fontSize: "11.5px", fontWeight: 700, marginBottom: "6px" }}>
@@ -417,13 +351,7 @@ function StageStatusCard({
       <div style={{ marginBottom: "4px" }}>
         {derived ? (
           <StateBadge
-            color={
-              derived === "env_lost"
-                ? "var(--danger)"
-                : derived === "timed_out"
-                  ? "var(--sev-medium)"
-                  : "#737373"
-            }
+            color={derived === "env_lost" ? "var(--danger)" : derived === "timed_out" ? "var(--sev-medium)" : "#737373"}
             icon="clock"
             label={i18n.t(`finding.cards.${derivedLabelKey}`)}
           />
@@ -451,39 +379,17 @@ function StageStatusCard({
         </div>
       ) : null}
       {!derived && display ? (
-        <div
-          style={{
-            fontSize: "11px",
-            color: "var(--text-secondary)",
-            lineHeight: 1.5,
-            marginBottom: derived === "not_enabled" ? 0 : 0,
-          }}
-        >
+        <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: derived === "not_enabled" ? 0 : 0 }}>
           {i18n.t(`finding.cards.helper.${display.helperKey}`)}
         </div>
       ) : null}
       {derived === "not_enabled" ? (
-        <div
-          style={{
-            fontSize: "11px",
-            color: "var(--text-secondary)",
-            lineHeight: 1.5,
-            marginTop: "4px",
-          }}
-        >
+        <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.5, marginTop: "4px" }}>
           {i18n.t(`finding.cards.${titleKey}.notEnabledHint`)}
         </div>
       ) : null}
       {derived === "timed_out" ? (
-        <div
-          style={{
-            fontSize: "11px",
-            color: "var(--text-secondary)",
-            lineHeight: 1.5,
-            marginTop: "4px",
-          }}
-          data-testid={`${testid}-timeout-hint`}
-        >
+        <div style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.5, marginTop: "4px" }} data-testid={`${testid}-timeout-hint`}>
           {i18n.t("finding.cards.timedOutHint")}
         </div>
       ) : null}
@@ -514,11 +420,7 @@ export function FindingPocPanel({
   const findingId = finding.finding_key;
   const isRisk = finding.item_type === "risk" || finding.finding_class === "risk";
   const poc = resolvePocCardState({ dynamicEnabled, pocStatus: finding.poc_status, timedOut });
-  const { data: groups } = useFindingArtifacts(
-    taskId,
-    findingId,
-    dynamicEnabled && !isRisk && poc.derived !== "not_enabled",
-  );
+  const { data: groups } = useFindingArtifacts(taskId, findingId, dynamicEnabled && !isRisk && poc.derived !== "not_enabled");
   const files = groups?.poc.files ?? [];
 
   return (
@@ -528,32 +430,17 @@ export function FindingPocPanel({
         testid="finding-card-poc"
         isRisk={isRisk}
         derived={poc.derived}
-        derivedLabelKey={
-          poc.derived === "env_lost"
-            ? "envLost"
-            : poc.derived === "timed_out"
-              ? "timedOut"
-              : "notEnabled"
-        }
+        derivedLabelKey={poc.derived === "env_lost" ? "envLost" : poc.derived === "timed_out" ? "timedOut" : "notEnabled"}
         status={poc.status}
         displayMap={POC_STATE_DISPLAY}
-        showIncomplete={
-          !isRisk && poc.derived == null && showIncompleteBanner(dynamicEnabled, poc.status)
-        }
+        showIncomplete={!isRisk && poc.derived == null && showIncompleteBanner(dynamicEnabled, poc.status)}
       />
       {isRisk || poc.derived === "not_enabled" ? (
         isRisk ? (
-          <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-            {i18n.t("finding.cards.riskNoArtifacts")}
-          </div>
+          <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{i18n.t("finding.cards.riskNoArtifacts")}</div>
         ) : null
       ) : (
-        <AccordionArtifactList
-          taskId={taskId}
-          findingId={findingId}
-          files={files}
-          pathPrefix={`findings/${findingId}/`}
-        />
+        <AccordionArtifactList taskId={taskId} findingId={findingId} files={files} pathPrefix={`findings/${findingId}/`} />
       )}
     </div>
   );
@@ -579,11 +466,7 @@ export function FindingExpPanel({
     expStatus: finding.exp_status,
     timedOut,
   });
-  const { data: groups } = useFindingArtifacts(
-    taskId,
-    findingId,
-    dynamicEnabled && !isRisk && exp.derived !== "not_enabled",
-  );
+  const { data: groups } = useFindingArtifacts(taskId, findingId, dynamicEnabled && !isRisk && exp.derived !== "not_enabled");
   const files = groups?.exp.files ?? [];
 
   return (
@@ -593,32 +476,17 @@ export function FindingExpPanel({
         testid="finding-card-exp"
         isRisk={isRisk}
         derived={exp.derived}
-        derivedLabelKey={
-          exp.derived === "env_lost"
-            ? "envLost"
-            : exp.derived === "timed_out"
-              ? "timedOut"
-              : "notEnabled"
-        }
+        derivedLabelKey={exp.derived === "env_lost" ? "envLost" : exp.derived === "timed_out" ? "timedOut" : "notEnabled"}
         status={exp.status}
         displayMap={EXP_STATE_DISPLAY}
-        showIncomplete={
-          !isRisk && exp.derived == null && showIncompleteBanner(dynamicEnabled, exp.status)
-        }
+        showIncomplete={!isRisk && exp.derived == null && showIncompleteBanner(dynamicEnabled, exp.status)}
       />
       {isRisk || exp.derived === "not_enabled" ? (
         isRisk ? (
-          <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-            {i18n.t("finding.cards.riskNoArtifacts")}
-          </div>
+          <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{i18n.t("finding.cards.riskNoArtifacts")}</div>
         ) : null
       ) : (
-        <AccordionArtifactList
-          taskId={taskId}
-          findingId={findingId}
-          files={files}
-          pathPrefix={`findings/${findingId}/`}
-        />
+        <AccordionArtifactList taskId={taskId} findingId={findingId} files={files} pathPrefix={`findings/${findingId}/`} />
       )}
     </div>
   );
@@ -631,22 +499,10 @@ export type TabStatusPill = {
   border: string;
 };
 
-const PILL_GREEN = {
-  background: "#f0fdf4",
-  color: "var(--status-completed)",
-  border: "1px solid #bbf7d0",
-};
-const PILL_RED = {
-  background: "var(--bg-error)",
-  color: "var(--danger)",
-  border: "1px solid var(--danger-border)",
-};
+const PILL_GREEN = { background: "#f0fdf4", color: "var(--status-completed)", border: "1px solid #bbf7d0" };
+const PILL_RED = { background: "var(--bg-error)", color: "var(--danger)", border: "1px solid var(--danger-border)" };
 const PILL_AMBER = { background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a" };
-const PILL_GRAY = {
-  background: "var(--bg-page)",
-  color: "var(--text-secondary)",
-  border: "1px solid var(--border)",
-};
+const PILL_GRAY = { background: "var(--bg-page)", color: "var(--text-secondary)", border: "1px solid var(--border)" };
 const PILL_BLUE = { background: "#eff6ff", color: "var(--brand)", border: "1px solid #bfdbfe" };
 const PILL_CYAN = { background: "#ecfeff", color: "#0891b2", border: "1px solid #a5f3fc" };
 
@@ -656,10 +512,7 @@ export function resolvePocTabPill(finding: FindingMeta, dynamicEnabled: boolean)
   if (isRisk) {
     return { label: i18n.t("finding.cards.poc.riskSkipLabel"), ...PILL_GRAY };
   }
-  const { derived, status } = resolvePocCardState({
-    dynamicEnabled,
-    pocStatus: finding.poc_status,
-  });
+  const { derived, status } = resolvePocCardState({ dynamicEnabled, pocStatus: finding.poc_status });
   if (derived === "not_enabled") return { label: i18n.t("finding.cards.notEnabled"), ...PILL_GRAY };
   if (derived === "env_lost") return { label: i18n.t("finding.cards.envLost"), ...PILL_RED };
   switch (status) {
