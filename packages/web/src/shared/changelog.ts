@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    version: "2.3.13",
+    releasedAt: "2026-09",
+    title: "VulnHunter v2.3.13 更新",
+    markdown: `
+### 🚀 更新内容
+- 任务详情页新增工程配置展示
+- 修复部分部署环境下动态验证沙箱不可用的问题
+
+### 🔧 其它调整
+- 修复了一些稳定性问题
+`,
+  },
+  {
     version: "2.3.12",
     releasedAt: "2026-09",
     title: "VulnHunter v2.3.12 更新",
