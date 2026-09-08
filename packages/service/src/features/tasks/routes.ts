@@ -18,6 +18,7 @@ import { listUsersByIds } from "../auth/storage.js";
 import { attachCreatorSummaries, uniqueCreatorIds } from "../auth/creator-summary.js";
 import { originalArchiveDownloadSpec } from "./original-archive.js";
 import { getSourceArchivePolicy } from "../source-archives/policy.js";
+import { cleanupUnreferencedSourceArchives, sourceArchiveCleanupKeys } from "./source-cleanup.js";
 // projectSandboxQueue inlined (community removal, semantics preserved
 // verbatim from features/sandboxes/capacity.ts): pure metadata projection
 // over task metadata.sandbox_alloc — no sandbox-module dependency.
@@ -327,6 +328,9 @@ tasksRouter.delete("/:id", async (c) => {
 
   const config = loadConfig();
   const minio = getMinio();
+  // Freeze authoritative source keys while the authorized task row still
+  // exists. Reference checks deliberately run only after DB deletion commits.
+  const sourceArchiveKeys = sourceArchiveCleanupKeys(task);
 
   // H2 §4 strict order: release the sandbox instance BEFORE deleting the task
   // record. A failed release leaves the mapping `releasing`; the reconciler
@@ -340,9 +344,22 @@ tasksRouter.delete("/:id", async (c) => {
   // Delete from DB (cascades to findings_meta)
   await taskStorage.deleteTask(task.id);
 
-  // Cleanup MinIO objects (best-effort)
+  // Cleanup exact source archive objects through the cross-tenant/task/chat
+  // reference gate. Keep this independent from other artifact cleanup so one
+  // source failure never skips scan outputs, source files, reports or workspace.
   try {
-    const prefixes = [`code-packages/${task.id}`, `scan-outputs/${task.id}/`, `source-files/${task.id}/`, `user-reports/${task.id}/`];
+    await cleanupUnreferencedSourceArchives(sourceArchiveKeys, {
+      taskId: task.id,
+      reason: "task-delete",
+    });
+  } catch (err) {
+    logger.warn({ err, taskId: task.id }, "Unexpected source archive cleanup failure (best-effort)");
+  }
+
+  // Cleanup non-source MinIO objects (best-effort). code-packages must never
+  // return to this prefix path: it bypasses the shared-reference guard.
+  try {
+    const prefixes = [`scan-outputs/${task.id}/`, `source-files/${task.id}/`, `user-reports/${task.id}/`];
     for (const prefix of prefixes) {
       const objects = await new Promise<string[]>((resolve, reject) => {
         const keys: string[] = [];

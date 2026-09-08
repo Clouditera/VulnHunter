@@ -463,6 +463,51 @@ export async function listStuckDeadlineRunningTasks(marginSeconds: number, limit
   `;
 }
 
+// Exact ECMAScript String.prototype.trim() character set (WhiteSpace +
+// LineTerminator). PostgreSQL btrim(text) only removes U+0020 by default, so
+// pass this explicitly whenever comparing persisted keys with JS consumers.
+const JAVASCRIPT_TRIM_CHARACTERS =
+  "\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff";
+
+/**
+ * System-wide source-archive reference gate used after a task row commits its
+ * deletion. Deliberately has no tenant/user visibility filter: an object may
+ * be shared by another tenant or anchored by a chat artifact, and preserving
+ * data is safer than deleting a still-referenced object.
+ *
+ * JSON values must really be strings before their trimmed value is consumed;
+ * `->>` alone would stringify malformed numeric/boolean metadata and could
+ * accidentally treat it as a key. Every extant task's historical default key
+ * also counts as a reference, regardless of its source_meta contents.
+ */
+export async function isSourceArchiveKeyReferenced(key: string): Promise<boolean> {
+  const db = getDb();
+  const rows = await db<{ referenced: boolean }[]>`
+    SELECT (
+      EXISTS (
+        SELECT 1
+        FROM tasks t
+        WHERE (
+          jsonb_typeof(t.source_meta->'minio_key') = 'string'
+          AND btrim(t.source_meta->>'minio_key', ${JAVASCRIPT_TRIM_CHARACTERS}) = ${key}
+        ) OR (
+          jsonb_typeof(t.source_meta->'code_package_key') = 'string'
+          AND btrim(t.source_meta->>'code_package_key', ${JAVASCRIPT_TRIM_CHARACTERS}) = ${key}
+        ) OR ('code-packages/' || t.id::text || '.zip' = ${key})
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM chat_artifacts a
+        WHERE btrim(a.minio_key, ${JAVASCRIPT_TRIM_CHARACTERS}) = ${key}
+      )
+    ) AS referenced
+  `;
+  if (!Array.isArray(rows) || rows.length !== 1 || typeof rows[0]?.referenced !== "boolean") {
+    throw new Error("Invalid source archive reference query result");
+  }
+  return rows[0].referenced;
+}
+
 export async function deleteTask(id: string): Promise<boolean> {
   const db = getDb();
   const rows = await db`DELETE FROM tasks WHERE id = ${id} RETURNING id`;
