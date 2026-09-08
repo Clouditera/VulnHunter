@@ -6,6 +6,10 @@ set -e
 export HOME="${HOME:-/workspace/.home}"
 mkdir -p "$HOME" 2>/dev/null || true
 
+# Numeric service UIDs need a passwd entry even when absent from the image.
+# Source before every mode so SSH/git and agent subprocesses inherit the lookup.
+source /opt/worker-identity.sh
+
 MODE="${MODE:-scan}"
 
 case "$MODE" in

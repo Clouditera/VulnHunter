@@ -8,10 +8,12 @@ ARG PI_VERSION=0.83.0
 # System dependencies (python3 + pyyaml needed by feature-aggregator, project-profiler;
 # pandoc + openpyxl for report docx/xlsx export — fish 2026-07-27)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git openssh-client unzip zip curl ca-certificates jq \
+      git openssh-client libnss-wrapper unzip zip curl ca-certificates jq \
       python3 python3-yaml python3-pip pandoc \
     && pip3 install --no-cache-dir --break-system-packages openpyxl \
     && rm -rf /var/lib/apt/lists/* \
+    && ln -s "$(dpkg-query -L libnss-wrapper | grep '/libnss_wrapper.so$')" /usr/local/lib/libnss_wrapper.so \
+    && test -r /usr/local/lib/libnss_wrapper.so \
     && ssh -V \
     && command -v scp >/dev/null \
     && command -v pandoc >/dev/null \
@@ -143,6 +145,7 @@ RUN cd /opt/bridge && npm install --omit=dev --ignore-scripts 2>/dev/null || tru
 
 # Worker scripts
 COPY worker-assets/entrypoint.sh /opt/entrypoint.sh
+COPY worker-assets/worker-identity.sh /opt/worker-identity.sh
 COPY worker-assets/scan-mode.sh /opt/scan-mode.sh
 COPY worker-assets/chat-mode.sh /opt/chat-mode.sh
 COPY worker-assets/report-mode.sh /opt/report-mode.sh
