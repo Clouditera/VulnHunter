@@ -139,26 +139,27 @@ packages/
 
 ### 环境要求
 
-- Linux 主机（推荐 Ubuntu 22.04+）
-- Docker + Docker Compose
-- 8GB+ 内存
+- x86_64 Linux 主机（推荐 Ubuntu 22.04+）
+- Docker Engine + Docker Compose v2
+- 从源码构建需 Git、Node.js 20+ 和 pnpm 9+
+- 平台运行至少 16GB 内存（构建镜像可能需要更多）
 
-### Docker Compose 部署
+### 从源码构建并安装（社区版）
+
+VulnHunter 的应用镜像未发布到公共仓库。应先从源码构建包含镜像的离线发布包；仅克隆仓库后直接运行 `docker compose up` 无法完成安装。
 
 ```bash
-# 克隆项目
-git clone https://github.com/user/VulnHunter.git
+git clone --recurse-submodules https://github.com/Clouditera/VulnHunter.git
 cd VulnHunter
-
-# 配置环境
-cp deploy/.env.example .env
-# 编辑 .env：设置密码、端口、数据目录等
-
-# 启动服务
-docker compose -f deploy/docker-compose.yml --env-file .env up -d
+pnpm install --frozen-lockfile
+./scripts/build-release.sh --edition community
+VERSION=$(node -p "require('./package.json').version")
+cd "release/vulnhunter-release-${VERSION}-community"
+./install.sh
+./doctor.sh
 ```
 
-访问 `http://localhost:23000`，首次启动在引导页设置管理员账号即可使用。
+访问 `http://localhost:23000`，首次启动在引导页设置管理员账号即可使用。如果已有包含 `images/*.tar` 的离线发布包，解压后在发布包目录运行 `./install.sh` 和 `./doctor.sh` 即可，无需从源码构建。
 
 ### 源码开发
 
