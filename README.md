@@ -139,26 +139,27 @@ packages/
 
 ### Requirements
 
-- Linux host (Ubuntu 22.04+ recommended)
-- Docker + Docker Compose
-- 8GB+ RAM
+- x86_64 Linux host (Ubuntu 22.04+ recommended)
+- Docker Engine + Docker Compose v2
+- Git, Node.js 20+ and pnpm 9+ to build from source
+- 16GB+ RAM for running the platform (building images may need more)
 
-### Docker Compose Deployment
+### Build and Install from Source (Community Edition)
+
+VulnHunter application images are not published to a public registry. Build the offline release package from source; a bare clone followed by `docker compose up` is not an installation.
 
 ```bash
-# Clone
-git clone https://github.com/user/VulnHunter.git
+git clone --recurse-submodules https://github.com/Clouditera/VulnHunter.git
 cd VulnHunter
-
-# Configure
-cp deploy/.env.example .env
-# Edit .env: set passwords, ports, data directory, etc.
-
-# Start
-docker compose -f deploy/docker-compose.yml --env-file .env up -d
+pnpm install --frozen-lockfile
+./scripts/build-release.sh --edition community
+VERSION=$(node -p "require('./package.json').version")
+cd "release/vulnhunter-release-${VERSION}-community"
+./install.sh
+./doctor.sh
 ```
 
-Open `http://localhost:23000` and create your admin account on the bootstrap page.
+Open `http://localhost:23000` and create your admin account on the bootstrap page. If you already received an offline release package (including `images/*.tar`), extract it and run `./install.sh` and `./doctor.sh` from the package directory instead; no source build is needed.
 
 ### Development
 

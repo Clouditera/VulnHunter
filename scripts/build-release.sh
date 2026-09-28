@@ -92,12 +92,13 @@ pnpm --filter @vulnhunter/worker-bridge build
 
 # Guard: docker build context must contain every prebuilt/source input the
 # Dockerfiles COPY (a .dockerignore over-exclusion fails here, not mid-build).
+# Do not check the YoungFlow executable yet: build-worker-image.sh creates it
+# from the submodule source on a clean clone and verifies it before docker build.
 for required in \
   pnpm-lock.yaml \
   packages/web/dist-business/index.html \
   packages/web/dist-admin/index.html \
   packages/worker-bridge/dist/bundle.js \
-  submodules/youngflow/release/youngflow-linux-x64 \
   flows/vulnforge \
   worker-assets/entrypoint.sh \
   deploy/nginx.conf \
