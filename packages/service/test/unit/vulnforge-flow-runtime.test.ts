@@ -84,4 +84,100 @@ describe("VulnForge 2.0 runtime flow compatibility", () => {
     // preprocessing skill mounted on onboard
     expect(onboard?.skills).toContain("preprocessing");
   });
+
+  // HALL-35: poc-verify / ev-assess are engine-scheduled off finding state —
+  // decide no longer creates POC/EXP todos, so weak models cannot skip
+  // dynamic verification.
+  describe("engine-scheduled dynamic verification (HALL-35)", () => {
+    let byId: Map<string, ReturnType<typeof parseFlow>["stages"][number]>;
+
+    beforeAll(() => {
+      byId = new Map(parseFlow(flowPath).stages.map((stage) => [stage.id, stage]));
+    });
+
+    it("mounts poc_gate / exp_gate engine-only joins on dynamic.yaml", () => {
+      const pocGate = byId.get("poc_gate");
+      expect(pocGate?.type).toBe("join");
+      expect(pocGate?.task).toBeUndefined();
+      expect(pocGate?.stateExtract).toMatchObject({
+        rules: { poc_enabled: { file: "dynamic.yaml", field: "dynamic.poc_enabled" } },
+      });
+      expect(pocGate?.routes ?? []).toEqual([
+        expect.objectContaining({ to: "poc-verify", when: "poc_gate.poc_enabled == true" }),
+        expect.objectContaining({ to: "exp_gate" }),
+      ]);
+
+      const expGate = byId.get("exp_gate");
+      expect(expGate?.type).toBe("join");
+      expect(expGate?.task).toBeUndefined();
+      expect(expGate?.stateExtract).toMatchObject({
+        rules: { exp_enabled: { file: "dynamic.yaml", field: "dynamic.exp_enabled" } },
+      });
+      expect(expGate?.routes ?? []).toEqual([
+        expect.objectContaining({ to: "ev-assess", when: "exp_gate.exp_enabled == true" }),
+        expect.objectContaining({ to: "cycle_join" }),
+      ]);
+    });
+
+    it("verify always drains into the dynamic gate; legacy decide values route to the gates", () => {
+      const verify = byId.get("verify");
+      expect(verify?.routes ?? []).toEqual([expect.objectContaining({ to: "poc_gate" })]);
+
+      const decide = byId.get("decide");
+      const decideTargets = (decide?.routes ?? []).map((r) => r.to);
+      // deprecated enum values survive for old workspaces but only reach the
+      // deterministic gates — never the worker stages directly.
+      expect(decideTargets).not.toContain("poc-verify");
+      expect(decideTargets).not.toContain("ev-assess");
+      // exp-build routing must not regress — it stays decide-dispatched.
+      expect(decideTargets).toContain("exp-build");
+      expect(decide?.routes ?? []).toEqual(expect.arrayContaining([
+        expect.objectContaining({ to: "poc_gate", when: "decide.next == poc-verify" }),
+        expect.objectContaining({ to: "exp_gate", when: "decide.next == ev-assess" }),
+      ]));
+    });
+
+    it("poc-verify maps pending findings serially with an exp-aware exit route", () => {
+      const poc = byId.get("poc-verify");
+      expect(poc?.type).toBe("map");
+      expect(poc?.over).toBe("findings/BUG-*/report.yaml");
+      expect(poc?.overSource?.kind ?? "glob").toBe("glob");
+      // S3: blocked PoCs stay retryable — the filter re-picks them each verify round.
+      expect(poc?.filter).toMatchObject({ field: "metadata.poc_status", in: ["pending", "blocked"] });
+      expect(poc?.concurrency).toBe(1);
+      expect(poc?.errorStrategy).toBe("continue");
+      expect(poc?.stateExtract).toMatchObject({
+        rules: { exp_enabled: { file: "dynamic.yaml", field: "dynamic.exp_enabled" } },
+      });
+      expect(poc?.routes ?? []).toEqual([
+        expect.objectContaining({ to: "ev-assess", when: "poc-verify.exp_enabled == true" }),
+        expect.objectContaining({ to: "cycle_join" }),
+      ]);
+    });
+
+    it("ev-assess maps exp-ready findings serially", () => {
+      const ev = byId.get("ev-assess");
+      expect(ev?.type).toBe("map");
+      expect(ev?.over).toBe("findings/BUG-*/report.yaml");
+      expect(ev?.filter).toMatchObject({ field: "metadata.exp_status", match: "pending" });
+      expect(ev?.concurrency).toBe(1);
+      expect(ev?.errorStrategy).toBe("continue");
+      expect(ev?.routes ?? []).toEqual([expect.objectContaining({ to: "cycle_join" })]);
+    });
+
+    it("retires todo/POC-* and todo/EXP-* consumption everywhere in the flow", () => {
+      const flowText = readFileSync(flowPath, "utf8");
+      expect(flowText).not.toContain("todo/POC-");
+      expect(flowText).not.toContain("todo/EXP-");
+      // decide no longer teaches the retired POC/EXP task contracts
+      const decide = byId.get("decide");
+      expect(decide?.prompt).not.toContain("poc.schema.yaml");
+      expect(decide?.prompt).not.toContain("exp.schema.yaml");
+      expect(decide?.prompt).not.toContain("poc.template.md");
+      expect(decide?.prompt).not.toContain("exp.template.md");
+      // workers receive the finding report directly
+      expect(byId.get("poc-verify")?.prompt).toContain("${iterate_file}");
+      expect(byId.get("ev-assess")?.prompt).toContain("${iterate_file}");
+    });
+  });
 });

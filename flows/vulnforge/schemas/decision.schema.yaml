@@ -11,7 +11,11 @@ properties:
   next:
     type: string
     enum: [onboard, cognize, hunt, verify, poc-verify, ev-assess, exp-build, report, exit]
-    description: 本轮 decide 选择的推进或退出策略。
+    description: |
+      本轮 decide 选择的推进或退出策略。poc-verify / ev-assess 已 deprecated
+      （HALL-35：动态验证链由引擎按 dynamic.yaml 门禁与 finding 状态调度）——
+      枚举值仅为兼容历史工作区保留，旧值路由到确定性门禁，不再要求存在
+      POC/EXP todo，新轮次不应再产出这两个值。
   reason:
     type: string
     description: 选择该策略的简短理由。

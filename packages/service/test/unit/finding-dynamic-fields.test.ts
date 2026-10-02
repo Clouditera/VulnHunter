@@ -20,11 +20,18 @@ const migration027 = readFileSync(
   "utf8",
 );
 
+const migration058 = readFileSync(
+  new URL("../../src/infra/db/migrations/058_exp_status_awaiting_poc.sql", import.meta.url),
+  "utf8",
+);
+
 describe("Finding dynamic shared contract", () => {
   it("expresses every frozen enum and the unknown sentinel", () => {
     expect(FINDING_CLASSES).toEqual(["vulnerability", "risk", "unknown"]);
     expect(POC_STATUSES).toEqual(["pending", "reproduced", "fail-reproduced", "blocked", "not-needed", "unknown"]);
-    expect(EXP_STATUSES).toEqual(["pending", "confirmed", "downgraded", "failed", "blocked", "not-needed", "unknown"]);
+    // HALL-35: awaiting-poc = vulnerability created by verify, PoC not yet run
+    // (engine advances it to pending only after a successful reproduction).
+    expect(EXP_STATUSES).toEqual(["pending", "awaiting-poc", "confirmed", "downgraded", "failed", "blocked", "not-needed", "unknown"]);
   });
 
   it("type guards accept only frozen values", () => {
@@ -93,5 +100,22 @@ describe("migration 027 contract (poc_status not-needed)", () => {
     expect(migration027).toContain("EXCEPTION WHEN duplicate_object THEN NULL");
     expect(migration027).not.toMatch(/finding_class_check|exp_status_check/);
     expect(migration027).not.toMatch(/ADD COLUMN|DROP COLUMN|\bUPDATE\s+findings_meta\b/i);
+  });
+});
+
+describe("migration 058 contract (exp_status awaiting-poc, HALL-35)", () => {
+  it("re-adds the named exp_status CHECK with awaiting-poc and keeps it nullable", () => {
+    expect(migration058).toContain("DROP CONSTRAINT IF EXISTS findings_meta_exp_status_check");
+    expect(migration058).toContain("ADD CONSTRAINT findings_meta_exp_status_check");
+    expect(migration058).toContain("exp_status IS NULL OR exp_status IN");
+    for (const value of ["'pending'", "'awaiting-poc'", "'confirmed'", "'downgraded'", "'failed'", "'blocked'", "'not-needed'", "'unknown'"]) {
+      expect(migration058).toContain(value);
+    }
+  });
+
+  it("stays idempotent and touches no other constraint/column", () => {
+    expect(migration058).toContain("EXCEPTION WHEN duplicate_object THEN NULL");
+    expect(migration058).not.toMatch(/finding_class_check|poc_status_check/);
+    expect(migration058).not.toMatch(/ADD COLUMN|DROP COLUMN|\bUPDATE\s+findings_meta\b/i);
   });
 });

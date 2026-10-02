@@ -33,28 +33,28 @@
 - **research**：检索公开信息发现审计面。审计早期（onboard 完成后、覆盖率低时）优先派发；存在情报类回流线索时也可派发。创建 `todo/RES-*.md`，正文指定检索方向（项目、版本、关注面）。research 与 cognize 产出的 `ADV` 统一由 hunt 消费。
 - **hunt**：存在待执行 ADV。把本轮选中的一个或多个 ADV 从 `leads/` 移入 `todo/`，frontmatter 无需额外处理。
 - **verify**：存在待研判 HYP。把本轮选中的一个或多个 HYP 从 `leads/` 移入 `todo/`，frontmatter 无需额外处理。
-- **poc-verify**：已启用 POC、动态环境可用，且存在 `finding_class: vulnerability` 且 `poc_status: pending` 的候选。创建 `todo/POC-*.md`，frontmatter 写 `target`。风险类 finding 不做 POC。
-- **ev-assess**：已启用 EXP、动态环境可用，且存在 `finding_class: vulnerability` 且 `exp_status: pending` 的候选。创建单漏洞 `todo/EXP-*.md`，frontmatter 只写 `target`。风险类 finding 不做 EXP。
 - **exp-build**：已启用组合链、动态环境可用，且出现组合利用信号（同一组件或攻击面上有多个已完成 ev-assess 的 vulnerability，或 `knowledge/exploits/` 的经验指向可行组合）。创建 `todo/CHAIN-*.md`，正文只写组合方向与信号；成员由 exp-build 自主探索。exp-build 是第二阶段方向，原语清单太薄时不派发。
 
-「动态环境可用」即 `knowledge/build/build.md` frontmatter 中 `sandbox` 为 available；为 unreachable 时不派发动态任务，`sched_instr` 范围内只剩动态工作时走 exit。
+动态验证链（poc-verify / ev-assess）由引擎调度，不是 decide 的派发方向：`verify` 结束后固定进入引擎动态门禁（读取平台写入的 `dynamic.yaml`），按 finding 的 `poc_status` / `exp_status` 串行推进，无需也不应为其创建任何任务文件。
+
+「动态环境可用」即 `knowledge/build/build.md` frontmatter 中 `sandbox` 为 available；为 unreachable 时不派发 exp-build，`sched_instr` 范围内只剩动态工作时走 exit。
 - **report**：`sched_instr` 范围内无待推进项时，交由 report 复核；范围外 `leads/` 不阻止进入 report，也不创建 `REPORT-*` 任务。
 - **exit**：目标项目不完整、动态环境不满足 POC/EXP 需要等异常情况时，退出任务。写 `decision.yaml.next: exit`。
 
-未选中的 ADV、HYP、EXP 候选和静态候选留在 `leads/` 原处，等待后续轮次处理。
+未选中的 ADV、HYP 和静态候选留在 `leads/` 原处，等待后续轮次处理。
 
 ## 任务正文
 
-对于 `todo/onboard-*.md` 和 `todo/COG-*.md`，完全由决策阶段起草，任务正文需要描述清楚。ADV/HYP 主要移动源 `leads/` 产物，不补充正文；POC/EXP 新建任务，但正文只写 target 和必要边界。只转写与当前任务直接相关的用户补充说明。
+对于 `todo/onboard-*.md` 和 `todo/COG-*.md`，完全由决策阶段起草，任务正文需要描述清楚。ADV/HYP 主要移动源 `leads/` 产物，不补充正文；CHAIN 新建任务，但正文只写组合方向与必要边界。只转写与当前任务直接相关的用户补充说明。
 
-如“用户补充说明: 只查找内存溢出漏洞”，此时可以在 HYP、POC 任务中，补充说明“仅关注内存溢出相关问题，若没有此类问题则无需处理”。
+如“用户补充说明: 只查找内存溢出漏洞”，此时可以在 HYP 任务中，补充说明“仅关注内存溢出相关问题，若没有此类问题则无需处理”。
 
 ## worklog
 
 在 `knowledge/worklog.md` 追加一条记录，字段 `Round | Decision | Reason`：
 
 - `Round`：`decision.yaml` 的 `round` 字段。
-- `Decision`：`decision.yaml` 的 `next` 字段，即本轮选定的方向（onboard / cognize / hunt / verify / poc-verify / ev-assess / exp-build / report / exit）。
+- `Decision`：`decision.yaml` 的 `next` 字段，即本轮选定的方向（onboard / cognize / research / hunt / verify / exp-build / report / exit）。
 - `Reason`：一句话说明本轮为什么这么选择。
 
 # 备注

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveDynamicToggles } from "../../src/features/tasks/dynamic-toggles.js";
 import { scanMetaFromValues } from "../../src/features/files/routes.js";
@@ -62,5 +64,16 @@ describe("scanMetaFromValues dynamic switches", () => {
     const meta = scanMetaFromValues("focus", 600, undefined, undefined);
     expect(meta).not.toHaveProperty("enable_poc");
     expect(meta).not.toHaveProperty("dynamic_enabled");
+  });
+});
+
+describe("module NOTE reflects the engine consumption reality (S2)", () => {
+  it("documents enable_* consumption via dynamic.yaml instead of claiming the engine ignores them", () => {
+    const text = readFileSync(
+      join(import.meta.dirname, "../../src/features/tasks/dynamic-toggles.ts"),
+      "utf8",
+    );
+    expect(text).not.toContain("does not yet consume");
+    expect(text).toMatch(/dynamic\.yaml/);
   });
 });

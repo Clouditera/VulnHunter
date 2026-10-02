@@ -31,9 +31,10 @@ export const POC_STATE_DISPLAY: Record<PocStatus, CardStateDisplay> = {
   unknown: { labelKey: "unknown", color: "#737373", icon: "minus-circle", helperKey: "unknown" },
 };
 
-/** EXP 6-state display map (SSOT §3). No `upgraded` — the engine has none. */
+/** EXP 7-state display map (SSOT §3 + HALL-35 awaiting-poc). No `upgraded` — the engine has none. */
 export const EXP_STATE_DISPLAY: Record<ExpStatus, CardStateDisplay> = {
   pending: { labelKey: "pendingExp", color: "var(--sev-medium)", icon: "clock", helperKey: "pending" },
+  "awaiting-poc": { labelKey: "awaitingPoc", color: "var(--sev-medium)", icon: "clock", helperKey: "awaitingPoc" },
   confirmed: { labelKey: "confirmed", color: "var(--danger)", icon: "shield-alert", helperKey: "confirmed" },
   downgraded: { labelKey: "downgraded", color: "var(--brand)", icon: "trending-down", helperKey: "downgraded" },
   failed: { labelKey: "failed", color: "var(--sev-high)", icon: "alert-circle", helperKey: "failed" },
@@ -65,9 +66,10 @@ export function resolvePocCardState(input: {
 }
 
 /**
- * Resolve the EXP card's effective display state (SSOT §4 priority):
- * not-enabled > env-lost > timed-out (exp still pending) > waiting-for-POC
- * (poc not reproduced & exp pending) > not-needed terminal > exp_status enum.
+ * Resolve the EXP card's effective display state (SSOT §4 priority + HALL-35):
+ * not-enabled > env-lost > timed-out (exp still pending) > awaiting-poc
+ * (PoC not yet run; engine advances it after reproduction) > waiting-for-POC
+ * (legacy pending with poc not reproduced) > not-needed terminal > exp_status enum.
  */
 export function resolveExpCardState(input: {
   dynamicEnabled: boolean;
@@ -82,6 +84,11 @@ export function resolveExpCardState(input: {
   const poc = input.pocStatus ?? "unknown";
   // not-needed is a terminal state and is never overridden by the POC wait.
   if (exp === "not-needed") return { derived: null, status: exp, waitingForPoc: false };
+  // HALL-35: awaiting-poc means the engine has not run PoC yet — never a
+  // timed-out pending, and it stays visible as its own state.
+  if (exp === "awaiting-poc") {
+    return { derived: null, status: exp, waitingForPoc: poc !== "reproduced" };
+  }
   if (input.timedOut && exp === "pending") {
     return { derived: "timed_out", status: "pending", waitingForPoc: false };
   }
