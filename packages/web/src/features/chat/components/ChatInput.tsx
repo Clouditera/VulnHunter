@@ -183,7 +183,12 @@ export function ChatInput({
 }: {
   sessionId: string | null;
   streaming: boolean;
-  onSend: (text: string, images?: ChatImageAttachment[]) => void;
+  /**
+   * `sessionId` is the session the attachments were just uploaded to (draft
+   * materialized via onEnsureSession). #58: passing it explicitly prevents a
+   * stale useCallback closure from re-creating the draft as a second session.
+   */
+  onSend: (text: string, images?: ChatImageAttachment[], sessionId?: string) => void;
   onAbort: () => void;
   onEnsureSession?: () => Promise<string | null>;
   disabled?: boolean;
@@ -396,7 +401,9 @@ export function ChatInput({
       setUploading(false);
     }
 
-    onSend(content, attachImages);
+    // Hand the resolved upload session id to onSend so the prompt lands on
+    // the SAME session the attachments were uploaded to (#58).
+    onSend(content, attachImages, uploadSessionId ?? undefined);
     setText("");
     requestAnimationFrame(() => {
       if (taRef.current) taRef.current.style.height = "40px";
