@@ -716,14 +716,20 @@ export function useChat() {
   }, []);
 
   const sendPrompt = useCallback(
-    async (text: string, images?: ChatImageAttachment[]) => {
+    async (text: string, images?: ChatImageAttachment[], sessionId?: string) => {
       // Allow sending when there are images even with empty text
       // (mirrors ChatGPT / Claude behaviour — "describe this image").
       const hasImages = !!images && images.length > 0;
+      // #58: ChatInput materializes the draft session to upload attachments
+      // BEFORE invoking onSend, and passes the resolved id explicitly — prefer
+      // it. For the plain-text path, read refs instead of the useCallback
+      // closure snapshot: a stale closure captured before ensureSession()
+      // would otherwise still see the draft and create a SECOND session.
+      let sid = sessionId ?? activeIdRef.current;
+      const draft = draftSessionRef.current;
       // Only block if *this* session is already streaming — other sessions OK.
-      if (!activeId || (!text.trim() && !hasImages) || streamingBySession[activeId]) return;
-      let sid = activeId;
-      if (draftSession && activeId === draftSession.id) {
+      if (!sid || (!text.trim() && !hasImages) || streamingBySessionRef.current[sid]) return;
+      if (!sessionId && draft && sid === draft.id) {
         const created = await createSession();
         if (!created) return;
         sid = created.id;
@@ -769,7 +775,7 @@ export function useChat() {
         setLastError(code);
       }
     },
-    [activeId, streamingBySession, messagesBySession, pushActivity, draftSession, createSession],
+    [messagesBySession, pushActivity, createSession, appendSystemNotice],
   );
 
   const abort = useCallback(() => {

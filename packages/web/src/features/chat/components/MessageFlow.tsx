@@ -64,7 +64,7 @@ export function MessageFlow({
   session: ChatSession | null;
   messages: ChatMessage[];
   streaming: boolean;
-  onSend: (text: string, images?: ChatImageAttachment[]) => void;
+  onSend: (text: string, images?: ChatImageAttachment[], sessionId?: string) => void;
   onAbort: () => void;
   onEnsureSession?: () => Promise<string | null>;
   onArtifactSelect?: (artifact: ChatArtifactUnion) => void;
